@@ -1,0 +1,114 @@
+// ============================================================
+// Fatura ERP — Sabitler & yardımcı fonksiyonlar
+// ============================================================
+
+import {
+  Clock, CheckCircle2, AlertTriangle, Ban, Hash,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+
+export interface InvoiceStatusMeta {
+  value: string
+  label: string
+  color: string
+  icon: LucideIcon
+}
+
+export const INVOICE_STATUSES: InvoiceStatusMeta[] = [
+  { value: 'odeme_bekliyor', label: 'Ödeme Bekliyor', color: 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300', icon: Clock },
+  { value: 'odendi', label: 'Ödendi', color: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300', icon: CheckCircle2 },
+  { value: 'gecikti', label: 'Gecikti', color: 'text-red-700 bg-red-50 border-red-200 dark:bg-red-950/30 dark:text-red-300', icon: AlertTriangle },
+  { value: 'iptal', label: 'İptal', color: 'text-slate-700 bg-slate-50 border-slate-200 dark:bg-slate-950/30 dark:text-slate-300', icon: Ban },
+]
+
+export const FILTER_STATUSES: InvoiceStatusMeta[] = [
+  { value: '__all__', label: 'Tümü', color: 'text-slate-700 bg-slate-100 border-slate-200', icon: Hash },
+  ...INVOICE_STATUSES,
+]
+
+export function getInvoiceStatusMeta(status: string): InvoiceStatusMeta {
+  return INVOICE_STATUSES.find((s) => s.value === status) ?? INVOICE_STATUSES[0]
+}
+
+// ----- Form yardımcıları (InvoiceFormDialog için) -----
+export interface InvoiceLineForm {
+  key: string
+  productId: string
+  description: string
+  qty: string
+  unitPrice: string
+  taxRate: string
+  // Ağırlık (F4)
+  weightPerUnit: string  // kg cinsinden (DB'de saklanan birim)
+  weightUnit: string      // gr | kg | ton
+  color: string
+}
+
+export interface InvoiceForm {
+  customerId: string
+  currency: string
+  issueDate: string
+  dueDate: string
+  lines: InvoiceLineForm[]
+}
+
+export function emptyInvoiceLine(): InvoiceLineForm {
+  return {
+    key: Math.random().toString(36).slice(2),
+    productId: '',
+    description: '',
+    qty: '1',
+    unitPrice: '0',
+    taxRate: '20',
+    weightPerUnit: '',
+    weightUnit: 'kg',
+    color: '',
+  }
+}
+
+export function emptyInvoiceForm(defaultCurrency: string): InvoiceForm {
+  const today = new Date().toISOString().slice(0, 10)
+  const dueDate = new Date()
+  dueDate.setDate(dueDate.getDate() + 30)
+  return {
+    customerId: '',
+    currency: defaultCurrency,
+    issueDate: today,
+    dueDate: dueDate.toISOString().slice(0, 10),
+    lines: [emptyInvoiceLine()],
+  }
+}
+
+export function invoiceLineTotals(line: InvoiceLineForm) {
+  const qty = parseFloat(line.qty) || 0
+  const unitPrice = parseFloat(line.unitPrice) || 0
+  const taxRate = parseFloat(line.taxRate) || 0
+  const lineTotal = qty * unitPrice
+  const lineTax = lineTotal * (taxRate / 100)
+  // Kalem ağırlığı (kg)
+  const weightPerUnitKg = parseFloat(line.weightPerUnit) || 0
+  const totalWeight = weightPerUnitKg > 0 ? Math.round(qty * weightPerUnitKg * 1000) / 1000 : null
+  return { qty, unitPrice, taxRate, lineTotal, lineTax, totalWeight, weightPerUnitKg }
+}
+
+export function invoiceFormTotals(form: InvoiceForm) {
+  let subtotal = 0
+  let taxTotal = 0
+  let totalWeightKg = 0
+  let hasWeight = false
+  for (const l of form.lines) {
+    const t = invoiceLineTotals(l)
+    subtotal += t.lineTotal
+    taxTotal += t.lineTax
+    if (t.totalWeight != null && t.totalWeight > 0) {
+      hasWeight = true
+      totalWeightKg += t.totalWeight
+    }
+  }
+  return {
+    subtotal: Math.round(subtotal * 100) / 100,
+    taxTotal: Math.round(taxTotal * 100) / 100,
+    total: Math.round((subtotal + taxTotal) * 100) / 100,
+    totalWeightKg: hasWeight ? Math.round(totalWeightKg * 1000) / 1000 : null,
+  }
+}

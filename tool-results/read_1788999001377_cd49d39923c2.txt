@@ -1,0 +1,939 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useEffect } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { apiGet, apiPost, apiPatch, qk } from '@/lib/api-client'
+     6→import { useAppStore } from '@/store/app-store'
+     7→import { hasPermission } from '@/lib/rbac'
+     8→import type { Customer, SessionUser, UserListItem } from '@/types'
+     9→
+    10→import { Card, CardContent } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Label } from '@/components/ui/label'
+    14→import { Textarea } from '@/components/ui/textarea'
+    15→import { Checkbox } from '@/components/ui/checkbox'
+    16→import { Skeleton } from '@/components/ui/skeleton'
+    17→import { Badge } from '@/components/ui/badge'
+    18→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    19→import { Progress } from '@/components/ui/progress'
+    20→import { Separator } from '@/components/ui/separator'
+    21→import {
+    22→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    23→} from '@/components/ui/table'
+    24→import {
+    25→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    26→} from '@/components/ui/select'
+    27→import {
+    28→  Dialog, DialogContent, DialogDescription, DialogFooter,
+    29→  DialogHeader, DialogTitle,
+    30→} from '@/components/ui/dialog'
+    31→import {
+    32→  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    33→  DropdownMenuTrigger, DropdownMenuSeparator,
+    34→} from '@/components/ui/dropdown-menu'
+    35→import {
+    36→  Tooltip, TooltipContent, TooltipTrigger,
+    37→} from '@/components/ui/tooltip'
+    38→import {
+    39→  Collapsible, CollapsibleContent, CollapsibleTrigger,
+    40→} from '@/components/ui/collapsible'
+    41→import { toast } from 'sonner'
+    42→import {
+    43→  Users, Plus, Download, Search, Filter, Building2, MapPin,
+    44→  Phone, MessageCircle, Eye, ChevronDown, AlertTriangle,
+    45→  Crown, CheckCircle2, UserCheck, Layers, X, RefreshCw,
+    46→  ListFilter,
+    47→} from 'lucide-react'
+    48→import {
+    49→  SECTORS, CITIES, SEGMENTS, CUSTOMER_STATUS, CUSTOMER_SOURCES,
+    50→  TAG_COLOR_CLASSES, getLabel, getColor,
+    51→} from '@/lib/constants'
+    52→import {
+    53→  formatPhone, whatsappLink, telLink, formatRelative, daysSince,
+    54→  toCSV, downloadFile, initials, getActivityStatusColor,
+    55→} from '@/lib/format'
+    56→import { cn } from '@/lib/utils'
+    57→
+    58→// ---- Tip: API cevabı ----
+    59→interface CustomerListResponse {
+    60→  items: Customer[]
+    61→  total: number
+    62→  limit: number
+    63→  offset: number
+    64→}
+    65→interface UsersResponse {
+    66→  items: UserListItem[]
+    67→  total: number
+    68→}
+    69→
+    70→// ---- Form state ----
+    71→interface CustomerForm {
+    72→  name: string
+    73→  sector: string
+    74→  segment: string
+    75→  city: string
+    76→  phone: string
+    77→  email: string
+    78→  web: string
+    79→  taxNumber: string
+    80→  source: string
+    81→  status: string
+    82→  kvkkConsent: boolean
+    83→  tags: string
+    84→}
+    85→
+    86→const EMPTY_FORM: CustomerForm = {
+    87→  name: '', sector: 'Diğer', segment: 'standart', city: '',
+    88→  phone: '', email: '', web: '', taxNumber: '',
+    89→  source: 'manuel', status: 'aktif', kvkkConsent: false, tags: '',
+    90→}
+    91→
+    92→// ---- Aktivite renk noktası ----
+    93→function activityDot(lastActivityAt: string | null) {
+    94→  const d = daysSince(lastActivityAt)
+    95→  if (d === null) return { color: 'bg-gray-400', label: 'İletişim yok' }
+    96→  if (d <= 7) return { color: 'bg-emerald-500', label: `${d} gün önce` }
+    97→  if (d <= 30) return { color: 'bg-amber-500', label: `${d} gün önce` }
+    98→  return { color: 'bg-red-500', label: `${d} gün önce` }
+    99→}
+   100→
+   101→// ---- Stats mini kart ----
+   102→function StatCard({
+   103→  label, value, icon: Icon, color, sub,
+   104→}: {
+   105→  label: string
+   106→  value: number | string
+   107→  icon: typeof Users
+   108→  color: string
+   109→  sub?: string
+   110→}) {
+   111→  return (
+   112→    <Card className="relative overflow-hidden hover:shadow-sm transition-shadow">
+   113→      <CardContent className="p-4">
+   114→        <div className="flex items-center justify-between">
+   115→          <div className="min-w-0">
+   116→            <div className="text-xs text-muted-foreground truncate">{label}</div>
+   117→            <div className="text-xl font-bold tracking-tight mt-0.5">{value}</div>
+   118→            {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+   119→          </div>
+   120→          <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', color)}>
+   121→            <Icon className="w-4 h-4 text-white" />
+   122→          </div>
+   123→        </div>
+   124→      </CardContent>
+   125→    </Card>
+   126→  )
+   127→}
+   128→
+   129→// ---- Müşteri Ekleme/Düzenleme Dialog ----
+   130→function CustomerFormDialog({
+   131→  open, onOpenChange, editCustomer,
+   132→}: {
+   133→  open: boolean
+   134→  onOpenChange: (v: boolean) => void
+   135→  editCustomer?: Customer | null
+   136→}) {
+   137→  const qc = useQueryClient()
+   138→  const [form, setForm] = useState<CustomerForm>(EMPTY_FORM)
+   139→  const [submitting, setSubmitting] = useState(false)
+   140→
+   141→  // Dialog açıldığında formu doldur
+   142→  useEffect(() => {
+   143→    if (open) {
+   144→      if (editCustomer) {
+   145→        setForm({
+   146→          name: editCustomer.name || '',
+   147→          sector: editCustomer.sector || 'Diğer',
+   148→          segment: editCustomer.segment || 'standart',
+   149→          city: editCustomer.city || '',
+   150→          phone: editCustomer.phone || '',
+   151→          email: editCustomer.email || '',
+   152→          web: editCustomer.web || '',
+   153→          taxNumber: editCustomer.taxNumber || '',
+   154→          source: editCustomer.source || 'manuel',
+   155→          status: editCustomer.status || 'aktif',
+   156→          kvkkConsent: editCustomer.kvkkConsent || false,
+   157→          tags: Array.isArray(editCustomer.tags) ? editCustomer.tags.join(', ') : '',
+   158→        })
+   159→      } else {
+   160→        setForm(EMPTY_FORM)
+   161→      }
+   162→    }
+   163→  }, [open, editCustomer])
+   164→
+   165→  const handleSubmit = async () => {
+   166→    if (!form.name.trim()) {
+   167→      toast.error('Müşteri adı gerekli')
+   168→      return
+   169→    }
+   170→    setSubmitting(true)
+   171→    try {
+   172→      const tags = form.tags
+   173→        .split(',')
+   174→        .map((t) => t.trim())
+   175→        .filter(Boolean)
+   176→      const payload = {
+   177→        name: form.name.trim(),
+   178→        sector: form.sector,
+   179→        segment: form.segment,
+   180→        city: form.city || null,
+   181→        phone: form.phone || null,
+   182→        email: form.email || null,
+   183→        web: form.web || null,
+   184→        taxNumber: form.taxNumber || null,
+   185→        source: form.source,
+   186→        status: form.status,
+   187→        kvkkConsent: form.kvkkConsent,
+   188→        tags,
+   189→      }
+   190→      if (editCustomer) {
+   191→        await apiPatch(`/api/customers/${editCustomer.id}`, payload)
+   192→        toast.success('Müşteri güncellendi')
+   193→        qc.invalidateQueries({ queryKey: qk.customer(editCustomer.id) })
+   194→      } else {
+   195→        await apiPost('/api/customers', payload)
+   196→        toast.success('Müşteri eklendi')
+   197→      }
+   198→      qc.invalidateQueries({ queryKey: ['customers'] })
+   199→      onOpenChange(false)
+   200→    } catch (e) {
+   201→      const msg = e instanceof Error ? e.message : 'İşlem başarısız'
+   202→      toast.error(msg)
+   203→    } finally {
+   204→      setSubmitting(false)
+   205→    }
+   206→  }
+   207→
+   208→  return (
+   209→    <Dialog open={open} onOpenChange={onOpenChange}>
+   210→      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto custom-scroll">
+   211→        <DialogHeader>
+   212→          <DialogTitle>{editCustomer ? 'Müşteri Düzenle' : 'Yeni Müşteri Ekle'}</DialogTitle>
+   213→          <DialogDescription>
+   214→            {editCustomer
+   215→              ? 'Müşteri bilgilerini güncelleyin'
+   216→              : 'Portföyünüze yeni bir müşteri ekleyin'}
+   217→          </DialogDescription>
+   218→        </DialogHeader>
+   219→
+   220→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+   221→          {/* Ad */}
+   222→          <div className="sm:col-span-2 space-y-1.5">
+   223→            <Label htmlFor="name">Müşteri Adı *</Label>
+   224→            <Input
+   225→              id="name"
+   226→              value={form.name}
+   227→              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+   228→              placeholder="Örn. Acıbadem Sağlık A.Ş."
+   229→            />
+   230→          </div>
+   231→
+   232→          {/* Sektör */}
+   233→          <div className="space-y-1.5">
+   234→            <Label>Sektör</Label>
+   235→            <Select
+   236→              value={form.sector}
+   237→              onValueChange={(v) => setForm((f) => ({ ...f, sector: v }))}
+   238→            >
+   239→              <SelectTrigger className="w-full">
+   240→                <SelectValue placeholder="Sektör seçin" />
+   241→              </SelectTrigger>
+   242→              <SelectContent>
+   243→                {SECTORS.map((s) => (
+   244→                  <SelectItem key={s} value={s}>{s}</SelectItem>
+   245→                ))}
+   246→              </SelectContent>
+   247→            </Select>
+   248→          </div>
+   249→
+   250→          {/* Segment */}
+   251→          <div className="space-y-1.5">
+   252→            <Label>Segment</Label>
+   253→            <Select
+   254→              value={form.segment}
+   255→              onValueChange={(v) => setForm((f) => ({ ...f, segment: v }))}
+   256→            >
+   257→              <SelectTrigger className="w-full">
+   258→                <SelectValue placeholder="Segment" />
+   259→              </SelectTrigger>
+   260→              <SelectContent>
+   261→                {SEGMENTS.map((s) => (
+   262→                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+   263→                ))}
+   264→              </SelectContent>
+   265→            </Select>
+   266→          </div>
+   267→
+   268→          {/* Şehir */}
+   269→          <div className="space-y-1.5">
+   270→            <Label>Şehir</Label>
+   271→            <Select
+   272→              value={form.city || '__none__'}
+   273→              onValueChange={(v) => setForm((f) => ({ ...f, city: v === '__none__' ? '' : v }))}
+   274→            >
+   275→              <SelectTrigger className="w-full">
+   276→                <SelectValue placeholder="Şehir seçin" />
+   277→              </SelectTrigger>
+   278→              <SelectContent>
+   279→                <SelectItem value="__none__">— Seçilmedi —</SelectItem>
+   280→                {CITIES.map((c) => (
+   281→                  <SelectItem key={c} value={c}>{c}</SelectItem>
+   282→                ))}
+   283→              </SelectContent>
+   284→            </Select>
+   285→          </div>
+   286→
+   287→          {/* Kaynak */}
+   288→          <div className="space-y-1.5">
+   289→            <Label>Kaynak</Label>
+   290→            <Select
+   291→              value={form.source}
+   292→              onValueChange={(v) => setForm((f) => ({ ...f, source: v }))}
+   293→            >
+   294→              <SelectTrigger className="w-full">
+   295→                <SelectValue placeholder="Kaynak" />
+   296→              </SelectTrigger>
+   297→              <SelectContent>
+   298→                {CUSTOMER_SOURCES.map((s) => (
+   299→                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+   300→                ))}
+   301→              </SelectContent>
+   302→            </Select>
+   303→          </div>
+   304→
+   305→          {/* Telefon */}
+   306→          <div className="space-y-1.5">
+   307→            <Label>Telefon</Label>
+   308→            <Input
+   309→              value={form.phone}
+   310→              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+   311→              placeholder="+90 532 123 45 67"
+   312→            />
+   313→          </div>
+   314→
+   315→          {/* E-posta */}
+   316→          <div className="space-y-1.5">
+   317→            <Label>E-posta</Label>
+   318→            <Input
+   319→              type="email"
+   320→              value={form.email}
+   321→              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+   322→              placeholder="info@firma.com"
+   323→            />
+   324→          </div>
+   325→
+   326→          {/* Web */}
+   327→          <div className="space-y-1.5">
+   328→            <Label>Web Sitesi</Label>
+   329→            <Input
+   330→              value={form.web}
+   331→              onChange={(e) => setForm((f) => ({ ...f, web: e.target.value }))}
+   332→              placeholder="www.firma.com"
+   333→            />
+   334→          </div>
+   335→
+   336→          {/* Vergi No */}
+   337→          <div className="space-y-1.5">
+   338→            <Label>Vergi / TC No</Label>
+   339→            <Input
+   340→              value={form.taxNumber}
+   341→              onChange={(e) => setForm((f) => ({ ...f, taxNumber: e.target.value }))}
+   342→              placeholder="1234567890"
+   343→            />
+   344→          </div>
+   345→
+   346→          {/* Durum */}
+   347→          <div className="space-y-1.5">
+   348→            <Label>Durum</Label>
+   349→            <Select
+   350→              value={form.status}
+   351→              onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}
+   352→            >
+   353→              <SelectTrigger className="w-full">
+   354→                <SelectValue placeholder="Durum" />
+   355→              </SelectTrigger>
+   356→              <SelectContent>
+   357→                {CUSTOMER_STATUS.map((s) => (
+   358→                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+   359→                ))}
+   360→              </SelectContent>
+   361→            </Select>
+   362→          </div>
+   363→
+   364→          {/* Etiketler */}
+   365→          <div className="sm:col-span-2 space-y-1.5">
+   366→            <Label>Etiketler</Label>
+   367→            <Input
+   368→              value={form.tags}
+   369→              onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))}
+   370→              placeholder="önemli, kobi, ana müşteri (virgülle ayırın)"
+   371→            />
+   372→            <p className="text-xs text-muted-foreground">
+   373→              Etiketleri virgülle ayırarak yazın
+   374→            </p>
+   375→          </div>
+   376→
+   377→          {/* KVKK */}
+   378→          <div className="sm:col-span-2 flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
+   379→            <Checkbox
+   380→              id="kvkk"
+   381→              checked={form.kvkkConsent}
+   382→              onCheckedChange={(v) => setForm((f) => ({ ...f, kvkkConsent: !!v }))}
+   383→              className="mt-0.5"
+   384→            />
+   385→            <div>
+   386→              <Label htmlFor="kvkk" className="cursor-pointer font-medium">
+   387→                KVKK Aydınlatma Onayı
+   388→              </Label>
+   389→              <p className="text-xs text-muted-foreground mt-0.5">
+   390→                Müşteri, kişisel verilerin işlenmesine açık rıza gösterdi
+   391→              </p>
+   392→            </div>
+   393→          </div>
+   394→        </div>
+   395→
+   396→        <DialogFooter>
+   397→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+   398→            İptal
+   399→          </Button>
+   400→          <Button onClick={handleSubmit} disabled={submitting || !form.name.trim()}>
+   401→            {submitting && <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />}
+   402→            {editCustomer ? 'Güncelle' : 'Müşteri Ekle'}
+   403→          </Button>
+   404→        </DialogFooter>
+   405→      </DialogContent>
+   406→    </Dialog>
+   407→  )
+   408→}
+   409→
+   410→// ---- Ana liste bileşeni ----
+   411→export function CustomerList() {
+   412→  const { user, openCustomer } = useAppStore()
+   413→  const qc = useQueryClient()
+   414→
+   415→  // Filtre state
+   416→  const [search, setSearch] = useState('')
+   417→  const [sector, setSector] = useState('')
+   418→  const [city, setCity] = useState('')
+   419→  const [segment, setSegment] = useState('')
+   420→  const [status, setStatus] = useState('')
+   421→  const [ownerId, setOwnerId] = useState('')
+   422→  const [staleOnly, setStaleOnly] = useState(() => {
+   423→    if (typeof window === 'undefined') return false
+   424→    return new URL(window.location.href).searchParams.get('stale') === 'true'
+   425→  })
+   426→  const [filtersOpen, setFiltersOpen] = useState(false)
+   427→  const [addOpen, setAddOpen] = useState(false)
+   428→
+   429→  // Query parametreleri
+   430→  const params = useMemo(() => {
+   431→    const p: Record<string, string> = {}
+   432→    if (search) p.search = search
+   433→    if (sector) p.sector = sector
+   434→    if (city) p.city = city
+   435→    if (segment) p.segment = segment
+   436→    if (status) p.status = status
+   437→    if (ownerId) p.ownerId = ownerId
+   438→    if (staleOnly) p.stale = 'true'
+   439→    p.limit = '100'
+   440→    return p
+   441→  }, [search, sector, city, segment, status, ownerId, staleOnly])
+   442→
+   443→  // Müşteri listesi
+   444→  const { data, isLoading, isFetching, refetch } = useQuery({
+   445→    queryKey: qk.customers(params),
+   446→    queryFn: () => {
+   447→      const qs = new URLSearchParams(params).toString()
+   448→      return apiGet<CustomerListResponse>(`/api/customers?${qs}`)
+   449→    },
+   450→  })
+   451→
+   452→  // Kullanıcı listesi (sorumlu select'i için)
+   453→  const { data: usersData } = useQuery({
+   454→    queryKey: qk.users,
+   455→    queryFn: () => apiGet<UsersResponse>('/api/users'),
+   456→  })
+   457→
+   458→  const customers = data?.items ?? []
+   459→  const total = data?.total ?? 0
+   460→
+   461→  // İstatistikler (mevcut listeye göre değil de global; yine de liste üzerinden hesaplayalım)
+   462→  const stats = useMemo(() => {
+   463→    const active = customers.filter((c) => c.status === 'aktif').length
+   464→    const stale = customers.filter((c) => {
+   465→      const d = daysSince(c.lastActivityAt)
+   466→      return d === null || d > 30
+   467→    }).length
+   468→    const vip = customers.filter((c) => c.segment === 'vip').length
+   469→    return { total, active, stale, vip }
+   470→  }, [customers, total])
+   471→
+   472→  const canEdit = hasPermission(user as SessionUser | null, 'customers.edit')
+   473→  const canExport = hasPermission(user as SessionUser | null, 'export.data')
+   474→
+   475→  // CSV dışa aktarma
+   476→  const handleExport = () => {
+   477→    if (!customers.length) {
+   478→      toast.error('Dışa aktarılacak müşteri yok')
+   479→      return
+   480→    }
+   481→    const rows = customers.map((c) => ({
+   482→      Ad: c.name,
+   483→      Sektör: c.sector,
+   484→      Şehir: c.city || '',
+   485→      Segment: getLabel(SEGMENTS, c.segment),
+   486→      Telefon: formatPhone(c.phone),
+   487→      'E-posta': c.email || '',
+   488→      Durum: getLabel(CUSTOMER_STATUS, c.status),
+   489→      Sorumlu: c.owner?.name || '',
+   490→      'Son İletişim': c.lastActivityAt ? formatRelative(c.lastActivityAt) : '',
+   491→    }))
+   492→    const csv = toCSV(rows)
+   493→    downloadFile(csv, `musteriler-${new Date().toISOString().slice(0, 10)}.csv`)
+   494→    toast.success(`${customers.length} müşteri dışa aktarıldı`)
+   495→  }
+   496→
+   497→  const handleClearFilters = () => {
+   498→    setSearch(''); setSector(''); setCity(''); setSegment(''); setStatus(''); setOwnerId(''); setStaleOnly(false)
+   499→  }
+   500→
+   501→  const activeFilterCount = [search, sector, city, segment, status, ownerId].filter(Boolean).length + (staleOnly ? 1 : 0)
+   502→
+   503→  return (
+   504→    <div className="space-y-5 animate-fade-in">
+   505→      {/* Header */}
+   506→      <div className="flex items-start justify-between flex-wrap gap-3">
+   507→        <div>
+   508→          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   509→            <Users className="w-6 h-6 text-emerald-600" />
+   510→            Müşteri Portföyü
+   511→          </h2>
+   512→          <p className="text-sm text-muted-foreground mt-0.5">
+   513→            Toplam <span className="font-semibold text-foreground">{total}</span> müşteri
+   514→            {staleOnly && (
+   515→              <span className="ml-2 text-amber-600 font-medium">· İletişimsiz filtresi aktif</span>
+   516→            )}
+   517→          </p>
+   518→        </div>
+   519→        <div className="flex gap-2 flex-wrap">
+   520→          <Button
+   521→            variant={staleOnly ? 'default' : 'outline'}
+   522→            size="sm"
+   523→            onClick={() => setStaleOnly((v) => !v)}
+   524→            className={staleOnly ? 'bg-amber-600 hover:bg-amber-700' : ''}
+   525→          >
+   526→            <AlertTriangle className="w-4 h-4 mr-1.5" />
+   527→            İletişimsizler
+   528→            {stats.stale > 0 && (
+   529→              <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">
+   530→                {stats.stale}
+   531→              </Badge>
+   532→            )}
+   533→          </Button>
+   534→          {canExport && (
+   535→            <Button variant="outline" size="sm" onClick={handleExport}>
+   536→              <Download className="w-4 h-4 mr-1.5" />
+   537→              Dışa Aktar
+   538→            </Button>
+   539→          )}
+   540→          {canEdit && (
+   541→            <Button size="sm" onClick={() => setAddOpen(true)}>
+   542→              <Plus className="w-4 h-4 mr-1.5" />
+   543→              Müşteri Ekle
+   544→            </Button>
+   545→          )}
+   546→        </div>
+   547→      </div>
+   548→
+   549→      {/* Stats row */}
+   550→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+   551→        <StatCard
+   552→          label="Toplam Müşteri"
+   553→          value={stats.total}
+   554→          icon={Users}
+   555→          color="bg-gradient-to-br from-slate-500 to-slate-600"
+   556→          sub="Tüm portföy"
+   557→        />
+   558→        <StatCard
+   559→          label="Aktif"
+   560→          value={stats.active}
+   561→          icon={CheckCircle2}
+   562→          color="bg-gradient-to-br from-emerald-500 to-teal-600"
+   563→          sub="Durum: Aktif"
+   564→        />
+   565→        <StatCard
+   566→          label="İletişimsiz"
+   567→          value={stats.stale}
+   568→          icon={AlertTriangle}
+   569→          color="bg-gradient-to-br from-amber-500 to-orange-600"
+   570→          sub="30+ gün"
+   571→        />
+   572→        <StatCard
+   573→          label="VIP"
+   574→          value={stats.vip}
+   575→          icon={Crown}
+   576→          color="bg-gradient-to-br from-violet-500 to-fuchsia-600"
+   577→          sub="VIP segment"
+   578→        />
+   579→      </div>
+   580→
+   581→      {/* Filtre barı */}
+   582→      <Card>
+   583→        <CardContent className="p-4">
+   584→          {/* Search + toggle */}
+   585→          <div className="flex gap-2 flex-wrap items-center">
+   586→            <div className="relative flex-1 min-w-[200px]">
+   587→              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+   588→              <Input
+   589→                value={search}
+   590→                onChange={(e) => setSearch(e.target.value)}
+   591→                placeholder="İsim, telefon, e-posta veya vergi no ara..."
+   592→                className="pl-9"
+   593→              />
+   594→              {search && (
+   595→                <button
+   596→                  onClick={() => setSearch('')}
+   597→                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded"
+   598→                >
+   599→                  <X className="w-3.5 h-3.5 text-muted-foreground" />
+   600→                </button>
+   601→              )}
+   602→            </div>
+   603→            <Button
+   604→              variant="outline"
+   605→              size="sm"
+   606→              onClick={() => refetch()}
+   607→              disabled={isFetching}
+   608→              title="Yenile"
+   609→            >
+   610→              <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
+   611→            </Button>
+   612→            <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+   613→              <CollapsibleTrigger asChild>
+   614→                <Button variant="outline" size="sm">
+   615→                  <ListFilter className="w-4 h-4 mr-1.5" />
+   616→                  Filtreler
+   617→                  {activeFilterCount > 0 && (
+   618→                    <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">
+   619→                      {activeFilterCount}
+   620→                    </Badge>
+   621→                  )}
+   622→                  <ChevronDown className={cn('w-3.5 h-3.5 ml-1 transition-transform', filtersOpen && 'rotate-180')} />
+   623→                </Button>
+   624→              </CollapsibleTrigger>
+   625→            </Collapsible>
+   626→            {activeFilterCount > 0 && (
+   627→              <Button variant="ghost" size="sm" onClick={handleClearFilters}>
+   628→                <X className="w-3.5 h-3.5 mr-1" />
+   629→                Temizle
+   630→              </Button>
+   631→            )}
+   632→          </div>
+   633→
+   634→          {/* Detaylı filtreler */}
+   635→          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+   636→            <CollapsibleContent>
+   637→              <Separator className="my-3" />
+   638→              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+   639→                <div className="space-y-1">
+   640→                  <Label className="text-xs text-muted-foreground">Sektör</Label>
+   641→                  <Select value={sector || '__none__'} onValueChange={(v) => setSector(v === '__none__' ? '' : v)}>
+   642→                    <SelectTrigger className="w-full h-9"><SelectValue placeholder="Tümü" /></SelectTrigger>
+   643→                    <SelectContent>
+   644→                      <SelectItem value="__none__">Tümü</SelectItem>
+   645→                      {SECTORS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+   646→                    </SelectContent>
+   647→                  </Select>
+   648→                </div>
+   649→                <div className="space-y-1">
+   650→                  <Label className="text-xs text-muted-foreground">Şehir</Label>
+   651→                  <Select value={city || '__none__'} onValueChange={(v) => setCity(v === '__none__' ? '' : v)}>
+   652→                    <SelectTrigger className="w-full h-9"><SelectValue placeholder="Tümü" /></SelectTrigger>
+   653→                    <SelectContent>
+   654→                      <SelectItem value="__none__">Tümü</SelectItem>
+   655→                      {CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+   656→                    </SelectContent>
+   657→                  </Select>
+   658→                </div>
+   659→                <div className="space-y-1">
+   660→                  <Label className="text-xs text-muted-foreground">Segment</Label>
+   661→                  <Select value={segment || '__none__'} onValueChange={(v) => setSegment(v === '__none__' ? '' : v)}>
+   662→                    <SelectTrigger className="w-full h-9"><SelectValue placeholder="Tümü" /></SelectTrigger>
+   663→                    <SelectContent>
+   664→                      <SelectItem value="__none__">Tümü</SelectItem>
+   665→                      {SEGMENTS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+   666→                    </SelectContent>
+   667→                  </Select>
+   668→                </div>
+   669→                <div className="space-y-1">
+   670→                  <Label className="text-xs text-muted-foreground">Durum</Label>
+   671→                  <Select value={status || '__none__'} onValueChange={(v) => setStatus(v === '__none__' ? '' : v)}>
+   672→                    <SelectTrigger className="w-full h-9"><SelectValue placeholder="Tümü" /></SelectTrigger>
+   673→                    <SelectContent>
+   674→                      <SelectItem value="__none__">Tümü</SelectItem>
+   675→                      {CUSTOMER_STATUS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+   676→                    </SelectContent>
+   677→                  </Select>
+   678→                </div>
+   679→                <div className="space-y-1">
+   680→                  <Label className="text-xs text-muted-foreground">Sorumlu</Label>
+   681→                  <Select value={ownerId || '__none__'} onValueChange={(v) => setOwnerId(v === '__none__' ? '' : v)}>
+   682→                    <SelectTrigger className="w-full h-9"><SelectValue placeholder="Tümü" /></SelectTrigger>
+   683→                    <SelectContent>
+   684→                      <SelectItem value="__none__">Tümü</SelectItem>
+   685→                      {(usersData?.items ?? []).map((u) => (
+   686→                        <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+   687→                      ))}
+   688→                    </SelectContent>
+   689→                  </Select>
+   690→                </div>
+   691→              </div>
+   692→            </CollapsibleContent>
+   693→          </Collapsible>
+   694→        </CardContent>
+   695→      </Card>
+   696→
+   697→      {/* Müşteri tablosu */}
+   698→      <Card>
+   699→        <CardContent className="p-0">
+   700→          {isLoading ? (
+   701→            <div className="p-4 space-y-3">
+   702→              {[...Array(8)].map((_, i) => (
+   703→                <Skeleton key={i} className="h-12 w-full" />
+   704→              ))}
+   705→            </div>
+   706→          ) : customers.length === 0 ? (
+   707→            <div className="p-12 text-center">
+   708→              <div className="w-16 h-16 mx-auto rounded-full bg-muted flex items-center justify-center mb-4">
+   709→                <Users className="w-8 h-8 text-muted-foreground/50" />
+   710→              </div>
+   711→              <h3 className="font-semibold text-lg">Müşteri bulunamadı</h3>
+   712→              <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+   713→                {activeFilterCount > 0
+   714→                  ? 'Seçtiğiniz filtrelere uyan müşteri yok. Filtreleri temizlemeyi deneyin.'
+   715→                  : 'Henüz hiç müşteri eklenmemiş. İlk müşterinizi ekleyerek başlayın.'}
+   716→              </p>
+   717→              {activeFilterCount > 0 ? (
+   718→                <Button variant="outline" size="sm" className="mt-4" onClick={handleClearFilters}>
+   719→                  Filtreleri Temizle
+   720→                </Button>
+   721→              ) : canEdit ? (
+   722→                <Button size="sm" className="mt-4" onClick={() => setAddOpen(true)}>
+   723→                  <Plus className="w-4 h-4 mr-1.5" />
+   724→                  İlk Müşteriyi Ekle
+   725→                </Button>
+   726→              ) : null}
+   727→            </div>
+   728→          ) : (
+   729→            <Table>
+   730→              <TableHeader>
+   731→                <TableRow className="bg-muted/60 border-b-2 hover:bg-muted/60">
+   732→                  <TableHead className="pl-4 min-w-[200px] font-semibold text-xs uppercase tracking-wider text-muted-foreground">Müşteri</TableHead>
+   733→                  <TableHead className="hidden md:table-cell font-semibold text-xs uppercase tracking-wider text-muted-foreground">Sektör</TableHead>
+   734→                  <TableHead className="hidden lg:table-cell font-semibold text-xs uppercase tracking-wider text-muted-foreground">Şehir</TableHead>
+   735→                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Segment</TableHead>
+   736→                  <TableHead className="hidden lg:table-cell font-semibold text-xs uppercase tracking-wider text-muted-foreground">Sorumlu</TableHead>
+   737→                  <TableHead className="hidden md:table-cell min-w-[140px] font-semibold text-xs uppercase tracking-wider text-muted-foreground">Son İletişim</TableHead>
+   738→                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Durum</TableHead>
+   739→                  <TableHead className="text-right pr-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">İşlem</TableHead>
+   740→                </TableRow>
+   741→              </TableHeader>
+   742→              <TableBody>
+   743→                {customers.map((c) => {
+   744→                  const dot = activityDot(c.lastActivityAt)
+   745→                  const segColor = getColor(SEGMENTS, c.segment)
+   746→                  const stColor = getColor(CUSTOMER_STATUS, c.status)
+   747→                  return (
+   748→                    <TableRow
+   749→                      key={c.id}
+   750→                      className="cursor-pointer group table-row-hover even:bg-muted/20"
+   751→                      onClick={() => openCustomer(c.id)}
+   752→                    >
+   753→                      <TableCell className="pl-4">
+   754→                        <div className="flex items-start gap-3">
+   755→                          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center shrink-0 group-hover:from-emerald-100 group-hover:to-emerald-200 dark:group-hover:from-emerald-900/40 dark:group-hover:to-emerald-800/40 transition-colors">
+   756→                            <Building2 className="w-4 h-4 text-slate-600 dark:text-slate-300 group-hover:text-emerald-600" />
+   757→                          </div>
+   758→                          <div className="min-w-0">
+   759→                            <div className="font-medium text-sm truncate max-w-[220px]">{c.name}</div>
+   760→                            {Array.isArray(c.tags) && c.tags.length > 0 && (
+   761→                              <div className="flex flex-wrap gap-1 mt-1">
+   762→                                {c.tags.slice(0, 3).map((t, i) => (
+   763→                                  <span
+   764→                                    key={t + i}
+   765→                                    className={cn(
+   766→                                      'inline-flex items-center px-1.5 py-0 rounded text-[10px] border',
+   767→                                      TAG_COLOR_CLASSES[(i % 9 === 0 ? 'emerald' : i % 9 === 1 ? 'amber' : 'violet')] || TAG_COLOR_CLASSES.gray,
+   768→                                    )}
+   769→                                  >
+   770→                                    {t}
+   771→                                  </span>
+   772→                                ))}
+   773→                                {c.tags.length > 3 && (
+   774→                                  <span className="text-[10px] text-muted-foreground">+{c.tags.length - 3}</span>
+   775→                                )}
+   776→                              </div>
+   777→                            )}
+   778→                          </div>
+   779→                        </div>
+   780→                      </TableCell>
+   781→                      <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{c.sector}</TableCell>
+   782→                      <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+   783→                        {c.city ? (
+   784→                          <span className="inline-flex items-center gap-1">
+   785→                            <MapPin className="w-3 h-3" />{c.city}
+   786→                          </span>
+   787→                        ) : '—'}
+   788→                      </TableCell>
+   789→                      <TableCell>
+   790→                        <Badge variant="outline" className={cn('text-[10px] px-1.5', segColor)}>
+   791→                          {getLabel(SEGMENTS, c.segment)}
+   792→                        </Badge>
+   793→                      </TableCell>
+   794→                      <TableCell className="hidden lg:table-cell">
+   795→                        {c.owner ? (
+   796→                          <div className="flex items-center gap-2">
+   797→                            <Avatar className="w-6 h-6">
+   798→                              <AvatarFallback className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+   799→                                {initials(c.owner.name)}
+   800→                              </AvatarFallback>
+   801→                            </Avatar>
+   802→                            <span className="text-xs truncate max-w-[100px]">{c.owner.name}</span>
+   803→                          </div>
+   804→                        ) : (
+   805→                          <span className="text-xs text-muted-foreground">—</span>
+   806→                        )}
+   807→                      </TableCell>
+   808→                      <TableCell className="hidden md:table-cell">
+   809→                        <Tooltip>
+   810→                          <TooltipTrigger asChild>
+   811→                            <div className="flex items-center gap-2 text-xs">
+   812→                              <span className={cn('w-2 h-2 rounded-full shrink-0', dot.color)} />
+   813→                              <span className="text-muted-foreground">
+   814→                                {c.lastActivityAt ? formatRelative(c.lastActivityAt) : 'İletişim yok'}
+   815→                              </span>
+   816→                            </div>
+   817→                          </TooltipTrigger>
+   818→                          <TooltipContent>{dot.label}</TooltipContent>
+   819→                        </Tooltip>
+   820→                      </TableCell>
+   821→                      <TableCell>
+   822→                        <Badge variant="outline" className={cn('text-[10px] px-1.5', stColor)}>
+   823→                          {getLabel(CUSTOMER_STATUS, c.status)}
+   824→                        </Badge>
+   825→                      </TableCell>
+   826→                      <TableCell className="text-right pr-4">
+   827→                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+   828→                          <Tooltip>
+   829→                            <TooltipTrigger asChild>
+   830→                              <Button
+   831→                                variant="ghost"
+   832→                                size="sm"
+   833→                                className="h-8 w-8 p-0"
+   834→                                onClick={() => openCustomer(c.id)}
+   835→                              >
+   836→                                <Eye className="w-4 h-4" />
+   837→                              </Button>
+   838→                            </TooltipTrigger>
+   839→                            <TooltipContent>Görüntüle</TooltipContent>
+   840→                          </Tooltip>
+   841→                          {c.phone && (
+   842→                            <>
+   843→                              <Tooltip>
+   844→                                <TooltipTrigger asChild>
+   845→                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" asChild>
+   846→                                    <a href={telLink(c.phone)}>
+   847→                                      <Phone className="w-4 h-4" />
+   848→                                    </a>
+   849→                                  </Button>
+   850→                                </TooltipTrigger>
+   851→                                <TooltipContent>{formatPhone(c.phone)}</TooltipContent>
+   852→                              </Tooltip>
+   853→                              <Tooltip>
+   854→                                <TooltipTrigger asChild>
+   855→                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/30" asChild>
+   856→                                    <a href={whatsappLink(c.phone, `Merhaba ${c.name},`)} target="_blank" rel="noreferrer">
+   857→                                      <MessageCircle className="w-4 h-4" />
+   858→                                    </a>
+   859→                                  </Button>
+   860→                                </TooltipTrigger>
+   861→                                <TooltipContent>WhatsApp</TooltipContent>
+   862→                              </Tooltip>
+   863→                            </>
+   864→                          )}
+   865→                          <DropdownMenu>
+   866→                            <DropdownMenuTrigger asChild>
+   867→                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+   868→                                <ChevronDown className="w-4 h-4" />
+   869→                              </Button>
+   870→                            </DropdownMenuTrigger>
+   871→                            <DropdownMenuContent align="end">
+   872→                              <DropdownMenuItem onClick={() => openCustomer(c.id)}>
+   873→                                <Eye className="w-4 h-4 mr-2" /> Detay
+   874→                              </DropdownMenuItem>
+   875→                              {c.phone && (
+   876→                                <DropdownMenuItem asChild>
+   877→                                  <a href={telLink(c.phone)}>
+   878→                                    <Phone className="w-4 h-4 mr-2" /> Ara
+   879→                                  </a>
+   880→                                </DropdownMenuItem>
+   881→                              )}
+   882→                              {c.phone && (
+   883→                                <DropdownMenuItem asChild>
+   884→                                  <a href={whatsappLink(c.phone)} target="_blank" rel="noreferrer">
+   885→                                    <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp
+   886→                                  </a>
+   887→                                </DropdownMenuItem>
+   888→                              )}
+   889→                              {c.email && (
+   890→                                <DropdownMenuItem asChild>
+   891→                                  <a href={`mailto:${c.email}`}>
+   892→                                    <MessageCircle className="w-4 h-4 mr-2" /> E-posta
+   893→                                  </a>
+   894→                                </DropdownMenuItem>
+   895→                              )}
+   896→                              <DropdownMenuSeparator />
+   897→                              <DropdownMenuItem
+   898→                                onClick={() => {
+   899→                                  navigator.clip?.writeText(c.id)
+   900→                                  toast.success('ID kopyalandı')
+   901→                                }}
+   902→                              >
+   903→                                <Layers className="w-4 h-4 mr-2" /> ID Kopyala
+   904→                              </DropdownMenuItem>
+   905→                            </DropdownMenuContent>
+   906→                          </DropdownMenu>
+   907→                        </div>
+   908→                      </TableCell>
+   909→                    </TableRow>
+   910→                  )
+   911→                })}
+   912→              </TableBody>
+   913→            </Table>
+   914→          )}
+   915→        </CardContent>
+   916→      </Card>
+   917→
+   918→      {/* Footer info */}
+   919→      {!isLoading && customers.length > 0 && (
+   920→        <div className="flex items-center justify-between text-xs text-muted-foreground">
+   921→          <div className="flex items-center gap-2">
+   922→            <UserCheck className="w-3.5 h-3.5" />
+   923→            <span>{customers.length} / {total} müşteri gösteriliyor</span>
+   924→          </div>
+   925→          {isFetching && (
+   926→            <span className="flex items-center gap-1.5">
+   927→              <RefreshCw className="w-3 h-3 animate-spin" />
+   928→              Güncelleniyor...
+   929→            </span>
+   930→          )}
+   931→        </div>
+   932→      )}
+   933→
+   934→      {/* Add dialog */}
+   935→      <CustomerFormDialog open={addOpen} onOpenChange={setAddOpen} />
+   936→    </div>
+   937→  )
+   938→}
+   939→

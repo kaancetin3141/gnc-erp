@@ -1,0 +1,27 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities for the main window of GNC CRM Desktop",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow:open",
+    "notification:default",
+    "notification:allow:is-permission-granted",
+    "notification:allow:request-permission",
+    "notification:allow:notify",
+    "notification:allow:register-action-types",
+    "dialog:default",
+    "dialog:allow:open",
+    "dialog:allow:save",
+    "fs:default",
+    "fs:allow:read-text-file",
+    "fs:allow:write-text-file",
+    "clipboard-manager:default",
+    "clipboard-manager:allow:write-text",
+    "clipboard-manager:allow:read-text",
+    "global-shortcut:default",
+    "global-shortcut:allow:register",
+    "global-shortcut:allow:unregister"
+  ]
+}

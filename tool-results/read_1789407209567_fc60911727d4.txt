@@ -1,0 +1,805 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useEffect } from 'react'
+     4→import { useQuery } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import { apiGet, apiPatch, qk } from '@/lib/api-client'
+     7→import { useAppStore } from '@/store/app-store'
+     8→import { cn } from '@/lib/utils'
+     9→import { CURRENCIES, CURRENCY_RATES, COUNTRIES } from '@/lib/constants'
+    10→import { formatDate, formatDateTime } from '@/lib/format'
+    11→
+    12→import {
+    13→  Card, CardContent, CardHeader, CardTitle, CardDescription,
+    14→} from '@/components/ui/card'
+    15→import { Button } from '@/components/ui/button'
+    16→import { Input } from '@/components/ui/input'
+    17→import { Label } from '@/components/ui/label'
+    18→import { Switch } from '@/components/ui/switch'
+    19→import { Badge } from '@/components/ui/badge'
+    20→import { Separator } from '@/components/ui/separator'
+    21→import {
+    22→  Tabs, TabsList, TabsTrigger, TabsContent,
+    23→} from '@/components/ui/tabs'
+    24→import {
+    25→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    26→} from '@/components/ui/select'
+    27→import {
+    28→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    29→} from '@/components/ui/table'
+    30→import {
+    31→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    32→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    33→} from '@/components/ui/alert-dialog'
+    34→import {
+    35→  Building2, Coins, Bell, ShieldAlert, ScrollText, Save, Download,
+    36→  EyeOff, CheckCircle2, AlertTriangle, Globe, Calendar, Clock, Users,
+    37→  FileText, Database, Lock, Info, Shield, MessageSquare,
+    38→} from 'lucide-react'
+    39→import { TemplatesView } from '@/components/settings/templates-view'
+    40→
+    41→// ─── Plan rozet renkleri ──────────────────────────────────────────
+    42→const PLAN_BADGE: Record<string, { label: string; className: string }> = {
+    43→  free: { label: 'Ücretsiz', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+    44→  starter: { label: 'Başlangıç', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    45→  pro: { label: 'Pro', className: 'bg-violet-100 text-violet-700 border-violet-200' },
+    46→  enterprise: { label: 'Kurumsal', className: 'bg-amber-100 text-amber-700 border-amber-200' },
+    47→}
+    48→
+    49→function planBadge(plan: string) {
+    50→  return PLAN_BADGE[plan] ?? { label: plan, className: 'bg-slate-100 text-slate-700 border-slate-200' }
+    51→}
+    52→
+    53→interface UsersResponse {
+    54→  items: { id: string; status: string }[]
+    55→  total: number
+    56→}
+    57→
+    58→// ─── Şirket sekmesi ───────────────────────────────────────────────
+    59→function CompanyTab() {
+    60→  const { user } = useAppStore()
+    61→  const { data } = useQuery({
+    62→    queryKey: qk.users,
+    63→    queryFn: () => apiGet<UsersResponse>('/api/users'),
+    64→    enabled: !!user,
+    65→  })
+    66→
+    67→  const [companyName, setCompanyName] = useState(user?.tenant.name ?? '')
+    68→  const [country, setCountry] = useState(user?.tenant.country ?? 'TR')
+    69→  const [contactEmail, setContactEmail] = useState(user?.email ?? '')
+    70→  const [phone, setPhone] = useState(user?.phone ?? '')
+    71→
+    72→  if (!user) return null
+    73→  const plan = planBadge(user.tenant.plan)
+    74→  const memberCount = data?.total ?? 0
+    75→
+    76→  return (
+    77→    <div className="grid lg:grid-cols-3 gap-6">
+    78→      <Card className="lg:col-span-2">
+    79→        <CardHeader>
+    80→          <CardTitle className="text-base flex items-center gap-2">
+    81→            <Building2 className="w-4 h-4 text-emerald-600" />
+    82→            Şirket Bilgileri
+    83→          </CardTitle>
+    84→          <CardDescription>
+    85→            Şirketinizin temel bilgileri. Bu bilgiler faturalandırma ve iletişim için kullanılır.
+    86→          </CardDescription>
+    87→        </CardHeader>
+    88→        <CardContent className="space-y-4">
+    89→          <div className="grid sm:grid-cols-2 gap-4">
+    90→            <div className="space-y-1.5">
+    91→              <Label htmlFor="c-name">Şirket Adı</Label>
+    92→              <Input id="c-name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+    93→            </div>
+    94→            <div className="space-y-1.5">
+    95→              <Label htmlFor="c-country">Ülke</Label>
+    96→              <Select value={country} onValueChange={setCountry}>
+    97→                <SelectTrigger id="c-country" className="w-full">
+    98→                  <SelectValue />
+    99→                </SelectTrigger>
+   100→                <SelectContent>
+   101→                  {COUNTRIES.map((c) => (
+   102→                    <SelectItem key={c.code} value={c.code}>
+   103→                      {c.name} ({c.dialCode})
+   104→                    </SelectItem>
+   105→                  ))}
+   106→                </SelectContent>
+   107→              </Select>
+   108→            </div>
+   109→            <div className="space-y-1.5">
+   110→              <Label htmlFor="c-email">İletişim E-postası</Label>
+   111→              <Input id="c-email" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+   112→            </div>
+   113→            <div className="space-y-1.5">
+   114→              <Label htmlFor="c-phone">İletişim Telefonu</Label>
+   115→              <Input id="c-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+90 5xx xxx xx xx" />
+   116→            </div>
+   117→          </div>
+   118→          <Separator />
+   119→          <div className="flex justify-end">
+   120→            <Button
+   121→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   122→              onClick={() => toast.success('Ayarlar kaydedildi', { description: 'Şirket bilgileri güncellendi.' })}
+   123→            >
+   124→              <Save className="w-4 h-4 mr-1.5" /> Kaydet
+   125→            </Button>
+   126→          </div>
+   127→        </CardContent>
+   128→      </Card>
+   129→
+   130→      {/* Plan & özet */}
+   131→      <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border-emerald-200 dark:border-emerald-900/50">
+   132→        <CardHeader>
+   133→          <CardTitle className="text-base">Mevcut Plan</CardTitle>
+   134→        </CardHeader>
+   135→        <CardContent className="space-y-4">
+   136→          <div>
+   137→            <Badge className={cn('text-sm px-2.5 py-1', plan.className)}>{plan.label}</Badge>
+   138→            <p className="text-xs text-muted-foreground mt-2">
+   139→              Planınız {formatDate(user.tenant ? new Date().toISOString() : null)} tarihinden itibaren aktif.
+   140→            </p>
+   141→          </div>
+   142→          <Separator />
+   143→          <div className="space-y-2.5 text-sm">
+   144→            <div className="flex items-center justify-between">
+   145→              <span className="text-muted-foreground flex items-center gap-1.5">
+   146→                <Users className="w-3.5 h-3.5" /> Üye sayısı
+   147→              </span>
+   148→              <span className="font-medium">{memberCount}</span>
+   149→            </div>
+   150→            <div className="flex items-center justify-between">
+   151→              <span className="text-muted-foreground flex items-center gap-1.5">
+   152→                <Globe className="w-3.5 h-3.5" /> Ülke
+   153→              </span>
+   154→              <span className="font-medium">
+   155→                {COUNTRIES.find((c) => c.code === user.tenant.country)?.name ?? user.tenant.country}
+   156→              </span>
+   157→            </div>
+   158→            <div className="flex items-center justify-between">
+   159→              <span className="text-muted-foreground flex items-center gap-1.5">
+   160→                <Coins className="w-3.5 h-3.5" /> Varsayılan para birimi
+   161→              </span>
+   162→              <span className="font-medium">{user.tenant.defaultCurrency}</span>
+   163→            </div>
+   164→            <div className="flex items-center justify-between">
+   165→              <span className="text-muted-foreground flex items-center gap-1.5">
+   166→                <Calendar className="w-3.5 h-3.5" /> Tenant ID
+   167→              </span>
+   168→              <span className="font-mono text-[11px] text-muted-foreground truncate max-w-[120px]">{user.tenant.id}</span>
+   169→            </div>
+   170→          </div>
+   171→          <Button variant="outline" size="sm" className="w-full">
+   172→            Planı Yükselt
+   173→          </Button>
+   174→        </CardContent>
+   175→      </Card>
+   176→    </div>
+   177→  )
+   178→}
+   179→
+   180→// ─── Para Birimi sekmesi ──────────────────────────────────────────
+   181→function CurrencyTab() {
+   182→  const { user } = useAppStore()
+   183→  const [defaultCurrency, setDefaultCurrency] = useState(user?.tenant.defaultCurrency ?? 'TRY')
+   184→
+   185→  if (!user) return null
+   186→
+   187→  const rates = Object.entries(CURRENCY_RATES)
+   188→
+   189→  return (
+   190→    <div className="grid lg:grid-cols-3 gap-6">
+   191→      <Card className="lg:col-span-2">
+   192→        <CardHeader>
+   193→          <CardTitle className="text-base flex items-center gap-2">
+   194→            <Coins className="w-4 h-4 text-emerald-600" />
+   195→            Para Birimi Ayarları
+   196→          </CardTitle>
+   197→          <CardDescription>
+   198→            Fırsat, fatura ve raporlarda kullanılacak varsayılan para birimi.
+   199→          </CardDescription>
+   200→        </CardHeader>
+   201→        <CardContent className="space-y-4">
+   202→          <div className="grid sm:grid-cols-2 gap-4">
+   203→            <div className="space-y-1.5">
+   204→              <Label htmlFor="cur-default">Varsayılan Para Birimi</Label>
+   205→              <Select value={defaultCurrency} onValueChange={setDefaultCurrency}>
+   206→                <SelectTrigger id="cur-default" className="w-full">
+   207→                  <SelectValue />
+   208→                </SelectTrigger>
+   209→                <SelectContent>
+   210→                  {CURRENCIES.map((c) => (
+   211→                    <SelectItem key={c.code} value={c.code}>
+   212→                      {c.symbol} {c.code} — {c.label}
+   213→                    </SelectItem>
+   214→                  ))}
+   215→                </SelectContent>
+   216→              </Select>
+   217→            </div>
+   218→            <div className="space-y-1.5">
+   219→              <Label htmlFor="cur-format">Tarih Formatı</Label>
+   220→              <Input id="cur-format" value="DD.MM.YYYY" disabled className="bg-muted/40 font-mono" />
+   221→              <p className="text-[11px] text-muted-foreground">Sabit — Türkçe yerel ayar.</p>
+   222→            </div>
+   223→            <div className="space-y-1.5">
+   224→              <Label htmlFor="cur-time">Saat Formatı</Label>
+   225→              <Input id="cur-time" value="24 saat (HH:mm)" disabled className="bg-muted/40 font-mono" />
+   226→              <p className="text-[11px] text-muted-foreground">Sabit — 24 saatlik format.</p>
+   227→            </div>
+   228→          </div>
+   229→          <Separator />
+   230→          <div className="flex justify-end">
+   231→            <Button
+   232→              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   233→              onClick={() => toast.success('Ayarlar kaydedildi', { description: `Varsayılan para birimi: ${defaultCurrency}` })}
+   234→            >
+   235→              <Save className="w-4 h-4 mr-1.5" /> Kaydet
+   236→            </Button>
+   237→          </div>
+   238→        </CardContent>
+   239→      </Card>
+   240→
+   241→      {/* Döviz kurları tablosu */}
+   242→      <Card>
+   243→        <CardHeader>
+   244→          <CardTitle className="text-base flex items-center gap-2">
+   245→            <Database className="w-4 h-4 text-violet-600" />
+   246→            Döviz Kurları
+   247→          </CardTitle>
+   248→          <CardDescription className="text-xs">
+   249→            1 TRY karşılığı referans kurlar.
+   250→          </CardDescription>
+   251→        </CardHeader>
+   252→        <CardContent>
+   253→          <Table>
+   254→            <TableHeader>
+   255→              <TableRow>
+   256→                <TableHead>Birim</TableHead>
+   257→                <TableHead>Sembol</TableHead>
+   258→                <TableHead className="text-right">Kur (1 TRY)</TableHead>
+   259→              </TableRow>
+   260→            </TableHeader>
+   261→            <TableBody>
+   262→              {rates.map(([code, rate]) => {
+   263→                const cur = CURRENCIES.find((c) => c.code === code)
+   264→                return (
+   265→                  <TableRow key={code}>
+   266→                    <TableCell className="font-medium">{code}</TableCell>
+   267→                    <TableCell>{cur?.symbol ?? ''}</TableCell>
+   268→                    <TableCell className="text-right tabular-nums">{rate.toFixed(4)}</TableCell>
+   269→                  </TableRow>
+   270→                )
+   271→              })}
+   272→            </TableBody>
+   273→          </Table>
+   274→          <div className="mt-3 flex items-start gap-2 p-2.5 rounded-md bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40">
+   275→            <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+   276→            <p className="text-[11px] text-amber-800 dark:text-amber-300">
+   277→              Kurlar referans amaçlıdır. İşlem sırasında güncel kur kullanılır.
+   278→            </p>
+   279→          </div>
+   280→        </CardContent>
+   281→      </Card>
+   282→    </div>
+   283→  )
+   284→}
+   285→
+   286→// ─── Bildirimler sekmesi ──────────────────────────────────────────
+   287→function NotificationsTab() {
+   288→  const [settings, setSettings] = useState<Record<string, string>>({})
+   289→  const [saving, setSaving] = useState(false)
+   290→
+   291→  const { data, isLoading } = useQuery({
+   292→    queryKey: ['settings'],
+   293→    queryFn: () => apiGet<Record<string, string>>(`/api/settings`),
+   294→  })
+   295→
+   296→  useEffect(() => {
+   297→    if (data) setSettings(data)
+   298→  }, [data])
+   299→
+   300→  const updateSetting = async (key: string, value: string) => {
+   301→    setSettings((s) => ({ ...s, [key]: value }))
+   302→    setSaving(true)
+   303→    try {
+   304→      await apiPatch('/api/settings', { key, value })
+   305→      toast.success('Ayar güncellendi')
+   306→    } catch (e) {
+   307→      toast.error('Ayar kaydedilemedi', { description: e instanceof Error ? e.message : '' })
+   308→    } finally {
+   309→      setSaving(false)
+   310→    }
+   311→  }
+   312→
+   313→  const emailNotif = settings['notification.email'] !== 'false'
+   314→  const inAppNotif = settings['notification.inApp'] !== 'false'
+   315→  const staleAlert = settings['notification.staleCustomerAlert'] !== 'false'
+   316→  const staleDays = settings['automation.thresholdDays'] || '30'
+   317→  const taskReminder = settings['notification.taskReminder'] !== 'false'
+   318→
+   319→  return (
+   320→    <Card>
+   321→      <CardHeader>
+   322→        <CardTitle className="text-base flex items-center gap-2">
+   323→          <Bell className="w-4 h-4 text-amber-600" />
+   324→          Bildirim Tercihleri
+   325→          {saving && <div className="w-3.5 h-3.5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />}
+   326→        </CardTitle>
+   327→        <CardDescription>
+   328→          E-posta ve uygulama içi bildirimlerinizi yönetin. Değişiklikler otomatik kaydedilir.
+   329→        </CardDescription>
+   330→      </CardHeader>
+   331→      <CardContent className="space-y-1">
+   332→        <NotificationRow
+   333→          icon={<Bell className="w-4 h-4" />}
+   334→          title="E-posta Bildirimleri"
+   335→          desc="Önemli olaylar için e-posta alın (yeni müşteri, fırsat kazanıldı, görev hatırlatma)."
+   336→          checked={emailNotif}
+   337→          onChange={(v) => updateSetting('notification.email', String(v))}
+   338→        />
+   339→        <Separator />
+   340→        <NotificationRow
+   341→          icon={<Bell className="w-4 h-4" />}
+   342→          title="Uygulama İçi Bildirimler"
+   343→          desc="Tarayıcı içerinde anlık bildirimler göster."
+   344→          checked={inAppNotif}
+   345→          onChange={(v) => updateSetting('notification.inApp', String(v))}
+   346→        />
+   347→        <Separator />
+   348→        <NotificationRow
+   349→          icon={<AlertTriangle className="w-4 h-4" />}
+   350→          title="İletişimsiz Müşteri Uyarısı"
+   351→          desc="Belirli gün sayısı boyunca iletişim kurulmayan müşteriler için uyarı göster."
+   352→          checked={staleAlert}
+   353→          onChange={(v) => updateSetting('notification.staleCustomerAlert', String(v))}
+   354→          extra={
+   355→            <div className="flex items-center gap-2 mt-3">
+   356→              <Label className="text-xs text-muted-foreground">Eşik (gün):</Label>
+   357→              <Input
+   358→                type="number"
+   359→                value={staleDays}
+   360→                onChange={(e) => updateSetting('automation.thresholdDays', e.target.value)}
+   361→                className="w-20 h-8"
+   362→                min={1}
+   363→                max={365}
+   364→                disabled={!staleAlert}
+   365→              />
+   366→            </div>
+   367→          }
+   368→        />
+   369→        <Separator />
+   370→        <NotificationRow
+   371→          icon={<Clock className="w-4 h-4" />}
+   372→          title="Görev Hatırlatma Süresi"
+   373→          desc="Vade tarihinden belirli saat önce hatırlatma gönder."
+   374→          checked={taskReminder}
+   375→          onChange={(v) => updateSetting('notification.taskReminder', String(v))}
+   376→          extra={
+   377→            <div className="flex items-center gap-2 mt-3">
+   378→              <Label className="text-xs text-muted-foreground">Hatırlatma (saat):</Label>
+   379→              <Input
+   380→                type="number"
+   381→                value={settings['notification.taskReminderHours'] || '24'}
+   382→                onChange={(e) => updateSetting('notification.taskReminderHours', e.target.value)}
+   383→                className="w-20 h-8"
+   384→                min={1}
+   385→                max={168}
+   386→                disabled={!taskReminder}
+   387→              />
+   388→            </div>
+   389→          }
+   390→        />
+   391→        <Separator />
+   392→        <div className="flex items-center justify-between pt-4 text-xs text-muted-foreground">
+   393→          <span>{isLoading ? 'Ayarlar yükleniyor...' : 'Değişiklikler otomatik kaydedilir'}</span>
+   394→        </div>
+   395→      </CardContent>
+   396→    </Card>
+   397→  )
+   398→}
+   399→
+   400→function NotificationRow({
+   401→  icon, title, desc, checked, onChange, extra,
+   402→}: {
+   403→  icon: React.ReactNode
+   404→  title: string
+   405→  desc: string
+   406→  checked: boolean
+   407→  onChange: (v: boolean) => void
+   408→  extra?: React.ReactNode
+   409→}) {
+   410→  return (
+   411→    <div className="flex items-start justify-between gap-4 py-4">
+   412→      <div className="flex items-start gap-3 flex-1">
+   413→        <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
+   414→          {icon}
+   415→        </div>
+   416→        <div className="flex-1">
+   417→          <div className="font-medium text-sm">{title}</div>
+   418→          <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>
+   419→          {extra}
+   420→        </div>
+   421→      </div>
+   422→      <Switch checked={checked} onCheckedChange={onChange} className="data-[state=checked]:bg-emerald-600" />
+   423→    </div>
+   424→  )
+   425→}
+   426→
+   427→// ─── KVKK & Veri sekmesi ──────────────────────────────────────────
+   428→function KvkkTab() {
+   429→  const [anonymizeOpen, setAnonymizeOpen] = useState(false)
+   430→  const [downloading, setDownloading] = useState(false)
+   431→
+   432→  const handleDownload = () => {
+   433→    setDownloading(true)
+   434→    setTimeout(() => {
+   435→      setDownloading(false)
+   436→      toast.success('Veri indirme başlatıldı', {
+   437→        description: 'KVKK kapsamındaki verileriniz hazırlanıyor. Birkaç dakika içinde e-posta alacaksınız.',
+   438→      })
+   439→    }, 800)
+   440→  }
+   441→
+   442→  const handleAnonymize = () => {
+   443→    setAnonymizeOpen(false)
+   444→    toast.success('Anonimleştirme talebi alındı', {
+   445→      description: 'Talebiniz 30 gün içinde işleme alınacaktır.',
+   446→    })
+   447→  }
+   448→
+   449→  return (
+   450→    <div className="grid lg:grid-cols-3 gap-6">
+   451→      <Card className="lg:col-span-2">
+   452→        <CardHeader>
+   453→          <CardTitle className="text-base flex items-center gap-2">
+   454→            <Shield className="w-4 h-4 text-emerald-600" />
+   455→            KVKK & Veri Koruma
+   456→          </CardTitle>
+   457→          <CardDescription>
+   458→            6698 sayılı Kişisel Verilerin Korunması Kanunu kapsamında haklarınız.
+   459→          </CardDescription>
+   460→        </CardHeader>
+   461→        <CardContent className="space-y-4">
+   462→          <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/40 p-4">
+   463→            <div className="flex items-start gap-3">
+   464→              <FileText className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+   465→              <div className="space-y-1.5 text-sm">
+   466→                <p className="font-medium">KVKK Uyumluluğu</p>
+   467→                <p className="text-xs text-muted-foreground leading-relaxed">
+   468→                  Bu CRM platformu, 6698 sayılı KVKK ve GDPR uyumludur. Müşteri kişisel verileri
+   469→                  açık rıza ile işlenir, amaç dışı kullanılmaz ve talep upon silinir. Veri işleme
+   470→                  amaçlarımızı Aydınlatma Metni&rsquo;nde bulabilirsiniz.
+   471→                </p>
+   472→              </div>
+   473→            </div>
+   474→          </div>
+   475→
+   476→          <div className="grid sm:grid-cols-2 gap-3">
+   477→            <div className="rounded-lg border p-3 space-y-1.5">
+   478→              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   479→                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Açık Rıza
+   480→              </div>
+   481→              <div className="text-sm font-medium">Alındı</div>
+   482→              <p className="text-[11px] text-muted-foreground">Tüm müşteriler için kayıt altında.</p>
+   483→            </div>
+   484→            <div className="rounded-lg border p-3 space-y-1.5">
+   485→              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   486→                <Database className="w-3.5 h-3.5 text-violet-600" /> Veri Saklama
+   487→              </div>
+   488→              <div className="text-sm font-medium">5 yıl</div>
+   489→              <p className="text-[11px] text-muted-foreground">İş ilişkisi süresi + 5 yıl.</p>
+   490→            </div>
+   491→          </div>
+   492→
+   493→          <Separator />
+   494→
+   495→          <div className="space-y-2">
+   496→            <Label className="text-sm font-medium">Veri Hakları</Label>
+   497→            <div className="grid sm:grid-cols-2 gap-2">
+   498→              <Button variant="outline" onClick={handleDownload} disabled={downloading}>
+   499→                <Download className="w-4 h-4 mr-1.5" />
+   500→                {downloading ? 'Hazırlanıyor…' : 'Verilerimi İndir'}
+   501→              </Button>
+   502→              <Button
+   503→                variant="outline"
+   504→                onClick={() => setAnonymizeOpen(true)}
+   505→                className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:border-rose-900/50 dark:text-rose-300"
+   506→              >
+   507→                <EyeOff className="w-4 h-4 mr-1.5" />
+   508→                Verilerimi Anonimleştir
+   509→              </Button>
+   510→            </div>
+   511→            <p className="text-[11px] text-muted-foreground">
+   512→              KVKK madde 11 kapsamında verilerinize erişebilir, düzeltme veya silme talep edebilirsiniz.
+   513→            </p>
+   514→          </div>
+   515→        </CardContent>
+   516→      </Card>
+   517→
+   518→      {/* Veri saklama bilgisi */}
+   519→      <Card>
+   520→        <CardHeader>
+   521→          <CardTitle className="text-base flex items-center gap-2">
+   522→            <Lock className="w-4 h-4 text-amber-600" />
+   523→            Veri Saklama
+   524→          </CardTitle>
+   525→        </CardHeader>
+   526→        <CardContent className="space-y-3 text-sm">
+   527→          <div className="flex items-center justify-between">
+   528→            <span className="text-muted-foreground">Müşteri verileri</span>
+   529→            <Badge variant="outline" className="text-[10px]">5 yıl</Badge>
+   530→          </div>
+   531→          <div className="flex items-center justify-between">
+   532→            <span className="text-muted-foreground">Aktivite kayıtları</span>
+   533→            <Badge variant="outline" className="text-[10px]">2 yıl</Badge>
+   534→          </div>
+   535→          <div className="flex items-center justify-between">
+   536→            <span className="text-muted-foreground">Denetim logları</span>
+   537→            <Badge variant="outline" className="text-[10px]">3 yıl</Badge>
+   538→          </div>
+   539→          <div className="flex items-center justify-between">
+   540→            <span className="text-muted-foreground">Yedeklemeler</span>
+   541→            <Badge variant="outline" className="text-[10px]">90 gün</Badge>
+   542→          </div>
+   543→          <Separator />
+   544→          <div className="rounded-md bg-muted/40 p-2.5">
+   545→            <p className="text-[11px] text-muted-foreground">
+   546→              Süre dolduğunda veriler otomatik anonimleştirilir veya silinir.
+   547→            </p>
+   548→          </div>
+   549→        </CardContent>
+   550→      </Card>
+   551→
+   552→      {/* Anonimleştirme onayı */}
+   553→      <AlertDialog open={anonymizeOpen} onOpenChange={setAnonymizeOpen}>
+   554→        <AlertDialogContent>
+   555→          <AlertDialogHeader>
+   556→            <AlertDialogTitle className="flex items-center gap-2 text-rose-700">
+   557→              <ShieldAlert className="w-5 h-5" />
+   558→              Tehlikeli İşlem
+   559→            </AlertDialogTitle>
+   560→            <AlertDialogDescription>
+   561→              <span className="font-medium text-foreground">Verilerinizi anonimleştirmek geri alınamaz.</span>{' '}
+   562→              Tüm kişisel verileriniz (ad, e-posta, telefon) kalıcı olarak maskelenecek ve
+   563→              bu kullanıcının geçmiş aktivite kayıtları erişilemez hale gelecektir.
+   564→              Bu işlem 30 gün içinde tamamlanır ve geri alınamaz.
+   565→            </AlertDialogDescription>
+   566→          </AlertDialogHeader>
+   567→          <AlertDialogFooter>
+   568→            <AlertDialogCancel>İptal</AlertDialogCancel>
+   569→            <AlertDialogAction
+   570→              onClick={handleAnonymize}
+   571→              className="bg-rose-600 hover:bg-rose-700 text-white"
+   572→            >
+   573→              Anonimleştirmeyi Onayla
+   574→            </AlertDialogAction>
+   575→          </AlertDialogFooter>
+   576→        </AlertDialogContent>
+   577→      </AlertDialog>
+   578→    </div>
+   579→  )
+   580→}
+   581→
+   582→// ─── Mock denetim kayıtları ───────────────────────────────────────
+   583→interface MockAuditEntry {
+   584→  id: string
+   585→  actor: string
+   586→  action: string
+   587→  entity: string
+   588→  entityId: string
+   589→  timestamp: string
+   590→}
+   591→
+   592→const MOCK_AUDIT: MockAuditEntry[] = [
+   593→  { id: '1', actor: 'Demo Admin', action: 'create', entity: 'customer', entityId: 'cust_001', timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString() },
+   594→  { id: '2', actor: 'Demo Admin', action: 'update', entity: 'deal', entityId: 'deal_004', timestamp: new Date(Date.now() - 1000 * 60 * 28).toISOString() },
+   595→  { id: '3', actor: 'Ahmet Y.', action: 'update', entity: 'task', entityId: 'task_012', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString() },
+   596→  { id: '4', actor: 'Demo Admin', action: 'create', entity: 'user', entityId: 'usr_007', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString() },
+   597→  { id: '5', actor: 'Mehmet K.', action: 'delete', entity: 'note', entityId: 'note_099', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString() },
+   598→  { id: '6', actor: 'Ahmet Y.', action: 'update', entity: 'lead', entityId: 'lead_023', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString() },
+   599→  { id: '7', actor: 'Demo Admin', action: 'import', entity: 'lead', entityId: 'maps_002', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString() },
+   600→  { id: '8', actor: 'Mehmet K.', action: 'update', entity: 'customer', entityId: 'cust_014', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString() },
+   601→]
+   602→
+   603→const ACTION_COLORS: Record<string, string> = {
+   604→  create: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300',
+   605→  update: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300',
+   606→  delete: 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300',
+   607→  import: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300',
+   608→}
+   609→
+   610→const ENTITY_LABELS: Record<string, string> = {
+   611→  customer: 'Müşteri',
+   612→  deal: 'Fırsat',
+   613→  task: 'Görev',
+   614→  user: 'Kullanıcı',
+   615→  note: 'Not',
+   616→  lead: 'Lead',
+   617→}
+   618→
+   619→function AuditTab() {
+   620→  const [search, setSearch] = useState('')
+   621→  const [actionFilter, setActionFilter] = useState('all')
+   622→
+   623→  const filtered = useMemo(() => {
+   624→    let list = MOCK_AUDIT
+   625→    if (search.trim()) {
+   626→      const q = search.toLowerCase()
+   627→      list = list.filter(
+   628→        (e) => e.actor.toLowerCase().includes(q) || e.entityId.toLowerCase().includes(q),
+   629→      )
+   630→    }
+   631→    if (actionFilter !== 'all') list = list.filter((e) => e.action === actionFilter)
+   632→    return list
+   633→  }, [search, actionFilter])
+   634→
+   635→  return (
+   636→    <Card>
+   637→      <CardHeader>
+   638→        <div className="flex items-start justify-between flex-wrap gap-3">
+   639→          <div>
+   640→            <CardTitle className="text-base flex items-center gap-2">
+   641→              <ScrollText className="w-4 h-4 text-violet-600" />
+   642→              Denetim Kayıtları
+   643→            </CardTitle>
+   644→            <CardDescription className="mt-0.5">
+   645→              Sistemde yapılan tüm değişikliklerin kaydı (audit log).
+   646→            </CardDescription>
+   647→          </div>
+   648→        </div>
+   649→      </CardHeader>
+   650→      <CardContent className="space-y-4">
+   651→        <div className="flex flex-wrap gap-2 items-center">
+   652→          <Input
+   653→            placeholder="Aktör veya ID ara…"
+   654→            value={search}
+   655→            onChange={(e) => setSearch(e.target.value)}
+   656→            className="max-w-xs"
+   657→          />
+   658→          <Select value={actionFilter} onValueChange={setActionFilter}>
+   659→            <SelectTrigger className="w-[140px]">
+   660→              <SelectValue placeholder="İşlem" />
+   661→            </SelectTrigger>
+   662→            <SelectContent>
+   663→              <SelectItem value="all">Tüm işlemler</SelectItem>
+   664→              <SelectItem value="create">Oluştur</SelectItem>
+   665→              <SelectItem value="update">Güncelle</SelectItem>
+   666→              <SelectItem value="delete">Sil</SelectItem>
+   667→              <SelectItem value="import">İçe Aktar</SelectItem>
+   668→            </SelectContent>
+   669→          </Select>
+   670→          <Badge variant="outline" className="ml-auto text-[11px]">
+   671→            {filtered.length} kayıt
+   672→          </Badge>
+   673→        </div>
+   674→
+   675→        <div className="rounded-lg border">
+   676→          <Table>
+   677→            <TableHeader>
+   678→              <TableRow className="bg-muted/40">
+   679→                <TableHead>Aktör</TableHead>
+   680→                <TableHead>İşlem</TableHead>
+   681→                <TableHead>Varlık</TableHead>
+   682→                <TableHead className="font-mono">ID</TableHead>
+   683→                <TableHead className="text-right">Zaman</TableHead>
+   684→              </TableRow>
+   685→            </TableHeader>
+   686→            <TableBody>
+   687→              {filtered.length === 0 ? (
+   688→                <TableRow>
+   689→                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-12">
+   690→                    <ScrollText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+   691→                    Denetim kaydı yakında.
+   692→                  </TableCell>
+   693→                </TableRow>
+   694→              ) : (
+   695→                filtered.map((e) => (
+   696→                  <TableRow key={e.id}>
+   697→                    <TableCell>
+   698→                      <div className="flex items-center gap-2">
+   699→                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-500 to-slate-600 flex items-center justify-center text-white text-[10px] font-semibold">
+   700→                          {e.actor.split(' ').map((s) => s[0]).join('').slice(0, 2)}
+   701→                        </div>
+   702→                        <span className="text-sm font-medium">{e.actor}</span>
+   703→                      </div>
+   704→                    </TableCell>
+   705→                    <TableCell>
+   706→                      <Badge variant="outline" className={cn('text-[10px]', ACTION_COLORS[e.action] ?? '')}>
+   707→                        {e.action}
+   708→                      </Badge>
+   709→                    </TableCell>
+   710→                    <TableCell>
+   711→                      <span className="text-sm">{ENTITY_LABELS[e.entity] ?? e.entity}</span>
+   712→                    </TableCell>
+   713→                    <TableCell>
+   714→                      <code className="text-[11px] text-muted-foreground">{e.entityId}</code>
+   715→                    </TableCell>
+   716→                    <TableCell className="text-right text-xs text-muted-foreground">
+   717→                      {formatDateTime(e.timestamp)}
+   718→                    </TableCell>
+   719→                  </TableRow>
+   720→                ))
+   721→              )}
+   722→            </TableBody>
+   723→          </Table>
+   724→        </div>
+   725→
+   726→        <div className="flex items-start gap-2 p-2.5 rounded-md bg-muted/40">
+   727→          <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+   728→          <p className="text-[11px] text-muted-foreground">
+   729→            Denetim kayıtları mock verilerdir. Backend entegrasyonu hazırlandığında gerçek kayıtlar gösterilecektir.
+   730→          </p>
+   731→        </div>
+   732→      </CardContent>
+   733→    </Card>
+   734→  )
+   735→}
+   736→
+   737→// ─── Ana SettingsView ─────────────────────────────────────────────
+   738→export function SettingsView() {
+   739→  const { user } = useAppStore()
+   740→
+   741→  if (!user) {
+   742→    return (
+   743→      <div className="p-8 text-center text-sm text-muted-foreground">
+   744→        Oturum açmanız gerekir.
+   745→      </div>
+   746→    )
+   747→  }
+   748→
+   749→  return (
+   750→    <div className="space-y-6 animate-fade-in">
+   751→      <div>
+   752→        <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   753→          <Building2 className="w-6 h-6 text-emerald-600" />
+   754→          Ayarlar
+   755→        </h2>
+   756→        <p className="text-sm text-muted-foreground mt-0.5">
+   757→          Şirket, para birimi, bildirim, KVKK ve denetim ayarları.
+   758→        </p>
+   759→      </div>
+   760→
+   761→      <Tabs defaultValue="company" className="w-full">
+   762→        <TabsList className="flex flex-wrap h-auto">
+   763→          <TabsTrigger value="company">
+   764→            <Building2 className="w-3.5 h-3.5" /> Şirket
+   765→          </TabsTrigger>
+   766→          <TabsTrigger value="currency">
+   767→            <Coins className="w-3.5 h-3.5" /> Para Birimi
+   768→          </TabsTrigger>
+   769→          <TabsTrigger value="notifications">
+   770→            <Bell className="w-3.5 h-3.5" /> Bildirimler
+   771→          </TabsTrigger>
+   772→          <TabsTrigger value="templates">
+   773→            <MessageSquare className="w-3.5 h-3.5" /> Şablonlar
+   774→          </TabsTrigger>
+   775→          <TabsTrigger value="kvkk">
+   776→            <Shield className="w-3.5 h-3.5" /> KVKK &amp; Veri
+   777→          </TabsTrigger>
+   778→          <TabsTrigger value="audit">
+   779→            <ScrollText className="w-3.5 h-3.5" /> Denetim Kayıtları
+   780→          </TabsTrigger>
+   781→        </TabsList>
+   782→
+   783→        <TabsContent value="company" className="mt-6">
+   784→          <CompanyTab />
+   785→        </TabsContent>
+   786→        <TabsContent value="currency" className="mt-6">
+   787→          <CurrencyTab />
+   788→        </TabsContent>
+   789→        <TabsContent value="notifications" className="mt-6">
+   790→          <NotificationsTab />
+   791→        </TabsContent>
+   792→        <TabsContent value="templates" className="mt-6">
+   793→          <TemplatesView />
+   794→        </TabsContent>
+   795→        <TabsContent value="kvkk" className="mt-6">
+   796→          <KvkkTab />
+   797→        </TabsContent>
+   798→        <TabsContent value="audit" className="mt-6">
+   799→          <AuditTab />
+   800→        </TabsContent>
+   801→      </Tabs>
+   802→    </div>
+   803→  )
+   804→}
+   805→

@@ -1,0 +1,702 @@
+   600→        )
+   601→      })()}
+   602→    </div>
+   603→  )
+   604→}
+   605→
+   606→// ============================================================
+   607→// Bölümler — KPI Summary
+   608→// ============================================================
+   609→function KpiSummary({
+   610→  pipelineValue, winRate, conversionRate, totalRevenue,
+   611→  wonCount, lostCount, mapsLeads, onExport,
+   612→}: {
+   613→  pipelineValue: number
+   614→  winRate: number
+   615→  conversionRate: number
+   616→  totalRevenue: number
+   617→  wonCount: number
+   618→  lostCount: number
+   619→  mapsLeads: number
+   620→  onExport: () => void
+   621→}) {
+   622→  const kpis = [
+   623→    {
+   624→      label: 'Toplam Pipeline Değeri',
+   625→      value: formatCurrency(pipelineValue),
+   626→      sub: 'Açık fırsatlar',
+   627→      icon: TrendingUp,
+   628→      gradient: 'from-emerald-500 to-teal-600',
+   629→      ring: 'ring-emerald-100 dark:ring-emerald-900/30',
+   630→    },
+   631→    {
+   632→      label: 'Kazanma Oranı',
+   633→      value: `%${winRate}`,
+   634→      sub: `${wonCount} kazanıldı / ${lostCount} kaybedildi`,
+   635→      icon: Trophy,
+   636→      gradient: 'from-amber-500 to-orange-600',
+   637→      ring: 'ring-amber-100 dark:ring-amber-900/30',
+   638→    },
+   639→    {
+   640→      label: 'Dönüşüm Oranı',
+   641→      value: `%${conversionRate}`,
+   642→      sub: `${mapsLeads} maps lead`,
+   643→      icon: Target,
+   644→      gradient: 'from-violet-500 to-purple-600',
+   645→      ring: 'ring-violet-100 dark:ring-violet-900/30',
+   646→    },
+   647→    {
+   648→      label: 'Toplam Ciro',
+   649→      value: formatCurrency(totalRevenue),
+   650→      sub: `${wonCount} kazanılan fırsat`,
+   651→      icon: DollarSign,
+   652→      gradient: 'from-sky-500 to-cyan-600',
+   653→      ring: 'ring-sky-100 dark:ring-sky-900/30',
+   654→    },
+   655→  ]
+   656→
+   657→  return (
+   658→    <div className="space-y-3">
+   659→      <div className="flex items-center justify-between">
+   660→        <div className="flex items-center gap-2">
+   661→          <ListChecks className="w-4 h-4 text-muted-foreground" />
+   662→          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+   663→            KPI Özeti
+   664→          </h3>
+   665→        </div>
+   666→        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onExport}>
+   667→          <Download className="w-3 h-3 mr-1" /> CSV
+   668→        </Button>
+   669→      </div>
+   670→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+   671→        {kpis.map((kpi) => (
+   672→          <Card key={kpi.label} className={cn('relative overflow-hidden ring-1', kpi.ring)}>
+   673→            <CardContent className="p-5">
+   674→              <div className="flex items-start justify-between mb-3">
+   675→                <div className={cn('w-10 h-10 rounded-lg bg-gradient-to-br flex items-center justify-center shadow-sm', kpi.gradient)}>
+   676→                  <kpi.icon className="w-5 h-5 text-white" />
+   677→                </div>
+   678→              </div>
+   679→              <div className="text-2xl font-bold tracking-tight">{kpi.value}</div>
+   680→              <div className="text-sm text-muted-foreground mt-0.5">{kpi.label}</div>
+   681→              <div className="text-xs text-muted-foreground/80 mt-1.5">{kpi.sub}</div>
+   682→            </CardContent>
+   683→          </Card>
+   684→        ))}
+   685→      </div>
+   686→    </div>
+   687→  )
+   688→}
+   689→
+   690→// ============================================================
+   691→// Bölüm 2 — Satış Hunisi
+   692→// ============================================================
+   693→function SalesFunnelCard({
+   694→  pipeline, onExportCsv, onExportXlsx,
+   695→}: {
+   696→  pipeline: { stage: string; count: number; totalValue: number }[]
+   697→  onExportCsv: () => void
+   698→  onExportXlsx: () => void
+   699→}) {
+   700→  // DEAL_STAGES sırasına göre düzenle
+   701→  const chartData = DEAL_STAGES.map((s) => {
+   702→    const found = pipeline.find((p) => p.stage === s.value)
+   703→    return {
+   704→      stage: s.label,
+   705→      stageKey: s.value,
+   706→      count: found?.count ?? 0,
+   707→      totalValue: found?.totalValue ?? 0,
+   708→      fill: STAGE_COLORS[s.value] ?? PALETTE.slate,
+   709→    }
+   710→  })
+   711→  const isEmpty = chartData.every((d) => d.count === 0)
+   712→  const maxValue = Math.max(...chartData.map((d) => d.totalValue), 1)
+   713→
+   714→  return (
+   715→    <Card>
+   716→      <CardHeader>
+   717→        <div className="flex items-start justify-between gap-3 flex-wrap">
+   718→          <div className="space-y-1">
+   719→            <div className="flex items-center gap-2">
+   720→              <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center">
+   721→                <BarChart3 className="w-4 h-4 text-emerald-600" />
+   722→              </div>
+   723→              <CardTitle>Satış Hunisi</CardTitle>
+   724→            </div>
+   725→            <CardDescription>Aşama bazında fırsat sayısı ve değer</CardDescription>
+   726→          </div>
+   727→          <ExportButtons onCsv={onExportCsv} onXlsx={onExportXlsx} />
+   728→        </div>
+   729→      </CardHeader>
+   730→      <CardContent>
+   731→        {isEmpty ? (
+   732→          <EmptyState
+   733→            icon={BarChart3}
+   734→            title="Henüz fırsat yok"
+   735→            description="Pipeline'a fırsat eklendiğinde huni burada görünecek."
+   736→          />
+   737→        ) : (
+   738→          <ResponsiveContainer width="100%" height={320}>
+   739→            <BarChart
+   740→              data={chartData}
+   741→              layout="vertical"
+   742→              margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+   743→            >
+   744→              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" opacity={0.5} />
+   745→              <XAxis
+   746→                type="number"
+   747→                tick={{ fontSize: 11 }}
+   748→                axisLine={false}
+   749→                tickLine={false}
+   750→              />
+   751→              <YAxis
+   752→                type="category"
+   753→                dataKey="stage"
+   754→                tick={{ fontSize: 12 }}
+   755→                axisLine={false}
+   756→                tickLine={false}
+   757→                width={80}
+   758→              />
+   759→              <Tooltip
+   760→                contentStyle={chartTooltipStyle}
+   761→                formatter={(value: number, name: string) => {
+   762→                  if (name === 'totalValue') return [formatCurrency(value), 'Toplam Değer']
+   763→                  return [value, 'Fırsat Sayısı']
+   764→                }}
+   765→                cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
+   766→              />
+   767→              <Legend
+   768→                formatter={(value) => value === 'count' ? 'Fırsat Sayısı' : 'Toplam Değer'}
+   769→                wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }}
+   770→              />
+   771→              <Bar dataKey="count" name="count" radius={[0, 6, 6, 0]} maxBarSize={28}>
+   772→                {chartData.map((d, i) => (
+   773→                  <Cell key={i} fill={d.fill} />
+   774→                ))}
+   775→              </Bar>
+   776→              <Bar dataKey="totalValue" name="totalValue" radius={[0, 6, 6, 0]} maxBarSize={28}>
+   777→                {chartData.map((d, i) => (
+   778→                  <Cell key={`v-${i}`} fill={d.fill} opacity={0.4} />
+   779→                ))}
+   780→              </Bar>
+   781→            </BarChart>
+   782→          </ResponsiveContainer>
+   783→        )}
+   784→
+   785→        {/* Stage özet listesi */}
+   786→        {!isEmpty && (
+   787→          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+   788→            {chartData.map((d) => (
+   789→              <div key={d.stageKey} className="rounded-lg border p-2.5 bg-muted/30">
+   790→                <div className="flex items-center gap-1.5 mb-1">
+   791→                  <span
+   792→                    className="w-2 h-2 rounded-full"
+   793→                    style={{ backgroundColor: d.fill }}
+   794→                  />
+   795→                  <span className="text-xs text-muted-foreground truncate">{d.stage}</span>
+   796→                </div>
+   797→                <div className="text-sm font-semibold">{d.count} fırsat</div>
+   798→                <div className="text-xs text-muted-foreground mt-0.5">
+   799→                  {formatCurrency(d.totalValue)}
+   800→                </div>
+   801→                <Progress
+   802→                  value={(d.totalValue / maxValue) * 100}
+   803→                  className="h-1 mt-1.5"
+   804→                />
+   805→              </div>
+   806→            ))}
+   807→          </div>
+   808→        )}
+   809→      </CardContent>
+   810→    </Card>
+   811→  )
+   812→}
+   813→
+   814→// ============================================================
+   815→// Bölüm 3 — Ciro Trendi
+   816→// ============================================================
+   817→function RevenueTrendCard({
+   818→  revenueByMonth, onExportCsv, onExportXlsx,
+   819→}: {
+   820→  revenueByMonth: { month: string; total: number; count: number }[]
+   821→  onExportCsv: () => void
+   822→  onExportXlsx: () => void
+   823→}) {
+   824→  const chartData = revenueByMonth.map((m) => ({
+   825→    ...m,
+   826→    label: formatMonthLabel(m.month),
+   827→  }))
+   828→  const isEmpty = chartData.every((d) => d.total === 0)
+   829→  const totalRevenue = chartData.reduce((s, d) => s + d.total, 0)
+   830→  const avgRevenue = totalRevenue / Math.max(chartData.length, 1)
+   831→
+   832→  return (
+   833→    <Card>
+   834→      <CardHeader>
+   835→        <div className="flex items-start justify-between gap-3 flex-wrap">
+   836→          <div className="space-y-1">
+   837→            <div className="flex items-center gap-2">
+   838→              <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center">
+   839→                <TrendingUp className="w-4 h-4 text-amber-600" />
+   840→              </div>
+   841→              <CardTitle>Ciro Trendi</CardTitle>
+   842→            </div>
+   843→            <CardDescription>Son 6 ay — kazanılan fırsatların cirosu</CardDescription>
+   844→          </div>
+   845→          <div className="flex items-center gap-3">
+   846→            <div className="text-right">
+   847→              <div className="text-xs text-muted-foreground">Toplam</div>
+   848→              <div className="text-sm font-semibold">{formatCurrency(totalRevenue)}</div>
+   849→            </div>
+   850→            <div className="text-right hidden sm:block">
+   851→              <div className="text-xs text-muted-foreground">Aylık Ort.</div>
+   852→              <div className="text-sm font-semibold">{formatCurrency(avgRevenue)}</div>
+   853→            </div>
+   854→            <ExportButtons onCsv={onExportCsv} onXlsx={onExportXlsx} />
+   855→          </div>
+   856→        </div>
+   857→      </CardHeader>
+   858→      <CardContent>
+   859→        {isEmpty ? (
+   860→          <EmptyState
+   861→            icon={TrendingUp}
+   862→            title="Ciro verisi yok"
+   863→            description="Son 6 ayda kazanılan fırsat bulunmuyor."
+   864→          />
+   865→        ) : (
+   866→          <ResponsiveContainer width="100%" height={300}>
+   867→            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+   868→              <defs>
+   869→                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+   870→                  <stop offset="0%" stopColor={PALETTE.amber} stopOpacity={0.4} />
+   871→                  <stop offset="100%" stopColor={PALETTE.amber} stopOpacity={0.02} />
+   872→                </linearGradient>
+   873→              </defs>
+   874→              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} vertical={false} />
+   875→              <XAxis
+   876→                dataKey="label"
+   877→                tick={{ fontSize: 11 }}
+   878→                axisLine={false}
+   879→                tickLine={false}
+   880→              />
+   881→              <YAxis
+   882→                tick={{ fontSize: 11 }}
+   883→                axisLine={false}
+   884→                tickLine={false}
+   885→                width={70}
+   886→                tickFormatter={(v) => formatCompactNumber(v)}
+   887→              />
+   888→              <Tooltip
+   889→                contentStyle={chartTooltipStyle}
+   890→                formatter={(value: number, name: string) => {
+   891→                  if (name === 'total') return [formatCurrency(value), 'Ciro']
+   892→                  return [value, 'Fırsat']
+   893→                }}
+   894→              />
+   895→              <Area
+   896→                type="monotone"
+   897→                dataKey="total"
+   898→                name="total"
+   899→                stroke={PALETTE.amber}
+   900→                strokeWidth={2.5}
+   901→                fill="url(#revGrad)"
+   902→                dot={{ r: 4, fill: PALETTE.amber, strokeWidth: 0 }}
+   903→                activeDot={{ r: 6, fill: PALETTE.amber }}
+   904→              />
+   905→            </AreaChart>
+   906→          </ResponsiveContainer>
+   907→        )}
+   908→      </CardContent>
+   909→    </Card>
+   910→  )
+   911→}
+   912→
+   913→// ============================================================
+   914→// Bölüm 4 — Kazan/Kayıp Analizi
+   915→// ============================================================
+   916→function WinLossAnalysisCard({
+   917→  wonCount, lostCount, winRate, lossReasons, totalClosed,
+   918→  onExportCsv, onExportXlsx,
+   919→}: {
+   920→  wonCount: number
+   921→  lostCount: number
+   922→  winRate: number
+   923→  lossReasons: { reason: string; count: number }[]
+   924→  totalClosed: number
+   925→  onExportCsv: () => void
+   926→  onExportXlsx: () => void
+   927→}) {
+   928→  const pieData = [
+   929→    { name: 'Kazanıldı', value: wonCount, fill: PALETTE.emerald },
+   930→    { name: 'Kaybedildi', value: lostCount, fill: PALETTE.rose },
+   931→  ]
+   932→  const isEmpty = totalClosed === 0
+   933→  const maxLoss = Math.max(...lossReasons.map((l) => l.count), 1)
+   934→
+   935→  return (
+   936→    <Card>
+   937→      <CardHeader>
+   938→        <div className="flex items-start justify-between gap-3 flex-wrap">
+   939→          <div className="space-y-1">
+   940→            <div className="flex items-center gap-2">
+   941→              <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/30 flex items-center justify-center">
+   942→                <PieChartIcon className="w-4 h-4 text-rose-600" />
+   943→              </div>
+   944→              <CardTitle>Kazan / Kayıp Analizi</CardTitle>
+   945→            </div>
+   946→            <CardDescription>Kapanan fırsatların kazan/kayıp dağılımı ve kayıp nedenleri</CardDescription>
+   947→          </div>
+   948→          <ExportButtons onCsv={onExportCsv} onXlsx={onExportXlsx} />
+   949→        </div>
+   950→      </CardHeader>
+   951→      <CardContent>
+   952→        {isEmpty ? (
+   953→          <EmptyState
+   954→            icon={PieChartIcon}
+   955→            title="Kapanan fırsat yok"
+   956→            description="Henüz kazanılan veya kaybedilen fırsat bulunmuyor."
+   957→          />
+   958→        ) : (
+   959→          <div className="grid lg:grid-cols-2 gap-6">
+   960→            {/* Donut chart */}
+   961→            <div className="space-y-3">
+   962→              <div className="relative">
+   963→                <ResponsiveContainer width="100%" height={260}>
+   964→                  <PieChart>
+   965→                    <Pie
+   966→                      data={pieData}
+   967→                      cx="50%"
+   968→                      cy="50%"
+   969→                      innerRadius={70}
+   970→                      outerRadius={110}
+   971→                      paddingAngle={3}
+   972→                      dataKey="value"
+   973→                      stroke="hsl(var(--background))"
+   974→                      strokeWidth={2}
+   975→                    >
+   976→                      {pieData.map((entry, i) => (
+   977→                        <Cell key={i} fill={entry.fill} />
+   978→                      ))}
+   979→                    </Pie>
+   980→                    <Tooltip
+   981→                      contentStyle={chartTooltipStyle}
+   982→                      formatter={(value: number, name: string) => {
+   983→                        const pct = totalClosed > 0 ? Math.round((value / totalClosed) * 100) : 0
+   984→                        return [`${value} (%${pct})`, name]
+   985→                      }}
+   986→                    />
+   987→                    <Legend wrapperStyle={{ fontSize: '12px' }} />
+   988→                  </PieChart>
+   989→                </ResponsiveContainer>
+   990→                {/* Orta daire — kazanma oranı */}
+   991→                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+   992→                  <div className="text-xs text-muted-foreground">Kazanma</div>
+   993→                  <div className="text-3xl font-bold text-emerald-600">%{winRate}</div>
+   994→                  <div className="text-xs text-muted-foreground mt-0.5">{wonCount}/{totalClosed}</div>
+   995→                </div>
+   996→              </div>
+   997→              <div className="grid grid-cols-2 gap-2">
+   998→                <div className="rounded-lg border p-3 bg-emerald-50/50 dark:bg-emerald-950/20">
+   999→                  <div className="flex items-center gap-1.5">
+  1000→                    <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600" />
+  1001→                    <span className="text-xs text-muted-foreground">Kazanıldı</span>
+  1002→                  </div>
+  1003→                  <div className="text-xl font-bold text-emerald-600 mt-1">{wonCount}</div>
+  1004→                </div>
+  1005→                <div className="rounded-lg border p-3 bg-rose-50/50 dark:bg-rose-950/20">
+  1006→                  <div className="flex items-center gap-1.5">
+  1007→                    <ArrowDownRight className="w-3.5 h-3.5 text-rose-600" />
+  1008→                    <span className="text-xs text-muted-foreground">Kaybedildi</span>
+  1009→                  </div>
+  1010→                  <div className="text-xl font-bold text-rose-600 mt-1">{lostCount}</div>
+  1011→                </div>
+  1012→              </div>
+  1013→            </div>
+  1014→
+  1015→            {/* Loss reasons — yatay bar */}
+  1016→            <div className="space-y-2">
+  1017→              <div className="flex items-center gap-2 mb-2">
+  1018→                <AlertTriangle className="w-4 h-4 text-amber-600" />
+  1019→                <h4 className="text-sm font-semibold">Kayıp Nedenleri</h4>
+  1020→              </div>
+  1021→              {lossReasons.length === 0 ? (
+  1022→                <div className="h-32 flex items-center justify-center text-sm text-muted-foreground">
+  1023→                  Kayıp nedeni kaydedilmemiş.
+  1024→                </div>
+  1025→              ) : (
+  1026→                <div className="space-y-2.5 max-h-[260px] overflow-y-auto custom-scroll pr-1">
+  1027→                  {lossReasons.map((l) => {
+  1028→                    const color = LOSS_COLOR_HEX[l.reason] ?? PALETTE.slate
+  1029→                    const pct = (l.count / maxLoss) * 100
+  1030→                    const totalPct = totalClosed > 0 ? Math.round((l.count / lostCount) * 100) : 0
+  1031→                    return (
+  1032→                      <div key={l.reason} className="space-y-1">
+  1033→                        <div className="flex items-center justify-between text-xs">
+  1034→                          <span className="font-medium truncate">{l.reason}</span>
+  1035→                          <span className="text-muted-foreground ml-2 shrink-0">
+  1036→                            {l.count} <span className="opacity-70">· %{totalPct}</span>
+  1037→                          </span>
+  1038→                        </div>
+  1039→                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+  1040→                          <div
+  1041→                            className="h-full rounded-full transition-all"
+  1042→                            style={{ width: `${pct}%`, backgroundColor: color }}
+  1043→                          />
+  1044→                        </div>
+  1045→                      </div>
+  1046→                    )
+  1047→                  })}
+  1048→                </div>
+  1049→              )}
+  1050→            </div>
+  1051→          </div>
+  1052→        )}
+  1053→      </CardContent>
+  1054→    </Card>
+  1055→  )
+  1056→}
+  1057→
+  1058→// ============================================================
+  1059→// Bölüm 5 — Maps Lead Dönüşüm
+  1060→// ============================================================
+  1061→function MapsConversionCard({
+  1062→  conv, onExportCsv, onExportXlsx,
+  1063→}: {
+  1064→  conv: ReportsData['mapsLeadConversion']
+  1065→  onExportCsv: () => void
+  1066→  onExportXlsx: () => void
+  1067→}) {
+  1068→  const isEmpty = conv.totalLeads === 0
+  1069→  const cityData = conv.byCity.map((c) => ({
+  1070→    ...c,
+  1071→    fill: PALETTE.sky,
+  1072→  }))
+  1073→  const maxCity = Math.max(...cityData.map((c) => c.count), 1)
+  1074→
+  1075→  const funnelSteps = [
+  1076→    { label: 'Toplam Lead', value: conv.totalLeads, color: PALETTE.sky, icon: MapPin },
+  1077→    { label: 'İletişime Geçildi', value: conv.contactedCount, color: PALETTE.teal, icon: Phone },
+  1078→    { label: 'Nitelikli', value: conv.qualifiedCount, color: PALETTE.amber, icon: Users },
+  1079→    { label: 'Dönüştü', value: conv.convertedCount, color: PALETTE.emerald, icon: Trophy },
+  1080→  ]
+  1081→
+  1082→  return (
+  1083→    <Card>
+  1084→      <CardHeader>
+  1085→        <div className="flex items-start justify-between gap-3 flex-wrap">
+  1086→          <div className="space-y-1">
+  1087→            <div className="flex items-center gap-2">
+  1088→              <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/30 flex items-center justify-center">
+  1089→                <MapPin className="w-4 h-4 text-teal-600" />
+  1090→              </div>
+  1091→              <CardTitle>Maps Lead Dönüşümü</CardTitle>
+  1092→            </div>
+  1093→            <CardDescription>Google Maps kaynaklı potansiyel müşteri hunisi ve şehir dağılımı</CardDescription>
+  1094→          </div>
+  1095→          <ExportButtons onCsv={onExportCsv} onXlsx={onExportXlsx} />
+  1096→        </div>
+  1097→      </CardHeader>
+  1098→      <CardContent>
+  1099→        {isEmpty ? (
+  1100→          <EmptyState
+  1101→            icon={MapPin}
+  1102→            title="Maps lead bulunmuyor"
+  1103→            description="Potansiyel müşteri madenciliği ile lead oluşturulduğunda dönüşüm burada görünecek."
+  1104→          />
+  1105→        ) : (
+  1106→          <div className="grid lg:grid-cols-2 gap-6">
+  1107→            {/* Funnel */}
+  1108→            <div className="space-y-3">
+  1109→              <h4 className="text-sm font-semibold flex items-center gap-2">
+  1110→                <Target className="w-4 h-4 text-violet-600" />
+  1111→                Dönüşüm Hunisi
+  1112→                <Badge variant="outline" className="ml-auto text-emerald-600 border-emerald-200">
+  1113→                  %{conv.conversionRate} dönüşüm
+  1114→                </Badge>
+  1115→              </h4>
+  1116→              <div className="space-y-2">
+  1117→                {funnelSteps.map((step, i) => {
+  1118→                  const pct = conv.totalLeads > 0 ? (step.value / conv.totalLeads) * 100 : 0
+  1119→                  const prevValue = i > 0 ? funnelSteps[i - 1].value : conv.totalLeads
+  1120→                  const stepRate = prevValue > 0 ? Math.round((step.value / prevValue) * 100) : 0
+  1121→                  return (
+  1122→                    <div key={step.label} className="space-y-1">
+  1123→                      <div className="flex items-center justify-between text-xs">
+  1124→                        <div className="flex items-center gap-2">
+  1125→                          <step.icon className="w-3.5 h-3.5" style={{ color: step.color }} />
+  1126→                          <span className="font-medium">{step.label}</span>
+  1127→                        </div>
+  1128→                        <div className="flex items-center gap-2 text-muted-foreground">
+  1129→                          <span className="font-semibold text-foreground">{step.value}</span>
+  1130→                          {i > 0 && <span className="opacity-70">→ %{stepRate}</span>}
+  1131→                        </div>
+  1132→                      </div>
+  1133→                      <div className="h-3 bg-muted rounded-full overflow-hidden">
+  1134→                        <div
+  1135→                          className="h-full rounded-full transition-all flex items-center justify-end pr-2"
+  1136→                          style={{
+  1137→                            width: `${Math.max(pct, 8)}%`,
+  1138→                            backgroundColor: step.color,
+  1139→                            opacity: 0.85,
+  1140→                          }}
+  1141→                        >
+  1142→                          <span className="text-[10px] text-white font-medium">
+  1143→                            %{Math.round(pct)}
+  1144→                          </span>
+  1145→                        </div>
+  1146→                      </div>
+  1147→                    </div>
+  1148→                  )
+  1149→                })}
+  1150→              </div>
+  1151→            </div>
+  1152→
+  1153→            {/* Leads by city */}
+  1154→            <div className="space-y-3">
+  1155→              <h4 className="text-sm font-semibold flex items-center gap-2">
+  1156→                <Building2 className="w-4 h-4 text-sky-600" />
+  1157→                Şehre Göre Lead Dağılımı
+  1158→              </h4>
+  1159→              {cityData.length === 0 ? (
+  1160→                <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
+  1161→                  Şehir verisi yok.
+  1162→                </div>
+  1163→              ) : (
+  1164→                <ResponsiveContainer width="100%" height={260}>
+  1165→                  <BarChart
+  1166→                    data={cityData}
+  1167→                    layout="vertical"
+  1168→                    margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+  1169→                  >
+  1170→                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" opacity={0.5} />
+  1171→                    <XAxis
+  1172→                      type="number"
+  1173→                      tick={{ fontSize: 11 }}
+  1174→                      axisLine={false}
+  1175→                      tickLine={false}
+  1176→                    />
+  1177→                    <YAxis
+  1178→                      type="category"
+  1179→                      dataKey="city"
+  1180→                      tick={{ fontSize: 11 }}
+  1181→                      axisLine={false}
+  1182→                      tickLine={false}
+  1183→                      width={90}
+  1184→                    />
+  1185→                    <Tooltip
+  1186→                      contentStyle={chartTooltipStyle}
+  1187→                      formatter={(value: number) => [value, 'Lead']}
+  1188→                      cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
+  1189→                    />
+  1190→                    <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={22}>
+  1191→                      {cityData.map((c, i) => (
+  1192→                        <Cell key={i} fill={c.fill} opacity={0.6 + (c.count / maxCity) * 0.4} />
+  1193→                      ))}
+  1194→                    </Bar>
+  1195→                  </BarChart>
+  1196→                </ResponsiveContainer>
+  1197→              )}
+  1198→            </div>
+  1199→          </div>
+  1200→        )}
+  1201→      </CardContent>
+  1202→    </Card>
+  1203→  )
+  1204→}
+  1205→
+  1206→// ============================================================
+  1207→// Bölüm 6 — Aktivite Performansı
+  1208→// ============================================================
+  1209→function ActivityPerformanceCard({
+  1210→  activityByType, activitiesOverTime, onExportTypeCsv, onExportTimeCsv,
+  1211→}: {
+  1212→  activityByType: { type: string; count: number }[]
+  1213→  activitiesOverTime: { date: string; count: number }[]
+  1214→  onExportTypeCsv: () => void
+  1215→  onExportTimeCsv: () => void
+  1216→}) {
+  1217→  const totalActivities = activityByType.reduce((s, a) => s + a.count, 0)
+  1218→  const isEmpty = totalActivities === 0
+  1219→
+  1220→  // Tüm tipleri göster (0 olanlar dahil)
+  1221→  const typeData = ACTIVITY_TYPES.map((t) => {
+  1222→    const found = activityByType.find((a) => a.type === t.value)
+  1223→    return {
+  1224→      type: t.value,
+  1225→      label: t.label,
+  1226→      count: found?.count ?? 0,
+  1227→      fill: ACTIVITY_COLOR_HEX[t.value] ?? PALETTE.slate,
+  1228→    }
+  1229→  }).sort((a, b) => b.count - a.count)
+  1230→
+  1231→  const timeData = activitiesOverTime.map((a) => ({
+  1232→    ...a,
+  1233→    label: formatDayLabel(a.date),
+  1234→  }))
+  1235→
+  1236→  return (
+  1237→    <Card>
+  1238→      <CardHeader>
+  1239→        <div className="flex items-start justify-between gap-3 flex-wrap">
+  1240→          <div className="space-y-1">
+  1241→            <div className="flex items-center gap-2">
+  1242→              <div className="w-8 h-8 rounded-lg bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center">
+  1243→                <ActivityIcon className="w-4 h-4 text-violet-600" />
+  1244→              </div>
+  1245→              <CardTitle>Aktivite Performansı</CardTitle>
+  1246→            </div>
+  1247→            <CardDescription>Tip bazında ve son 30 günün aktivite dağılımı</CardDescription>
+  1248→          </div>
+  1249→        </div>
+  1250→      </CardHeader>
+  1251→      <CardContent>
+  1252→        <Tabs defaultValue="type" className="w-full">
+  1253→          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+  1254→            <TabsList>
+  1255→              <TabsTrigger value="type" className="text-xs">
+  1256→                <PieChartIcon className="w-3.5 h-3.5 mr-1.5" /> Tip Bazında
+  1257→              </TabsTrigger>
+  1258→              <TabsTrigger value="time" className="text-xs">
+  1259→                <LineChartIcon className="w-3.5 h-3.5 mr-1.5" /> Zaman İçinde
+  1260→              </TabsTrigger>
+  1261→            </TabsList>
+  1262→            <div className="text-xs text-muted-foreground">
+  1263→              Toplam <span className="font-semibold text-foreground">{totalActivities}</span> aktivite
+  1264→            </div>
+  1265→          </div>
+  1266→
+  1267→          <TabsContent value="type">
+  1268→            <div className="flex items-center justify-end mb-2">
+  1269→              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onExportTypeCsv}>
+  1270→                <Download className="w-3 h-3 mr-1" /> CSV
+  1271→              </Button>
+  1272→            </div>
+  1273→            {isEmpty ? (
+  1274→              <EmptyState
+  1275→                icon={ActivityIcon}
+  1276→                title="Aktivite yok"
+  1277→                description="Henüz aktivite kaydedilmemiş."
+  1278→              />
+  1279→            ) : (
+  1280→              <div className="grid sm:grid-cols-2 gap-4">
+  1281→                <ResponsiveContainer width="100%" height={280}>
+  1282→                  <BarChart data={typeData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+  1283→                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} vertical={false} />
+  1284→                    <XAxis
+  1285→                      dataKey="label"
+  1286→                      tick={{ fontSize: 10 }}
+  1287→                      axisLine={false}
+  1288→                      tickLine={false}
+  1289→                      interval={0}
+  1290→                      angle={-15}
+  1291→                      textAnchor="end"
+  1292→                      height={50}
+  1293→                    />
+  1294→                    <YAxis
+  1295→                      tick={{ fontSize: 11 }}
+  1296→                      axisLine={false}
+  1297→                      tickLine={false}
+  1298→                      width={30}
+  1299→                    />
+
+[showing lines 600-1299 of 2377; use offset=1300 with limit to continue reading]

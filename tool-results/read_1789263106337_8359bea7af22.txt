@@ -1,0 +1,1001 @@
+     1→// GNC CRM + ERP Süperapp — Prisma Şeması
+     2→// SQLite | Multi-tenant (tenant_id) | App-level RBAC
+     3→
+     4→generator client {
+     5→  provider = "prisma-client-js"
+     6→}
+     7→
+     8→datasource db {
+     9→  provider = "sqlite"
+    10→  url      = env("DATABASE_URL")
+    11→}
+    12→
+    13→// ============================================================
+    14→// M1 — KİMLİK, ŞİRKET, KULLANICI, ROL
+    15→// ============================================================
+    16→
+    17→model Tenant {
+    18→  id              String   @id @default(cuid())
+    19→  name            String
+    20→  plan            String   @default("business") // free | business | enterprise
+    21→  defaultCurrency String   @default("TRY")
+    22→  country         String   @default("TR")
+    23→  createdAt       DateTime @default(now())
+    24→  updatedAt       DateTime @updatedAt
+    25→
+    26→  users      User[]
+    27→  customers  Customer[]
+    28→  leads      Lead[]
+    29→  deals      Deal[]
+    30→  tasks      Task[]
+    31→  activities Activity[]
+    32→  mapsSearch MapsSearch[]
+    33→  auditLogs  AuditLog[]
+    34→  tags       Tag[]
+    35→  products   Product[]
+    36→  quotes     Quote[]
+    37→  invoices   Invoice[]
+    38→  orders     Order[]
+    39→  settings   TenantSetting[]
+    40→  messages   Message[]
+    41→  messageTemplates MessageTemplate[]
+    42→  productionItems  ProductionItem[]
+    43→  cafes            Cafe[]
+    44→  markets          Market[]
+    45→  expenses         Expense[]
+    46→  serviceProviders ServiceProvider[]
+    47→}
+    48→
+    49→// Tenant bazlı ayarlar (key-value) — otomasyon threshold, enabled flag vb.
+    50→model TenantSetting {
+    51→  id        String   @id @default(cuid())
+    52→  tenantId  String
+    53→  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+    54→  key       String   // automation.enabled | automation.thresholdDays | notification.email vb.
+    55→  value     String   // JSON string veya plain value
+    56→  updatedAt DateTime @updatedAt
+    57→
+    58→  @@unique([tenantId, key])
+    59→}
+    60→
+    61→model User {
+    62→  id          String   @id @default(cuid())
+    63→  tenantId    String
+    64→  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+    65→  email       String   @unique
+    66→  name        String
+    67→  role        String   @default("rep") // superadmin | admin | manager | rep | readonly | stock
+    68→  permissions String   @default("[]") // JSON array of permission keys
+    69→  managerId   String?
+    70→  manager     User?    @relation("ManagerHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
+    71→  subordinates User[]  @relation("ManagerHierarchy")
+    72→  status      String   @default("active") // active | passive | invited
+    73→  phone       String?
+    74→  avatarUrl   String?
+    75→  title       String? // pozisyon: "Satış Müdürü", "Satış Temsilcisi" vb.
+    76→  createdAt   DateTime @default(now())
+    77→  updatedAt   DateTime @updatedAt
+    78→
+    79→  ownedCustomers  Customer[]  @relation("CustomerOwner")
+    80→  ownedLeads      Lead[]      @relation("LeadOwner")
+    81→  ownedDeals      Deal[]      @relation("DealOwner")
+    82→  assignedTasks   Task[]      @relation("TaskAssignee")
+    83→  activities      Activity[]  @relation("ActivityPerformer")
+    84→  notes           Note[]
+    85→  mapsSearches    MapsSearch[]
+    86→  auditLogs       AuditLog[]  @relation("AuditActor")
+    87→  sentMessages    Message[]   @relation("MessageSender")
+    88→  receivedMessages Message[]  @relation("MessageReceiver")
+    89→}
+    90→
+    91→// Şirket içi mesajlaşma (1-1 ve broadcast)
+    92→model Message {
+    93→  id          String   @id @default(cuid())
+    94→  tenantId    String
+    95→  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+    96→  senderId    String
+    97→  sender      User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+    98→  receiverId  String?
+    99→  receiver    User?    @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: SetNull)
+   100→  content     String
+   101→  isRead      Boolean  @default(false)
+   102→  createdAt   DateTime @default(now())
+   103→
+   104→  @@index([tenantId, receiverId, isRead])
+   105→  @@index([tenantId, senderId, createdAt])
+   106→}
+   107→
+   108→// ============================================================
+   109→// M2 — MÜŞTERİ PORTFÖYÜ
+   110→// ============================================================
+   111→
+   112→model Customer {
+   113→  id            String    @id @default(cuid())
+   114→  tenantId      String
+   115→  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   116→  name          String
+   117→  sector        String    @default("Diğer")
+   118→  segment       String    @default("standart") // vip | kurumsal | standart | potansiyel
+   119→  ownerId       String?
+   120→  owner         User?      @relation("CustomerOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+   121→  source        String    @default("manuel") // manuel | google_maps | referral | website | event
+   122→  address       String?
+   123→  city          String?
+   124→  district      String?  // ilçe
+   125→  country       String    @default("TR")
+   126→  lat           Float?
+   127→  lng           Float?
+   128→  placeId       String?
+   129→  phone         String?
+   130→  email         String?
+   131→  web           String?
+   132→  taxNumber     String?
+   133→  logo          String?  // logo/photo (base64 data URL or external URL)
+   134→  customerType  String   @default("musteri") // kafe | dis_ticaret | musteri_hizmetleri | musteri
+   135→  status        String    @default("aktif") // aktif | pasif | potansiyel | kaybedildi
+   136→  tags          String    @default("[]") // JSON array of tag names
+   137→  kvkkConsent   Boolean   @default(false)
+   138→  kvkkConsentAt DateTime?
+   139→  annualRevenue Float?
+   140→  employeeCount Int?
+   141→  lastActivityAt DateTime?
+   142→  createdAt     DateTime  @default(now())
+   143→  updatedAt     DateTime  @updatedAt
+   144→
+   145→  contacts    Contact[]
+   146→  activities  Activity[]
+   147→  notes       Note[]
+   148→  deals       Deal[]
+   149→  tasks       Task[]
+   150→  attachments Attachment[]
+   151→  leads       Lead[]      @relation("LeadConvertedTo")
+   152→  quotes      Quote[]
+   153→  invoices    Invoice[]
+   154→  orders      Order[]
+   155→}
+   156→
+   157→model Contact {
+   158→  id          String   @id @default(cuid())
+   159→  customerId  String
+   160→  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+   161→  name        String
+   162→  position    String?
+   163→  email       String?
+   164→  phone       String?
+   165→  photo       String?  // kişi fotoğrafı (base64 or URL)
+   166→  isPrimary   Boolean  @default(false)
+   167→  createdAt   DateTime @default(now())
+   168→  updatedAt   DateTime @updatedAt
+   169→}
+   170→
+   171→// ============================================================
+   172→// M3 — LEADS (Maps'ten gelen potansiyel müşteriler)
+   173→// ============================================================
+   174→
+   175→model Lead {
+   176→  id                  String    @id @default(cuid())
+   177→  tenantId            String
+   178→  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   179→  name                String
+   180→  placeId             String?
+   181→  category            String?
+   182→  address             String?
+   183→  city                String?
+   184→  district            String?  // ilçe
+   185→  country             String    @default("TR")
+   186→  lat                 Float?
+   187→  lng                 Float?
+   188→  phone               String?
+   189→  web                 String?
+   190→  email               String?
+   191→  rating              Float?
+   192→  reviewCount         Int?
+   193→  ownerId             String?
+   194→  owner               User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+   195→  source              String    @default("google_maps")
+   196→  status              String    @default("yeni") // yeni | iletisim | nitelikli | donustu | kaybedildi
+   197→  convertedCustomerId String?
+   198→  convertedCustomer   Customer? @relation("LeadConvertedTo", fields: [convertedCustomerId], references: [id], onDelete: SetNull)
+   199→  notes               String    @default("[]") // JSON
+   200→  mapsSearchId        String?
+   201→  mapsSearch          MapsSearch? @relation(fields: [mapsSearchId], references: [id], onDelete: SetNull)
+   202→  createdAt           DateTime  @default(now())
+   203→  updatedAt           DateTime  @updatedAt
+   204→
+   205→  activities Activity[]
+   206→}
+   207→
+   208→model MapsSearch {
+   209→  id          String   @id @default(cuid())
+   210→  tenantId    String
+   211→  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   212→  userId      String?
+   213→  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+   214→  query       String
+   215→  city        String?
+   216→  country     String   @default("TR")
+   217→  radius      Int?
+   218→  resultCount Int      @default(0)
+   219→  importedCount Int    @default(0)
+   220→  createdAt   DateTime @default(now())
+   221→
+   222→  leads Lead[]
+   223→}
+   224→
+   225→// ============================================================
+   226→// M4 — FIRSAT / PIPELINE
+   227→// ============================================================
+   228→
+   229→model Deal {
+   230→  id               String    @id @default(cuid())
+   231→  tenantId         String
+   232→  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   233→  title            String
+   234→  customerId       String
+   235→  customer         Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+   236→  value            Float     @default(0)
+   237→  currency         String    @default("TRY")
+   238→  stage            String    @default("yeni") // yeni | iletisim | teklif | muzakere | kazanıldı | kaybedildi
+   239→  probability      Int       @default(10)
+   240→  expectedCloseDate DateTime?
+   241→  ownerId          String?
+   242→  owner            User?      @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+   243→  lossReason       String?
+   244→  lossNote         String?
+   245→  createdAt        DateTime  @default(now())
+   246→  updatedAt        DateTime  @updatedAt
+   247→
+   248→  activities Activity[]
+   249→}
+   250→
+   251→// ============================================================
+   252→// ORTAK — AKTİVİTE, NOT, GÖREV, EK
+   253→// ============================================================
+   254→
+   255→model Activity {
+   256→  id          String    @id @default(cuid())
+   257→  tenantId    String
+   258→  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   259→  customerId  String?
+   260→  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+   261→  leadId      String?
+   262→  lead        Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+   263→  dealId      String?
+   264→  deal        Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+   265→  type        String    // arama | toplanti | email | whatsapp | not | ziyaret | gorev
+   266→  subject     String
+   267→  detail      String?
+   268→  date        DateTime  @default(now())
+   269→  durationMin Int       @default(0)
+   270→  outcome     String?   // basarili | basarisiz | ertelendi | callback
+   271→  userId      String?
+   272→  user        User?     @relation("ActivityPerformer", fields: [userId], references: [id], onDelete: SetNull)
+   273→  createdAt   DateTime  @default(now())
+   274→}
+   275→
+   276→model Note {
+   277→  id          String   @id @default(cuid())
+   278→  customerId  String
+   279→  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+   280→  userId      String?
+   281→  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+   282→  content     String
+   283→  isPinned    Boolean  @default(false)
+   284→  createdAt   DateTime @default(now())
+   285→  updatedAt   DateTime @updatedAt
+   286→}
+   287→
+   288→model Task {
+   289→  id            String    @id @default(cuid())
+   290→  tenantId      String
+   291→  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   292→  title         String
+   293→  description   String?
+   294→  dueDate       DateTime
+   295→  assigneeId    String?
+   296→  assignee      User?      @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+   297→  customerId    String?
+   298→  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+   299→  priority      String    @default("orta") // dusuk | orta | yuksek | acil
+   300→  reminderTime  String?   // "09:00"
+   301→  status        String    @default("acik") // acik | tamamlandi | iptal
+   302→  autoGenerated Boolean   @default(false)
+   303→  completedAt   DateTime?
+   304→  createdAt     DateTime  @default(now())
+   305→  updatedAt     DateTime  @updatedAt
+   306→}
+   307→
+   308→model Attachment {
+   309→  id          String   @id @default(cuid())
+   310→  customerId  String
+   311→  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+   312→  fileName    String
+   313→  fileType    String
+   314→  fileSize    Int
+   315→  url         String
+   316→  uploadedBy  String?
+   317→  createdAt   DateTime @default(now())
+   318→}
+   319→
+   320→model Tag {
+   321→  id        String   @id @default(cuid())
+   322→  tenantId  String
+   323→  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   324→  name      String
+   325→  color     String   @default("gray")
+   326→  createdAt DateTime @default(now())
+   327→}
+   328→
+   329→// ============================================================
+   330→// GÜVENLİK — AUDIT LOG
+   331→// ============================================================
+   332→
+   333→model AuditLog {
+   334→  id        String   @id @default(cuid())
+   335→  tenantId  String
+   336→  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   337→  actorId   String?
+   338→  actor     User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+   339→  action    String   // create | update | delete | login | export
+   340→  entity    String   // customer | deal | user | ...
+   341→  entityId  String?
+   342→  before    String?  // JSON
+   343→  after     String?  // JSON
+   344→  ip        String?
+   345→  createdAt DateTime @default(now())
+   346→}
+   347→
+   348→// ============================================================
+   349→// FAZ 2 — ERP-LITE (ŞEMA HAZIRLIĞI, UI YOK)
+   350→// ============================================================
+   351→
+   352→model Product {
+   353→  id          String   @id @default(cuid())
+   354→  tenantId    String
+   355→  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   356→  name        String
+   357→  sku         String?
+   358→  description String?
+   359→  price       Float    @default(0)
+   360→  currency    String   @default("TRY")
+   361→  taxRate     Float    @default(20)
+   362→  stock       Int      @default(0)
+   363→  minStock    Int      @default(0)
+   364→  unit        String   @default("adet")
+   365→  category    String?
+   366→  photo       String?  // ürün fotoğrafı (base64 or URL)
+   367→  createdAt   DateTime @default(now())
+   368→  updatedAt   DateTime @updatedAt
+   369→
+   370→  stockMovements StockMovement[]
+   371→  quoteLines     QuoteLine[]
+   372→  invoiceLines  InvoiceLine[]
+   373→  productionItems ProductionItem[]
+   374→  shelfItems     ShelfItem[]
+   375→  barcodes       Barcode[]
+   376→  stockCountItems StockCountItem[]
+   377→  marketSaleItems MarketSaleItem[]
+   378→  purchaseItems   PurchaseItem[]
+   379→}
+   380→
+   381→model StockMovement {
+   382→  id          String   @id @default(cuid())
+   383→  productId   String
+   384→  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+   385→  quantity    Int
+   386→  type        String   // giris | cikis | duzeltme | transfer
+   387→  reason      String?
+   388→  refType     String?  // quote | invoice | manual
+   389→  refId       String?
+   390→  createdAt   DateTime @default(now())
+   391→}
+   392→
+   393→model Quote {
+   394→  id           String    @id @default(cuid())
+   395→  tenantId     String
+   396→  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   397→  customerId   String
+   398→  customer     Customer  @relation(fields: [customerId], references: [id])
+   399→  number       String
+   400→  status       String    @default("taslak") // taslak | gonderildi | onaylandi | reddedildi | faturalandi
+   401→  isProforma   Boolean   @default(false)
+   402→  subtotal     Float     @default(0)
+   403→  taxTotal     Float     @default(0)
+   404→  total        Float     @default(0)
+   405→  currency     String    @default("TRY")
+   406→  issueDate    DateTime  @default(now())
+   407→  validUntil   DateTime?
+   408→  invoiceId    String?
+   409→  invoice      Invoice?  @relation("QuoteInvoice", fields: [invoiceId], references: [id], onDelete: SetNull)
+   410→  createdAt    DateTime  @default(now())
+   411→  updatedAt    DateTime  @updatedAt
+   412→
+   413→  lines QuoteLine[]
+   414→  order Order?
+   415→}
+   416→
+   417→model QuoteLine {
+   418→  id          String  @id @default(cuid())
+   419→  quoteId     String
+   420→  quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+   421→  productId   String?
+   422→  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+   423→  description String
+   424→  qty         Float   @default(1)
+   425→  unitPrice   Float   @default(0)
+   426→  taxRate     Float   @default(20)
+   427→  lineTotal   Float   @default(0)
+   428→}
+   429→
+   430→model Invoice {
+   431→  id              String    @id @default(cuid())
+   432→  tenantId        String
+   433→  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   434→  customerId      String
+   435→  customer        Customer  @relation(fields: [customerId], references: [id])
+   436→  number          String
+   437→  status          String    @default("odeme_bekliyor") // odeme_bekliyor | odendi | gecikti | iptal
+   438→  subtotal        Float     @default(0)
+   439→  taxTotal        Float     @default(0)
+   440→  total           Float     @default(0)
+   441→  currency        String    @default("TRY")
+   442→  issueDate       DateTime  @default(now())
+   443→  dueDate         DateTime?
+   444→  paidDate        DateTime?
+   445→  // Çeki listesi (packing list)
+   446→  packingListNo   String?
+   447→  packingListDate DateTime?
+   448→  // İrsaliye (dispatch note)
+   449→  dispatchNo      String?
+   450→  dispatchDate    DateTime?
+   451→  // Sipariş bağlantısı
+   452→  orderId         String?    @unique
+   453→  order           Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+   454→  createdAt       DateTime  @default(now())
+   455→  updatedAt       DateTime  @updatedAt
+   456→
+   457→  lines InvoiceLine[]
+   458→  fromQuotes Quote[] @relation("QuoteInvoice")
+   459→}
+   460→
+   461→model InvoiceLine {
+   462→  id          String   @id @default(cuid())
+   463→  invoiceId   String
+   464→  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+   465→  productId   String?
+   466→  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+   467→  description String
+   468→  qty         Float    @default(1)
+   469→  unitPrice   Float    @default(0)
+   470→  taxRate     Float    @default(20)
+   471→  lineTotal   Float    @default(0)
+   472→}
+   473→
+   474→// ============================================================
+   475→// FAZ 3 — PROFORMA & SIPARIŞ TAKİP
+   476→// ============================================================
+   477→
+   478→// Sipariş (Order) — onaylanan proforma/tekliften veya manuel oluşturulur.
+   479→// Sipariş takibi: hazirlaniyor → onaylandi → uretimde → sevk_yapildi → teslim_edildi | iptal
+   480→model Order {
+   481→  id               String     @id @default(cuid())
+   482→  tenantId         String
+   483→  tenant           Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   484→  customerId       String
+   485→  customer         Customer   @relation(fields: [customerId], references: [id])
+   486→  quoteId          String?    @unique
+   487→  quote            Quote?     @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+   488→  number           String
+   489→  status           String     @default("hazirlaniyor") // hazirlaniyor | onaylandi | uretimde | sevk_yapildi | teslim_edildi | iptal
+   490→  totalAmount      Float      @default(0)
+   491→  currency         String     @default("TRY")
+   492→  orderDate        DateTime   @default(now())
+   493→  expectedDelivery DateTime?
+   494→  deliveredAt      DateTime?
+   495→  notes            String?
+   496→  createdAt        DateTime   @default(now())
+   497→  updatedAt        DateTime   @updatedAt
+   498→
+   499→  trackingSteps OrderTrackingStep[]
+   500→  productionItems ProductionItem[]
+   501→  invoice      Invoice?
+   502→}
+   503→
+   504→// Sipariş takip adımı — her durum değişiminde otomatik ya da manuel eklenir
+   505→model OrderTrackingStep {
+   506→  id        String   @id @default(cuid())
+   507→  orderId   String
+   508→  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+   509→  step      String   // hazirlaniyor | onaylandi | uretimde | sevk_yapildi | teslim_edildi | iptal
+   510→  note      String?
+   511→  userId    String?
+   512→  createdAt DateTime @default(now())
+   513→}
+   514→
+   515→// ============================================================
+   516→// HAZIR YAZI ŞABLONLARI (#4) — WhatsApp/E-posta için düzenlenebilir promptlar
+   517→// ============================================================
+   518→model MessageTemplate {
+   519→  id          String   @id @default(cuid())
+   520→  tenantId    String
+   521→  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   522→  name        String   // şablon adı: "Hoş geldin mesajı", "Teklif takip"
+   523→  type        String   @default("whatsapp") // whatsapp | email | sms
+   524→  category    String   @default("genel") // genel | satis | takip | teklif | tesekkur
+   525→  subject     String?  // email için konu
+   526→  content     String   // şablon metni ({{musteri}}, {{temsilci}} gibi değişkenler)
+   527→  isDefault   Boolean  @default(false)
+   528→  createdAt   DateTime @default(now())
+   529→  updatedAt   DateTime @updatedAt
+   530→
+   531→  @@index([tenantId, type])
+   532→}
+   533→
+   534→// ============================================================
+   535→// ÜRETİM LİSTESİ — Depo elemanları için sipariş kalemleri üretim takibi (#2)
+   536→// ============================================================
+   537→model ProductionItem {
+   538→  id          String   @id @default(cuid())
+   539→  tenantId    String
+   540→  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   541→  orderId     String
+   542→  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+   543→  productId   String?
+   544→  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+   545→  description String
+   546→  qty         Float    @default(1)
+   547→  status      String   @default("bekliyor") // bekliyor | uretiliyor | uretildi
+   548→  producedAt  DateTime?
+   549→  producedBy  String?
+   550→  notes       String?
+   551→  createdAt   DateTime @default(now())
+   552→  updatedAt   DateTime @updatedAt
+   553→
+   554→  @@index([tenantId, status])
+   555→}
+   556→
+   557→// ============================================================
+   558→// KAFE ERP — Masa, Menü, Sipariş, Ödeme, Reçete
+   559→// ============================================================
+   560→
+   561→model Cafe {
+   562→  id          String   @id @default(cuid())
+   563→  tenantId    String
+   564→  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   565→  name        String
+   566→  address     String?
+   567→  phone       String?
+   568→  tableCount  Int      @default(0)
+   569→  createdAt   DateTime @default(now())
+   570→  updatedAt   DateTime @updatedAt
+   571→
+   572→  tables       CafeTable[]
+   573→  menuCategories MenuCategory[]
+   574→  cafeOrders   CafeOrder[]
+   575→}
+   576→
+   577→// Masa — kuş bakışı konum (x, y百分比), şekil, kapasite
+   578→model CafeTable {
+   579→  id          String   @id @default(cuid())
+   580→  cafeId      String
+   581→  cafe        Cafe     @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+   582→  number      String   // masa numarası: "M1", "M2", "Teras-1"
+   583→  shape       String   @default("square") // square | round | rectangle
+   584→  x           Float    @default(50) // yüzde 0-100 (kuş bakışı X)
+   585→  y           Float    @default(50) // yüzde 0-100 (kuş bakışı Y)
+   586→  width       Float    @default(10) // yüzde
+   587→  height      Float    @default(10) // yüzde
+   588→  capacity    Int      @default(4)
+   589→  status      String   @default("bos") // bos | dolu | rezerve | siparis
+   590→  createdAt   DateTime @default(now())
+   591→  updatedAt   DateTime @updatedAt
+   592→
+   593→  orders      CafeOrder[]
+   594→}
+   595→
+   596→// Menü kategorisi (İçecekler, Ana Yemekler, Tatlılar, etc.)
+   597→model MenuCategory {
+   598→  id          String   @id @default(cuid())
+   599→  cafeId      String
+   600→  cafe        Cafe     @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+   601→  name        String
+   602→  icon        String?
+   603→  sortOrder   Int      @default(0)
+   604→  isActive    Boolean  @default(true)
+   605→
+   606→  items       MenuItem[]
+   607→}
+   608→
+   609→// Menü kalemi (ürün + fiyat + reçete)
+   610→model MenuItem {
+   611→  id          String   @id @default(cuid())
+   612→  categoryId  String
+   613→  category    MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+   614→  name        String
+   615→  description String?
+   616→  price       Float    @default(0)
+   617→  currency    String   @default("TRY")
+   618→  photo       String?
+   619→  isAvailable Boolean  @default(true)
+   620→  prepTime    Int      @default(10) // hazırlık süresi (dk)
+   621→  station     String   @default("kitchen") // bar | kitchen | dessert
+   622→  recipe      String?  // reçete/metin (hazırlama talimatları)
+   623→  sortOrder   Int      @default(0)
+   624→  createdAt   DateTime @default(now())
+   625→  updatedAt   DateTime @updatedAt
+   626→
+   627→  orderItems  CafeOrderItem[]
+   628→}
+   629→
+   630→// Kafe siparişi (masa bazlı)
+   631→model CafeOrder {
+   632→  id          String   @id @default(cuid())
+   633→  cafeId      String
+   634→  cafe        Cafe     @relation(fields: [cafeId], references: [id], onDelete: Cascade)
+   635→  tableId     String?
+   636→  table       CafeTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+   637→  number      String   // sipariş no: "S-001"
+   638→  status      String   @default("acik") // acik | hazirlaniyor | hazir | odendi | iptal
+   639→  type        String   @default("dine_in") // dine_in | takeaway | delivery
+   640→  customerName String? // takeaway/delivery için
+   641→  subtotal    Float    @default(0)
+   642→  taxTotal    Float    @default(0)
+   643→  total       Float    @default(0)
+   644→  notes       String?
+   645→  createdById String?
+   646→  createdAt   DateTime @default(now())
+   647→  updatedAt   DateTime @updatedAt
+   648→
+   649→  items       CafeOrderItem[]
+   650→  payments    CafePayment[]
+   651→}
+   652→
+   653→// Sipariş kalemi
+   654→model CafeOrderItem {
+   655→  id          String   @id @default(cuid())
+   656→  orderId     String
+   657→  order       CafeOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+   658→  menuItemId  String?
+   659→  menuItem    MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+   660→  name        String   // snapshot
+   661→  qty         Int      @default(1)
+   662→  unitPrice   Float    @default(0) // snapshot
+   663→  status      String   @default("bekliyor") // bekliyor | hazirlaniyor | hazir | servis_edildi
+   664→  notes       String?  // özel istek: "az şekerli", "soğuk"
+   665→  station     String   @default("kitchen") // bar | kitchen | dessert
+   666→  createdAt   DateTime @default(now())
+   667→  updatedAt   DateTime @updatedAt
+   668→}
+   669→
+   670→// Ödeme
+   671→model CafePayment {
+   672→  id          String   @id @default(cuid())
+   673→  orderId     String
+   674→  order       CafeOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+   675→  amount      Float
+   676→  method      String   @default("cash") // cash | card | online
+   677→  status      String   @default("tamamlandi") // tamamlandi | iade
+   678→  createdAt   DateTime @default(now())
+   679→}
+   680→
+   681→// ============================================================
+   682→// MARKET ERP — Stok, Kasa, Barkod, Satış, Vardiya, İade
+   683→// ============================================================
+   684→
+   685→model Market {
+   686→  id          String   @id @default(cuid())
+   687→  tenantId    String
+   688→  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   689→  name        String
+   690→  address     String?
+   691→  phone       String?
+   692→  isActive    Boolean  @default(true)
+   693→  createdAt   DateTime @default(now())
+   694→  updatedAt   DateTime @updatedAt
+   695→
+   696→  shelves     Shelf[]
+   697→  posShifts   PosShift[]
+   698→  sales       MarketSale[]
+   699→  stockCounts StockCount[]
+   700→  barcodes    Barcode[]
+   701→  purchases   Purchase[]
+   702→}
+   703→
+   704→// Raf — ürünlerin raftaki konumu
+   705→model Shelf {
+   706→  id          String   @id @default(cuid())
+   707→  marketId    String
+   708→  market      Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+   709→  code        String   // raf kodu: "A1", "B-3"
+   710→  name        String?
+   711→  aisle       String?  // koridor
+   712→  createdAt   DateTime @default(now())
+   713→
+   714→  items       ShelfItem[]
+   715→}
+   716→
+   717→model ShelfItem {
+   718→  id          String   @id @default(cuid())
+   719→  shelfId     String
+   720→  shelf       Shelf    @relation(fields: [shelfId], references: [id], onDelete: Cascade)
+   721→  productId   String
+   722→  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+   723→  qty         Int      @default(0)  // raftaki adet
+   724→  minDisplayQty Int    @default(2)  // minimum gösterim adedi
+   725→}
+   726→
+   727→// Barkod — ürünün barkodları (bir ürünün birden fazla barkodu olabilir)
+   728→model Barcode {
+   729→  id          String   @id @default(cuid())
+   730→  marketId    String?
+   731→  market      Market?  @relation(fields: [marketId], references: [id], onDelete: SetNull)
+   732→  productId   String
+   733→  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+   734→  code        String   @unique  // barkod numarası
+   735→  type        String   @default("ean13") // ean13 | upc | custom
+   736→  createdAt   DateTime @default(now())
+   737→}
+   738→
+   739→// Stok Sayım — periyodik envanter sayımı
+   740→model StockCount {
+   741→  id          String   @id @default(cuid())
+   742→  marketId    String
+   743→  market      Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+   744→  number      String   // sayım no: "SAY-001"
+   745→  status      String   @default("taslak") // taslak | tamamlandi | iptal
+   746→  startDate   DateTime @default(now())
+   747→  endDate     DateTime?
+   748→  notes       String?
+   749→  createdById String?
+   750→  createdAt   DateTime @default(now())
+   751→  updatedAt   DateTime @updatedAt
+   752→
+   753→  items       StockCountItem[]
+   754→}
+   755→
+   756→model StockCountItem {
+   757→  id            String   @id @default(cuid())
+   758→  stockCountId  String
+   759→  stockCount    StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+   760→  productId     String
+   761→  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+   762→  expectedQty   Int      @default(0)  // sistemdeki beklenen miktar
+   763→  countedQty    Int?     // sayılan miktar
+   764→  difference    Int?     // fark (counted - expected)
+   765→  notes         String?
+   766→}
+   767→
+   768→// POS Vardiya — kasa açılış/kapanış
+   769→model PosShift {
+   770→  id          String   @id @default(cuid())
+   771→  marketId    String
+   772→  market      Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+   773→  userId      String   // kasiyer
+   774→  number      String   // vardiya no: "V-001"
+   775→  status      String   @default("acik") // acik | kapali
+   776→  openingCash Float    @default(0)  // açılış nakiti
+   777→  closingCash Float?   // kapanış nakiti
+   778→  expectedCash Float?  // beklenen nakit (satışlardan hesaplanan)
+   779→  difference  Float?   // nakit farkı
+   780→  openingTime DateTime @default(now())
+   781→  closingTime DateTime?
+   782→  notes       String?
+   783→  createdAt   DateTime @default(now())
+   784→  updatedAt   DateTime @updatedAt
+   785→
+   786→  sales       MarketSale[]
+   787→}
+   788→
+   789→// Market Satış — POS satış fişi
+   790→model MarketSale {
+   791→  id          String   @id @default(cuid())
+   792→  marketId    String
+   793→  market      Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+   794→  posShiftId  String?
+   795→  posShift    PosShift? @relation(fields: [posShiftId], references: [id], onDelete: SetNull)
+   796→  number      String   // fiş no: "FIS-001"
+   797→  type        String   @default("satis") // satis | iade
+   798→  status      String   @default("tamamlandi") // tamamlandi | iptal
+   799→  subtotal    Float    @default(0)
+   800→  taxTotal    Float    @default(0)
+   801→  discount    Float    @default(0)
+   802→  total       Float    @default(0)
+   803→  paymentMethod String @default("cash") // cash | card | mixed
+   804→  cashAmount  Float    @default(0)
+   805→  cardAmount  Float    @default(0)
+   806→  customerName String? // müşteri adı (opsiyonel)
+   807→  userId      String?  // kasiyer
+   808→  notes       String?
+   809→  createdAt   DateTime @default(now())
+   810→  updatedAt   DateTime @updatedAt
+   811→
+   812→  items       MarketSaleItem[]
+   813→  returns     MarketReturn[]
+   814→}
+   815→
+   816→// Satış kalemi
+   817→model MarketSaleItem {
+   818→  id          String   @id @default(cuid())
+   819→  saleId      String
+   820→  sale        MarketSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+   821→  productId   String?
+   822→  product     Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+   823→  barcode     String?  // okunan barkod
+   824→  name        String   // snapshot
+   825→  qty         Float    @default(1)
+   826→  unitPrice   Float    @default(0)
+   827→  taxRate     Float    @default(20)
+   828→  discount    Float    @default(0)
+   829→  lineTotal   Float    @default(0)
+   830→}
+   831→
+   832→// İade — satış iadesi
+   833→model MarketReturn {
+   834→  id          String   @id @default(cuid())
+   835→  saleId      String   // orijinal satış
+   836→  sale        MarketSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+   837→  reason      String   // iade sebebi
+   838→  totalAmount Float    @default(0)
+   839→  status      String   @default("tamamlandi") // tamamlandi | reddedildi
+   840→  userId      String?
+   841→  createdAt   DateTime @default(now())
+   842→}
+   843→
+   844→// Mal Kabul — tedarikten gelen ürün kabul
+   845→model Purchase {
+   846→  id          String   @id @default(cuid())
+   847→  marketId    String
+   848→  market      Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+   849→  number      String   // mal kabul no: "MK-001"
+   850→  supplier    String?  // tedarikçi adı
+   851→  invoiceNo   String?  // irsaliye/fatura no
+   852→  status      String   @default("bekliyor") // bekliyor | kabul_edildi | reddedildi
+   853→  totalAmount Float    @default(0)
+   854→  notes       String?
+   855→  createdById String?
+   856→  createdAt   DateTime @default(now())
+   857→  updatedAt   DateTime @updatedAt
+   858→
+   859→  items       PurchaseItem[]
+   860→}
+   861→
+   862→model PurchaseItem {
+   863→  id          String   @id @default(cuid())
+   864→  purchaseId  String
+   865→  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+   866→  productId   String?
+   867→  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+   868→  barcode     String?
+   869→  name        String
+   870→  qty         Float    @default(1)
+   871→  unitPrice   Float    @default(0)
+   872→  lineTotal   Float    @default(0)
+   873→  accepted    Boolean  @default(false)
+   874→}
+   875→
+   876→// ============================================================
+   877→// GİDER YÖNETİMİ (#1)
+   878→// ============================================================
+   879→model Expense {
+   880→  id          String   @id @default(cuid())
+   881→  tenantId    String
+   882→  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   883→  category    String   // kira | personel | fatura | malzeme | pazarlama | sigorta | vergi | diger
+   884→  description String
+   885→  amount      Float
+   886→  currency    String   @default("TRY")
+   887→  date        DateTime @default(now())
+   888→  recurring   String?  // null | monthly | weekly | yearly
+   889→  vendor      String?  // tedarikçi/firma
+   890→  invoiceNo   String?
+   891→  status      String   @default("odendi") // odendi | beklemedi | odeme_yapilmedi
+   892→  createdById String?
+   893→  createdAt   DateTime @default(now())
+   894→  updatedAt   DateTime @updatedAt
+   895→
+   896→  @@index([tenantId, date])
+   897→  @@index([tenantId, category])
+   898→}
+   899→
+   900→// ============================================================
+   901→// RANDEVU SİSTEMİ (#5) — Berber/Kuaför/Dişçi/Güzellik
+   902→// ============================================================
+   903→model ServiceProvider {
+   904→  id          String   @id @default(cuid())
+   905→  tenantId    String
+   906→  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+   907→  name        String   // işletme adı: "Kuaför X"
+   908→  type        String   @default("berber") // berber | kuafor | disci | guzellik | spa | dovme
+   909→  address     String?
+   910→  city        String?
+   911→  district    String?
+   912→  phone       String?
+   913→  email       String?
+   914→  photo       String?
+   915→  workingHours String  @default("{}") // JSON: { "mon": {"start":"09:00","end":"18:00"}, ... }
+   916→  isActive    Boolean  @default(true)
+   917→  createdAt   DateTime @default(now())
+   918→  updatedAt   DateTime @updatedAt
+   919→
+   920→  staff       Staff[]
+   921→  services    Service[]
+   922→  appointments Appointment[]
+   923→}
+   924→
+   925→// Personel (berber, kuaför, diş hekimi, vs.)
+   926→model Staff {
+   927→  id          String   @id @default(cuid())
+   928→  providerId  String
+   929→  provider    ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+   930→  name        String
+   931→  title       String?  // "Usta Berber", "Diş Hekimi"
+   932→  photo       String?
+   933→  phone       String?
+   934→  bio         String?
+   935→  isActive    Boolean  @default(true)
+   936→  sortOrder   Int      @default(0)
+   937→  createdAt   DateTime @default(now())
+   938→
+   939→  appointments Appointment[]
+   940→  staffServices StaffService[]
+   941→}
+   942→
+   943→// Hizmet (saç kesimi, saç boyama, diş temizleme, vs.)
+   944→model Service {
+   945→  id          String   @id @default(cuid())
+   946→  providerId  String
+   947→  provider    ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+   948→  name        String   // "Saç Kesimi", "Saç Boyama"
+   949→  description String?
+   950→  duration    Int      @default(30) // dakika
+   951→  price       Float    @default(0)
+   952→  currency    String   @default("TRY")
+   953→  category    String?  // "Saç", "Cilt", "Diş"
+   954→  photo       String?
+   955→  isActive    Boolean  @default(true)
+   956→  sortOrder   Int      @default(0)
+   957→  createdAt   DateTime @default(now())
+   958→
+   959→  appointments Appointment[]
+   960→  staffServices StaffService[]
+   961→}
+   962→
+   963→// Personel-Hizmet bağlantısı (hangi personel hangi hizmeti verebilir)
+   964→model StaffService {
+   965→  id          String   @id @default(cuid())
+   966→  staffId     String
+   967→  staff       Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+   968→  serviceId   String
+   969→  service     Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+   970→
+   971→  @@unique([staffId, serviceId])
+   972→}
+   973→
+   974→// Randevu
+   975→model Appointment {
+   976→  id          String   @id @default(cuid())
+   977→  providerId  String
+   978→  provider    ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+   979→  staffId     String?
+   980→  staff       Staff?   @relation(fields: [staffId], references: [id], onDelete: SetNull)
+   981→  serviceId   String?
+   982→  service     Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+   983→  customerName String
+   984→  customerPhone String
+   985→  customerEmail String?
+   986→  customerNote String?
+   987→  date        DateTime // randevu tarihi/saati
+   988→  endTime     DateTime? // bitiş (date + service.duration)
+   989→  status      String   @default("beklemede") // beklemede | onaylandi | reddedildi | tamamlandi | iptal | gelmedi
+   990→  price       Float    @default(0)
+   991→  notes       String?  // internal notlar
+   992→  source      String   @default("web") // web | phone | walk_in
+   993→  reminderSent Boolean @default(false)
+   994→  createdAt   DateTime @default(now())
+   995→  updatedAt   DateTime @updatedAt
+   996→
+   997→  @@index([providerId, date])
+   998→  @@index([staffId, date])
+   999→  @@index([status])
+  1000→}
+  1001→
