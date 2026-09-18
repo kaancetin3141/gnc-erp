@@ -493,7 +493,7 @@ export function InvoicePdfDialog({ invoice, detail, onClose }: {
 
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-3xl max-h-[85vh] print:max-w-none print:max-h-none print:p-0 print:shadow-none">
+      <DialogContent className="max-w-4xl max-h-[85vh] print:max-w-none print:max-h-none print:p-0 print:shadow-none">
         <DialogHeader className="print:hidden">
           <div className="flex items-center justify-between">
             <DialogTitle>Fatura PDF Önizleme</DialogTitle>

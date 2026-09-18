@@ -7080,3 +7080,28 @@ Stage Summary:
 - Gizli bug'lar giderildi: workingHours objesi 500'u, orphan ProviderSettings, müdürün sipariş/irsaliye erişim eksikliği
 - Risk: QuotesView'daki eski TKL numaralı kayıtlar (dönüşüm öncesi) teklif olarak görünür; dağıtım öncesi tüm tenant'larda InvoiceTemplate kaydı yoksa varsayılan şablon kullanılır (DEFAULT_TPL güvenli fallback)
 - Sonraki adım önerileri: WhatsApp otomasyonu için Business API entegrasyonu, belgelere toplu PDF indirme, irsaliye onayında otomatik stok düşümü, appointment hatırlatma cron'u
+
+---
+Task ID: 2
+Agent: Z.ai Code (WebDevReview Cron Turu 2)
+Task: Proje durumu değerlendirmesi + QA + hata düzeltme + yeni özellikler (irsaliye sevk stok akışı, CSV dışa aktarma, kargo takip linki) + stil iyileştirmeleri
+
+Work Log:
+- QA: lint 0 error (9 pre-existing warning), dev.log temiz, agent-browser ile depocu/admin girişlerinde Belge Yönetimi regresyon testi — sorun yok
+- BUG FIX: PDF önizleme diyalogları max-w-3xl (768px) < A4 (210mm ≈ 794px) olduğu için içerik sağdan kesiliyordu → QuotePdfDialog, InvoicePdfDialog, IrsaliyePdfDialog, PackingListPdfDialog max-w-4xl yapıldı
+- BUG FIX: IrsaliyeDetailDialog'daki yeni Sevk Akışı butonları "qc is not defined" hatası veriyordu → bileşene useQueryClient eklendi, toast + invalidasyonlar çalışıyor
+- FEATURE (Faz 8 kalıntısı): İrsaliye OTOMATİK STOK AKIŞI — PATCH /api/irsaliye/[id]:
+  · status → sevk_edildi olduğunda kalemlerdeki ürünler için otomatik StockMovement 'cikis' + Product.stock düşümü (stokta olan kadar, çift düşme korumalı)
+  · sevk/teslim'den taslak/hazir/iptal'e geri alındığında otomatik 'giris' + stok iadesi
+  · Uçtan uca doğrulandı: stok 13 → sevk(-3) → 10 → geri al(+3) → 13; StockMovement kayıtları "İrsaliye sevkıyesi: IRS-XXX" / "İrsaliye geri alındı" gerekçeleriyle DB'de
+- FEATURE: SİPARİŞ DURUM SENKRONU — irsaliye sevk_edildi/teslim_edildi olduğunda bağlı sipariş otomatik sevk_yapildi/teslim_edildi olur + OrderTrackingStep oluşturulur
+- FEATURE: İrsaliye detayına SEVK AKIŞI hızlı aksiyon barı: "Sevk Et (stok otomatik düşer)" → "Teslim Alındı" → "Geri Al (Stok İade)" + İptal; toast'ta kaç kalem için stok güncellendiği gösterilir
+- FEATURE: Kargo takip linki — getCarrierTrackingUrl() (Yurtiçi, Aras, MNG, PTT, UPS, FedEx, DHL); irsaliye detay "Kargoyu Takip Et" linki + irsaliye PDF'inde "Online Takip" linki
+- FEATURE: Belge Yönetimi'ne "CSV Dışa Aktar" (export.data yetkili) — sipariş + fatura/irsaliye/çeki listesi durumları; depo rolünde tutar kolonu hariç
+- STYLE: Şirket kartı başlıklarına gradient + belge özet rozetleri (Fatura/İrsaliye/Çeki sayıları, izne göre gizli), globals.css'e mobil A4 ölçekleme (<=900px genişlik %100, padding 6mm) — mobil PDF önizleme artık taşmıyor
+
+Stage Summary:
+- Tur 2 tamlandı: 2 bug fix + 4 yeni özellik + stil iyileştirmeleri, hepsi browser'da doğrulandı
+- Stok akışı artık gerçek ERP davranışı: sevk = stok çıkış, geri al = iade, sipariş durumu otomatik senkron
+- Risk: Mevcut irsaliyelerde productId'siz kalemler stok akışına girmez (beklenen); ürün stoku 0 ise sevkide düşüm atlanır (negatif stok yok — bilinçli davranış)
+- Sonraki tur önerileri: appointment hatırlatma cron mini-servisi, teklif/sipariş PDF toplu indirme (zip), dashboard'a "bekleyen sevkiyatlar" widget'ı, irsaliye CSV/Excel ihracı

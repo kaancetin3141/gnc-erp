@@ -23,7 +23,7 @@ import {
 import { toast } from 'sonner'
 import {
   Truck, Plus, Search, X, RefreshCw, FileText, Pencil, Trash2,
-  Eye, Package, Scale,
+  Eye, Package, Scale, Send, CheckCheck, Undo2, Ban, ExternalLink,
 } from 'lucide-react'
 import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -31,10 +31,11 @@ import { useAppStore } from '@/store/app-store'
 import type { Irsaliye, IrsaliyeListResponse } from './parts/irsaliye-types'
 import {
   FILTER_STATUSES, getIrsaliyeStatusMeta,
-  getCarrierLabel, formatKg,
+  getCarrierLabel, getCarrierTrackingUrl, formatKg,
 } from './parts/irsaliye-utils'
 import { IrsaliyeFormDialog } from './irsaliye-form-dialog'
 import { IrsaliyePdfDialog } from './irsaliye-pdf-dialog'
+import { apiPatch } from '@/lib/api-client'
 
 // ============================================================
 // İrsaliye Listeleme View (orchestrator)
@@ -432,6 +433,7 @@ function IrsaliyeDetailDialog({
   onPdf: (i: Irsaliye) => void
   onDelete: () => void
 }) {
+  const qc = useQueryClient()
   const { data: detail, isLoading } = useQuery({
     queryKey: ['irsaliye', irsaliye?.id],
     queryFn: () => apiGet<Irsaliye>(`/api/irsaliye/${irsaliye!.id}`),
@@ -441,6 +443,23 @@ function IrsaliyeDetailDialog({
   if (!irsaliye) return null
   const d = detail ?? irsaliye
   const status = getIrsaliyeStatusMeta(d.status)
+
+  // Hızlı durum aksiyonları — sevk akışı: taslak/hazir → sevk_edildi → teslim_edildi
+  // sevk_edildi otomatik stok düşümü tetikler (API tarafında); geri alma stoka iade yapar
+  const changeStatus = async (newStatus: string, label: string) => {
+    try {
+      const res = await apiPatch<{ stockAdjustments?: number }>(`/api/irsaliye/${d.id}`, { status: newStatus })
+      const extra = res?.stockAdjustments
+        ? ` · ${res.stockAdjustments} kalem için stok otomatik güncellendi`
+        : ''
+      toast.success(`Durum: ${label}${extra}`)
+      qc.invalidateQueries({ queryKey: ['irsaliye'] })
+      qc.invalidateQueries({ queryKey: ['documents-orders'] })
+      qc.invalidateQueries({ queryKey: ['orders'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Durum güncellenemedi')
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -480,6 +499,53 @@ function IrsaliyeDetailDialog({
             </div>
           </div>
         </DialogHeader>
+
+        {/* HIZLI DURUM AKSİYONLARI — sevk akışı */}
+        <div className="flex items-center gap-2 flex-wrap p-2.5 rounded-lg border bg-muted/20">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Sevk Akışı:</span>
+          {(d.status === 'taslak' || d.status === 'hazir') && (
+            <Button
+              size="sm"
+              className="h-7 text-[11px] bg-violet-600 hover:bg-violet-700 text-white"
+              onClick={() => changeStatus('sevk_edildi', 'Sevk Edildi')}
+            >
+              <Send className="w-3 h-3 mr-1" /> Sevk Et
+              <span className="ml-1 font-normal opacity-80">(stok otomatik düşer)</span>
+            </Button>
+          )}
+          {d.status === 'sevk_edildi' && (
+            <Button
+              size="sm"
+              className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => changeStatus('teslim_edildi', 'Teslim Edildi')}
+            >
+              <CheckCheck className="w-3 h-3 mr-1" /> Teslim Alındı
+            </Button>
+          )}
+          {(d.status === 'sevk_edildi' || d.status === 'teslim_edildi') && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px]"
+              onClick={() => changeStatus('hazir', 'Hazır (stok iade edildi)')}
+            >
+              <Undo2 className="w-3 h-3 mr-1" /> Geri Al (Stok İade)
+            </Button>
+          )}
+          {d.status !== 'iptal' && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px] text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/30"
+              onClick={() => changeStatus('iptal', 'İptal')}
+            >
+              <Ban className="w-3 h-3 mr-1" /> İptal
+            </Button>
+          )}
+          {d.status === 'iptal' && (
+            <span className="text-[11px] text-red-600">Bu irsaliye iptal edildi.</span>
+          )}
+        </div>
 
         {isLoading ? (
           <div className="space-y-3">
@@ -522,7 +588,21 @@ function IrsaliyeDetailDialog({
                 <div className="font-semibold mb-1 text-foreground">Sevkiyat Bilgileri</div>
                 {d.shippingAddress && <div>{d.shippingAddress}</div>}
                 {d.carrier && <div>Kargo: {getCarrierLabel(d.carrier)}</div>}
-                {d.trackingNo && <div>Takip No: <span className="font-mono">{d.trackingNo}</span></div>}
+                {d.trackingNo && (
+                  <div>
+                    Takip No: <span className="font-mono">{d.trackingNo}</span>
+                    {getCarrierTrackingUrl(d.carrier, d.trackingNo) && (
+                      <a
+                        href={getCarrierTrackingUrl(d.carrier, d.trackingNo)!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-2 inline-flex items-center gap-0.5 text-violet-600 hover:underline dark:text-violet-400"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Kargoyu Takip Et
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

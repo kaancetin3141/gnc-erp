@@ -80,6 +80,30 @@ export function getCarrierLabel(value?: string | null): string {
   return CARRIERS.find((c) => c.value === value)?.label ?? value
 }
 
+// Kargo firmasına göre online takip linki (takip no varsa)
+export function getCarrierTrackingUrl(carrier?: string | null, trackingNo?: string | null): string | null {
+  if (!carrier || !trackingNo) return null
+  const no = encodeURIComponent(trackingNo)
+  switch (carrier) {
+    case 'yurtici':
+      return `https://www.yurticikargo.com/tr/online-takip?code=${no}`
+    case 'aras':
+      return `https://kargotakip.araskargo.com.tr/tracking/detail/?code=${no}`
+    case 'mng':
+      return `https://kargotakip.asistanim.mngkargo.com.tr/track?code=${no}`
+    case 'ptt':
+      return `https://gonderitakip.ptt.gov.tr/track/${no}`
+    case 'ups':
+      return `https://www.ups.com/track?tracknum=${no}`
+    case 'fedex':
+      return `https://www.fedex.com/fedextrack/?trknbr=${no}`
+    case 'dhl':
+      return `https://www.dhl.com/tr-tr/home/tracking.html?tracking-id=${no}`
+    default:
+      return null
+  }
+}
+
 // ----- Palet tipleri -----
 export const PALLET_TYPES: { value: string; label: string; icon: LucideIcon }[] = [
   { value: 'tahta', label: 'Tahta Palet', icon: Layers },

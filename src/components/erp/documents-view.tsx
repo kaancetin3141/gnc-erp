@@ -21,9 +21,9 @@ import { toast } from 'sonner'
 import {
   FileStack, Search, X, RefreshCw, Package, Receipt, Truck,
   ClipboardList, ChevronDown, ChevronRight, Building2,
-  FileCheck2, Loader2,
+  FileCheck2, Loader2, Download,
 } from 'lucide-react'
-import { formatDate, formatCurrency } from '@/lib/format'
+import { formatDate, formatCurrency, toCSV, downloadFile } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { hasPermission } from '@/lib/rbac'
@@ -72,6 +72,17 @@ const ORDER_STATUS_META: Record<string, { label: string; cls: string }> = {
   iptal: { label: 'İptal', cls: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900/60' },
 }
 
+// Fatura durumu etiketi (CSV için)
+function ORDER_DOC_LABEL(status: string): string {
+  switch (status) {
+    case 'odeme_bekliyor': return 'Ödeme Bekliyor'
+    case 'odendi': return 'Ödendi'
+    case 'gecikti': return 'Gecikti'
+    case 'iptal': return 'İptal'
+    default: return status
+  }
+}
+
 type GeneratedDoc =
   | { kind: 'invoice'; invoiceId: string }
   | { kind: 'irsaliye'; irsaliyeId: string; irsaliyeNumber: string }
@@ -91,6 +102,8 @@ export function DocumentsView() {
   const [openCompanies, setOpenCompanies] = useState<Record<string, boolean>>({})
   const [generating, setGenerating] = useState<string | null>(null) // "orderId:type"
   const [activeDoc, setActiveDoc] = useState<GeneratedDoc | null>(null)
+
+  const canExport = hasPermission(su, 'export.data')
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['documents-orders', search],
@@ -174,6 +187,29 @@ export function DocumentsView() {
     setOpenCompanies((prev) => ({ ...prev, [name]: !prev[name] }))
   }
 
+  // CSV dışa aktarma — siparişler + belge durumları
+  const handleExportCSV = () => {
+    if (orders.length === 0) {
+      toast.error('Dışa aktarılacak sipariş yok')
+      return
+    }
+    const rows = orders.map((o) => ({
+      'Sipariş No': o.number,
+      'Şirket': o.customer?.name ?? '',
+      'Tarih': formatDate(o.orderDate),
+      'Durum': ORDER_STATUS_META[o.status]?.label ?? o.status,
+      'Fatura No': o.invoice?.number ?? '',
+      'Fatura Durumu': o.invoice ? ORDER_DOC_LABEL(o.invoice.status) : 'Yok',
+      'İrsaliye No': o.irsaliyeler?.[0]?.number ?? '',
+      'İrsaliye Durumu': o.irsaliyeler?.[0] ? ORDER_STATUS_META[o.irsaliyeler[0].status]?.label ?? o.irsaliyeler[0].status : 'Yok',
+      'Çeki Listesi No': o.invoice?.packingListNo ?? '',
+      ...(hidePrices ? {} : { 'Tutar': o.totalAmount ?? 0, 'Para': o.currency ?? 'TRY' }),
+    }))
+    const csv = toCSV(rows)
+    downloadFile(csv, `belge-yonetimi-${new Date().toISOString().slice(0, 10)}.csv`)
+    toast.success(`${orders.length} sipariş dışa aktarıldı`)
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* Header */}
@@ -190,10 +226,18 @@ export function DocumentsView() {
             )}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={cn('w-4 h-4 mr-1.5', isFetching && 'animate-spin')} />
-          Yenile
-        </Button>
+        <div className="flex gap-2 flex-wrap">
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={orders.length === 0}>
+              <Download className="w-4 h-4 mr-1.5" />
+              CSV Dışa Aktar
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={cn('w-4 h-4 mr-1.5', isFetching && 'animate-spin')} />
+            Yenile
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="orders" className="space-y-4">
@@ -294,7 +338,7 @@ export function DocumentsView() {
                     {/* Şirket başlığı */}
                     <button
                       onClick={() => toggleCompany(company.name)}
-                      className="w-full flex items-center gap-3 p-4 bg-muted/40 hover:bg-muted/60 transition-colors text-left"
+                      className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-muted/50 to-muted/20 hover:from-muted/70 hover:to-muted/30 transition-all text-left"
                     >
                       {isOpen ? (
                         <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -302,7 +346,7 @@ export function DocumentsView() {
                         <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                       )}
                       <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 flex items-center justify-center shrink-0">
-                        <Building2 className="w-4.5 h-4.5 text-slate-600 dark:text-slate-300" />
+                        <Building2 className="w-4 h-4 text-slate-600 dark:text-slate-300" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold text-sm truncate">{company.name}</div>
@@ -311,6 +355,31 @@ export function DocumentsView() {
                           {company.segment ? ` · ${company.segment}` : ''}
                         </div>
                       </div>
+                      {/* Şirket belge özeti */}
+                      {(() => {
+                        const inv = company.orders.filter((o) => o.invoice).length
+                        const irs = company.orders.filter((o) => (o.irsaliyeler?.length ?? 0) > 0).length
+                        const pack = company.orders.filter((o) => o.invoice?.packingListNo).length
+                        return (
+                          <div className="hidden sm:flex items-center gap-1 shrink-0">
+                            {canSeeInvoice && inv > 0 && (
+                              <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/60 gap-0.5">
+                                <Receipt className="w-2.5 h-2.5" /> {inv}
+                              </Badge>
+                            )}
+                            {canSeeIrsaliye && irs > 0 && (
+                              <Badge variant="outline" className="text-[9px] bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:border-violet-900/60 gap-0.5">
+                                <Truck className="w-2.5 h-2.5" /> {irs}
+                              </Badge>
+                            )}
+                            {canSeePacking && pack > 0 && (
+                              <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/60 gap-0.5">
+                                <ClipboardList className="w-2.5 h-2.5" /> {pack}
+                              </Badge>
+                            )}
+                          </div>
+                        )
+                      })()}
                       <Badge variant="outline" className="text-[10px] shrink-0">
                         {company.orders.length}
                       </Badge>

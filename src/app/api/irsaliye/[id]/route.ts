@@ -170,6 +170,100 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     })
   }
 
+  // ==========================================================
+  // OTOMATİK STOK HAREKETİ (Faz 8 kalıntısı)
+  // · sevk_edildi → kalemlerdeki ürünler için OTOMATİK STOK ÇIKIŞI
+  //   (çift düşmeyi önlemek için: önceki durum sevk/teslim değilse)
+  // · sevk/teslim'den geri alınca veya iptal edilince → OTOMATİK STOK GİRİŞİ
+  // ==========================================================
+  let stockAdjustments = 0
+  const prevStatus = existing.status
+  const nextStatus = (updateData.status as string | undefined) ?? prevStatus
+
+  const shippedToStorage = (prevStatus !== 'sevk_edildi' && prevStatus !== 'teslim_edildi') && nextStatus === 'sevk_edildi'
+  const revertedFromShipment = (prevStatus === 'sevk_edildi' || prevStatus === 'teslim_edildi') &&
+    (nextStatus === 'taslak' || nextStatus === 'hazir' || nextStatus === 'iptal')
+
+  if (shippedToStorage || revertedFromShipment) {
+    // Kalem listesi: güncellenen satırlar varsa onlar, yoksa mevcut satırlar
+    const effectiveLines = newLines.length > 0
+      ? newLines
+      : await db.irsaliyeLine.findMany({ where: { irsaliyeId: id } })
+
+    for (const l of effectiveLines) {
+      if (!l.productId) continue
+      const qty = Math.floor(Math.abs(l.qty ?? 0))
+      if (qty <= 0) continue
+      const product = await db.product.findUnique({
+        where: { id: l.productId },
+        select: { id: true, stock: true },
+      })
+      if (!product) continue
+
+      if (shippedToStorage) {
+        // Stokta olan kadarını düş (negatife düşmez — fatura akışıyla aynı davranış)
+        const decrement = Math.min(qty, product.stock)
+        if (decrement <= 0) continue
+        await db.$transaction([
+          db.stockMovement.create({
+            data: {
+              productId: l.productId,
+              quantity: decrement,
+              type: 'cikis',
+              reason: `İrsaliye sevkıyesi: ${existing.number}`,
+              refType: 'irsaliye',
+              refId: id,
+            },
+          }),
+          db.product.update({ where: { id: l.productId }, data: { stock: { decrement } } }),
+        ])
+        stockAdjustments++
+      } else {
+        // Geri alma: stoka iade
+        await db.$transaction([
+          db.stockMovement.create({
+            data: {
+              productId: l.productId,
+              quantity: qty,
+              type: 'giris',
+              reason: `İrsaliye geri alındı: ${existing.number}`,
+              refType: 'irsaliye',
+              refId: id,
+            },
+          }),
+          db.product.update({ where: { id: l.productId }, data: { stock: { increment: qty } } }),
+        ])
+        stockAdjustments++
+      }
+    }
+  }
+
+  // ==========================================================
+  // SİPARİŞ DURUM SENKRONU — irsaliye sevk/teslim olursa
+  // sipariş durumu + takip adımı otomatik güncellenir
+  // ==========================================================
+  if (updated.orderId && (nextStatus === 'sevk_edildi' || nextStatus === 'teslim_edildi') && nextStatus !== prevStatus) {
+    const orderStatus = nextStatus === 'sevk_edildi' ? 'sevk_yapildi' : 'teslim_edildi'
+    const order = await db.order.findUnique({ where: { id: updated.orderId }, select: { status: true } })
+    if (order && order.status !== orderStatus) {
+      await db.order.update({
+        where: { id: updated.orderId },
+        data: {
+          status: orderStatus,
+          ...(orderStatus === 'teslim_edildi' ? { deliveredAt: new Date() } : {}),
+        },
+      })
+      await db.orderTrackingStep.create({
+        data: {
+          orderId: updated.orderId,
+          step: orderStatus,
+          note: `İrsaliye ${updated.number} ${nextStatus === 'sevk_edildi' ? 'sevk edildi' : 'teslim edildi'}`,
+          userId: user!.id,
+        },
+      })
+    }
+  }
+
   const refreshed = await db.irsaliye.findUnique({
     where: { id },
     include: {
@@ -186,10 +280,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     entity: 'irsaliye',
     entityId: id,
     before: safeJsonParse(JSON.stringify(existing), null),
-    after: safeJsonParse(JSON.stringify(refreshed ?? updated), null),
+    after: safeJsonParse(JSON.stringify({ ...(refreshed ?? updated), stockAdjustments }), null),
   })
 
-  return ok(refreshed ?? updated)
+  return ok({ ...(refreshed ?? updated), stockAdjustments })
 }
 
 // ============================================================

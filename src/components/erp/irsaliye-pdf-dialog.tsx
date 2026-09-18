@@ -17,7 +17,7 @@ import {
 } from '@/components/pdf/pdf-template'
 import type { IrsaliyePdfData } from './parts/irsaliye-types'
 import {
-  getIrsaliyeStatusMeta, getCarrierLabel, getPalletTypeLabel, formatKg,
+  getIrsaliyeStatusMeta, getCarrierLabel, getCarrierTrackingUrl, getPalletTypeLabel, formatKg,
 } from './parts/irsaliye-utils'
 
 interface Props {
@@ -50,7 +50,7 @@ export function IrsaliyePdfDialog({ irsaliyeId, irsaliyeNumber, open, onOpenChan
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto custom-scroll print:max-w-none print:max-h-none print:p-0 print:shadow-none print:overflow-visible">
+      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto custom-scroll print:max-w-none print:max-h-none print:p-0 print:shadow-none print:overflow-visible">
         <DialogHeader className="print:hidden">
           <div className="flex items-center justify-between">
             <div>
@@ -113,6 +113,19 @@ export function IrsaliyePdfDialog({ irsaliyeId, irsaliyeNumber, open, onOpenChan
                   {irs.shipping.trackingNo && (
                     <div className="text-xs text-gray-600 mt-0.5">
                       Takip No: <span className="font-mono">{irs.shipping.trackingNo}</span>
+                      {getCarrierTrackingUrl(irs.shipping.carrier, irs.shipping.trackingNo) && (
+                        <>
+                          {' · '}
+                          <a
+                            href={getCarrierTrackingUrl(irs.shipping.carrier, irs.shipping.trackingNo)!}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline"
+                          >
+                            Online Takip
+                          </a>
+                        </>
+                      )}
                     </div>
                   )}
                   {irs.shipping.shippingAddress && (
