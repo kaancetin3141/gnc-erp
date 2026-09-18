@@ -7105,3 +7105,27 @@ Stage Summary:
 - Stok akışı artık gerçek ERP davranışı: sevk = stok çıkış, geri al = iade, sipariş durumu otomatik senkron
 - Risk: Mevcut irsaliyelerde productId'siz kalemler stok akışına girmez (beklenen); ürün stoku 0 ise sevkide düşüm atlanır (negatif stok yok — bilinçli davranış)
 - Sonraki tur önerileri: appointment hatırlatma cron mini-servisi, teklif/sipariş PDF toplu indirme (zip), dashboard'a "bekleyen sevkiyatlar" widget'ı, irsaliye CSV/Excel ihracı
+
+---
+Task ID: 3
+Agent: Z.ai Code (WebDevReview Cron Turu 3)
+Task: Proje durumu değerlendirmesi + agent-browser QA + hata düzeltmeleri + yeni özellikler (Bekleyen Sevkiyatlar widget'ı, randevu hatırlatma cron servisi, Excel ihracı) + stil iyileştirmeleri
+
+Work Log:
+- QA: lint temizlendi (9 pre-existing "unused eslint-disable" warningu --fix ile giderildi → 0 error 0 warning); dev.log incelendi; agent-browser ile regresyon testi — Belge Yönetimi müdür görünümü (3 belge butonu) ve depocu görünümü (fiyatsız, sadece İrsaliye+Çeki Listesi) doğru çalışıyor
+- BUG FIX (QA bulgusu): Topbar VIEW_TITLES haritasında irsaliye/orders/quotes/invoices/erp/production/expenses/chat/appointments/site/market/social/distribution/admin/resident-portal görünümleri eksikti → tüm AppView değerleri için başlık eklendi; artık üst barda "Belge Yönetimi", "Siparişler" vb. doğru başlıklar görünüyor
+- OPS BULGUSU: Next.js dev server OOM (2.2GB RSS) ile ölmüştü ve otomatik yeniden başlamamıştı; ayrıca sandıkta `setsid/nohup &` ile başlatılan next dev süreci ~30-60s içinde sessizce öldürülmekte. Güvenilir yöntem: `( ... & )` çift-fork subshell. Sunucu `NODE_OPTIONS=--max-old-space-size=2048` ile yeniden ayağa kaldırıldı ve stabil
+- FEATURE: Dashboard "Bekleyen Sevkiyatlar" widget'ı — GET /api/dashboard'a `shipments` alanı eklendi (status in hazirlaniyor/onaylandi/uretimde olan siparişler, termin tarihine göre sıralı, max 8). Yeni PendingShipmentsWidget (dashboard-view.tsx): gradient Truck ikonu, durum rozetleri (getOrderStatusMeta), termin geçti uyarı rozeti (kırmızı, animate-pulse), tutar, tıklanınca Siparişler'e gider; header'daki buton Belge Yönetimi'ne açar
+- GİZLİLİK FIX: depo rolü (stock VE depo_sorumlusu) için dashboard shipments sorgusunda totalAmount/currency alanları döndürülmüyor (canSeeAmounts = invoices.view || erp.manage); browser'da doğrulandı — müdür tutar görüyor, depocu görmüyor. Depo rolü kısıtlı ekranına da widget eklendi (tutarsız)
+- FEATURE: Randevu hatırlatma otomasyonu — yeni POST/GET /api/cron/reminders (x-cron-secret header zorunlu, CRON_SECRET .env'e eklendi): önümüzdeki 24 saatteki onaylı randevulara reminderSent işareti + müşteri/işletme WhatsApp hatırlatma linki üretimi + audit log; 2+ saat onay bekleyen randevuları tespit edip escalation kaydı yazıyor
+- FEATURE: Yeni mini-service mini-services/appointment-reminders (port 3011, node-cron */30 dk, /run-now manuel tetikleme endpoint'i, /health). İlk çalışmada doğrulandı: 1 hatırlatma işaretlendi (EFSF62PX, WhatsApp linki üretildi), 1 onay bekleyen tespit edildi (04E85MQ8); audit log'a `action=reminder` kayıtları düştü
+- FEATURE: Bildirim akışına randevu bildirimleri — GET /api/notifications artık (a) onay bekleyen randevular (urgent) ve (b) önümüzdeki 24 saatteki onaylı randevular (info/warning) döndürüyor; NotificationCenter'a takvim ikonları (CalendarClock/CalendarCheck), tip etiketleri ve tıklanınca Randevular görünümüne yönlendirme eklendi. Kuaför Yöneticisi girişinde zil rozeti "3" göründü, popover ve yönlendirme browser'da doğrulandı
+- FEATURE: İrsaliye Listesi'ne Excel ihracı — IrsaliyeView header'ına "Excel" butonu (xlsx kütüphanesi, otomatik kolon genişlikleri): İrsaliye No, Tarih, Müşteri, Sipariş No, Durum, Net/Brüt Ağırlık, Palet, Taşıyıcı, Takip No, Not kolonları; "4 irsaliye Excel olarak indirildi" toast'ı ile doğrulandı
+- STYLE: Widget kartlarında gradient ikon + hover shadow geçişleri, satır hover:bg-muted, divide-y liste, max-h + custom-scroll; test siparişleri (SIP-2026-002/003) gerçekçi not + termin tarihleriyle güncellendi (widget demosu kalıcı ve anlamlı)
+
+Stage Summary:
+- Tur 3 tamamlandı: 1 gizli privacy bug fix + 1 topbar başlık fix'i + 3 yeni özellik (sevkiyat widget'ı, hatırlatma cron zinciri, Excel ihracı) + lint 0/0
+- Hatırlatma zinciri uçtan uca: cron servisi → secret'lı API → reminderSent işaretleme → WhatsApp linki → audit log → in-app bildirim → tıkla → Randevular ekranı
+- Risk: sandbox'ta dev server yönetimi kırılgan (OOM geçmişi; manuel başlatma için çift-fork gerekli) — sonraki turda sunucu ölürse `(cd /home/z/my-project && NODE_OPTIONS="--max-old-space-size=2048" nohup npx next dev -p 3000 >> dev.log 2>&1 &)` kullanılmalı; Chrome bellek yerken QA sırasında browser kapatılmalı
+- Risk: cron-automation (port 3010) servisi şu an çalışmıyor (boot'ta crash olmuş olabilir) — bir sonraki turda log'undan kontrol edilmeli
+- Sonraki tur önerileri: şirket bazlı toplu belge yazdırma (combined print view), WhatsApp Business API entegrasyonu (üretilen linklerin otomatik gönderimi), bekleyen sevkiyat widget'ından hızlı "İrsaliye Üret" aksiyonu, appointment hatırlatma e-posta kanalı

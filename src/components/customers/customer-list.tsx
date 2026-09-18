@@ -876,7 +876,7 @@ export function CustomerList() {
                       <TableCell className="pl-4">
                         <div className="flex items-start gap-3">
                           {c.logo ? (
-                            // eslint-disable-next-line @next/next/no-img-element
+                             
                             <img
                               src={c.logo}
                               alt={c.name}

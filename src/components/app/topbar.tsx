@@ -23,7 +23,22 @@ const VIEW_TITLES: Record<string, string> = {
   reports: 'Raporlar & Analiz',
   users: 'Kullanıcı & Rol Yönetimi',
   settings: 'Ayarlar',
+  chat: 'Mesajlar',
+  erp: 'Ürün & Stok',
+  quotes: 'Teklifler',
+  invoices: 'Faturalar',
+  orders: 'Siparişler',
+  production: 'Üretim Listesi',
+  irsaliye: 'Belge Yönetimi',
+  expenses: 'Giderler',
   cafe: 'Kafe ERP',
+  market: 'Market Yönetimi',
+  site: 'Site Yönetimi',
+  'resident-portal': 'Sakin Portalı',
+  appointments: 'Randevular',
+  social: 'Sosyal Medya',
+  distribution: 'Dağıtım Merkezi',
+  admin: 'Admin Paneli',
 }
 
 export function Topbar() {

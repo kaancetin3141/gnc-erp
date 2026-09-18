@@ -145,7 +145,7 @@ export function PhotoUpload({
           style={{ width: sizePx, height: sizePx }}
         >
           {preview ? (
-            // eslint-disable-next-line @next/next/no-img-element
+             
             <img
               src={preview}
               alt={label || 'Fotoğraf'}

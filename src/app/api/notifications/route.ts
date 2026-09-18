@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     ...(visFilter.ownerId ? { ownerId: visFilter.ownerId } : {}),
   }
 
-  const [overdueTasks, dueSoonTasks, staleCustomers, dealsClosingSoon, wonDealsToday] = await Promise.all([
+  const [overdueTasks, dueSoonTasks, staleCustomers, dealsClosingSoon, wonDealsToday, pendingAppointments, upcomingAppointments] = await Promise.all([
     db.task.findMany({
       where: { ...taskFilter, dueDate: { lt: now } },
       include: { customer: { select: { id: true, name: true } } },
@@ -63,16 +63,44 @@ export async function GET(req: NextRequest) {
         updatedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
       },
     }),
+    // Onay bekleyen randevular (işletmeye uyarı)
+    db.appointment.findMany({
+      where: {
+        status: 'beklemede',
+        date: { gte: now },
+        provider: { tenantId: user!.tenantId },
+      },
+      include: {
+        provider: { select: { id: true, name: true } },
+        service: { select: { id: true, name: true } },
+      },
+      orderBy: { date: 'asc' },
+      take: 5,
+    }),
+    // Önümüzdeki 24 saatteki onaylı randevular (hatırlatma)
+    db.appointment.findMany({
+      where: {
+        status: 'onaylandi',
+        date: { gte: now, lte: new Date(now.getTime() + 24 * 60 * 60 * 1000) },
+        provider: { tenantId: user!.tenantId },
+      },
+      include: {
+        provider: { select: { id: true, name: true } },
+        service: { select: { id: true, name: true } },
+      },
+      orderBy: { date: 'asc' },
+      take: 5,
+    }),
   ])
 
   const notifications: Array<{
     id: string
-    type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal'
+    type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal' | 'appointment_pending' | 'appointment_reminder'
     severity: 'urgent' | 'warning' | 'info' | 'success'
     title: string
     description: string
     entityId?: string
-    entityType?: 'task' | 'customer' | 'deal'
+    entityType?: 'task' | 'customer' | 'deal' | 'appointment'
     meta?: Record<string, unknown>
   }> = []
 
@@ -139,8 +167,42 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  // Onay bekleyen randevular — otomatik onay kapalıysa işletme onaylamalı
+  for (const a of pendingAppointments) {
+    const hoursWaiting = Math.floor((now.getTime() - new Date(a.createdAt).getTime()) / (1000 * 60 * 60))
+    notifications.push({
+      id: `ap_${a.id}`,
+      type: 'appointment_pending',
+      severity: 'urgent',
+      title: `Onay bekleyen randevu — ${a.customerName}`,
+      description: `${a.service?.name ?? 'Hizmet'} · ${formatDateTimeLabel(a.date)} · ${hoursWaiting} saatten uzun süredir bekliyor`,
+      entityType: 'appointment',
+      meta: { appointmentId: a.id, providerName: a.provider.name, appointmentNo: a.id.slice(-8).toUpperCase() },
+    })
+  }
+
+  // Yaklaşan onaylı randevular — hatırlatma
+  for (const a of upcomingAppointments) {
+    const hoursLeft = Math.floor((new Date(a.date).getTime() - now.getTime()) / (1000 * 60 * 60))
+    notifications.push({
+      id: `ar_${a.id}`,
+      type: 'appointment_reminder',
+      severity: hoursLeft <= 3 ? 'warning' : 'info',
+      title: `Yaklaşan randevu — ${a.customerName}`,
+      description: `${a.service?.name ?? 'Hizmet'} · ${formatDateTimeLabel(a.date)} · ${hoursLeft <= 0 ? 'şimdi' : `${hoursLeft} saat sonra`}`,
+      entityType: 'appointment',
+      meta: { appointmentId: a.id, providerName: a.provider.name, appointmentNo: a.id.slice(-8).toUpperCase(), reminderSent: a.reminderSent },
+    })
+  }
+
   const urgentCount = notifications.filter((n) => n.severity === 'urgent').length
   const totalCount = notifications.length
 
   return ok({ notifications, urgentCount, totalCount })
+}
+
+function formatDateTimeLabel(d: Date | string) {
+  const dt = new Date(d)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(dt.getDate())}.${pad(dt.getMonth() + 1)} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`
 }

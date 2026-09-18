@@ -12,10 +12,11 @@ import { Progress } from '@/components/ui/progress'
 import {
   Users, DollarSign, TrendingUp, CheckSquare, AlertTriangle,
   Phone, Mail, MessageCircle, MapPin, StickyNote, Calendar,
-  ArrowUpRight, ArrowRight, Building2, Clock, ShieldAlert,
+  ArrowUpRight, ArrowRight, Building2, Clock, ShieldAlert, Truck,
 } from 'lucide-react'
 import { formatCurrency, formatRelative, formatDate } from '@/lib/format'
 import { DEAL_STAGES } from '@/lib/constants'
+import { getOrderStatusMeta } from '@/components/erp/parts/order-utils'
 import { cn } from '@/lib/utils'
 import { getTenantSector, SECTOR_META } from '@/lib/tenant-sector'
 import {
@@ -55,6 +56,16 @@ interface DashboardData {
     assignee: { id: string; name: string } | null
     customer: { id: string; name: string } | null
   }[]
+  // Bekleyen sevkiyatlar — henüz sevk edilmemiş siparişler
+  shipments?: {
+    pendingCount: number
+    orders: {
+      id: string; number: string; status: string
+      orderDate: string; expectedDelivery: string | null
+      totalAmount?: number; currency?: string
+      customer: { id: string; name: string } | null
+    }[]
+  }
   // Sektör bazlı opsiyonel alanlar
   cafe?: CafeDashboardData['cafe']
   market?: MarketDashboardData['market']
@@ -87,10 +98,11 @@ export function DashboardView() {
     refetchInterval: 60_000,
   })
 
-  // Depo rolü için kısıtlı ekran
+  // Depo rolü için kısıtlı ekran — ancak bekleyen sevkiyatlar görünür (orders.view)
   if (user?.role === 'stock' || data?.restricted) {
+    const stockShipments = data?.shipments
     return (
-      <div className="flex items-center justify-center min-h-[60vh] p-6">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 gap-4">
         <Card className="p-8 max-w-md text-center">
           <div className="w-14 h-14 rounded-full bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center mx-auto mb-4">
             <ShieldAlert className="w-7 h-7 text-amber-500" />
@@ -98,9 +110,14 @@ export function DashboardView() {
           <h3 className="font-semibold text-lg mb-2">Depo rolü için erişim kısıtlıdır</h3>
           <p className="text-sm text-muted-foreground">
             Satış ve müşteri verileri gizlilik gereği yalnızca yönetici/admin rolleri tarafından görüntülenebilir.
-            Depo rolü olarak üretim listesine erişebilirsiniz.
+            Depo rolü olarak üretim listesine ve belge yönetimine erişebilirsiniz.
           </p>
         </Card>
+        {stockShipments && stockShipments.orders.length > 0 && (
+          <div className="w-full max-w-2xl">
+            <PendingShipmentsWidget shipments={stockShipments} showAmounts={false} />
+          </div>
+        )}
       </div>
     )
   }
@@ -408,6 +425,11 @@ function CrmDashboard({ data }: { data: DashboardData }) {
         ))}
       </div>
 
+      {/* Bekleyen sevkiyatlar — sevk edilmemiş siparişler (ERP akışı) */}
+      {data.shipments && data.shipments.orders.length > 0 && (
+        <PendingShipmentsWidget shipments={data.shipments} showAmounts />
+      )}
+
       {/* İkincil satır */}
       <div className="grid lg:grid-cols-3 gap-4">
         {/* Pipeline grafiği */}
@@ -674,6 +696,109 @@ function CrmDashboard({ data }: { data: DashboardData }) {
         </Card>
       </div>
     </>
+  )
+}
+
+// ============================================================
+// Bekleyen Sevkiyatlar widget — sevk edilmemiş siparişler
+// ERP akışı: hazırlanıyor / onaylandı / üretimde durumundaki
+// siparişler termin tarihine göre listelenir. Depo rolünde
+// tutarlar gizlidir (showAmounts=false).
+// ============================================================
+function PendingShipmentsWidget({
+  shipments,
+  showAmounts = true,
+}: {
+  shipments: NonNullable<DashboardData['shipments']>
+  showAmounts?: boolean
+}) {
+  const { setView } = useAppStore()
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+  return (
+    <Card className="overflow-hidden hover:shadow-md transition-shadow duration-300">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-sm shrink-0">
+              <Truck className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <CardTitle className="text-base leading-tight">Bekleyen Sevkiyatlar</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Sevk edilmeyi bekleyen <span className="font-semibold text-foreground">{shipments.pendingCount}</span> sipariş
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setView('irsaliye')}>
+            Belge Yönetimi <ArrowRight className="w-3 h-3 ml-1" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="divide-y divide-border/60 max-h-[320px] overflow-y-auto custom-scroll">
+          {shipments.orders.map((order) => {
+            const meta = getOrderStatusMeta(order.status)
+            const StatusIcon = meta.icon
+            const overdue =
+              order.expectedDelivery != null && new Date(order.expectedDelivery) < today
+            return (
+              <div
+                key={order.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`${order.number} sipariş detayı`}
+                className="flex items-center gap-3 px-5 py-3 hover:bg-muted/50 transition-colors cursor-pointer focus-visible:outline-none focus-visible:bg-muted/50"
+                onClick={() => setView('orders')}
+                onKeyDown={(e) => e.key === 'Enter' && setView('orders')}
+              >
+                <div className={cn(
+                  'w-9 h-9 rounded-lg border flex items-center justify-center shrink-0',
+                  meta.color,
+                )}>
+                  <StatusIcon className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold">{order.number}</span>
+                    <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0 h-4.5', meta.color)}>
+                      {meta.label}
+                    </Badge>
+                    {overdue && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4.5 text-red-600 border-red-200 bg-red-50 dark:bg-red-950/30 animate-pulse">
+                        Termin geçti
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {order.customer?.name ?? 'Müşteri yok'}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  {order.expectedDelivery ? (
+                    <div className={cn(
+                      'text-xs font-medium flex items-center gap-1 justify-end',
+                      overdue ? 'text-red-600' : 'text-muted-foreground',
+                    )}>
+                      <Clock className="w-3 h-3" />
+                      {formatDate(order.expectedDelivery)}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted-foreground/60">Termin yok</div>
+                  )}
+                  {showAmounts && order.totalAmount != null && (
+                    <div className="text-sm font-semibold mt-0.5">
+                      {formatCurrency(order.totalAmount, order.currency || 'TRY')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

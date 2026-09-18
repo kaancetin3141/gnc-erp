@@ -12,17 +12,17 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import {
   Bell, Clock, AlertTriangle, Users, TrendingUp, Trophy,
-  CheckCircle2, ChevronRight, CheckCheck, X,
+  CheckCircle2, ChevronRight, CheckCheck, X, CalendarClock, CalendarCheck,
 } from 'lucide-react'
 
 interface Notification {
   id: string
-  type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal'
+  type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal' | 'appointment_pending' | 'appointment_reminder'
   severity: 'urgent' | 'warning' | 'info' | 'success'
   title: string
   description: string
   entityId?: string
-  entityType?: 'task' | 'customer' | 'deal'
+  entityType?: 'task' | 'customer' | 'deal' | 'appointment'
   meta?: Record<string, unknown>
 }
 
@@ -45,6 +45,14 @@ const TYPE_LABELS: Record<string, string> = {
   stale_customer: 'İletişimsiz Müşteri',
   deal_closing: 'Kapanış Yakını',
   won_deal: 'Kazanılan Fırsat',
+  appointment_pending: 'Onay Bekleyen Randevu',
+  appointment_reminder: 'Yaklaşan Randevu',
+}
+
+// Randevu bildirimleri takvim ikonu kullanır
+const TYPE_ICONS: Partial<Record<string, typeof Clock>> = {
+  appointment_pending: CalendarClock,
+  appointment_reminder: CalendarCheck,
 }
 
 const READ_STORAGE_KEY = 'gnc-notifications-read'
@@ -136,6 +144,8 @@ export function NotificationCenter() {
       setView('tasks')
     } else if (n.type === 'deal_closing' || n.type === 'won_deal') {
       setView('pipeline')
+    } else if (n.type === 'appointment_pending' || n.type === 'appointment_reminder') {
+      setView('appointments')
     }
   }
 
@@ -225,7 +235,7 @@ export function NotificationCenter() {
 
             {!isLoading && notifications.map((n) => {
               const config = SEVERITY_CONFIG[n.severity]
-              const Icon = config.icon
+              const Icon = TYPE_ICONS[n.type] ?? config.icon
               const isUnread = !readIds.has(n.id)
               return (
                 <button

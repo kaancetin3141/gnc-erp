@@ -261,7 +261,7 @@ export function ProductionView() {
                       <TableCell className="pl-4">
                         <div className="flex items-start gap-3">
                           {it.productPhoto ? (
-                            // eslint-disable-next-line @next/next/no-img-element
+                             
                             <img
                               src={it.productPhoto}
                               alt={it.productName || it.description}

@@ -203,7 +203,7 @@ export function ProductDetailDialog({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex items-start gap-3">
                 {product.photo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
+                   
                   <img
                     src={product.photo}
                     alt={product.name}

@@ -96,7 +96,7 @@ export function ProductTable({
                     )}
                     <div className="flex items-start gap-3">
                       {p.photo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
+                         
                         <img
                           src={p.photo}
                           alt={p.name}

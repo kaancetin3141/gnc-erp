@@ -21,9 +21,10 @@ import {
   AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
+import * as XLSX from 'xlsx'
 import {
   Truck, Plus, Search, X, RefreshCw, FileText, Pencil, Trash2,
-  Eye, Package, Scale, Send, CheckCheck, Undo2, Ban, ExternalLink,
+  Eye, Package, Scale, Send, CheckCheck, Undo2, Ban, ExternalLink, FileSpreadsheet,
 } from 'lucide-react'
 import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -116,6 +117,46 @@ export function IrsaliyeView() {
     }
   }
 
+  // Excel dışa aktarma — filtrelenmiş irsaliye listesi (.xlsx)
+  const handleExportExcel = () => {
+    if (items.length === 0) {
+      toast.error('Dışa aktarılacak irsaliye yok')
+      return
+    }
+    const rows = items.map((i) => ({
+      'İrsaliye No': i.number,
+      'Tarih': formatDate(i.date),
+      'Müşteri': i.customer?.name ?? '',
+      'Sipariş No': i.order?.number ?? '',
+      'Durum': getIrsaliyeStatusMeta(i.status).label,
+      'Net Ağırlık (kg)': i.totalNetWeight ?? 0,
+      'Brüt Ağırlık (kg)': i.totalGrossWeight ?? 0,
+      'Palet Sayısı': i.palletCount ?? '',
+      'Taşıyıcı': getCarrierLabel(i.carrier),
+      'Takip No': i.trackingNo ?? '',
+      'Not': i.notes ?? '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws['!cols'] = Object.keys(rows[0]).map((k) => ({
+      wch: Math.max(k.length + 2, Math.min(18, ...rows.map((r) => String((r as Record<string, unknown>)[k] ?? '').length + 2))),
+    }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'İrsaliyeler')
+    const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    const blob = new Blob([out], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `irsaliyeler-${new Date().toISOString().slice(0, 10)}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.success(`${items.length} irsaliye Excel olarak indirildi`)
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* Header */}
@@ -131,10 +172,16 @@ export function IrsaliyeView() {
             {stats.teslim > 0 && <span className="ml-2 text-emerald-600 font-medium">· {stats.teslim} teslim</span>}
           </p>
         </div>
-        <Button size="sm" onClick={() => setAddOpen(true)} className="bg-violet-600 hover:bg-violet-700">
-          <Plus className="w-4 h-4 mr-1.5" />
-          Yeni İrsaliye
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={items.length === 0}>
+            <FileSpreadsheet className="w-4 h-4 mr-1.5 text-emerald-600" />
+            Excel
+          </Button>
+          <Button size="sm" onClick={() => setAddOpen(true)} className="bg-violet-600 hover:bg-violet-700">
+            <Plus className="w-4 h-4 mr-1.5" />
+            Yeni İrsaliye
+          </Button>
+        </div>
       </div>
 
       {/* Stats row */}

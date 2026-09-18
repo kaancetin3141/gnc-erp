@@ -1563,7 +1563,7 @@ export function Customer360() {
             <div className="flex-1 min-w-0">
               <div className="flex items-start gap-3">
               {customer.logo ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                 
                 <img
                   src={customer.logo}
                   alt={customer.name}

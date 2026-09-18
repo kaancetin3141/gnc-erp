@@ -60,6 +60,21 @@ export async function GET(req: NextRequest) {
 
   // PRIVACY-TEMPLATES (#3): depo rolü için dashboard kısıtlı
   if (user!.role === 'stock') {
+    // Depo rolü: siparişler görünür (orders.view) — bekleyen sevkiyatları göster
+    // GİZLİLİK: fiyat/tutar alanları depo rolüne dönmez
+    const pendingShipmentsStock = await db.order.findMany({
+      where: {
+        tenantId: user!.tenantId,
+        status: { in: ['hazirlaniyor', 'onaylandi', 'uretimde'] },
+      },
+      select: {
+        id: true, number: true, status: true,
+        orderDate: true, expectedDelivery: true,
+        customer: { select: { id: true, name: true } },
+      },
+      orderBy: { expectedDelivery: 'asc' },
+      take: 8,
+    })
     return ok({
       restricted: true,
       message: 'Depo rolü için dashboard kısıtlı',
@@ -72,6 +87,7 @@ export async function GET(req: NextRequest) {
       activitiesOverTime: [],
       recentActivities: [],
       upcomingTasks: [],
+      shipments: { pendingCount: pendingShipmentsStock.length, orders: pendingShipmentsStock },
     })
   }
 
@@ -92,6 +108,10 @@ export async function GET(req: NextRequest) {
   // CRM sektörü ise paralel olarak mevcut dashboard verileri toplanır
   const isCrm = sector === 'crm'
   const visFilter = isCrm ? await getVisibilityFilter(user!) : null
+
+  // Fatura tutarlarını görebilir mi? (müdür/admin evet, depocu hayır)
+  const canSeeAmounts =
+    user!.permissions.includes('invoices.view') || user!.permissions.includes('erp.manage')
 
   const visibleUserIds: string[] | undefined = visFilter?.ownerId?.in
 
@@ -193,6 +213,25 @@ export async function GET(req: NextRequest) {
       },
       select: { date: true, type: true },
     }),
+    // Bekleyen sevkiyatlar — henüz sevk edilmemiş siparişler (B2B ERP akışı)
+    // GİZLİLİK: fatura göremeyen roller (depocu vb.) için tutar alanları dönmez
+    db.order.findMany({
+      where: {
+        tenantId: user!.tenantId,
+        status: { in: ['hazirlaniyor', 'onaylandi', 'uretimde'] },
+      },
+      select: {
+        id: true,
+        number: true,
+        status: true,
+        orderDate: true,
+        expectedDelivery: true,
+        customer: { select: { id: true, name: true } },
+        ...(canSeeAmounts ? { totalAmount: true, currency: true } : {}),
+      },
+      orderBy: { expectedDelivery: 'asc' },
+      take: 8,
+    }),
   ]) : null
 
   const [sectorData, crmResults] = await Promise.all([sectorDataPromise, crmQueries])
@@ -213,7 +252,7 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  // CRM sektörü
+  // CRM sektörü için paralel sorgular; değilse null döner
   const [
     totalCustomers,
     newCustomersThisMonth,
@@ -226,6 +265,7 @@ export async function GET(req: NextRequest) {
     upcomingTasks,
     pipelineDeals,
     activities30d,
+    pendingShipmentOrders,
   ] = crmResults!
 
   // Pipeline by stage
@@ -280,5 +320,9 @@ export async function GET(req: NextRequest) {
     activitiesOverTime,
     recentActivities,
     upcomingTasks,
+    shipments: {
+      pendingCount: pendingShipmentOrders.length,
+      orders: pendingShipmentOrders,
+    },
   })
 }

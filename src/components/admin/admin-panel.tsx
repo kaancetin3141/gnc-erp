@@ -361,7 +361,7 @@ function CustomerTable({
               <TableCell className="pl-3">
                 <div className="flex items-center gap-2.5 min-w-0">
                   {c.logo ? (
-                    // eslint-disable-next-line @next/next/no-img-element
+                     
                     <img src={c.logo} alt={c.name} className="w-8 h-8 rounded-lg object-cover border border-border shrink-0" />
                   ) : (
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center shrink-0">
@@ -589,7 +589,7 @@ function CustomerDetail({ customer, onOpen360, onChangeType }: {
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start gap-3">
           {customer.logo ? (
-            // eslint-disable-next-line @next/next/no-img-element
+             
             <img src={customer.logo} alt={customer.name} className="w-14 h-14 rounded-xl object-cover border border-border" />
           ) : (
             <div className={cn('w-14 h-14 rounded-xl flex items-center justify-center', meta.color)}>
