@@ -193,7 +193,7 @@ export function QuoteFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto custom-scroll">
+      <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-y-auto custom-scroll">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-emerald-600" />

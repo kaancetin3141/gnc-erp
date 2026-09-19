@@ -502,7 +502,7 @@ function ManualBookingDialog({ provider, open, onOpenChange, onSuccess }: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>Manuel Randevu</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label className="text-xs">Hizmet</Label>
@@ -562,7 +562,7 @@ function ProviderCreateDialog({ tenantId, onCreated }: { tenantId: string; onCre
         <Plus className="w-4 h-4 mr-1.5" /> İşletme Ekle
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Yeni İşletme</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label className="text-xs">İşletme Adı *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>

@@ -56,6 +56,21 @@ interface OrderLineDraft {
   color: string | null
 }
 
+// Fiyat alanlarını sıfırla — çeki listesi isteyen depo rolüne
+// API yanıtında fiyat sızmasını engeller (UI zaten fiyat göstermez)
+function stripInvoicePrices<T extends {
+  subtotal: number; taxTotal: number; total: number
+  lines?: { unitPrice: number; taxRate: number; lineTotal: number }[] | null
+}>(invoice: T): T {
+  return {
+    ...invoice,
+    subtotal: 0,
+    taxTotal: 0,
+    total: 0,
+    lines: (invoice.lines ?? []).map((l) => ({ ...l, unitPrice: 0, taxRate: 0, lineTotal: 0 })),
+  }
+}
+
 // Siparişin kalemlerini çıkar: önce bağlı teklif/proforma satırları,
 // yoksa üretim listesi kalemleri, o da yoksa tek satır sipariş özeti.
 async function buildOrderLines(orderId: string): Promise<OrderLineDraft[]> {
@@ -132,11 +147,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // Yetki kontrolü — kullanıcı isteği:
-  // · fatura/çeki listesi → erp.manage VEYA invoices.view (müdür + admin)
-  // · irsaliye            → irsaliye.view (müdür + depocu)
+  // · fatura         → erp.manage VEYA invoices.view (müdür + admin)
+  // · irsaliye       → irsaliye.view (müdür + depocu)
+  // · çeki listesi   → fiyat içermez! irsaliye.view YETERLİ (müdür + depocu)
   const perms = user!.permissions
-  if (type === 'irsaliye') {
-    if (!perms.includes('irsaliye.view')) return err('İrsaliye görüntüleme yetkiniz yok', 403)
+  if (type === 'irsaliye' || type === 'packing_list') {
+    if (!perms.includes('irsaliye.view') && !perms.includes('erp.manage') && !perms.includes('invoices.view')) {
+      return err(type === 'irsaliye' ? 'İrsaliye görüntüleme yetkiniz yok' : 'Çeki listesi görüntüleme yetkiniz yok', 403)
+    }
   } else {
     if (!perms.includes('erp.manage') && !perms.includes('invoices.view')) {
       return err('Fatura görüntüleme yetkiniz yok', 403)
@@ -262,10 +280,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
+    // Depo rolü (invoices.view yok) fiyatsız sürüm alır
+    const canSeePrices = perms.includes('erp.manage') || perms.includes('invoices.view')
     return ok({
       type,
       created: !order.invoice,
-      document: invoice,
+      document: canSeePrices ? invoice : stripInvoicePrices(invoice),
       documentType: 'invoice',
     })
   }

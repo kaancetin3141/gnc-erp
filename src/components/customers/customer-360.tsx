@@ -1334,7 +1334,7 @@ function FilesTab({ customerId }: { customerId: string }) {
       {/* Preview dialog */}
       {previewUrl && (
         <Dialog open={!!previewUrl} onOpenChange={(open) => { if (!open) setPreviewUrl(null) }}>
-          <DialogContent className="max-w-3xl max-h-[80vh]">
+          <DialogContent className="sm:max-w-3xl max-h-[80vh]">
             <DialogHeader>
               <DialogTitle>Dosya Önizleme</DialogTitle>
             </DialogHeader>
@@ -2253,7 +2253,7 @@ function PrintDocument({ type, doc, onClose }: {
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
-      <DialogContent className="max-w-2xl max-h-[85vh] print:max-w-none print:max-h-none print:p-0 print:shadow-none">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] print:max-w-none print:max-h-none print:p-0 print:shadow-none">
         <DialogHeader className="print:hidden">
           <div className="flex items-center justify-between">
             <DialogTitle>{type === 'quote' ? 'Teklif Önizleme' : 'Fatura Önizleme'}</DialogTitle>

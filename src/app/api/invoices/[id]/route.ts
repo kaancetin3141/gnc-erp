@@ -11,14 +11,16 @@ const INVOICE_STATUSES = ['odeme_bekliyor', 'odendi', 'gecikti', 'iptal']
 
 // ============================================================
 // GET — tekil fatura
-// erp.manage VEYA invoices.view yetkisi yeterli
-// (müdür Belge Yönetimi'nden fatura PDF'i görebilsin)
+// erp.manage VEYA invoices.view yetkisi yeterli (fiyatlı)
+// irsaliye.view sahipleri (depocu) ÇEKİ LİSTESİ için fiyatsız
+// sürümü görür — kullanıcının depocu talebi gereği.
 // ============================================================
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   if (!user) return err('Oturum açmanız gerekli', 401)
-  const canView = user.permissions.includes('erp.manage') || user.permissions.includes('invoices.view')
-  if (!canView) return err('Fatura görüntüleme yetkiniz yok', 403)
+  const canSeePrices = user.permissions.includes('erp.manage') || user.permissions.includes('invoices.view')
+  const canViewPacking = user.permissions.includes('irsaliye.view')
+  if (!canSeePrices && !canViewPacking) return err('Fatura görüntüleme yetkiniz yok', 403)
 
   const { id } = await params
   const invoice = await db.invoice.findUnique({
@@ -41,6 +43,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!invoice) return err('Fatura bulunamadı', 404)
   if (invoice.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+
+  // Depo rolü — fiyat alanlarını temizle (çeki listesi fiyat içermez)
+  if (!canSeePrices) {
+    invoice.subtotal = 0
+    invoice.taxTotal = 0
+    invoice.total = 0
+    invoice.lines = invoice.lines.map((l) => ({
+      ...l,
+      unitPrice: 0,
+      taxRate: 0,
+      lineTotal: 0,
+    }))
+  }
 
   return ok(invoice)
 }

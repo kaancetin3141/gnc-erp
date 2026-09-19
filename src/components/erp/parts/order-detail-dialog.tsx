@@ -140,7 +140,7 @@ export function OrderDetailDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto custom-scroll">
+        <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-y-auto custom-scroll">
           <DialogHeader>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">

@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { apiGet } from '@/lib/api-client'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiGet, apiPost } from '@/lib/api-client'
 import { useAppStore } from '@/store/app-store'
+import { hasPermission } from '@/lib/rbac'
+import type { SessionUser } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
@@ -13,10 +15,13 @@ import {
   Users, DollarSign, TrendingUp, CheckSquare, AlertTriangle,
   Phone, Mail, MessageCircle, MapPin, StickyNote, Calendar,
   ArrowUpRight, ArrowRight, Building2, Clock, ShieldAlert, Truck,
+  Loader2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { formatCurrency, formatRelative, formatDate } from '@/lib/format'
 import { DEAL_STAGES } from '@/lib/constants'
 import { getOrderStatusMeta } from '@/components/erp/parts/order-utils'
+import { IrsaliyePdfDialog } from '@/components/erp/irsaliye-pdf-dialog'
 import { cn } from '@/lib/utils'
 import { getTenantSector, SECTOR_META } from '@/lib/tenant-sector'
 import {
@@ -712,9 +717,37 @@ function PendingShipmentsWidget({
   shipments: NonNullable<DashboardData['shipments']>
   showAmounts?: boolean
 }) {
-  const { setView } = useAppStore()
+  const { setView, user } = useAppStore()
+  const qc = useQueryClient()
+  const [genLoading, setGenLoading] = useState<string | null>(null)
+  const [irsaliyePreview, setIrsaliyePreview] = useState<{ id: string; number: string } | null>(null)
+  const canGenIrsaliye = hasPermission(user as SessionUser | null, 'irsaliye.view')
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+  // Hızlı aksiyon: eksik irsaliyeyi otomatik üret + PDF önizleme aç
+  const quickGenerateIrsaliye = async (orderId: string, orderNumber: string) => {
+    setGenLoading(orderId)
+    try {
+      const res = await apiPost<{
+        created: boolean
+        document: { id: string; number: string }
+      }>(`/api/orders/${orderId}/generate-document`, { type: 'irsaliye' })
+
+      if (res.created) {
+        toast.success(`İrsaliye otomatik oluşturuldu: ${res.document.number}`, {
+          description: `${orderNumber} siparişi için sevk belgesi hazır`,
+        })
+      }
+      setIrsaliyePreview({ id: res.document.id, number: res.document.number })
+      qc.invalidateQueries({ queryKey: ['documents-orders'] })
+      qc.invalidateQueries({ queryKey: ['irsaliye'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'İrsaliye oluşturulamadı')
+    } finally {
+      setGenLoading(null)
+    }
+  }
 
   return (
     <Card className="overflow-hidden hover:shadow-md transition-shadow duration-300">
@@ -793,11 +826,39 @@ function PendingShipmentsWidget({
                     </div>
                   )}
                 </div>
+                {canGenIrsaliye && (
+                  <button
+                    className="h-8 px-2.5 rounded-md border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-950/30 dark:border-violet-900/50 dark:text-violet-300 text-[11px] font-medium flex items-center gap-1 shrink-0 transition-colors disabled:opacity-60 print:hidden"
+                    disabled={genLoading === order.id}
+                    aria-label={`${order.number} için irsaliye üret`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      quickGenerateIrsaliye(order.id, order.number)
+                    }}
+                  >
+                    {genLoading === order.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Truck className="w-3.5 h-3.5" />
+                    )}
+                    İrsaliye Üret
+                  </button>
+                )}
               </div>
             )
           })}
         </div>
       </CardContent>
+
+      {/* Hızlı irsaliye PDF önizleme */}
+      {irsaliyePreview && (
+        <IrsaliyePdfDialog
+          irsaliyeId={irsaliyePreview.id}
+          irsaliyeNumber={irsaliyePreview.number}
+          open={!!irsaliyePreview}
+          onOpenChange={(v) => { if (!v) setIrsaliyePreview(null) }}
+        />
+      )}
     </Card>
   )
 }

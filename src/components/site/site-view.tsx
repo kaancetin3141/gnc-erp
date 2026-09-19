@@ -665,7 +665,7 @@ function CreateSiteDialog({ onCreated }: { onCreated: () => void }) {
         <Plus className="w-4 h-4 mr-1.5" /> Site Ekle
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Yeni Site</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label className="text-xs">Site Adı *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>

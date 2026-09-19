@@ -488,7 +488,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
 
       {/* Detail Dialog */}
       <Dialog open={!!detailAppt} onOpenChange={(o) => !o && setDetailAppt(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           {detailAppt && (() => {
             const meta = getStatusMeta(detailAppt.status)
             const d = new Date(detailAppt.date)
@@ -622,7 +622,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
 
       {/* Form Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editAppt ? 'Randevu Düzenle' : 'Yeni Randevu'}</DialogTitle>
             <DialogDescription>

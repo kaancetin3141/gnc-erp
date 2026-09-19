@@ -21,7 +21,7 @@ import { toast } from 'sonner'
 import {
   FileStack, Search, X, RefreshCw, Package, Receipt, Truck,
   ClipboardList, ChevronDown, ChevronRight, Building2,
-  FileCheck2, Loader2, Download,
+  FileCheck2, Loader2, Download, Layers,
 } from 'lucide-react'
 import { formatDate, formatCurrency, toCSV, downloadFile } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -31,6 +31,7 @@ import { IrsaliyeView } from './irsaliye-view'
 import { InvoicePdfDialog } from './parts/invoice-detail-dialog'
 import { IrsaliyePdfDialog } from './irsaliye-pdf-dialog'
 import { PackingListPdfDialog } from './parts/packing-list-pdf-dialog'
+import { CombinedOrderPrintDialog } from './parts/combined-docs-print-dialog'
 
 // ============================================================
 // BELGE YÖNETİMİ — Eski "İrsaliyeler" sayfasının yerine geçer.
@@ -102,6 +103,7 @@ export function DocumentsView() {
   const [openCompanies, setOpenCompanies] = useState<Record<string, boolean>>({})
   const [generating, setGenerating] = useState<string | null>(null) // "orderId:type"
   const [activeDoc, setActiveDoc] = useState<GeneratedDoc | null>(null)
+  const [combinedOrder, setCombinedOrder] = useState<{ id: string; number: string; customerName?: string } | null>(null)
 
   const canExport = hasPermission(su, 'export.data')
 
@@ -494,6 +496,31 @@ export function DocumentsView() {
                                         </Tooltip>
                                       )}
 
+                                      {/* TÜM BELGELER — birleşik yazdırma */}
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 text-[11px] gap-1 text-violet-700 border-violet-200 hover:bg-violet-50 dark:text-violet-300 dark:border-violet-900/50"
+                                            disabled={generating === `${o.id}:combined`}
+                                            onClick={() =>
+                                              setCombinedOrder({
+                                                id: o.id,
+                                                number: o.number,
+                                                customerName: o.customer?.name,
+                                              })
+                                            }
+                                          >
+                                            <Layers className="w-3 h-3" />
+                                            Tümü
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          Tüm belgeleri tek yazdırmada birleştir (her belge ayrı A4)
+                                        </TooltipContent>
+                                      </Tooltip>
+
                                       {/* ÇEKİ LİSTESİ — müdür + depocu */}
                                       {canSeePacking && (
                                         <Tooltip>
@@ -587,6 +614,15 @@ export function DocumentsView() {
           onOpenChange={(v) => { if (!v) setActiveDoc(null) }}
         />
       )}
+
+      {/* Tüm Belgeler — birleşik yazdırma */}
+      <CombinedOrderPrintDialog
+        order={combinedOrder}
+        canSeeInvoice={canSeeInvoice}
+        canSeeIrsaliye={canSeeIrsaliye}
+        open={!!combinedOrder}
+        onOpenChange={(v) => { if (!v) setCombinedOrder(null) }}
+      />
     </div>
   )
 }

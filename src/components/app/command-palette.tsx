@@ -167,7 +167,7 @@ export function CommandPalette() {
 
   return (
     <Dialog open={commandOpen} onOpenChange={setCommandOpen}>
-      <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden top-[15%] translate-y-0">
+      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden top-[15%] translate-y-0">
         <DialogHeader className="sr-only">
           <DialogTitle>Hızlı Arama</DialogTitle>
         </DialogHeader>

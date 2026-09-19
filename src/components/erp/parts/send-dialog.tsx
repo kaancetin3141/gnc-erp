@@ -142,7 +142,7 @@ export function SendDialog({ proformaId, open, onOpenChange, onPrint }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto custom-scroll">
+      <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto custom-scroll">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Send className="w-5 h-5 text-emerald-600" />
