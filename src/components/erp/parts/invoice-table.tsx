@@ -4,13 +4,18 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import {
   Tooltip, TooltipContent, TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
-  Receipt, Eye, Pencil, Plus, CheckCircle2,
+  Receipt, Eye, Pencil, Plus, CheckCircle2, MoreHorizontal,
+  CircleCheckBig, Undo2, MessageCircle, CalendarClock, Loader2,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -25,11 +30,16 @@ interface InvoiceTableProps {
   onOpenAdd: () => void
   openDetail: (inv: Invoice) => void
   openEdit: (inv: Invoice) => void
+  onQuickStatus: (inv: Invoice, status: 'odendi' | 'odeme_bekliyor') => void
+  onExtendDue: (inv: Invoice) => void
+  onRemind: (inv: Invoice) => void
+  busyId?: string | null
 }
 
 export function InvoiceTable({
   invoices, isLoading, activeFilterCount,
   onClearFilters, onOpenAdd, openDetail, openEdit,
+  onQuickStatus, onExtendDue, onRemind, busyId,
 }: InvoiceTableProps) {
   return (
     <div className="p-0">
@@ -156,6 +166,64 @@ export function InvoiceTable({
                         </TooltipTrigger>
                         <TooltipContent>Düzenle</TooltipContent>
                       </Tooltip>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 data-[state=open]:bg-muted"
+                            disabled={busyId === inv.id}
+                            aria-label={`${inv.number} hızlı işlemler`}
+                          >
+                            {busyId === inv.id
+                              ? <Loader2 className="w-4 h-4 animate-spin" />
+                              : <MoreHorizontal className="w-4 h-4" />}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuLabel className="font-mono text-xs text-muted-foreground">
+                            {inv.number} · {formatCurrency(inv.total, inv.currency)}
+                          </DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {(inv.status === 'odeme_bekliyor' || inv.status === 'gecikti') && (
+                            <>
+                              <DropdownMenuItem onClick={() => onQuickStatus(inv, 'odendi')} className="text-emerald-700 dark:text-emerald-400 focus:text-emerald-700 dark:focus:text-emerald-400">
+                                <CircleCheckBig className="w-4 h-4 mr-2" />
+                                Ödendi Olarak İşaretle
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => onRemind(inv)}>
+                                <MessageCircle className="w-4 h-4 mr-2" />
+                                Ödeme Hatırlat (WhatsApp)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => onExtendDue(inv)}>
+                                <CalendarClock className="w-4 h-4 mr-2" />
+                                Vade Uzat +7 Gün
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {inv.status === 'odendi' && (
+                            <DropdownMenuItem onClick={() => onQuickStatus(inv, 'odeme_bekliyor')} className="text-amber-700 dark:text-amber-400 focus:text-amber-700 dark:focus:text-amber-400">
+                              <Undo2 className="w-4 h-4 mr-2" />
+                              Ödemeyi Geri Al
+                            </DropdownMenuItem>
+                          )}
+                          {inv.status === 'iptal' && (
+                            <DropdownMenuItem disabled>
+                              <Receipt className="w-4 h-4 mr-2" />
+                              İptal edilmiş fatura
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => openDetail(inv)}>
+                            <Eye className="w-4 h-4 mr-2" />
+                            Detayı Gör
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEdit(inv)}>
+                            <Pencil className="w-4 h-4 mr-2" />
+                            Düzenle
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>

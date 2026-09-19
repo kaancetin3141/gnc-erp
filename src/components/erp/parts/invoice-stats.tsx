@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  Receipt, Clock, CheckCircle2, AlertTriangle, Coins,
+  Receipt, Clock, CheckCircle2, AlertTriangle, Coins, HandCoins,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/format'
 import { StatCard } from './stat-card'
@@ -12,6 +12,7 @@ export interface InvoiceStatsData {
   paid: number
   overdue: number
   totalValue: number
+  pendingAmount?: number
 }
 
 interface InvoiceStatsProps {
@@ -20,8 +21,14 @@ interface InvoiceStatsProps {
 }
 
 export function InvoiceStats({ stats, defaultCurrency }: InvoiceStatsProps) {
+  // Kompakt para formatı — mobilde de taşmadan sığar
+  const fmtCompact = (v: number) =>
+    v >= 1000000
+      ? `${(v / 1000000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} M ₺`
+      : `${Math.round(v).toLocaleString('tr-TR')} ₺`
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
       <StatCard
         label="Toplam Fatura"
         value={stats.total}
@@ -49,6 +56,13 @@ export function InvoiceStats({ stats, defaultCurrency }: InvoiceStatsProps) {
         icon={AlertTriangle}
         color="bg-gradient-to-br from-red-500 to-rose-600"
         sub="gecikmiş"
+      />
+      <StatCard
+        label="Bekleyen Tahsilat"
+        value={stats.pendingAmount != null ? fmtCompact(stats.pendingAmount) : '—'}
+        icon={HandCoins}
+        color="bg-gradient-to-br from-fuchsia-500 to-pink-600"
+        sub="TRY bazlı açık bakiye"
       />
       <StatCard
         label="Toplam Tutar"

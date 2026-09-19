@@ -137,8 +137,8 @@ export async function GET(req: NextRequest) {
   const staleDate = new Date()
   staleDate.setDate(staleDate.getDate() - 30)
 
-  // Son 6 ayın başlangıcı — trend grafiği için
-  const trendStart = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+  // Son 12 ayın başlangıcı — trend grafiği için (widget 3/6/12 ay dilimler)
+  const trendStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
 
   // CRM sektörü için paralel sorgular; değilse null döner
   const crmQueries = isCrm ? Promise.all([
@@ -300,12 +300,12 @@ export async function GET(req: NextRequest) {
     trendInvoices,
   ] = crmResults!
 
-  // 6 aylık sevk & sipariş trendi — aylık gruplanmış
+  // 12 aylık sevk & sipariş trendi — aylık gruplanmış (widget dönem seçer)
   const TR_MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
   const trendBuckets: {
     key: string; label: string; orders: number; shipped: number; revenue: number
   }[] = []
-  for (let i = 5; i >= 0; i--) {
+  for (let i = 11; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     trendBuckets.push({
       key: `${d.getFullYear()}-${d.getMonth()}`,

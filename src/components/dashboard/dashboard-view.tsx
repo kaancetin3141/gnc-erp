@@ -720,10 +720,15 @@ function CrmDashboard({ data }: { data: DashboardData }) {
 }
 
 // ============================================================
-// 6 Aylık Sevk & Sipariş Trendi — ERP sevkiyat akışının
-// aylık özeti: yeni sipariş (bar) vs sevk edilen irsaliye (çizgi),
-// opsiyonel TRY bazlı fatura cirosu (alan). Depo rolünde ciro gizli.
+// Sevk & Sipariş Trendi — ERP sevkiyat akışının aylık özeti:
+// yeni sipariş (bar) vs sevk edilen irsaliye (çizgi), opsiyonel
+// TRY bazlı fatura cirosu (alan). Depo rolünde ciro gizli.
+// DÖNEM SEÇİCİ: 3 / 6 / 12 ay dilimleri (API 12 ay döner).
 // ============================================================
+const TREND_PERIODS = [3, 6, 12] as const
+
+type TrendPeriod = (typeof TREND_PERIODS)[number]
+
 function ShipmentsTrendWidget({
   trend,
   showRevenue,
@@ -732,9 +737,12 @@ function ShipmentsTrendWidget({
   showRevenue: boolean
 }) {
   const { setView } = useAppStore()
-  const totalOrders = trend.reduce((s, t) => s + t.orders, 0)
-  const totalShipped = trend.reduce((s, t) => s + t.shipped, 0)
-  const totalRevenue = trend.reduce((s, t) => s + (t.revenue ?? 0), 0)
+  const [period, setPeriod] = useState<TrendPeriod>(6)
+  // API 12 ay döner — görünür dilim son N ay
+  const visible = trend.slice(-period)
+  const totalOrders = visible.reduce((s, t) => s + t.orders, 0)
+  const totalShipped = visible.reduce((s, t) => s + t.shipped, 0)
+  const totalRevenue = visible.reduce((s, t) => s + (t.revenue ?? 0), 0)
   const shipRate = totalOrders > 0 ? Math.round((totalShipped / totalOrders) * 100) : 0
   const hasAnyData = totalOrders > 0 || totalShipped > 0 || totalRevenue > 0
 
@@ -748,7 +756,7 @@ function ShipmentsTrendWidget({
             </div>
             <div>
               <CardTitle className="text-base leading-tight">Sevk &amp; Sipariş Trendi</CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">Son 6 ay · aylık dağılım</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Son {period} ay · aylık dağılım</p>
             </div>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -758,7 +766,7 @@ function ShipmentsTrendWidget({
             </div>
             {showRevenue && (
               <div className="text-right">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">6 Ay Ciro</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{period} Ay Ciro</div>
                 <div className="text-sm font-bold tabular-nums text-emerald-600">
                   {totalRevenue >= 1000
                     ? `${(totalRevenue / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} bin ₺`
@@ -766,6 +774,28 @@ function ShipmentsTrendWidget({
                 </div>
               </div>
             )}
+            {/* Dönem seçici — segmented control */}
+            <div
+              className="flex items-center rounded-lg bg-muted p-0.5 gap-0.5"
+              role="group"
+              aria-label="Trend dönem seçimi"
+            >
+              {TREND_PERIODS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPeriod(p)}
+                  aria-pressed={period === p}
+                  className={cn(
+                    'px-2 py-1 text-[11px] font-medium rounded-md transition-all',
+                    period === p
+                      ? 'bg-background shadow-sm text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {p} Ay
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </CardHeader>
@@ -774,7 +804,7 @@ function ShipmentsTrendWidget({
           <>
             <div className="h-[220px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={trend} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                <ComposedChart data={visible} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <defs>
                     <linearGradient id="trendOrderBar" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.95} />

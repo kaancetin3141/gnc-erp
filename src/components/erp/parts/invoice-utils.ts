@@ -30,6 +30,53 @@ export function getInvoiceStatusMeta(status: string): InvoiceStatusMeta {
   return INVOICE_STATUSES.find((s) => s.value === status) ?? INVOICE_STATUSES[0]
 }
 
+// ----- Ödeme hatırlatma mesajı (WhatsApp) -----
+// Fatura listesindeki hızlı aksiyonla müşteriye gönderilir.
+export function buildInvoiceWhatsAppMessage(input: {
+  number: string
+  customerName: string
+  total: number
+  currency: string
+  dueDate?: string | null
+  isOverdue?: boolean
+}): string {
+  const { number, customerName, total, currency, dueDate, isOverdue } = input
+  const curSymbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : '₺'
+  const amountStr = `${total.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${curSymbol}`
+  const fmt = (d?: string | null) => {
+    if (!d) return null
+    const dt = new Date(d)
+    if (isNaN(dt.getTime())) return null
+    return dt.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
+  const dueStr = fmt(dueDate)
+
+  if (isOverdue) {
+    return [
+      `Sayın ${customerName},`,
+      '',
+      `${number} numaralı ${amountStr} tutarındaki faturanızın vadesi${dueStr ? ` (${dueStr})` : ''} geçmiştir.`,
+      'Ödemenizin en kısa sürede yapılması rica olunur.',
+      '',
+      'Ödeme yapıldıysa bu mesajı dikkate almayınız.',
+      '',
+      'Teşekkürler.',
+    ].join('\n')
+  }
+
+  return [
+    `Sayın ${customerName},`,
+    '',
+    `${number} numaralı faturanızın bilgisi:`,
+    `• Tutar: ${amountStr}`,
+    dueStr ? `• Vade Tarihi: ${dueStr}` : null,
+    '',
+    'Ödeme için çalışmaya başlayabilirsiniz. Sorularınız için bize ulaşabilirsiniz.',
+    '',
+    'Teşekkürler.',
+  ].filter((l): l is string => l !== null).join('\n')
+}
+
 // ----- Form yardımcıları (InvoiceFormDialog için) -----
 export interface InvoiceLineForm {
   key: string

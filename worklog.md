@@ -7173,3 +7173,23 @@ Stage Summary:
 - Risk: dev server kararlılığı hâlâ kırılgan (tur içinde 2 restart); uzun QA oturumlarında browser kapatılmalı, sunucu ölürse çift-fork restart kullanılmalı
 - Risk: trend ciro hesabı sabit kur kullanıyor (demo) — gerçek kur entegrasyonu gerektiğinde exchange API bağlanmalı
 - Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (mevcut link üretimi + mesaj şablonları hazır), şirket bazlı toplu belge yazdırma (combined print şirket seviyesi), trend grafiğine dönem seçici (3/6/12 ay), fatura "hızlı ödendi işaretle" aksiyonu
+---
+Task ID: 6
+Agent: Z.ai Code (WebDevReview Cron Turu 6)
+Task: Proje durumu değerlendirmesi + agent-browser QA + yeni özellikler (Fatura hızlı tahsilat aksiyonları, Bekleyen Tahsilat KPI'ı, trend grafiğinde 3/6/12 ay dönem seçici) + stil/responsive iyileştirmeleri
+
+Work Log:
+- QA (değerlendirme): tüm servisler sağlıklı (app 3000, cron-automation 3010, appointment-reminders 3011); lint 0/0; agent-browser ile admin girişinde Dashboard, Teklifler, Faturalar, Belge Yönetimi regresyonu — önceki turların tüm özellikleri sağlam, console hatası yok → proje stabil, yeni özellik turuna geçildi
+- OPS: tur içinde dev server Turbopack Fast-Refresh döngüsüne takıldı (sayfa 0 button ile stuck — worklog'daki bilinen risk) → pkill + double-fork nohup restart ile çözüldü; restart sonrası localStorage oturumu korundu, tüm akışlar yeniden doğrulandı
+- FEATURE: Fatura HIZLI TAHSİLAT AKSİYONLARI — InvoiceTable her satırına "..." (MoreHorizontal) dropdown menüsü: (a) "Ödendi Olarak İşaretle" (odeme_bekliyor/gecikti için → PATCH status=odendi, paidDate otomatik), (b) "Ödemeyi Geri Al" (odendi için → status=odeme_bekliyor), (c) "Ödeme Hatırlat (WhatsApp)" — detay API'sinden müşteri telefonunu çekip wa.me linki yeni sekmede açar (vadesi geçmişse ayrı "vadesi geçmiştir" mesaj metni), (d) "Vade Uzat +7 Gün" (dueDate yoksa bugünden hesaplar). buildInvoiceWhatsAppMessage invoice-utils'a eklendi (₺/€/$/£ simgeli, vade tarihli, gecikme senaryolu). Menü başlığında fatura no + tutar, iptal faturada disabled bilgi satırı, busy durumunda Loader2 spin
+- FEATURE: Faturalar istatistik satırına 6. kart "Bekleyen Tahsilat" — odeme_bekliyor + gecikti faturalarının TRY bazlı toplamı (sabit kur USD42/EUR45/GBP52), fuchsia-pink gradient; grid lg:grid-cols-6'e genişletildi; kompakt format (>=1M "X,X M ₺", altında tam "167.900 ₺")
+- FEATURE: Sevk & Sipariş Trendi widget'ına DÖNEM SEÇİCİ — API artık 12 aylık trend döneriyor (trendStart 11 ay geri, 12 bucket); widget'ta segmented control (3 Ay / 6 Ay / 12 Ay, aria-pressed, bg-muted+shadow aktif stil), görünür dilim son N ay; "Son N ay" alt başlığı, "N Ay Ciro" rozeti ve Sevk Oranı seçilen döneme göre yeniden hesaplanıyor
+- STYLE: StatCard value responsive (text-lg sm:text-xl, truncate→break-words — mobilde "167.900 ₺" tam görünür); dropdown menü font-mono başlık + renkli aksiyon item'ları (emerald ödeme onayı, amber geri alma); mobil 390px'te 6 istatistik kartı 2 kolon + filtre chip'leri doğrulandı
+- DOĞRULAMA (agent-browser e2e): FAT-2026-005 "Ödendi İşaretle" → durum rozeti Ödendi + paidDate 19.09.2026 + KPI'lar canlı güncellendi (Bekleyen 4→3, Tahsilat 167,9→155,4 bin ₺); "Ödemeyi Geri Al" → eski duruma döndü; FAT-2026-004 "Vade Uzat" → vade —'den 26.09.2026'ya; FAT-2026-003 "Hatırlat" → api.whatsapp.com sekmesi açıldı (phone=905482642912, tutar/vade doğru mesajda); trend 3 Ay → Tem/Ağu/Eyl + "3 Ay Ciro", 12 Ay → 12 ay X ekseni; lint 0/0
+
+Stage Summary:
+- Tur 6 tamamlandı: 3 yeni özellik (fatura hızlı tahsilat menüsü, Bekleyen Tahsilat KPI'ı, trend dönem seçici) + 1 mobil stil fix (StatCard taşma) + stabilite restart operasyonu; lint 0 error 0 warning
+- Tahsilat akışı artık liste içinden 2 tıkla yönetiliyor: ödeme onayı/geri alma, WhatsApp hatırlatma (gerçek wa.me linki), vade uzatma — tümü audit log'a düşen mevcut PATCH zincirini kullanıyor
+- Risk: dev server uzun oturumda Fast-Refresh döngüsü riski sürüyor (bu turda 1 restart yapıldı) — sahne donarsa çift-fork restart tek çare
+- Risk: Bekleyen Tahsilat ve trend ciro sabit kur kullanıyor (demo) — gerçek kur entegrasyonu gerektiğinde exchange API bağlanmalı
+- Sonraki tur önerileri: fatura detay/WhatsApp hatırlatma geçmişinin activity olarak müşteriye kaydı, şirket bazlı toplu belge yazdırma (combined print şirket seviyesi), tahsilat raporuna yaşlandırma (0-30/31-60/61+ gün), WhatsApp Business API gerçek gönderim

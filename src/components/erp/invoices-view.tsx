@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { apiGet } from '@/lib/api-client'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { apiGet, apiPatch } from '@/lib/api-client'
 import type { SessionUser } from '@/types'
 
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,13 +12,13 @@ import { toast } from 'sonner'
 import {
   Receipt, Plus, Download, Search, X, RefreshCw,
 } from 'lucide-react'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatCurrency, whatsappLink } from '@/lib/format'
 import { exportRowsToExcel } from '@/lib/excel-export'
 import { useAppStore } from '@/store/app-store'
 import { hasPermission } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 import type { Invoice, InvoiceListResponse } from './parts/types'
-import { FILTER_STATUSES, getInvoiceStatusMeta } from './parts/invoice-utils'
+import { FILTER_STATUSES, getInvoiceStatusMeta, buildInvoiceWhatsAppMessage } from './parts/invoice-utils'
 import { InvoiceFormDialog } from './parts/invoice-form-dialog'
 import { InvoiceDetailDialog } from './parts/invoice-detail-dialog'
 import { InvoiceStats } from './parts/invoice-stats'
@@ -30,6 +30,7 @@ import { InvoiceTable } from './parts/invoice-table'
 
 export function InvoicesView() {
   const { user } = useAppStore()
+  const qc = useQueryClient()
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('__all__')
@@ -38,6 +39,7 @@ export function InvoicesView() {
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null)
   const [detailInvoice, setDetailInvoice] = useState<Invoice | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   // Query parametreleri
   const params = useMemo(() => {
@@ -64,12 +66,18 @@ export function InvoicesView() {
     const paid = invoices.filter((i) => i.status === 'odendi').length
     const overdue = invoices.filter((i) => i.status === 'gecikti').length
     const totalValue = invoices.reduce((sum, i) => sum + i.total, 0)
+    // Bekleyen tahsilat: ödeme bekliyor + gecikmiş faturaların TRY bazlı toplamı
+    const FX_TO_TRY: Record<string, number> = { TRY: 1, USD: 42, EUR: 45, GBP: 52 }
+    const pendingAmount = invoices
+      .filter((i) => i.status === 'odeme_bekliyor' || i.status === 'gecikti')
+      .reduce((sum, i) => sum + i.total * (FX_TO_TRY[i.currency] ?? 1), 0)
     return {
       total,
       pending,
       paid,
       overdue,
       totalValue,
+      pendingAmount: Math.round(pendingAmount),
     }
   }, [invoices, total])
 
@@ -127,6 +135,75 @@ export function InvoicesView() {
     if (!v) setTimeout(() => setEditInvoice(null), 100)
   }
 
+  // ----- Hızlı tahsilat aksiyonları -----
+  const isOverdueRow = (inv: Invoice) =>
+    inv.status === 'odeme_bekliyor' && inv.dueDate
+      ? new Date(inv.dueDate).getTime() < Date.now()
+      : false
+
+  // Ödendi işaretle / ödemeyi geri al
+  const handleQuickStatus = async (inv: Invoice, status: 'odendi' | 'odeme_bekliyor') => {
+    setBusyId(inv.id)
+    try {
+      await apiPatch(`/api/invoices/${inv.id}`, { status })
+      await qc.invalidateQueries({ queryKey: ['invoices'] })
+      toast.success(
+        status === 'odendi'
+          ? `${inv.number} ödendi olarak işaretlendi 🎉`
+          : `${inv.number} ödeme bekliyor durumuna alındı`,
+      )
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // Vade uzat +7 gün
+  const handleExtendDue = async (inv: Invoice) => {
+    setBusyId(inv.id)
+    try {
+      const base = inv.dueDate && !isNaN(new Date(inv.dueDate).getTime())
+        ? new Date(inv.dueDate)
+        : new Date()
+      base.setDate(base.getDate() + 7)
+      await apiPatch(`/api/invoices/${inv.id}`, { dueDate: base.toISOString() })
+      await qc.invalidateQueries({ queryKey: ['invoices'] })
+      toast.success(`${inv.number} vadesi ${formatDate(base.toISOString())} olarak uzatıldı`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // Ödeme hatırlatma (WhatsApp) — detaydan telefon alıp wa.me linki açar
+  const handleRemind = async (inv: Invoice) => {
+    setBusyId(inv.id)
+    try {
+      const detail = await apiGet<Invoice>(`/api/invoices/${inv.id}`)
+      const phone = detail.customer?.phone ?? null
+      if (!phone) {
+        toast.error(`${detail.customer?.name ?? 'Müşteri'} için telefon numarası kayıtlı değil`)
+        return
+      }
+      const msg = buildInvoiceWhatsAppMessage({
+        number: inv.number,
+        customerName: detail.customer?.name ?? '',
+        total: inv.total,
+        currency: inv.currency,
+        dueDate: inv.dueDate,
+        isOverdue: isOverdueRow(inv) || inv.status === 'gecikti',
+      })
+      window.open(whatsappLink(phone, msg), '_blank', 'noopener,noreferrer')
+      toast.success(`${inv.number} için hatırlatma mesajı hazırlandı`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hatırlatma hazırlanamadı')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* Header */}
@@ -157,7 +234,7 @@ export function InvoicesView() {
         </div>
       </div>
 
-      {/* Stats row — 5 kart */}
+      {/* Stats row — 6 kart */}
       <InvoiceStats
         stats={stats}
         defaultCurrency={user?.tenant.defaultCurrency || 'TRY'}
@@ -235,6 +312,10 @@ export function InvoicesView() {
             onOpenAdd={() => setAddOpen(true)}
             openDetail={openDetail}
             openEdit={openEdit}
+            onQuickStatus={handleQuickStatus}
+            onExtendDue={handleExtendDue}
+            onRemind={handleRemind}
+            busyId={busyId}
           />
         </CardContent>
       </Card>
