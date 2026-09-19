@@ -46,7 +46,7 @@ import {
   TrendingUp, Users, CheckSquare, FileText, MoreVertical, Trash2,
   Pin, PinOff, ExternalLink, Globe, Building2, User, RefreshCw,
   CheckCircle2, XCircle, PauseCircle, PhoneCall,
-  MapPinned, Receipt, Printer,
+  MapPinned, Receipt, Printer, HandCoins, AlertTriangle,
 } from 'lucide-react'
 import {
   SECTORS, CITIES, SEGMENTS, CUSTOMER_STATUS, CUSTOMER_SOURCES,
@@ -58,6 +58,7 @@ import {
   formatDate, formatDateTime, daysSince, initials, getActivityStatusColor,
 } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { toTry, overdueDays } from '@/components/erp/parts/invoice-utils'
 import { TemplatePickerDialog } from '@/components/settings/template-picker-dialog'
 import { AiActivitySummaryCard } from '@/components/ai/ai-insights-cards'
 import {
@@ -2158,6 +2159,95 @@ const INVOICE_STATUS_LABELS: Record<string, string> = {
   odeme_bekliyor: 'Ödeme Bekliyor', odendi: 'Ödendi', gecikti: 'Gecikti', iptal: 'İptal',
 }
 
+// =========================================================
+//   COLLECTION SUMMARY — Müşteri bazlı tahsilat özeti kartı
+// Faturalanan / tahsil edilen / bekleyen / geciken TRY bazlı
+// toplamlar + tahsilat oranı çubuğu + en eski gecikme uyarısı
+// =========================================================
+function CollectionSummary({ invoices }: { invoices: InvoiceItem[] }) {
+  const summary = useMemo(() => {
+    const active = invoices.filter((i) => i.status !== 'iptal')
+    const invoiced = active.reduce((s, i) => s + toTry(i.total, i.currency), 0)
+    const collected = active
+      .filter((i) => i.status === 'odendi')
+      .reduce((s, i) => s + toTry(i.total, i.currency), 0)
+    const pendingList = active.filter((i) => i.status === 'odeme_bekliyor' || i.status === 'gecikti')
+    const pending = pendingList.reduce((s, i) => s + toTry(i.total, i.currency), 0)
+    const overdueList = pendingList.filter((i) => overdueDays(i.dueDate) > 0)
+    const overdue = overdueList.reduce((s, i) => s + toTry(i.total, i.currency), 0)
+    // En eski gecikmiş fatura
+    let oldest: { number: string; days: number } | null = null
+    for (const i of overdueList) {
+      const d = overdueDays(i.dueDate)
+      if (!oldest || d > oldest.days) oldest = { number: i.number, days: d }
+    }
+    const rate = invoiced > 0 ? Math.round((collected / invoiced) * 100) : 0
+    return { count: active.length, invoiced, collected, pendingCount: pendingList.length, pending, overdueCount: overdueList.length, overdue, oldest, rate }
+  }, [invoices])
+
+  const fmt = (v: number) =>
+    v >= 1000000
+      ? `${(v / 1000000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} M ₺`
+      : `${Math.round(v).toLocaleString('tr-TR')} ₺`
+
+  const cells = [
+    { label: 'Faturalanan', value: fmt(summary.invoiced), sub: `${summary.count} fatura`, cls: 'text-foreground' },
+    { label: 'Tahsil Edilen', value: fmt(summary.collected), sub: `oran %${summary.rate}`, cls: 'text-emerald-600 dark:text-emerald-400' },
+    { label: 'Bekleyen', value: fmt(summary.pending), sub: `${summary.pendingCount} fatura`, cls: 'text-amber-600 dark:text-amber-400' },
+    { label: 'Geciken', value: fmt(summary.overdue), sub: `${summary.overdueCount} fatura`, cls: summary.overdue > 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground' },
+  ]
+
+  return (
+    <div className="rounded-lg border bg-gradient-to-r from-slate-50 to-emerald-50/40 dark:from-slate-900/40 dark:to-emerald-950/20 p-3 space-y-2.5">
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0">
+          <HandCoins className="w-4 h-4 text-white" />
+        </div>
+        <h4 className="text-sm font-semibold">Tahsilat Özeti</h4>
+        <span className="text-[10px] text-muted-foreground ml-auto">TRY bazlı</span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {cells.map((c) => (
+          <div key={c.label} className="rounded-lg bg-background/80 dark:bg-background/40 border px-2.5 py-2">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{c.label}</div>
+            <div className={cn('text-sm font-bold tabular-nums truncate', c.cls)}>{c.value}</div>
+            <div className="text-[10px] text-muted-foreground">{c.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tahsilat oranı çubuğu */}
+      <div>
+        <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+          <span>Tahsilat oranı</span>
+          <span className="tabular-nums font-medium text-foreground">%{summary.rate}</span>
+        </div>
+        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div
+            className={cn('h-full rounded-full transition-all', summary.rate >= 80 ? 'bg-emerald-500' : summary.rate >= 50 ? 'bg-amber-500' : 'bg-red-400')}
+            style={{ width: `${Math.min(Math.max(summary.rate, 2), 100)}%` }}
+            role="progressbar"
+            aria-valuenow={summary.rate}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          />
+        </div>
+      </div>
+
+      {/* En eski gecikme uyarısı */}
+      {summary.oldest && (
+        <div className="flex items-center gap-1.5 text-[11px] text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-md px-2 py-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          En eski gecikme: <span className="font-semibold font-mono">{summary.oldest.number}</span>
+          <span className="tabular-nums font-semibold">{summary.oldest.days} gündür</span>
+          <span className="text-muted-foreground">— Faturalar modülünden hatırlatma gönderebilirsiniz</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function InvoicesTab({ customerId }: { customerId: string }) {
   const { data: invoices = [], isLoading } = useQuery<InvoiceItem[]>({
     queryKey: ['customer-invoices', customerId],
@@ -2183,6 +2273,7 @@ function InvoicesTab({ customerId }: { customerId: string }) {
 
   return (
     <>
+      <CollectionSummary invoices={invoices} />
       <div className="space-y-2">
         {invoices.map((inv) => {
           const isOverdue = inv.status === 'odeme_bekliyor' && inv.dueDate && new Date(inv.dueDate) < new Date()

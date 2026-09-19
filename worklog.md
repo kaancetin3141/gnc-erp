@@ -7217,3 +7217,23 @@ Stage Summary:
 - Risk: dev server kararlılığı (bu turda 2 restart) — uzun QA'da browser kapatılmalı, tsc çalıştıracaksanız sunucunun ölmesini bekleyin; sahne donarsa çift-fork restart
 - Risk: CompanyDocsPrintDialog şirkette çok sayıda sipariş varsa sıralı üretim uzun sürebilir (her sipariş için 2-3 generate-document + 2 GET); şu anki demo verisiyle (max 2 sipariş/şirket) sorunsuz
 - Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (tüm link üretimleri + mesaj şablonları + aktivite kayıtları hazır), tahsilat yaşlandırmasının Excel ihracı (kolonlar hazır), müşteri 360'a fatura geçmişi/tahsilat özeti kartı, trend grafiğine şirket filtresi
+---
+Task ID: 8
+Agent: Z.ai Code (WebDevReview Cron Turu 8)
+Task: Proje durumu değerlendirmesi + agent-browser QA + yeni özellikler (Müşteri 360 Tahsilat Özeti kartı, yaşlandırma Excel kolonları, yaşlandırma kartında risk istihbaratı) + mobil/responsive doğrulama
+
+Work Log:
+- QA (değerlendirme): tüm servisler sağlıklı (app 3000 + cron 3010/3011); lint 0/0; admin girişinde Tur 1-7 regresyonu temiz (Faturalar KPI + hızlı aksiyonlar, yaşlandırma kartı, Müşteri 360) → proje stabil, yeni özellik turuna geçildi
+- FEATURE: MÜŞTERİ 360 TAHSİLAT ÖZETİ — Customer 360 "Faturalar" sekmesinin en üstüne CollectionSummary kartı eklendi: 4 mini istatistik (Faturalanan / Tahsil Edilen / Bekleyen / Geciken — TRY bazlı, toTry sabit kurla, iptal faturalar hariç), fatura adetleri + oran alt yazıları, TAHSİLAT ORANI progress bar (≥%80 yeşil / ≥%50 amber / altı kırmızı, role=progressbar), gecikme varsa "En eski gecikme: FAT-XXX N gündür" kırmızı uyarı satırı. toTry + overdueDays erp/parts/invoice-utils'tan import edildi (tek kaynak)
+- FEATURE: YAŞLANDIRMA EXCEL KOLONLARI — Faturalar "Dışa Aktar" (.xlsx) iki yeni kolon: "Gecikme (Gün)" (bekleyen/gecikmiş faturalarda gün sayısı, ödenenlerde boş) + "Yaşlandırma" (kova etiketi: Vadesi Geçmemiş / 1-30 / 31-60 / 61+ gün); toast "5 fatura Excel olarak indirildi" doğrulandı
+- FEATURE: YAŞLANDIRMA KARTINDA RİSK İSTİHBARATI — InvoiceAging'e gecikme varsa 2 chip: "En riskli müşteri: X — Y ₺" (gecikmiş TRY toplamı en yüksek müşteri, UserX ikonlu kırmızı) + "En eski gecikme: FAT-XXX — N gün" (Timer ikonlu turuncu); gecikme yoksa chip'ler hiç render edilmez (kalabalık yok)
+- DOĞRULAMA (agent-browser e2e): geçici olarak 2 fatura vadesi geçmişe çekildi (FAT-2026-004 → 20 gün, FAT-2026-003 → 75 gün): (a) yaşlandırma kovaları doğru doldu (1-30: 8.400 ₺ %5, 61+: 27.000 ₺ %16, EUR fatura TRY'ye 45 kurle çevrildi), (b) "En riskli müşteri: Uludağ A.Ş. 27.000 ₺" + "En eski gecikme: FAT-2026-003 75 gün" chip'leri göründü, (c) Uludağ A.Ş. Müşteri 360 → Faturalar sekmesi: Tahsilat Özeti 174.000 ₺ faturalanan / 27.000 ₺ tahsil (%16) / 147.000 ₺ bekleyen / 27.000 ₺ geciken + kırmızı oran çubuğu + FAT-2026-003 75 gün uyarısı — TÜMÜ DOĞRU; test sonrası veriler orijinaline restore edildi + 2 test aktivitesi silindi (geçici script, sonra silindi)
+- STYLE/MOBILE (390px doğrulama): Faturalar KPI grid'i 2 kolon, yaşlandırma kovaları 2 kolon (31-60/61+ alt satırda), filtre chip'leri düzgün sarma, fatura tablosunda Fatura No/Müşteri/Tutar kolonları sığıyor — taşma yok; Tahsilat Özeti kartı 2 kolon istatistik grid'i
+- OPS: tsc/lint bellek yükü sonrası dev server 1 kez öldü → çift-fork restart; lint 0 error 0 warning; değişen dosyalarda tsc hatası yok
+
+Stage Summary:
+- Tur 8 tamamlandı: 3 yeni özellik (Müşteri 360 tahsilat özeti, Excel yaşlandırma kolonları, risk istihbarat chip'leri) + mobil doğrulama; lint 0/0
+- Tahsilat görünürlüğü artık 3 katmanda: (1) Faturalar listesi — yaşlandırma kovaları + satır gecikme rozetleri, (2) Dashboard/istatistik — Bekleyen Tahsilat KPI, (3) Müşteri 360 — müşteri bazlı özet + en eski gecikme uyarısı; Excel çıktısı da aynı yaşlandırma dilimlerini taşıyor
+- Risk: dev server uzun oturumda ölme eğilimi sürüyor (bu turda 1 restart) — sahne donarsa çift-fork restart
+- Risk: Tahsilat Özeti ve yaşlandırma tutarları sabit kur kullanıyor (demo) — gerçek kur entegrasyonunda toTry() tek noktadan güncellenmeli
+- Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (link + şablon + aktivite zinciri hazır), raporlar modülüne tahsilat yaşlandırma raporu sayfası (müşteri bazlı döküm + grafik), fatura detay diyaloğuna hızlı tahsilat aksiyonları (listedenki menünün detaya taşınması), trend grafiğine şirket filtresi

@@ -23,7 +23,7 @@ import { InvoiceFormDialog } from './parts/invoice-form-dialog'
 import { InvoiceDetailDialog } from './parts/invoice-detail-dialog'
 import { InvoiceStats } from './parts/invoice-stats'
 import { InvoiceTable } from './parts/invoice-table'
-import { InvoiceAging, bucketOf, type AgingBucket } from './parts/invoice-aging'
+import { InvoiceAging, bucketOf, AGING_BUCKETS, type AgingBucket } from './parts/invoice-aging'
 
 // ============================================================
 // Ana liste bileşeni (orchestrator)
@@ -92,21 +92,29 @@ export function InvoicesView() {
 
   const canExport = hasPermission(user as SessionUser | null, 'export.data')
 
-  // Excel dışa aktarma — filtrelenmiş fatura listesi (.xlsx)
+  // Excel dışa aktarma — filtrelenmiş fatura listesi (.xlsx, yaşlandırma kolonlarıyla)
   const handleExport = () => {
     exportRowsToExcel(
-      invoices.map((inv) => ({
-        'Fatura No': inv.number,
-        'Müşteri': inv.customer?.name ?? '',
-        'Durum': getInvoiceStatusMeta(inv.status).label,
-        'Düzenleme': formatDate(inv.issueDate),
-        'Vade': formatDate(inv.dueDate),
-        'Ödeme': formatDate(inv.paidDate),
-        'Para Birimi': inv.currency,
-        'Ara Toplam': inv.subtotal,
-        'KDV': inv.taxTotal,
-        'Genel Toplam': inv.total,
-      })),
+      invoices.map((inv) => {
+        const isPendingRow = inv.status === 'odeme_bekliyor' || inv.status === 'gecikti'
+        const days = isPendingRow ? overdueDays(inv.dueDate) : 0
+        return {
+          'Fatura No': inv.number,
+          'Müşteri': inv.customer?.name ?? '',
+          'Durum': getInvoiceStatusMeta(inv.status).label,
+          'Düzenleme': formatDate(inv.issueDate),
+          'Vade': formatDate(inv.dueDate),
+          'Ödeme': formatDate(inv.paidDate),
+          'Gecikme (Gün)': isPendingRow && days > 0 ? days : '',
+          'Yaşlandırma': isPendingRow
+            ? AGING_BUCKETS.find((b) => b.value === bucketOf(inv))?.label ?? ''
+            : '',
+          'Para Birimi': inv.currency,
+          'Ara Toplam': inv.subtotal,
+          'KDV': inv.taxTotal,
+          'Genel Toplam': inv.total,
+        }
+      }),
       {
         filename: 'faturalar',
         sheetName: 'Faturalar',

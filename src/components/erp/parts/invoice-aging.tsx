@@ -9,7 +9,7 @@
 // ============================================================
 
 import { useMemo } from 'react'
-import { Hourglass, CalendarClock, CalendarDays, CalendarX2, Filter, HandCoins } from 'lucide-react'
+import { Hourglass, CalendarClock, CalendarDays, CalendarX2, Filter, HandCoins, UserX, Timer } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -82,7 +82,26 @@ export function InvoiceAging({ invoices, activeBucket, onBucketChange }: Invoice
       }
     })
     const totalAmount = buckets.reduce((s, b) => s + b.amount, 0)
-    return { buckets, totalAmount, pendingCount: pending.length }
+
+    // Risk istihbaratı — yalnızca gecikmiş faturalardan (notdue hariç)
+    const overdueOnly = pending.filter((i) => bucketOf(i, now) !== 'notdue')
+    // En riskli müşteri: gecikmiş TRY toplamı en yüksek olan
+    const byCustomer = new Map<string, number>()
+    for (const i of overdueOnly) {
+      const key = i.customer?.name ?? 'Bilinmeyen'
+      byCustomer.set(key, (byCustomer.get(key) ?? 0) + toTry(i.total, i.currency))
+    }
+    let topDebtor: { name: string; amount: number } | null = null
+    for (const [name, amount] of byCustomer) {
+      if (!topDebtor || amount > topDebtor.amount) topDebtor = { name, amount }
+    }
+    // En eski gecikme
+    let oldest: { number: string; days: number } | null = null
+    for (const i of overdueOnly) {
+      const d = overdueDays(i.dueDate, now)
+      if (!oldest || d > oldest.days) oldest = { number: i.number, days: d }
+    }
+    return { buckets, totalAmount, pendingCount: pending.length, topDebtor, oldest }
   }, [invoices])
 
   if (data.pendingCount === 0) return null
@@ -172,6 +191,32 @@ export function InvoiceAging({ invoices, activeBucket, onBucketChange }: Invoice
             )
           })}
         </div>
+
+        {/* Risk istihbaratı — gecikme varsa */}
+        {(data.topDebtor || data.oldest) && (
+          <div className="flex gap-2 flex-wrap">
+            {data.topDebtor && (
+              <div className="inline-flex items-center gap-1.5 text-[11px] text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-md px-2 py-1">
+                <UserX className="w-3.5 h-3.5 shrink-0" />
+                En riskli müşteri:
+                <span className="font-semibold truncate max-w-[180px]">{data.topDebtor.name}</span>
+                <span className="tabular-nums font-semibold">
+                  {data.topDebtor.amount >= 1000000
+                    ? `${(data.topDebtor.amount / 1000000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} M ₺`
+                    : `${data.topDebtor.amount.toLocaleString('tr-TR')} ₺`}
+                </span>
+              </div>
+            )}
+            {data.oldest && (
+              <div className="inline-flex items-center gap-1.5 text-[11px] text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/50 rounded-md px-2 py-1">
+                <Timer className="w-3.5 h-3.5 shrink-0" />
+                En eski gecikme:
+                <span className="font-semibold font-mono">{data.oldest.number}</span>
+                <span className="tabular-nums font-semibold">{data.oldest.days} gün</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Aktif filtre bilgisi */}
         {activeBucket !== '__all__' && (
