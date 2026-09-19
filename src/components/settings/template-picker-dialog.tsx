@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { apiGet } from '@/lib/api-client'
 import { useAppStore } from '@/store/app-store'
 import { whatsappLink, formatPhone, normalizePhone } from '@/lib/format'
+import { sendWhatsAppTracked } from '@/lib/whatsapp-hub'
 import { cn } from '@/lib/utils'
 
 import { Button } from '@/components/ui/button'
@@ -19,7 +20,7 @@ import {
   DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  MessageCircle, Mail, Search, Send, Star, ExternalLink,
+  MessageCircle, Mail, Search, Send, Star, ExternalLink, Loader2,
 } from 'lucide-react'
 import type { MessageTemplate } from './templates-view'
 
@@ -30,6 +31,7 @@ interface TemplatePickerDialogProps {
   customerName: string
   customerPhone?: string | null
   customerEmail?: string | null
+  customerId?: string | null
 }
 
 interface ListResponse {
@@ -57,12 +59,14 @@ export function TemplatePickerDialog({
   customerName,
   customerPhone,
   customerEmail,
+  customerId,
 }: TemplatePickerDialogProps) {
   const user = useAppStore((s) => s.user)
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editedContent, setEditedContent] = useState('')
   const [editedSubject, setEditedSubject] = useState('')
+  const [sendingWa, setSendingWa] = useState(false)
 
   // Şablonları yükle (tip filtresi ile)
   const { data, isLoading } = useQuery({
@@ -107,7 +111,7 @@ export function TemplatePickerDialog({
     setEditedSubject(t.subject ? replaceVariables(t.subject, variables) : '')
   }
 
-  const handleSendWhatsApp = () => {
+  const handleSendWhatsApp = async () => {
     if (!customerPhone) {
       toast.error('Müşteri telefon numarası yok')
       return
@@ -117,9 +121,29 @@ export function TemplatePickerDialog({
       toast.error('Telefon numarası geçersiz')
       return
     }
-    window.open(url, '_blank', 'noopener,noreferrer')
-    toast.success('WhatsApp açılıyor…')
-    onClose()
+    setSendingWa(true)
+    try {
+      // Müşteri bağlamı varsa Merkez kaydı düşür (tracked gönderim)
+      if (customerId) {
+        const result = await sendWhatsAppTracked({
+          phone: customerPhone,
+          body: editedContent,
+          title: `Şablonlu WhatsApp — ${customerName}`,
+          contextType: 'serbest',
+          customerId,
+          customerName,
+        })
+        toast.success(result.popupOpened
+          ? 'WhatsApp açılıyor — Merkeze kaydedildi'
+          : 'Mesaj kuyruğa alındı — WhatsApp Merkezinden gönderebilirsiniz')
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer')
+        toast.success('WhatsApp açılıyor…')
+      }
+      onClose()
+    } finally {
+      setSendingWa(false)
+    }
   }
 
   const handleSendEmail = () => {
@@ -266,10 +290,10 @@ export function TemplatePickerDialog({
           {type === 'whatsapp' ? (
             <Button
               onClick={handleSendWhatsApp}
-              disabled={!selectedId || !customerPhone || !normalizePhone(customerPhone)}
+              disabled={!selectedId || !customerPhone || !normalizePhone(customerPhone) || sendingWa}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
-              <Send className="w-4 h-4 mr-1.5" />
+              {sendingWa ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />}
               WhatsApp ile Gönder
               <ExternalLink className="w-3 h-3 ml-1.5 opacity-70" />
             </Button>

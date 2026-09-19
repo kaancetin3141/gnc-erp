@@ -60,6 +60,7 @@ import {
 import { cn } from '@/lib/utils'
 import { toTry, overdueDays } from '@/components/erp/parts/invoice-utils'
 import { TemplatePickerDialog } from '@/components/settings/template-picker-dialog'
+import { WhatsAppQuickComposer } from '@/components/whatsapp/quick-composer-dialog'
 import { AiActivitySummaryCard } from '@/components/ai/ai-insights-cards'
 import {
   CUSTOMER_TYPES, CustomerTypeBadge, type CustomerTypeKey,
@@ -1487,6 +1488,7 @@ export function Customer360() {
   const [editOpen, setEditOpen] = useState(false)
   // PRIVACY-TEMPLATES (#4): şablon seçici dialog durumları
   const [waTemplateOpen, setWaTemplateOpen] = useState(false)
+  const [waComposerOpen, setWaComposerOpen] = useState(false)
   const [emailTemplateOpen, setEmailTemplateOpen] = useState(false)
   const noteInputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -1711,10 +1713,8 @@ export function Customer360() {
                       <Phone className="w-4 h-4 mr-1.5" /> Ara
                     </a>
                   </Button>
-                  <Button size="sm" variant="outline" asChild>
-                    <a href={whatsappLink(customer.phone, waText)} target="_blank" rel="noreferrer">
-                      <MessageCircle className="w-4 h-4 mr-1.5 text-green-600" /> WhatsApp
-                    </a>
+                  <Button size="sm" variant="outline" onClick={() => setWaComposerOpen(true)}>
+                    <MessageCircle className="w-4 h-4 mr-1.5 text-green-600" /> WhatsApp
                   </Button>
                   {/* PRIVACY-TEMPLATES (#4): şablon seçerek WhatsApp gönder */}
                   <Button size="sm" variant="outline" onClick={() => setWaTemplateOpen(true)}>
@@ -1880,8 +1880,17 @@ export function Customer360() {
           type="whatsapp"
           customerName={customer.name}
           customerPhone={customer.phone}
+          customerId={customer.id}
         />
       )}
+      <WhatsAppQuickComposer
+        open={waComposerOpen}
+        onOpenChange={setWaComposerOpen}
+        phone={customer.phone}
+        defaultMessage={waText}
+        customerId={customer.id}
+        customerName={customer.name}
+      />
       {emailTemplateOpen && (
         <TemplatePickerDialog
           open

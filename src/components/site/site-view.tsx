@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { formatCurrency, formatDate, whatsappLink } from '@/lib/format'
+import { formatCurrency, formatDate } from '@/lib/format'
 import {
   Building2, Plus, CheckCircle2, MessageCircle, Users, Megaphone,
   AlertTriangle, Home, User, Phone, Pencil, Trash2, Calculator,
@@ -408,13 +408,28 @@ export function SiteView() {
             </Button>
             <Button variant="outline" size="sm" onClick={async () => {
               try {
-                const r = await apiPost<{ sent: number; links: Array<{ link: string }> }>(`/api/site/${siteId}/dues/send-reminders`, {})
+                const r = await apiPost<{ sent: number; links: Array<{ link: string; waMessageId?: string }> }>(`/api/site/${siteId}/dues/send-reminders`, {})
                 if (r.links.length === 0) { toast.info('Hatırlatma gereken aidat yok'); return }
-                // Open WhatsApp links
-                r.links.forEach((l: { link: string }, i: number) => {
-                  setTimeout(() => window.open(l.link, '_blank'), i * 500)
+                // Open WhatsApp links — her açılan link için Merkez kaydını gonderildi işaretle
+                let opened = 0
+                const valid = r.links.filter((l: { link: string }) => l.link && l.link !== '#')
+                valid.forEach((l: { link: string; waMessageId?: string }, i: number) => {
+                  setTimeout(() => {
+                    const popup = window.open(l.link, '_blank', 'noopener,noreferrer')
+                    if (popup && l.waMessageId) {
+                      apiPatch(`/api/whatsapp/messages/${l.waMessageId}`, { status: 'gonderildi' }).catch(() => {})
+                    }
+                    if (popup) opened++
+                    if (i === valid.length - 1) {
+                      toast.success(opened === valid.length
+                        ? `${valid.length} hatırlatma gönderildi — Merkeze kaydedildi`
+                        : `${opened}/${valid.length} hatırlatma açıldı — kalanlar WhatsApp Merkezi kuyruğunda`)
+                    }
+                  }, i * 500)
                 })
-                toast.success(`${r.sent} hatırlatma gönderildi`)
+                if (valid.length < r.links.length) {
+                  toast.info(`${r.links.length - valid.length} sakin için geçersiz telefon numarası — atlandı`)
+                }
                 qc.invalidateQueries({ queryKey: ['dues'] })
               } catch (e) { toast.error(e instanceof Error ? e.message : 'Hatırlatma gönderilemedi') }
             }}>
@@ -479,9 +494,24 @@ export function SiteView() {
                               <CheckCircle2 className="w-4 h-4" />
                             </Button>
                             {d.resident?.phone && (
-                              <a href={whatsappLink(d.resident.phone, `Sayın ${d.resident.name}, ${currentMonth}/${currentYear} aidatınızın (${formatCurrency(total, d.currency)}) son ödeme tarihi ${formatDate(d.dueDate)}.`)} target="_blank" rel="noopener">
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600"><MessageCircle className="w-4 h-4" /></Button>
-                              </a>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600" title="WhatsApp Hatırlat"
+                                onClick={async () => {
+                                  try {
+                                    const r = await apiPost<{ sent: number; links: Array<{ link: string; waMessageId?: string }> }>(`/api/site/${siteId}/dues/send-reminders`, { duesId: d.id })
+                                    const l = r.links[0]
+                                    if (!l) { toast.error('Hatırlatma oluşturulamadı'); return }
+                                    const popup = window.open(l.link, '_blank', 'noopener,noreferrer')
+                                    if (popup && l.waMessageId) {
+                                      apiPatch(`/api/whatsapp/messages/${l.waMessageId}`, { status: 'gonderildi' }).catch(() => {})
+                                      toast.success('WhatsApp açıldı — Merkeze kaydedildi')
+                                    } else {
+                                      toast.info('Mesaj kuyruğa alındı — WhatsApp Merkezinden gönderebilirsiniz')
+                                    }
+                                    qc.invalidateQueries({ queryKey: ['dues'] })
+                                  } catch (e) { toast.error(e instanceof Error ? e.message : 'Hatırlatma gönderilemedi') }
+                                }}>
+                                <MessageCircle className="w-4 h-4" />
+                              </Button>
                             )}
                           </>
                         )}

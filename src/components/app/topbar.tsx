@@ -24,6 +24,7 @@ const VIEW_TITLES: Record<string, string> = {
   users: 'Kullanıcı & Rol Yönetimi',
   settings: 'Ayarlar',
   chat: 'Mesajlar',
+  'whatsapp-hub': 'WhatsApp Merkezi',
   erp: 'Ürün & Stok',
   quotes: 'Teklifler',
   invoices: 'Faturalar',

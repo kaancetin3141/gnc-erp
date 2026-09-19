@@ -95,12 +95,12 @@ export async function GET(req: NextRequest) {
 
   const notifications: Array<{
     id: string
-    type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal' | 'appointment_pending' | 'appointment_reminder'
+    type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal' | 'appointment_pending' | 'appointment_reminder' | 'whatsapp_queued'
     severity: 'urgent' | 'warning' | 'info' | 'success'
     title: string
     description: string
     entityId?: string
-    entityType?: 'task' | 'customer' | 'deal' | 'appointment'
+    entityType?: 'task' | 'customer' | 'deal' | 'appointment' | 'whatsapp'
     meta?: Record<string, unknown>
   }> = []
 
@@ -192,6 +192,32 @@ export async function GET(req: NextRequest) {
       description: `${a.service?.name ?? 'Hizmet'} · ${formatDateTimeLabel(a.date)} · ${hoursLeft <= 0 ? 'şimdi' : `${hoursLeft} saat sonra`}`,
       entityType: 'appointment',
       meta: { appointmentId: a.id, providerName: a.provider.name, appointmentNo: a.id.slice(-8).toUpperCase(), reminderSent: a.reminderSent },
+    })
+  }
+
+  // Kuyrukta bekleyen WhatsApp mesajları — Merkez'den gönderilmeyi bekliyor
+  const [statsQueuedWa, oldestQueuedWa] = await Promise.all([
+    db.whatsAppMessage.count({
+      where: { tenantId: user!.tenantId, status: 'kuyrukta' },
+    }),
+    db.whatsAppMessage.findFirst({
+      where: { tenantId: user!.tenantId, status: 'kuyrukta' },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true, customerName: true, contextNo: true },
+    }),
+  ])
+  if (oldestQueuedWa) {
+    const waitingHours = Math.floor((now.getTime() - new Date(oldestQueuedWa.createdAt).getTime()) / (1000 * 60 * 60))
+    notifications.push({
+      id: 'whatsapp_queued',
+      type: 'whatsapp_queued',
+      severity: waitingHours >= 24 ? 'warning' : 'info',
+      title: `${statsQueuedWa} gönderilmemiş WhatsApp mesajı`,
+      description: waitingHours >= 1
+        ? `En eski: ${oldestQueuedWa.customerName ?? oldestQueuedWa.contextNo ?? '—'} · ${waitingHours} saattir kuyrukta`
+        : 'WhatsApp Merkezinden tek tıkla gönderebilirsiniz',
+      entityType: 'whatsapp',
+      meta: { queuedCount: statsQueuedWa, oldestAt: oldestQueuedWa.createdAt },
     })
   }
 

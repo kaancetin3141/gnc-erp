@@ -27,11 +27,12 @@ import { toast } from 'sonner'
 import {
   MessageSquareText, Search, RefreshCw, Plus, ExternalLink, Copy,
   Ban, Trash2, ChevronDown, ChevronUp, Clock, CheckCircle2,
-  Inbox, Loader2, User, Phone,
+  Inbox, Loader2, User, Phone, Download,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatRelative, formatCurrency, formatPhone } from '@/lib/format'
 import { waContextLabel, WA_CONTEXT_TYPES, openQueuedWhatsApp, sendWhatsAppTracked } from '@/lib/whatsapp-hub'
+import { exportRowsToExcel } from '@/lib/excel-export'
 import type { LucideIcon } from 'lucide-react'
 
 interface WaMessage {
@@ -180,6 +181,27 @@ export function WhatsAppHubView() {
     }
   }
 
+  // Excel dışa aktarma — aktif filtrelenmiş liste (durum/tür/arama dahil)
+  const handleExport = () => {
+    exportRowsToExcel(items.map((m) => ({
+      'Durum': STATUS_META[m.status]?.label ?? m.status,
+      'Tür': waContextLabel(m.contextType),
+      'Müşteri': m.customerName ?? '—',
+      'Telefon': formatPhone(m.phone),
+      'Belge No': m.contextNo ?? '—',
+      'Tutar': m.amount != null && m.currency ? formatCurrency(m.amount, m.currency) : '—',
+      'Başlık': m.title ?? '—',
+      'Mesaj': m.body,
+      'Gönderen': m.createdByName ?? '—',
+      'Oluşturulma': new Date(m.createdAt).toLocaleString('tr-TR'),
+      'Gönderim': m.sentAt ? new Date(m.sentAt).toLocaleString('tr-TR') : '—',
+    })), {
+      filename: 'whatsapp-mesajlari',
+      sheetName: 'WhatsApp Mesajları',
+      emptyMessage: 'Dışa aktarılacak mesaj yok — filtreleri kontrol edin',
+    })
+  }
+
   const statCards = [
     { label: 'Toplam Mesaj', value: stats.total, icon: Inbox, color: 'bg-gradient-to-br from-slate-500 to-slate-600', sub: 'tüm kayıtlar' },
     { label: 'Kuyrukta', value: stats.kuyrukta, icon: Clock, color: 'bg-gradient-to-br from-amber-500 to-orange-500', sub: 'gönderilmeyi bekliyor' },
@@ -210,6 +232,10 @@ export function WhatsAppHubView() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={items.length === 0}>
+            <Download className="w-4 h-4 mr-1.5" />
+            Dışa Aktar
+          </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={cn('w-4 h-4 mr-1.5', isFetching && 'animate-spin')} />
             Yenile

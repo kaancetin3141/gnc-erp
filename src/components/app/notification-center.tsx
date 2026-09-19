@@ -13,16 +13,17 @@ import { cn } from '@/lib/utils'
 import {
   Bell, Clock, AlertTriangle, Users, TrendingUp, Trophy,
   CheckCircle2, ChevronRight, CheckCheck, X, CalendarClock, CalendarCheck,
+  MessageSquareText,
 } from 'lucide-react'
 
 interface Notification {
   id: string
-  type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal' | 'appointment_pending' | 'appointment_reminder'
+  type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal' | 'appointment_pending' | 'appointment_reminder' | 'whatsapp_queued'
   severity: 'urgent' | 'warning' | 'info' | 'success'
   title: string
   description: string
   entityId?: string
-  entityType?: 'task' | 'customer' | 'deal' | 'appointment'
+  entityType?: 'task' | 'customer' | 'deal' | 'appointment' | 'whatsapp'
   meta?: Record<string, unknown>
 }
 
@@ -47,12 +48,14 @@ const TYPE_LABELS: Record<string, string> = {
   won_deal: 'Kazanılan Fırsat',
   appointment_pending: 'Onay Bekleyen Randevu',
   appointment_reminder: 'Yaklaşan Randevu',
+  whatsapp_queued: 'WhatsApp Kuyruğu',
 }
 
 // Randevu bildirimleri takvim ikonu kullanır
 const TYPE_ICONS: Partial<Record<string, typeof Clock>> = {
   appointment_pending: CalendarClock,
   appointment_reminder: CalendarCheck,
+  whatsapp_queued: MessageSquareText,
 }
 
 const READ_STORAGE_KEY = 'gnc-notifications-read'
@@ -146,6 +149,8 @@ export function NotificationCenter() {
       setView('pipeline')
     } else if (n.type === 'appointment_pending' || n.type === 'appointment_reminder') {
       setView('appointments')
+    } else if (n.type === 'whatsapp_queued') {
+      setView('whatsapp-hub')
     }
   }
 
