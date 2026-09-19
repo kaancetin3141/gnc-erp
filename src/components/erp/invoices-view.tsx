@@ -12,7 +12,8 @@ import { toast } from 'sonner'
 import {
   Receipt, Plus, Download, Search, X, RefreshCw,
 } from 'lucide-react'
-import { formatDate, toCSV, downloadFile } from '@/lib/format'
+import { formatDate } from '@/lib/format'
+import { exportRowsToExcel } from '@/lib/excel-export'
 import { useAppStore } from '@/store/app-store'
 import { hasPermission } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
@@ -74,27 +75,28 @@ export function InvoicesView() {
 
   const canExport = hasPermission(user as SessionUser | null, 'export.data')
 
-  // CSV dışa aktarma
+  // Excel dışa aktarma — filtrelenmiş fatura listesi (.xlsx)
   const handleExport = () => {
-    if (!invoices.length) {
-      toast.error('Dışa aktarılacak fatura yok')
-      return
-    }
-    const rows = invoices.map((inv) => ({
-      'Fatura No': inv.number,
-      'Müşteri': inv.customer?.name ?? '',
-      'Durum': getInvoiceStatusMeta(inv.status).label,
-      'Düzenleme': formatDate(inv.issueDate),
-      'Vade': formatDate(inv.dueDate),
-      'Ödeme': formatDate(inv.paidDate),
-      'Para Birimi': inv.currency,
-      'Ara Toplam': inv.subtotal,
-      'KDV': inv.taxTotal,
-      'Genel Toplam': inv.total,
-    }))
-    const csv = toCSV(rows)
-    downloadFile(csv, `faturalar-${new Date().toISOString().slice(0, 10)}.csv`)
-    toast.success(`${invoices.length} fatura dışa aktarıldı`)
+    exportRowsToExcel(
+      invoices.map((inv) => ({
+        'Fatura No': inv.number,
+        'Müşteri': inv.customer?.name ?? '',
+        'Durum': getInvoiceStatusMeta(inv.status).label,
+        'Düzenleme': formatDate(inv.issueDate),
+        'Vade': formatDate(inv.dueDate),
+        'Ödeme': formatDate(inv.paidDate),
+        'Para Birimi': inv.currency,
+        'Ara Toplam': inv.subtotal,
+        'KDV': inv.taxTotal,
+        'Genel Toplam': inv.total,
+      })),
+      {
+        filename: 'faturalar',
+        sheetName: 'Faturalar',
+        successMessage: `${invoices.length} fatura Excel olarak indirildi`,
+        emptyMessage: 'Dışa aktarılacak fatura yok',
+      },
+    )
   }
 
   const handleClearFilters = () => {

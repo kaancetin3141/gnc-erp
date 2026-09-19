@@ -12,7 +12,8 @@ import { toast } from 'sonner'
 import {
   FileText, Plus, Download, Search, X, RefreshCw,
 } from 'lucide-react'
-import { formatDate, toCSV, downloadFile } from '@/lib/format'
+import { formatDate } from '@/lib/format'
+import { exportRowsToExcel } from '@/lib/excel-export'
 import { useAppStore } from '@/store/app-store'
 import { hasPermission } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
@@ -76,27 +77,29 @@ export function QuotesView() {
 
   const canExport = hasPermission(user as SessionUser | null, 'export.data')
 
-  // CSV dışa aktarma
+  // Excel dışa aktarma
   const handleExport = () => {
-    if (!quotes.length) {
-      toast.error('Dışa aktarılacak teklif yok')
-      return
-    }
-    const rows = quotes.map((q) => ({
-      'Teklif No': q.number,
-      'Müşteri': q.customer?.name ?? '',
-      'Durum': getQuoteStatusMeta(q.status).label,
-      'Düzenleme': formatDate(q.issueDate),
-      'Geçerlilik': formatDate(q.validUntil),
-      'Para Birimi': q.currency,
-      'Ara Toplam': q.subtotal,
-      'KDV': q.taxTotal,
-      'Genel Toplam': q.total,
-      'Kalem Sayısı': q._count?.lines ?? q.lines?.length ?? 0,
-    }))
-    const csv = toCSV(rows)
-    downloadFile(csv, `teklifler-${new Date().toISOString().slice(0, 10)}.csv`)
-    toast.success(`${quotes.length} teklif dışa aktarıldı`)
+    exportRowsToExcel(
+      quotes.map((q) => ({
+        'Teklif No': q.number,
+        'Tür': q.isProforma ? 'Proforma' : 'Teklif',
+        'Müşteri': q.customer?.name ?? '',
+        'Durum': getQuoteStatusMeta(q.status).label,
+        'Düzenleme': formatDate(q.issueDate),
+        'Geçerlilik': formatDate(q.validUntil),
+        'Para Birimi': q.currency,
+        'Ara Toplam': q.subtotal,
+        'KDV': q.taxTotal,
+        'Genel Toplam': q.total,
+        'Kalem Sayısı': q._count?.lines ?? q.lines?.length ?? 0,
+      })),
+      {
+        filename: 'teklifler',
+        sheetName: 'Teklifler',
+        successMessage: `${quotes.length} teklif Excel olarak indirildi`,
+        emptyMessage: 'Dışa aktarılacak teklif yok',
+      },
+    )
   }
 
   const handleClearFilters = () => {

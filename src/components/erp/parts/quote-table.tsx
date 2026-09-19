@@ -10,7 +10,7 @@ import {
   Tooltip, TooltipContent, TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
-  FileText, Eye, Pencil, Plus,
+  FileText, Eye, Pencil, Plus, AlertTriangle, Clock,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -114,7 +114,29 @@ export function QuoteTable({
                     {formatDate(q.issueDate)}
                   </TableCell>
                   <TableCell className="hidden lg:table-cell text-sm text-muted-foreground whitespace-nowrap">
-                    {formatDate(q.validUntil)}
+                    <div className="flex flex-col gap-0.5">
+                      <span>{formatDate(q.validUntil)}</span>
+                      {q.validUntil && (q.status === 'taslak' || q.status === 'gonderildi') && (() => {
+                        const valid = new Date(q.validUntil)
+                        valid.setHours(23, 59, 59, 999)
+                        const daysLeft = Math.ceil((valid.getTime() - Date.now()) / 86_400_000)
+                        if (daysLeft < 0) {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-600 dark:text-red-400">
+                              <AlertTriangle className="w-3 h-3" /> Süresi geçti
+                            </span>
+                          )
+                        }
+                        if (daysLeft <= 7) {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                              <Clock className="w-3 h-3" /> {daysLeft === 0 ? 'Son gün' : `${daysLeft} gün kaldı`}
+                            </span>
+                          )
+                        }
+                        return null
+                      })()}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="text-sm font-bold tabular-nums">{formatCurrency(q.total, q.currency)}</div>

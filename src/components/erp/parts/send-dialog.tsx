@@ -25,14 +25,19 @@ import type { Quote } from './types'
 import {
   buildProformaWhatsAppMessage, buildProformaMailSubject, buildProformaMailBody,
   getProformaStatusMeta,
+  buildQuoteWhatsAppMessage,
 } from './proforma-utils'
 
 // ============================================================
 // Send Dialog — WhatsApp / Mail / PDF seçenekleri
+// Hem PROFORMA (isProforma=true) hem de TEKLİF (isProforma=false)
+// kayıtları için çalışır: proformaId verilirse /api/proforma,
+// quoteId verilirse /api/quotes uçları kullanılır.
 // ============================================================
 
 interface Props {
-  proformaId: string | null
+  proformaId?: string | null
+  quoteId?: string | null
   open: boolean
   onOpenChange: (v: boolean) => void
   onPrint?: () => void
@@ -40,34 +45,45 @@ interface Props {
 
 type Channel = 'whatsapp' | 'email'
 
-export function SendDialog({ proformaId, open, onOpenChange, onPrint }: Props) {
+export function SendDialog({ proformaId, quoteId, open, onOpenChange, onPrint }: Props) {
   const qc = useQueryClient()
   const [channel, setChannel] = useState<Channel>('whatsapp')
   const [customNote, setCustomNote] = useState('')
   const [markAsSent, setMarkAsSent] = useState(true)
   const [sending, setSending] = useState(false)
 
+  const fetchUrl = proformaId ? `/api/proforma/${proformaId}` : `/api/quotes/${quoteId}`
+  const isProformaDoc = !!proformaId
+
   const { data: proforma, isLoading } = useQuery({
-    queryKey: ['proforma-send', proformaId],
-    queryFn: () => apiGet<Quote>(`/api/proforma/${proformaId}`),
-    enabled: !!proformaId && open,
+    queryKey: ['doc-send', proformaId ?? quoteId, isProformaDoc],
+    queryFn: () => apiGet<Quote>(fetchUrl),
+    enabled: !!(proformaId || quoteId) && open,
   })
 
   const customer = proforma?.customer
   const lines = proforma?.lines ?? []
 
-  // WhatsApp link
+  // WhatsApp link — kayıt türüne göre (proforma/teklif) mesaj üret
   const waLink = useMemo(() => {
     if (!proforma) return '#'
-    const msg = customNote.trim() || buildProformaWhatsAppMessage({
-      number: proforma.number,
-      customerName: customer?.name ?? '',
-      total: proforma.total,
-      currency: proforma.currency,
-      validUntil: proforma.validUntil,
-    })
+    const msg = customNote.trim() || (isProformaDoc
+      ? buildProformaWhatsAppMessage({
+        number: proforma.number,
+        customerName: customer?.name ?? '',
+        total: proforma.total,
+        currency: proforma.currency,
+        validUntil: proforma.validUntil,
+      })
+      : buildQuoteWhatsAppMessage({
+        number: proforma.number,
+        customerName: customer?.name ?? '',
+        total: proforma.total,
+        currency: proforma.currency,
+        validUntil: proforma.validUntil,
+      }))
     return whatsappLink(customer?.phone ?? null, msg)
-  }, [proforma, customer, customNote])
+  }, [proforma, customer, customNote, isProformaDoc])
 
   // Mail link
   const mailLink = useMemo(() => {
@@ -87,14 +103,22 @@ export function SendDialog({ proformaId, open, onOpenChange, onPrint }: Props) {
 
   const defaultMessage = useMemo(() => {
     if (!proforma) return ''
-    return buildProformaWhatsAppMessage({
-      number: proforma.number,
-      customerName: customer?.name ?? '',
-      total: proforma.total,
-      currency: proforma.currency,
-      validUntil: proforma.validUntil,
-    })
-  }, [proforma, customer])
+    return isProformaDoc
+      ? buildProformaWhatsAppMessage({
+        number: proforma.number,
+        customerName: customer?.name ?? '',
+        total: proforma.total,
+        currency: proforma.currency,
+        validUntil: proforma.validUntil,
+      })
+      : buildQuoteWhatsAppMessage({
+        number: proforma.number,
+        customerName: customer?.name ?? '',
+        total: proforma.total,
+        currency: proforma.currency,
+        validUntil: proforma.validUntil,
+      })
+  }, [proforma, customer, isProformaDoc])
 
   const handleSend = async () => {
     if (!proforma) return
@@ -119,13 +143,18 @@ export function SendDialog({ proformaId, open, onOpenChange, onPrint }: Props) {
 
       // 2) Opsiyonel: durumu 'gonderildi' işaretle
       if (markAsSent && proforma.status === 'taslak') {
-        await apiPatch(`/api/proforma/${proforma.id}`, { status: 'gonderildi' })
-        qc.invalidateQueries({ queryKey: ['proforma', proforma.id] })
-        qc.invalidateQueries({ queryKey: ['proformas'] })
+        if (isProformaDoc) {
+          await apiPatch(`/api/proforma/${proforma.id}`, { status: 'gonderildi' })
+          qc.invalidateQueries({ queryKey: ['proforma', proforma.id] })
+          qc.invalidateQueries({ queryKey: ['proformas'] })
+        } else {
+          await apiPatch(`/api/quotes/${proforma.id}`, { status: 'gonderildi' })
+          qc.invalidateQueries({ queryKey: ['quote', proforma.id] })
+        }
         qc.invalidateQueries({ queryKey: ['quotes'] })
       }
 
-      toast.success('Proforma gönderildi' + (markAsSent ? ' · Durum: Gönderildi' : ''))
+      toast.success(`${isProformaDoc ? 'Proforma' : 'Teklif'} gönderildi` + (markAsSent ? ' · Durum: Gönderildi' : ''))
       onOpenChange(false)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
@@ -134,7 +163,7 @@ export function SendDialog({ proformaId, open, onOpenChange, onPrint }: Props) {
     }
   }
 
-  if (!proformaId) return null
+  if (!proformaId && !quoteId) return null
 
   const statusMeta = proforma ? getProformaStatusMeta(proforma.status) : null
   const hasPhone = !!(customer?.phone)
@@ -146,7 +175,7 @@ export function SendDialog({ proformaId, open, onOpenChange, onPrint }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Send className="w-5 h-5 text-emerald-600" />
-            Proforma Gönder
+            {isProformaDoc ? 'Proforma Gönder' : 'Teklif Gönder'}
           </DialogTitle>
           <DialogDescription>
             Müşteriye WhatsApp veya e-posta ile gönderin. PDF&apos;ini de kaydedebilirsiniz.
@@ -275,7 +304,7 @@ export function SendDialog({ proformaId, open, onOpenChange, onPrint }: Props) {
                   PDF Olarak Kaydet
                 </div>
                 <div className="text-[11px] text-muted-foreground mt-0.5">
-                  Profesyonel proforma dokümanını yazdır veya PDF olarak kaydet.
+                  Profesyonel {isProformaDoc ? 'proforma' : 'teklif'} dokümanını yazdır veya PDF olarak kaydet.
                 </div>
               </div>
               <Button

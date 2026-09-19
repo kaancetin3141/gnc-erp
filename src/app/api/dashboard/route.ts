@@ -137,6 +137,9 @@ export async function GET(req: NextRequest) {
   const staleDate = new Date()
   staleDate.setDate(staleDate.getDate() - 30)
 
+  // Son 6 ayın başlangıcı — trend grafiği için
+  const trendStart = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+
   // CRM sektörü için paralel sorgular; değilse null döner
   const crmQueries = isCrm ? Promise.all([
     db.customer.count({ where: customerFilter }),
@@ -232,6 +235,32 @@ export async function GET(req: NextRequest) {
       orderBy: { expectedDelivery: 'asc' },
       take: 8,
     }),
+    // 6 aylık trend — siparişler (aylık adet)
+    db.order.findMany({
+      where: {
+        tenantId: user!.tenantId,
+        orderDate: { gte: trendStart },
+      },
+      select: { orderDate: true },
+    }),
+    // 6 aylık trend — sevk edilen irsaliyeler (sevk_edildi + teslim_edildi)
+    db.irsaliye.findMany({
+      where: {
+        tenantId: user!.tenantId,
+        status: { in: ['sevk_edildi', 'teslim_edildi'] },
+        date: { gte: trendStart },
+      },
+      select: { date: true },
+    }),
+    // 6 aylık trend — fatura cirosu (yalnızca tutar görebilen roller)
+    ...(canSeeAmounts ? [db.invoice.findMany({
+      where: {
+        tenantId: user!.tenantId,
+        status: { not: 'iptal' },
+        issueDate: { gte: trendStart },
+      },
+      select: { issueDate: true, total: true, currency: true },
+    })] : [[] as { issueDate: Date; total: number; currency: string }[]]),
   ]) : null
 
   const [sectorData, crmResults] = await Promise.all([sectorDataPromise, crmQueries])
@@ -266,7 +295,48 @@ export async function GET(req: NextRequest) {
     pipelineDeals,
     activities30d,
     pendingShipmentOrders,
+    trendOrders,
+    trendIrsaliye,
+    trendInvoices,
   ] = crmResults!
+
+  // 6 aylık sevk & sipariş trendi — aylık gruplanmış
+  const TR_MONTHS = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
+  const trendBuckets: {
+    key: string; label: string; orders: number; shipped: number; revenue: number
+  }[] = []
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    trendBuckets.push({
+      key: `${d.getFullYear()}-${d.getMonth()}`,
+      label: TR_MONTHS[d.getMonth()],
+      orders: 0, shipped: 0, revenue: 0,
+    })
+  }
+  const bucketOf = (date: Date | string) => {
+    const d = new Date(date)
+    return trendBuckets.find((b) => b.key === `${d.getFullYear()}-${d.getMonth()}`)
+  }
+  for (const o of trendOrders) {
+    const b = bucketOf(o.orderDate)
+    if (b) b.orders += 1
+  }
+  for (const irs of trendIrsaliye) {
+    const b = bucketOf(irs.date)
+    if (b) b.shipped += 1
+  }
+  // Ciro: TRY bazına basit sabit kurlarla toplanır (demo amaçlı sabit kur)
+  const FX_TO_TRY: Record<string, number> = { TRY: 1, USD: 42, EUR: 45, GBP: 52 }
+  for (const inv of trendInvoices) {
+    const b = bucketOf(inv.issueDate)
+    if (b) b.revenue += inv.total * (FX_TO_TRY[inv.currency] ?? 1)
+  }
+  const shipmentsTrend = trendBuckets.map((b) => ({
+    label: b.label,
+    orders: b.orders,
+    shipped: b.shipped,
+    revenue: canSeeAmounts ? Math.round(b.revenue) : undefined,
+  }))
 
   // Pipeline by stage
   const stageMap = new Map<string, { count: number; totalValue: number }>()
@@ -324,5 +394,6 @@ export async function GET(req: NextRequest) {
       pendingCount: pendingShipmentOrders.length,
       orders: pendingShipmentOrders,
     },
+    shipmentsTrend,
   })
 }

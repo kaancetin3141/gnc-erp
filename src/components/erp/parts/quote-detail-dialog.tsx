@@ -145,21 +145,21 @@ export function QuoteDetailDialog({
                 </DialogDescription>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                {isProforma && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100 dark:bg-teal-950/30 dark:border-teal-900/50 dark:text-teal-300"
-                        onClick={() => setSendOpen(true)}
-                      >
-                        <Send className="w-3.5 h-3.5 mr-1" /> Gönder
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Proformayı WhatsApp/e-posta ile gönder</TooltipContent>
-                  </Tooltip>
-                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100 dark:bg-teal-950/30 dark:border-teal-900/50 dark:text-teal-300"
+                      onClick={() => setSendOpen(true)}
+                    >
+                      <Send className="w-3.5 h-3.5 mr-1" /> Gönder
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isProforma ? 'Proformayı WhatsApp/e-posta ile gönder' : 'Teklifi WhatsApp/e-posta ile gönder'}
+                  </TooltipContent>
+                </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="outline" size="sm" onClick={() => setPdfOpen(true)}>
@@ -385,24 +385,23 @@ export function QuoteDetailDialog({
         open={pdfOpen}
         onOpenChange={setPdfOpen}
       />
-      {/* Proforma gönderme diyalogu */}
-      {isProforma && (
-        <SendDialog
-          proformaId={quote.id}
-          open={sendOpen}
-          onOpenChange={(v) => {
-            setSendOpen(v)
-            if (!v) {
-              qc.invalidateQueries({ queryKey: ['quote', quote.id] })
-              qc.invalidateQueries({ queryKey: ['quotes'] })
-            }
-          }}
-          onPrint={() => {
-            setSendOpen(false)
-            setPdfOpen(true)
-          }}
-        />
-      )}
+      {/* Gönderme diyalogu — proforma VE teklif için */}
+      <SendDialog
+        proformaId={isProforma ? quote.id : null}
+        quoteId={isProforma ? null : quote.id}
+        open={sendOpen}
+        onOpenChange={(v) => {
+          setSendOpen(v)
+          if (!v) {
+            qc.invalidateQueries({ queryKey: ['quote', quote.id] })
+            qc.invalidateQueries({ queryKey: ['quotes'] })
+          }
+        }}
+        onPrint={() => {
+          setSendOpen(false)
+          setPdfOpen(true)
+        }}
+      />
     </>
   )
 }

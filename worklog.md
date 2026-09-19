@@ -7150,3 +7150,26 @@ Stage Summary:
 - Risk: dev server uzun oturumda OOM/geçmişinde Turbopack HMR bozulması var — sahne kararsızsa restart tek çare; Chrome QA'da bellek tükettiği için agent-browser close önerilir
 - Risk: depocu çeki listesi istediğinde siparişin faturası yoksa otomatik oluşturuluyor (fiyatlar DB'de var, API'de maskelenir) — fatura numarası sırası depocu tetiklemesiyle de ilerleyebilir; bilinçli tasarım ("belge otomatik") fakat iş sürecinde tartışılacak olabilir
 - Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (link üretimi mevcut), teklif→sipariş kabul/red akışında müşteri portalı, irsaliye CSV/Excel dışa aktarımının fatura/çeki listesine genişletilmesi, dashboard'a aylık sevk/adet grafiği
+
+---
+Task ID: 5
+Agent: Z.ai Code (WebDevReview Cron Turu 5)
+Task: Proje durumu değerlendirmesi + agent-browser QA + hata düzeltmeleri + yeni özellikler (6 aylık Sevk & Sipariş Trendi grafiği, teklif WhatsApp gönderimi, gerçek Excel ihracı, geçerlilik rozetleri) + stil/responsive iyileştirmeleri
+
+Work Log:
+- QA (regresyon): lint 0/0; tüm servisler sağlıklı (app 3000, cron-automation 3010, appointment-reminders 3011); agent-browser ile admin girişinde Dashboard/Genel Bakış (hero, KPI, Bekleyen Sevkiyatlar, İş Dünyası Haberleri), Teklifler (proforma/teklif filtreleri), Belge Yönetimi (şirket→sipariş→belge butonları), Faturalar — hepsi sorunsuz; console hatası yok
+- BUG FIX (gizli): serializeForDepo sipariş yanından invoice.packingListNo alanını kırpyorudu → depocu Belge Yönetimi'nde "ÇEKİ LİSTELİ 0" görüyordu (admin 3 görüyordu) ve sipariş başlığındaki CL-XXX rozeti kayıptı → packingListNo depo yanıtına eklendi (fiyat bilgisi değil, belge numarası); depocu artık "ÇEKİ LİSTELİ 3" görüyor — browser'da doğrulandı
+- BUG FIX: buildProformaWhatsAppMessage tarihinde ay off-by-one (d.getMonth() +1'siz) → Ekim "09" yerine "08" yazıyordu; her iki mesaj üreticide düzeltildi (teklif mesajında "Teklif Geçerliliği: 30.10.2026" doğru doğrulandı)
+- FEATURE: Dashboard "Sevk & Sipariş Trendi" widget'ı — GET /api/dashboard'a shipmentsTrend alanı (son 6 ay: aylık yeni sipariş adedi, sevk edilen irsaliye adedi, TRY bazlı fatura cirosu — sabit kurlar USD42/EUR45/GBP52, yalnızca invoices.view/erp.manage sahiplerine). Yeni ShipmentsTrendWidget: recharts ComposedChart (mor gradient bar = yeni sipariş, mavi çizgi = sevk edilen, yeşil alan = ciro), çift Y ekseni (adet solda, ciro sağda gizli), Sevk Oranı + 6 Ay Ciro özet rozetleri, boş durum ekranı. Doğrulama: IRS-2026-005 UI'dan "Sevk Et" ile sevildi (stok akışı regresyonu da ✔) → Sevk Oranı %33, çizgi Eyl'de 1'e yükseldi
+- FEATURE: Teklif (non-proforma) WhatsApp/e-posta gönderimi — SendDialog artık hem proformaId hem quoteId ile çalışıyor (isProformaDoc flag'i: /api/proforma vs /api/quotes uçları, durum PATCH'i doğru endpoint'e); QuoteDetailDialog "Gönder" butonu artık tekliflerde de görünüyor; buildQuoteWhatsAppMessage eklendi (teklif odaklı metin); e2e doğrulandı: TKL-2026-002 → Gönder → "Teklif Gönder" diyalogu, WhatsApp kanalı seçili, telefon +90 539 604 53 18, teklif mesajı önizlemede
+- FEATURE: Gerçek Excel (.xlsx) ihracı — yeni paylaşılan util src/lib/excel-export.ts (exportRowsToExcel: otomatik kolon genişliği, toast, filename-sheetName); Faturalar + Teklifler CSV'den xlsx'e yükseltildi (Teklifler'e "Tür" kolonu: Proforma/Teklif), İrsaliye aynı util'e taşındı (kod tekrarı giderildi); browser'da "5 fatura Excel olarak indirildi" + "2 teklif Excel olarak indirildi" toast'ları doğrulandı
+- FEATURE: Teklif listesinde geçerlilik rozetleri — validUntil < bugün ve taslak/gönderildi ise kırmızı "Süresi geçti", ≤7 gün ise amber "N gün kaldı / Son gün" (AlertTriangle/Clock ikonlu); PATCH ile 3 gün sonra test edildi → "⏱ 4 gün kaldı" rozeti göründü, ardından 30.10'a geri alındı
+- STYLE/MOBILE: Bekleyen Sevkiyatlar satırında sipariş no font-mono + whitespace-nowrap (mobilde 3 satıra kırılıyordu), termin tarihi mobilde gizli (hidden sm:block — overdue rozeti yine görünür), tarih nowrap; trend widget header'ı mobilde düzgün sarıyor (390px doğrulandı)
+- OPS: dev server tur içinde 2 kez öldü/takıldı (mobil girişte CSS chunk request'i sonsuz bekledi → sayfa stilsiz render oldu; bu bir kod hatası DEĞİL, sunucu donmasıydı). pkill + double-fork nohup + NODE_OPTIONS=2048 ile restart; restart sonrası tüm akışlar yeniden doğrulandı ve CSS 200
+
+Stage Summary:
+- Tur 5 tamamlandı: 2 bug fix (depo packingListNo gizliliği/açığı, tarih off-by-one) + 4 yeni özellik (trend grafiği, teklif WhatsApp, xlsx ihracı, geçerlilik rozetleri) + mobil stil iyileştirmeleri; lint 0/0
+- Sevk & Sipariş Trendi depocuda cirosuz (yalnızca adet + sevk oranı) — gizlilik korunuyor; stock rolü kısıtlı ekranında trend yok (beklenen)
+- Risk: dev server kararlılığı hâlâ kırılgan (tur içinde 2 restart); uzun QA oturumlarında browser kapatılmalı, sunucu ölürse çift-fork restart kullanılmalı
+- Risk: trend ciro hesabı sabit kur kullanıyor (demo) — gerçek kur entegrasyonu gerektiğinde exchange API bağlanmalı
+- Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (mevcut link üretimi + mesaj şablonları hazır), şirket bazlı toplu belge yazdırma (combined print şirket seviyesi), trend grafiğine dönem seçici (3/6/12 ay), fatura "hızlı ödendi işaretle" aksiyonu

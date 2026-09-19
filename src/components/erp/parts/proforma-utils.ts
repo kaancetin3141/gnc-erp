@@ -33,6 +33,38 @@ export function getProformaStatusMeta(status: string): ProformaStatusMeta {
   return PROFORMA_STATUSES.find((s) => s.value === status) ?? PROFORMA_STATUSES[0]
 }
 
+// WhatsApp için özet mesaj oluştur — TEKLİF (isProforma=false) için
+export function buildQuoteWhatsAppMessage(opts: {
+  number: string
+  customerName: string
+  total: number
+  currency: string
+  validUntil?: string | null
+}): string {
+  const lines: string[] = []
+  lines.push('Merhaba,')
+  lines.push('')
+  lines.push(`Size ${opts.number} numaralı teklifimizi iletiyoruz.`)
+  lines.push('')
+  lines.push(`📊 Teklif Özeti:`)
+  lines.push(`• Müşteri: ${opts.customerName}`)
+  lines.push(`• Genel Toplam: ${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(opts.total)} ${opts.currency}`)
+  if (opts.validUntil) {
+    const d = new Date(opts.validUntil)
+    if (!isNaN(d.getTime())) {
+      const dd = String(d.getDate()).padStart(2, '0')
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const yyyy = d.getFullYear()
+      lines.push(`• Teklif Geçerliliği: ${dd}.${mm}.${yyyy}`)
+    }
+  }
+  lines.push('')
+  lines.push('Teklifi onaylamak veya detaylı bilgi almak için bizimle iletişime geçebilirsiniz.')
+  lines.push('')
+  lines.push('İyi çalışmalar.')
+  return lines.join('\n')
+}
+
 // WhatsApp için özet mesaj oluştur
 export function buildProformaWhatsAppMessage(opts: {
   number: string

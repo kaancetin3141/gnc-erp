@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils'
 import { getTenantSector, SECTOR_META } from '@/lib/tenant-sector'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  AreaChart, Area, CartesianGrid,
+  AreaChart, Area, CartesianGrid, ComposedChart, Line, Legend,
 } from 'recharts'
 import { useCountUp } from '@/hooks/use-count-up'
 import { WidgetsSection } from './widgets/widgets-section'
@@ -71,6 +71,13 @@ interface DashboardData {
       customer: { id: string; name: string } | null
     }[]
   }
+  // 6 aylık sevk & sipariş trendi (ciro yalnızca tutar gören rollerde)
+  shipmentsTrend?: {
+    label: string
+    orders: number
+    shipped: number
+    revenue?: number
+  }[]
   // Sektör bazlı opsiyonel alanlar
   cafe?: CafeDashboardData['cafe']
   market?: MarketDashboardData['market']
@@ -435,6 +442,14 @@ function CrmDashboard({ data }: { data: DashboardData }) {
         <PendingShipmentsWidget shipments={data.shipments} showAmounts />
       )}
 
+      {/* 6 aylık sevk & sipariş trendi grafiği */}
+      {data.shipmentsTrend && (
+        <ShipmentsTrendWidget
+          trend={data.shipmentsTrend}
+          showRevenue={data.shipmentsTrend.some((t) => t.revenue != null)}
+        />
+      )}
+
       {/* İkincil satır */}
       <div className="grid lg:grid-cols-3 gap-4">
         {/* Pipeline grafiği */}
@@ -705,6 +720,169 @@ function CrmDashboard({ data }: { data: DashboardData }) {
 }
 
 // ============================================================
+// 6 Aylık Sevk & Sipariş Trendi — ERP sevkiyat akışının
+// aylık özeti: yeni sipariş (bar) vs sevk edilen irsaliye (çizgi),
+// opsiyonel TRY bazlı fatura cirosu (alan). Depo rolünde ciro gizli.
+// ============================================================
+function ShipmentsTrendWidget({
+  trend,
+  showRevenue,
+}: {
+  trend: NonNullable<DashboardData['shipmentsTrend']>
+  showRevenue: boolean
+}) {
+  const { setView } = useAppStore()
+  const totalOrders = trend.reduce((s, t) => s + t.orders, 0)
+  const totalShipped = trend.reduce((s, t) => s + t.shipped, 0)
+  const totalRevenue = trend.reduce((s, t) => s + (t.revenue ?? 0), 0)
+  const shipRate = totalOrders > 0 ? Math.round((totalShipped / totalOrders) * 100) : 0
+  const hasAnyData = totalOrders > 0 || totalShipped > 0 || totalRevenue > 0
+
+  return (
+    <Card className="overflow-hidden hover:shadow-md transition-shadow duration-300">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-500 to-cyan-600 flex items-center justify-center shadow-sm shrink-0">
+              <TrendingUp className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <CardTitle className="text-base leading-tight">Sevk &amp; Sipariş Trendi</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">Son 6 ay · aylık dağılım</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="text-right">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Sevk Oranı</div>
+              <div className="text-sm font-bold tabular-nums text-sky-600">%{shipRate}</div>
+            </div>
+            {showRevenue && (
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">6 Ay Ciro</div>
+                <div className="text-sm font-bold tabular-nums text-emerald-600">
+                  {totalRevenue >= 1000
+                    ? `${(totalRevenue / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} bin ₺`
+                    : `${totalRevenue.toLocaleString('tr-TR')} ₺`}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {hasAnyData ? (
+          <>
+            <div className="h-[220px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={trend} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="trendOrderBar" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.95} />
+                      <stop offset="100%" stopColor="#6d28d9" stopOpacity={0.75} />
+                    </linearGradient>
+                    <linearGradient id="trendRevenueArea" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.25} />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-border" opacity={0.5} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    className="text-muted-foreground"
+                  />
+                  <YAxis
+                    yAxisId="counts"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                    width={38}
+                    className="text-muted-foreground"
+                  />
+                  {showRevenue && (
+                    <YAxis
+                      yAxisId="revenue"
+                      orientation="right"
+                      hide
+                    />
+                  )}
+                  <Tooltip
+                    cursor={{ fill: 'rgba(139, 92, 246, 0.06)' }}
+                    contentStyle={{
+                      borderRadius: 10,
+                      border: '1px solid rgba(0,0,0,0.08)',
+                      fontSize: 12,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    }}
+                    formatter={(value: number | string, name: string) => {
+                      if (name === 'Ciro') return [`${Number(value).toLocaleString('tr-TR')} ₺`, name]
+                      return [value, name]
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11, paddingTop: 6 }}
+                    iconType="circle"
+                    iconSize={8}
+                  />
+                  {showRevenue && (
+                    <Area
+                      yAxisId="revenue"
+                      type="monotone"
+                      dataKey="revenue"
+                      name="Ciro"
+                      stroke="none"
+                      fill="url(#trendRevenueArea)"
+                      legendType="none"
+                    />
+                  )}
+                  <Bar
+                    yAxisId="counts"
+                    dataKey="orders"
+                    name="Yeni Sipariş"
+                    fill="url(#trendOrderBar)"
+                    radius={[5, 5, 0, 0]}
+                    maxBarSize={38}
+                  />
+                  <Line
+                    yAxisId="counts"
+                    type="monotone"
+                    dataKey="shipped"
+                    name="Sevk Edilen"
+                    stroke="#0ea5e9"
+                    strokeWidth={2.5}
+                    dot={{ r: 3, fill: '#0ea5e9', strokeWidth: 0 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <button
+              className="w-full mt-2 text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 transition-colors"
+              onClick={() => setView('irsaliye')}
+            >
+              Belge Yönetimi&apos;nde tüm sevkiyatları incele <ArrowRight className="w-3 h-3" />
+            </button>
+          </>
+        ) : (
+          <div className="h-[220px] flex flex-col items-center justify-center gap-2 text-center">
+            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+              <Truck className="w-6 h-6 text-muted-foreground/50" />
+            </div>
+            <div className="text-sm font-medium">Henüz sevkiyat hareketi yok</div>
+            <div className="text-xs text-muted-foreground max-w-xs">
+              Sipariş onaylandığında ve irsaliye sevk edildiğinde aylık trend burada görünür.
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================
 // Bekleyen Sevkiyatlar widget — sevk edilmemiş siparişler
 // ERP akışı: hazırlanıyor / onaylandı / üretimde durumundaki
 // siparişler termin tarihine göre listelenir. Depo rolünde
@@ -794,7 +972,7 @@ function PendingShipmentsWidget({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold">{order.number}</span>
+                    <span className="text-sm font-semibold font-mono whitespace-nowrap">{order.number}</span>
                     <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0 h-4.5', meta.color)}>
                       {meta.label}
                     </Badge>
@@ -808,14 +986,14 @@ function PendingShipmentsWidget({
                     {order.customer?.name ?? 'Müşteri yok'}
                   </div>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 hidden sm:block">
                   {order.expectedDelivery ? (
                     <div className={cn(
                       'text-xs font-medium flex items-center gap-1 justify-end',
                       overdue ? 'text-red-600' : 'text-muted-foreground',
                     )}>
                       <Clock className="w-3 h-3" />
-                      {formatDate(order.expectedDelivery)}
+                      <span className="whitespace-nowrap">{formatDate(order.expectedDelivery)}</span>
                     </div>
                   ) : (
                     <div className="text-xs text-muted-foreground/60">Termin yok</div>

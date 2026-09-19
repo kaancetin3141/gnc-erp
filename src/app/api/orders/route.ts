@@ -58,7 +58,14 @@ function serializeForDepo(order: {
       segment: order.customer.segment ?? null, status: order.customer.status ?? null,
     } : null,
     quote: order.quote ? { id: order.quote.id, number: order.quote.number } : null,
-    invoice: order.invoice ? { id: order.invoice.id, number: order.invoice.number, status: order.invoice.status } : null,
+    // packingListNo dahil: depo rolü çeki listesi görüntüleyebildiği için
+    // çeki listesi belge numarası fiyat bilgisi sayılmaz
+    invoice: order.invoice ? {
+      id: order.invoice.id,
+      number: order.invoice.number,
+      status: order.invoice.status,
+      packingListNo: order.invoice.packingListNo ?? null,
+    } : null,
     // İrsaliyeler — Belge Yönetimi sayfası için (fiyatsız özet)
     irsaliyeler: (order.irsaliyeler ?? []).map((i) => ({ id: i.id, number: i.number, status: i.status })),
     _count: order._count,
