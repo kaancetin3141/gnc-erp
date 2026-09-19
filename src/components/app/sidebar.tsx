@@ -10,6 +10,7 @@ import {
   BarChart3, UserCog, Settings, ChevronLeft, Sparkles, Boxes,
   FileText, Receipt, Package, MessageCircle, ClipboardCheck,
   ShieldCheck, Coffee, Store, Calendar, Building2, Home, Share2, Rocket, FileStack,
+  MessageSquareText,
 } from 'lucide-react'
 import type { PermissionKey } from '@/types'
 
@@ -45,6 +46,7 @@ const NAV_ITEMS: { group: string; items: NavItem[] }[] = [
       { view: 'pipeline', label: 'Fırsatlar', icon: KanbanSquare, permission: 'deals.manage' },
       { view: 'tasks', label: 'Görevler', icon: CheckSquare, permission: 'tasks.view' },
       { view: 'chat', label: 'Mesajlar', icon: MessageCircle, permission: 'messages.view' },
+      { view: 'whatsapp-hub', label: 'WhatsApp Merkezi', icon: MessageSquareText, permission: 'messages.view' },
     ],
   },
   {

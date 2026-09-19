@@ -12,7 +12,8 @@ import { toast } from 'sonner'
 import {
   Receipt, Plus, Download, Search, X, RefreshCw,
 } from 'lucide-react'
-import { formatDate, formatCurrency, whatsappLink } from '@/lib/format'
+import { formatDate, formatCurrency } from '@/lib/format'
+import { sendWhatsAppTracked } from '@/lib/whatsapp-hub'
 import { exportRowsToExcel } from '@/lib/excel-export'
 import { useAppStore } from '@/store/app-store'
 import { hasPermission } from '@/lib/rbac'
@@ -207,16 +208,31 @@ export function InvoicesView() {
         toast.error(`${detail.customer?.name ?? 'Müşteri'} için telefon numarası kayıtlı değil`)
         return
       }
+      const overdue = isOverdueRow(inv) || inv.status === 'gecikti'
       const msg = buildInvoiceWhatsAppMessage({
         number: inv.number,
         customerName: detail.customer?.name ?? '',
         total: inv.total,
         currency: inv.currency,
         dueDate: inv.dueDate,
-        isOverdue: isOverdueRow(inv) || inv.status === 'gecikti',
+        isOverdue: overdue,
       })
-      window.open(whatsappLink(phone, msg), '_blank', 'noopener,noreferrer')
-      toast.success(`${inv.number} için hatırlatma mesajı hazırlandı`)
+      // WhatsApp Mesaj Merkezi kaydı + wa.me sekmesi + gönderildi işaretleme
+      const result = await sendWhatsAppTracked({
+        phone,
+        body: msg,
+        title: `Ödeme Hatırlatma — ${inv.number}`,
+        contextType: 'fatura_hatirlatma',
+        contextId: inv.id,
+        contextNo: inv.number,
+        customerId: detail.customer?.id ?? inv.customerId,
+        customerName: detail.customer?.name ?? null,
+        amount: inv.total,
+        currency: inv.currency,
+      })
+      toast.success(result.popupOpened
+        ? `${inv.number} için hatırlatma mesajı hazırlandı`
+        : `${inv.number} hatırlatması kuyruğa alındı — Mesaj Merkezi'nden gönderebilirsiniz`)
 
       // Müşteri 360 zaman tüneliğine hatırlatma aktivitesi kaydet
       const customerId = detail.customer?.id ?? inv.customerId

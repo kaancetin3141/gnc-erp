@@ -22,6 +22,7 @@ import { DepoSiparisView } from '@/components/erp/depo-siparis-view'
 import { DocumentsView } from '@/components/erp/documents-view'
 import { ProductionView } from '@/components/erp/production-view'
 import { ChatView } from '@/components/chat/chat-view'
+import { WhatsAppHubView } from '@/components/whatsapp/whatsapp-hub-view'
 import { CafeView } from '@/components/cafe/cafe-view'
 import { MarketView } from '@/components/market/market-view'
 import { ExpensesView } from '@/components/expenses/expenses-view'
@@ -174,6 +175,11 @@ function AuthenticatedApp() {
             {view === 'chat' && (
               <ProtectedView perm="messages.view" message="Mesajlaşma için yetkiniz yok.">
                 <ChatView />
+              </ProtectedView>
+            )}
+            {view === 'whatsapp-hub' && (
+              <ProtectedView perm="messages.view" message="WhatsApp Mesaj Merkezi için yetkiniz yok.">
+                <WhatsAppHubView />
               </ProtectedView>
             )}
             {view === 'reports' && (

@@ -19,7 +19,8 @@ import {
   MessageCircle, Mail, Printer, RefreshCw, Send,
   FileText, ExternalLink,
 } from 'lucide-react'
-import { formatCurrency, formatDate, whatsappLink } from '@/lib/format'
+import { formatCurrency, formatDate } from '@/lib/format'
+import { sendWhatsAppTracked } from '@/lib/whatsapp-hub'
 import { cn } from '@/lib/utils'
 import type { Quote } from './types'
 import {
@@ -64,10 +65,10 @@ export function SendDialog({ proformaId, quoteId, open, onOpenChange, onPrint }:
   const customer = proforma?.customer
   const lines = proforma?.lines ?? []
 
-  // WhatsApp link — kayıt türüne göre (proforma/teklif) mesaj üret
-  const waLink = useMemo(() => {
-    if (!proforma) return '#'
-    const msg = customNote.trim() || (isProformaDoc
+  // WhatsApp mesaj metni — kayıt türüne göre (proforma/teklif)
+  const waMessage = useMemo(() => {
+    if (!proforma) return ''
+    return customNote.trim() || (isProformaDoc
       ? buildProformaWhatsAppMessage({
         number: proforma.number,
         customerName: customer?.name ?? '',
@@ -82,7 +83,6 @@ export function SendDialog({ proformaId, quoteId, open, onOpenChange, onPrint }:
         currency: proforma.currency,
         validUntil: proforma.validUntil,
       }))
-    return whatsappLink(customer?.phone ?? null, msg)
   }, [proforma, customer, customNote, isProformaDoc])
 
   // Mail link
@@ -126,12 +126,27 @@ export function SendDialog({ proformaId, quoteId, open, onOpenChange, onPrint }:
     try {
       // 1) Aksiyon: seçilen kanalı aç (yeni sekmede)
       if (channel === 'whatsapp') {
-        if (waLink === '#') {
+        if (!customer?.phone) {
           toast.error('Müşteri telefonu geçersiz veya eksik')
           setSending(false)
           return
         }
-        window.open(waLink, '_blank', 'noopener,noreferrer')
+        // WhatsApp Mesaj Merkezi kaydı + wa.me sekmesi + gönderildi işaretleme
+        const result = await sendWhatsAppTracked({
+          phone: customer.phone,
+          body: waMessage,
+          title: `${isProformaDoc ? 'Proforma' : 'Teklif'} Gönderimi — ${proforma.number}`,
+          contextType: isProformaDoc ? 'proforma_gonderim' : 'teklif_gonderim',
+          contextId: proforma.id,
+          contextNo: proforma.number,
+          customerId: customer.id ?? null,
+          customerName: customer.name ?? null,
+          amount: proforma.total,
+          currency: proforma.currency,
+        })
+        if (!result.popupOpened) {
+          toast.info('WhatsApp penceresi engellendi — mesaj Mesaj Merkezi kuyruğunda')
+        }
       } else {
         if (!customer?.email) {
           toast.error('Müşteri e-postası eksik')

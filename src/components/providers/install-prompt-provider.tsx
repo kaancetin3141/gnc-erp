@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Download, X, Smartphone, Monitor } from 'lucide-react'
+import { useAppStore } from '@/store/app-store'
 
 // PWA "Uygulamayı Yükle" prompt yöneticisi
 // beforeinstallprompt event'i yakalayıp kendi UI'ımızı gösteririz
@@ -21,6 +22,8 @@ export function InstallPromptProvider({ children }: { children: React.ReactNode 
   const [showPrompt, setShowPrompt] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
   const [platform, setPlatform] = useState<'ios' | 'android' | 'desktop' | 'other'>('other')
+  // Giriş ekranındaki kartları KAPATMAMASI için banner yalnızca oturum açıldıktan sonra gösterilir
+  const user = useAppStore((s) => s.user)
 
   useEffect(() => {
     // Standalone modda (zaten kurulmuş) gösterme
@@ -97,8 +100,8 @@ export function InstallPromptProvider({ children }: { children: React.ReactNode 
     <>
       {children}
 
-      {/* Chrome/Edge/Android install prompt */}
-      {showPrompt && deferredPrompt && (
+      {/* Chrome/Edge/Android install prompt — yalnızca oturum açıldıktan sonra */}
+      {showPrompt && deferredPrompt && user && (
         <InstallBanner
           icon={platform === 'desktop' ? Monitor : Smartphone}
           title="GNC CRM'i Uygulama Olarak Yükle"
@@ -109,8 +112,8 @@ export function InstallPromptProvider({ children }: { children: React.ReactNode 
         />
       )}
 
-      {/* iOS talimat (Paylaş → Ana Ekrana Ekle) */}
-      {showIosHint && (
+      {/* iOS talimat (Paylaş → Ana Ekrana Ekle) — yalnızca oturum açıldıktan sonra */}
+      {showIosHint && user && (
         <InstallBanner
           icon={Smartphone}
           title="iPhone'una Kur"

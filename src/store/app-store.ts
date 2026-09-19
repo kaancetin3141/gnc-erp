@@ -19,6 +19,7 @@ export type AppView =
   | 'invoices'
   | 'orders'
   | 'chat'
+  | 'whatsapp-hub'
   | 'production'
   | 'admin'
   | 'cafe'

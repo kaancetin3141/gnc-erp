@@ -26,6 +26,7 @@ import {
 import {
   formatCurrency, formatDateTime, whatsappLink, toCSV, downloadFile,
 } from '@/lib/format'
+import { sendWhatsAppTracked } from '@/lib/whatsapp-hub'
 import { cn } from '@/lib/utils'
 import {
   Search, Download, MoreVertical, CheckCircle2, XCircle,
@@ -163,9 +164,25 @@ export function AppointmentList({ providerId }: { providerId: string }) {
   }
 
   async function sendApprovalWhatsApp(appt: Appointment) {
-    // WhatsApp onay mesajı — müşteriye bilgi gönder
-    const link = whatsappLink(appt.customerPhone, buildApprovalMessage(appt))
-    window.open(link, '_blank', 'noopener,noreferrer')
+    // WhatsApp onay mesajı — Mesaj Merkezi kaydı + müşteriye bilgi gönder
+    try {
+      const result = await sendWhatsAppTracked({
+        phone: appt.customerPhone,
+        body: buildApprovalMessage(appt),
+        title: `Randevu Onayı — ${formatDateTime(appt.date)}`,
+        contextType: 'randevu_onay',
+        contextId: appt.id,
+        customerName: appt.customerName,
+        amount: appt.price || null,
+      })
+      if (!result.popupOpened) {
+        toast.info('WhatsApp penceresi engellendi — mesaj Mesaj Merkezi kuyruğunda')
+      }
+    } catch {
+      // kayıt başarısız olsa da WhatsApp akışı etkilenmez — yine de bildir
+      toast.error('Mesaj kaydı oluşturulamadı')
+      return
+    }
     // Bilgi gönderildi olarak işaretle
     try {
       await apiPatch(

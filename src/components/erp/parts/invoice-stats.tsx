@@ -63,6 +63,7 @@ export function InvoiceStats({ stats, defaultCurrency }: InvoiceStatsProps) {
         icon={HandCoins}
         color="bg-gradient-to-br from-fuchsia-500 to-pink-600"
         sub="TRY bazlı açık bakiye"
+        compact
       />
       <StatCard
         label="Toplam Tutar"
@@ -70,6 +71,7 @@ export function InvoiceStats({ stats, defaultCurrency }: InvoiceStatsProps) {
         icon={Coins}
         color="bg-gradient-to-br from-violet-500 to-fuchsia-600"
         sub="tüm fatura toplamı"
+        compact
       />
     </div>
   )

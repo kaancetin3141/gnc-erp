@@ -31,7 +31,8 @@ import {
   Printer, Plus, CircleCheckBig, Undo2, MessageCircle, CalendarClock,
   HandCoins, Loader2,
 } from 'lucide-react'
-import { formatCurrency, formatDate, whatsappLink } from '@/lib/format'
+import { formatCurrency, formatDate } from '@/lib/format'
+import { sendWhatsAppTracked } from '@/lib/whatsapp-hub'
 import { cn } from '@/lib/utils'
 import { formatWeight, calculateTotalWeight } from '@/lib/weight-utils'
 import {
@@ -171,8 +172,22 @@ export function InvoiceDetailDialog({
         dueDate: invoice.dueDate,
         isOverdue: overdue,
       })
-      window.open(whatsappLink(phone, msg), '_blank', 'noopener,noreferrer')
-      toast.success(`${invoice.number} için hatırlatma mesajı hazırlandı`)
+      // WhatsApp Mesaj Merkezi kaydı + wa.me sekmesi + gönderildi işaretleme
+      const result = await sendWhatsAppTracked({
+        phone,
+        body: msg,
+        title: `Ödeme Hatırlatma — ${invoice.number}`,
+        contextType: 'fatura_hatirlatma',
+        contextId: invoice.id,
+        contextNo: invoice.number,
+        customerId: d.customer?.id ?? invoice.customerId,
+        customerName: d.customer?.name ?? null,
+        amount: invoice.total,
+        currency: invoice.currency,
+      })
+      toast.success(result.popupOpened
+        ? `${invoice.number} için hatırlatma mesajı hazırlandı`
+        : `${invoice.number} hatırlatması kuyruğa alındı — Mesaj Merkezi'nden gönderebilirsiniz`)
 
       // Müşteri 360 zaman tüneliğine kaydet
       const customerId = d.customer?.id ?? invoice.customerId
