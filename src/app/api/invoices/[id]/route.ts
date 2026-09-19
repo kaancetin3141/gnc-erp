@@ -131,6 +131,70 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
   })
 
+  // ---- Müşteri 360 aktivite kayıtları (tahsilat hareketleri zaman tüneliğine düşer) ----
+  const activityCreates: { type: string; subject: string; detail: string; outcome?: string }[] = []
+
+  if (updateData.status && updateData.status !== existing.status) {
+    const money = `${existing.total.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} ${existing.currency}`
+    if (updateData.status === 'odendi') {
+      activityCreates.push({
+        type: 'not',
+        subject: `Ödeme alındı: ${existing.number}`,
+        detail: `${money} tahsil edildi`,
+        outcome: 'basarili',
+      })
+    } else if (updateData.status === 'odeme_bekliyor' && existing.status === 'odendi') {
+      activityCreates.push({
+        type: 'not',
+        subject: `Ödeme geri alındı: ${existing.number}`,
+        detail: `${money} ödendi işareti geri çekildi`,
+      })
+    } else if (updateData.status === 'iptal') {
+      activityCreates.push({
+        type: 'not',
+        subject: `Fatura iptal edildi: ${existing.number}`,
+        detail: `${money} tutarlı fatura iptal edildi`,
+      })
+    }
+  }
+
+  if (updateData.dueDate !== undefined) {
+    const oldDue = existing.dueDate
+      ? existing.dueDate.toLocaleDateString('tr-TR')
+      : '—'
+    const newDue = updateData.dueDate
+      ? (updateData.dueDate as Date).toLocaleDateString('tr-TR')
+      : '—'
+    if (oldDue !== newDue) {
+      activityCreates.push({
+        type: 'not',
+        subject: `Vade güncellendi: ${existing.number}`,
+        detail: `Vade ${oldDue} → ${newDue}`,
+      })
+    }
+  }
+
+  if (activityCreates.length > 0 && existing.customerId) {
+    const now = new Date()
+    await db.activity.createMany({
+      data: activityCreates.map((a) => ({
+        tenantId: user!.tenantId,
+        customerId: existing.customerId!,
+        type: a.type,
+        subject: a.subject,
+        detail: a.detail,
+        outcome: a.outcome ?? null,
+        userId: user!.id,
+        date: now,
+      })),
+    })
+    // Müşterinin son aktivite zamanını güncelle
+    await db.customer.update({
+      where: { id: existing.customerId },
+      data: { lastActivityAt: now },
+    })
+  }
+
   await writeAuditLog({
     tenantId: user!.tenantId,
     actorId: user!.id,

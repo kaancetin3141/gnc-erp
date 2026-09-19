@@ -20,7 +20,7 @@ import {
 import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Invoice } from './types'
-import { getInvoiceStatusMeta } from './invoice-utils'
+import { getInvoiceStatusMeta, overdueDays } from './invoice-utils'
 
 interface InvoiceTableProps {
   invoices: Invoice[]
@@ -90,6 +90,10 @@ export function InvoiceTable({
               const overdue = inv.status === 'odeme_bekliyor' && inv.dueDate
                 ? new Date(inv.dueDate).getTime() < Date.now()
                 : false
+              const agingDays =
+                (inv.status === 'odeme_bekliyor' || inv.status === 'gecikti')
+                  ? overdueDays(inv.dueDate)
+                  : 0
               return (
                 <TableRow
                   key={inv.id}
@@ -122,6 +126,11 @@ export function InvoiceTable({
                   </TableCell>
                   <TableCell className="hidden lg:table-cell text-sm whitespace-nowrap">
                     <span className={cn(overdue && 'text-red-600 font-medium')}>{formatDate(inv.dueDate)}</span>
+                    {agingDays > 0 && (
+                      <Badge variant="outline" className="ml-1.5 text-[9px] h-4 px-1 bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900/60 tabular-nums">
+                        {agingDays} gün gecikti
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="text-sm font-bold tabular-nums">{formatCurrency(inv.total, inv.currency)}</div>
@@ -133,10 +142,17 @@ export function InvoiceTable({
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={cn('text-[10px] h-5 gap-1', status.color)}>
-                      <status.icon className="w-3 h-3" />
-                      {status.label}
-                    </Badge>
+                    <div className="flex flex-col items-start gap-0.5">
+                      <Badge variant="outline" className={cn('text-[10px] h-5 gap-1', status.color)}>
+                        <status.icon className="w-3 h-3" />
+                        {status.label}
+                      </Badge>
+                      {agingDays > 0 && (
+                        <span className="text-[9px] font-medium text-red-600 dark:text-red-400 tabular-nums lg:hidden">
+                          {agingDays} gün gecikti
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right pr-4">
                     <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>

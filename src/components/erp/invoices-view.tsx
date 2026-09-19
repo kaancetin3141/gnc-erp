@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPatch } from '@/lib/api-client'
+import { apiGet, apiPatch, apiPost } from '@/lib/api-client'
 import type { SessionUser } from '@/types'
 
 import { Card, CardContent } from '@/components/ui/card'
@@ -18,11 +18,12 @@ import { useAppStore } from '@/store/app-store'
 import { hasPermission } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 import type { Invoice, InvoiceListResponse } from './parts/types'
-import { FILTER_STATUSES, getInvoiceStatusMeta, buildInvoiceWhatsAppMessage } from './parts/invoice-utils'
+import { FILTER_STATUSES, getInvoiceStatusMeta, buildInvoiceWhatsAppMessage, toTry, overdueDays } from './parts/invoice-utils'
 import { InvoiceFormDialog } from './parts/invoice-form-dialog'
 import { InvoiceDetailDialog } from './parts/invoice-detail-dialog'
 import { InvoiceStats } from './parts/invoice-stats'
 import { InvoiceTable } from './parts/invoice-table'
+import { InvoiceAging, bucketOf, type AgingBucket } from './parts/invoice-aging'
 
 // ============================================================
 // Ana liste bileşeni (orchestrator)
@@ -40,6 +41,7 @@ export function InvoicesView() {
   const [detailInvoice, setDetailInvoice] = useState<Invoice | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [agingFilter, setAgingFilter] = useState<AgingBucket>('__all__')
 
   // Query parametreleri
   const params = useMemo(() => {
@@ -57,20 +59,27 @@ export function InvoicesView() {
     },
   })
 
-  const invoices = data?.items ?? []
+  const allInvoices = data?.items ?? []
   const total = data?.total ?? 0
 
-  // İstatistikler
+  // Yaşlandırma filtresi (kova seçiliyse tabloyu daralt)
+  const invoices = useMemo(() => {
+    if (agingFilter === '__all__') return allInvoices
+    return allInvoices.filter((i) =>
+      (i.status === 'odeme_bekliyor' || i.status === 'gecikti') && bucketOf(i) === agingFilter,
+    )
+  }, [allInvoices, agingFilter])
+
+  // İstatistikler — yaşlandırma filtresinden bağımsız (tüm liste)
   const stats = useMemo(() => {
-    const pending = invoices.filter((i) => i.status === 'odeme_bekliyor').length
-    const paid = invoices.filter((i) => i.status === 'odendi').length
-    const overdue = invoices.filter((i) => i.status === 'gecikti').length
-    const totalValue = invoices.reduce((sum, i) => sum + i.total, 0)
+    const pending = allInvoices.filter((i) => i.status === 'odeme_bekliyor').length
+    const paid = allInvoices.filter((i) => i.status === 'odendi').length
+    const overdue = allInvoices.filter((i) => i.status === 'gecikti').length
+    const totalValue = allInvoices.reduce((sum, i) => sum + i.total, 0)
     // Bekleyen tahsilat: ödeme bekliyor + gecikmiş faturaların TRY bazlı toplamı
-    const FX_TO_TRY: Record<string, number> = { TRY: 1, USD: 42, EUR: 45, GBP: 52 }
-    const pendingAmount = invoices
+    const pendingAmount = allInvoices
       .filter((i) => i.status === 'odeme_bekliyor' || i.status === 'gecikti')
-      .reduce((sum, i) => sum + i.total * (FX_TO_TRY[i.currency] ?? 1), 0)
+      .reduce((sum, i) => sum + toTry(i.total, i.currency), 0)
     return {
       total,
       pending,
@@ -79,7 +88,7 @@ export function InvoicesView() {
       totalValue,
       pendingAmount: Math.round(pendingAmount),
     }
-  }, [invoices, total])
+  }, [allInvoices, total])
 
   const canExport = hasPermission(user as SessionUser | null, 'export.data')
 
@@ -110,9 +119,14 @@ export function InvoicesView() {
   const handleClearFilters = () => {
     setSearch('')
     setStatusFilter('__all__')
+    setAgingFilter('__all__')
   }
 
-  const activeFilterCount = [search, statusFilter !== '__all__' ? statusFilter : ''].filter(Boolean).length
+  const activeFilterCount = [
+    search,
+    statusFilter !== '__all__' ? statusFilter : '',
+    agingFilter !== '__all__' ? agingFilter : '',
+  ].filter(Boolean).length
 
   const openDetail = (inv: Invoice) => {
     setDetailInvoice(inv)
@@ -137,9 +151,7 @@ export function InvoicesView() {
 
   // ----- Hızlı tahsilat aksiyonları -----
   const isOverdueRow = (inv: Invoice) =>
-    inv.status === 'odeme_bekliyor' && inv.dueDate
-      ? new Date(inv.dueDate).getTime() < Date.now()
-      : false
+    inv.status === 'odeme_bekliyor' && overdueDays(inv.dueDate) > 0
 
   // Ödendi işaretle / ödemeyi geri al
   const handleQuickStatus = async (inv: Invoice, status: 'odendi' | 'odeme_bekliyor') => {
@@ -197,6 +209,19 @@ export function InvoicesView() {
       })
       window.open(whatsappLink(phone, msg), '_blank', 'noopener,noreferrer')
       toast.success(`${inv.number} için hatırlatma mesajı hazırlandı`)
+
+      // Müşteri 360 zaman tüneliğine hatırlatma aktivitesi kaydet
+      const customerId = detail.customer?.id ?? inv.customerId
+      if (customerId) {
+        try {
+          await apiPost('/api/customers/' + customerId + '/activities', {
+            type: 'whatsapp',
+            subject: `Ödeme hatırlatması gönderildi: ${inv.number}`,
+            detail: `${inv.total.toLocaleString('tr-TR')} ${inv.currency} · Vade: ${inv.dueDate ? formatDate(inv.dueDate) : '—'}`,
+            outcome: isOverdueRow(inv) || inv.status === 'gecikti' ? null : 'basarili',
+          })
+        } catch { /* aktivite kaydı başarısız olsa da akış etkilenmez */ }
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Hatırlatma hazırlanamadı')
     } finally {
@@ -238,6 +263,13 @@ export function InvoicesView() {
       <InvoiceStats
         stats={stats}
         defaultCurrency={user?.tenant.defaultCurrency || 'TRY'}
+      />
+
+      {/* Tahsilat yaşlandırma — kovaya tıklayınca tablo filtrelenir */}
+      <InvoiceAging
+        invoices={allInvoices}
+        activeBucket={agingFilter}
+        onBucketChange={setAgingFilter}
       />
 
       {/* Filtre barı */}

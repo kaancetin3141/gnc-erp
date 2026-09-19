@@ -137,7 +137,16 @@ export interface Invoice {
   // Sipariş bağlantısı
   orderId?: string | null
   order?: { id: string; number: string; status?: string } | null
-  customer?: { id: string; name: string; segment?: string; status?: string }
+  customer?: {
+    id: string
+    name: string
+    segment?: string
+    status?: string
+    // Detay API'si ek alanlar döner (telefon/adres/VKN)
+    phone?: string | null
+    address?: string | null
+    taxNumber?: string | null
+  }
   lines?: InvoiceLine[]
 }
 

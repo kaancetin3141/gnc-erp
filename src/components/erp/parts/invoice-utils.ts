@@ -30,6 +30,22 @@ export function getInvoiceStatusMeta(status: string): InvoiceStatusMeta {
   return INVOICE_STATUSES.find((s) => s.value === status) ?? INVOICE_STATUSES[0]
 }
 
+// ----- TRY bazlı kur dönüşümü (demo sabit kur) -----
+// Bekleyen tahsilat, yaşlandırma ve trend hesaplarında ortak kullanılır.
+export const FX_TO_TRY: Record<string, number> = { TRY: 1, USD: 42, EUR: 45, GBP: 52 }
+
+export function toTry(amount: number, currency: string): number {
+  return amount * (FX_TO_TRY[currency] ?? 1)
+}
+
+// Gecikme günü hesabı — vadesi geçmiş bekleyen faturalar için
+export function overdueDays(dueDate?: string | null, now: number = Date.now()): number {
+  if (!dueDate) return 0
+  const t = new Date(dueDate).getTime()
+  if (isNaN(t) || t >= now) return 0
+  return Math.floor((now - t) / 86400000)
+}
+
 // ----- Ödeme hatırlatma mesajı (WhatsApp) -----
 // Fatura listesindeki hızlı aksiyonla müşteriye gönderilir.
 export function buildInvoiceWhatsAppMessage(input: {

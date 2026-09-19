@@ -21,7 +21,7 @@ import { toast } from 'sonner'
 import {
   FileStack, Search, X, RefreshCw, Package, Receipt, Truck,
   ClipboardList, ChevronDown, ChevronRight, Building2,
-  FileCheck2, Loader2, Download, Layers,
+  FileCheck2, Loader2, Download, Layers, Printer,
 } from 'lucide-react'
 import { formatDate, formatCurrency, toCSV, downloadFile } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -32,6 +32,7 @@ import { InvoicePdfDialog } from './parts/invoice-detail-dialog'
 import { IrsaliyePdfDialog } from './irsaliye-pdf-dialog'
 import { PackingListPdfDialog } from './parts/packing-list-pdf-dialog'
 import { CombinedOrderPrintDialog } from './parts/combined-docs-print-dialog'
+import { CompanyDocsPrintDialog } from './parts/company-docs-print-dialog'
 
 // ============================================================
 // BELGE YÖNETİMİ — Eski "İrsaliyeler" sayfasının yerine geçer.
@@ -104,6 +105,7 @@ export function DocumentsView() {
   const [generating, setGenerating] = useState<string | null>(null) // "orderId:type"
   const [activeDoc, setActiveDoc] = useState<GeneratedDoc | null>(null)
   const [combinedOrder, setCombinedOrder] = useState<{ id: string; number: string; customerName?: string } | null>(null)
+  const [companyPrint, setCompanyPrint] = useState<{ name: string; orders: { id: string; number: string }[] } | null>(null)
 
   const canExport = hasPermission(su, 'export.data')
 
@@ -337,10 +339,19 @@ export function DocumentsView() {
                 const isOpen = openCompanies[company.name] ?? true
                 return (
                   <Card key={company.name} className="overflow-hidden">
-                    {/* Şirket başlığı */}
-                    <button
+                    {/* Şirket başlığı — tıklanınca açılır/kapanır, sağdaki butonlar tıklamayı yutmaz */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={isOpen}
                       onClick={() => toggleCompany(company.name)}
-                      className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-muted/50 to-muted/20 hover:from-muted/70 hover:to-muted/30 transition-all text-left"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          toggleCompany(company.name)
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-muted/50 to-muted/20 hover:from-muted/70 hover:to-muted/30 transition-all text-left cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
                     >
                       {isOpen ? (
                         <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -385,7 +396,33 @@ export function DocumentsView() {
                       <Badge variant="outline" className="text-[10px] shrink-0">
                         {company.orders.length}
                       </Badge>
-                    </button>
+
+                      {/* ŞİRKET TOPLU BELGE YAZDIRMA — tüm siparişler tek yazdırmada */}
+                      {(canSeeInvoice || canSeeIrsaliye) && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-[11px] gap-1 shrink-0 text-violet-700 border-violet-200 hover:bg-violet-50 dark:text-violet-300 dark:border-violet-900/50"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setCompanyPrint({
+                                  name: company.name,
+                                  orders: company.orders.map((o) => ({ id: o.id, number: o.number })),
+                                })
+                              }}
+                            >
+                              <Printer className="w-3 h-3" />
+                              <span className="hidden md:inline">Tümünü Yazdır</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Şirketin tüm sipariş belgelerini tek yazdırmada birleştir
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
 
                     {/* Sipariş listesi */}
                     {isOpen && (
@@ -622,6 +659,15 @@ export function DocumentsView() {
         canSeeIrsaliye={canSeeIrsaliye}
         open={!!combinedOrder}
         onOpenChange={(v) => { if (!v) setCombinedOrder(null) }}
+      />
+
+      {/* ŞİRKET TOPLU BELGE YAZDIRMA — şirketin tüm siparişleri */}
+      <CompanyDocsPrintDialog
+        company={companyPrint}
+        canSeeInvoice={canSeeInvoice}
+        canSeeIrsaliye={canSeeIrsaliye}
+        open={!!companyPrint}
+        onOpenChange={(v) => { if (!v) setCompanyPrint(null) }}
       />
     </div>
   )
