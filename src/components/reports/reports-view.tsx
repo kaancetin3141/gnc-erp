@@ -37,6 +37,7 @@ import {
   formatCurrency, formatDate, formatCompactNumber, toCSV, downloadFile,
   daysSince,
 } from '@/lib/format'
+import { AgingReportCard } from './aging-report-card'
 import {
   DEAL_STAGES, ACTIVITY_TYPES, LOSS_REASONS,
   getLabel,
@@ -674,6 +675,9 @@ function CrmReports({ data, openCustomer }: { data: ReportsData; openCustomer: (
           }} />
         )
       })()}
+
+      {/* ===== SECTION 11 — TAHSİLAT YAŞLANDIRMA RAPORU ===== */}
+      <AgingReportCard />
     </>
   )
 }

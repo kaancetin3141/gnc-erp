@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiGet, apiPost } from '@/lib/api-client'
 import { useAppStore } from '@/store/app-store'
 import { hasPermission } from '@/lib/rbac'
@@ -11,6 +11,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import {
   Users, DollarSign, TrendingUp, CheckSquare, AlertTriangle,
   Phone, Mail, MessageCircle, MapPin, StickyNote, Calendar,
@@ -729,6 +732,14 @@ const TREND_PERIODS = [3, 6, 12] as const
 
 type TrendPeriod = (typeof TREND_PERIODS)[number]
 
+// Bağımsız trend ucu yanıtı — şirket filtresi için müşteri listesi de döner
+interface TrendFilterData {
+  trend: NonNullable<DashboardData['shipmentsTrend']>
+  customers: { id: string; name: string }[]
+  canSeeAmounts: boolean
+  restricted?: boolean
+}
+
 function ShipmentsTrendWidget({
   trend,
   showRevenue,
@@ -738,8 +749,24 @@ function ShipmentsTrendWidget({
 }) {
   const { setView } = useAppStore()
   const [period, setPeriod] = useState<TrendPeriod>(6)
+  // Şirket filtresi — bağımsız hafif uçtan (/api/dashboard/trend) çekilir
+  const [customerId, setCustomerId] = useState<string>('__all__')
+  const { data: trendData, isFetching } = useQuery({
+    queryKey: ['shipments-trend', customerId],
+    queryFn: () => apiGet<TrendFilterData>(
+      `/api/dashboard/trend${customerId !== '__all__' ? `?customerId=${encodeURIComponent(customerId)}` : ''}`,
+    ),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  })
+  // Filtre yokken parent'tan gelen trend, filtre varken uçtan gelen trend kullanılır
+  const activeTrend = customerId !== '__all__'
+    ? (trendData?.trend ?? [])
+    : (trendData?.trend?.length ? trendData.trend : trend)
+  const customers = trendData?.customers ?? []
+  const selectedCustomer = customers.find((c) => c.id === customerId)
   // API 12 ay döner — görünür dilim son N ay
-  const visible = trend.slice(-period)
+  const visible = activeTrend.slice(-period)
   const totalOrders = visible.reduce((s, t) => s + t.orders, 0)
   const totalShipped = visible.reduce((s, t) => s + t.shipped, 0)
   const totalRevenue = visible.reduce((s, t) => s + (t.revenue ?? 0), 0)
@@ -756,7 +783,13 @@ function ShipmentsTrendWidget({
             </div>
             <div>
               <CardTitle className="text-base leading-tight">Sevk &amp; Sipariş Trendi</CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">Son {period} ay · aylık dağılım</p>
+              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 min-w-0">
+                <span className="truncate max-w-[160px]">
+                  {customerId !== '__all__' && selectedCustomer ? selectedCustomer.name : 'Tüm müşteriler'}
+                </span>
+                <span className="text-muted-foreground/60">·</span>
+                <span className="shrink-0">Son {period} ay</span>
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -774,6 +807,26 @@ function ShipmentsTrendWidget({
                 </div>
               </div>
             )}
+            {/* Şirket filtresi */}
+            <Select value={customerId} onValueChange={setCustomerId}>
+              <SelectTrigger
+                size="sm"
+                className={cn(
+                  'w-[160px] h-8 text-xs gap-1',
+                  customerId !== '__all__' && 'border-sky-300 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/30',
+                )}
+                aria-label="Trend şirket filtresi"
+              >
+                <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <SelectValue placeholder="Tüm müşteriler" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Tüm müşteriler</SelectItem>
+                {customers.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {/* Dönem seçici — segmented control */}
             <div
               className="flex items-center rounded-lg bg-muted p-0.5 gap-0.5"
@@ -802,7 +855,13 @@ function ShipmentsTrendWidget({
       <CardContent className="pt-0">
         {hasAnyData ? (
           <>
-            <div className="h-[220px] w-full">
+            <div className="relative h-[220px] w-full">
+              {/* Filtre değişiminde yumuşak yükleme katmanı */}
+              {isFetching && customerId !== '__all__' && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 rounded-lg">
+                  <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
+                </div>
+              )}
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={visible} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <defs>

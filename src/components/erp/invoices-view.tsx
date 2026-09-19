@@ -241,17 +241,21 @@ export function InvoicesView() {
     <div className="space-y-5 animate-fade-in">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Receipt className="w-6 h-6 text-amber-600" />
-            Faturalar
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Toplam <span className="font-semibold text-foreground">{total}</span> fatura
-            {stats.overdue > 0 && (
-              <span className="ml-2 text-red-600 font-medium">· {stats.overdue} gecikmiş</span>
-            )}
-          </p>
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-sm shrink-0">
+            <Receipt className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+              Faturalar
+            </h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Toplam <span className="font-semibold text-foreground">{total}</span> fatura
+              {stats.overdue > 0 && (
+                <span className="ml-2 text-red-600 font-medium">· {stats.overdue} gecikmiş</span>
+              )}
+            </p>
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           {canExport && (
@@ -260,7 +264,11 @@ export function InvoicesView() {
               Dışa Aktar
             </Button>
           )}
-          <Button size="sm" onClick={() => setAddOpen(true)} className="bg-amber-600 hover:bg-amber-700">
+          <Button
+            size="sm"
+            onClick={() => setAddOpen(true)}
+            className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-sm"
+          >
             <Plus className="w-4 h-4 mr-1.5" />
             Yeni Fatura
           </Button>

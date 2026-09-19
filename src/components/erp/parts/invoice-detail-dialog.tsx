@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPatch, apiDelete } from '@/lib/api-client'
+import { apiGet, apiPatch, apiDelete, apiPost } from '@/lib/api-client'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,16 +28,20 @@ import { toast } from 'sonner'
 import {
   Receipt, Pencil, Trash2, RefreshCw, User, Calendar,
   Clock, CheckCircle2, AlertTriangle, TrendingUp, FileText,
-  Printer, Plus,
+  Printer, Plus, CircleCheckBig, Undo2, MessageCircle, CalendarClock,
+  HandCoins, Loader2,
 } from 'lucide-react'
-import { formatCurrency, formatDate } from '@/lib/format'
+import { formatCurrency, formatDate, whatsappLink } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { formatWeight, calculateTotalWeight } from '@/lib/weight-utils'
 import {
   useInvoiceTemplate, TemplateA4Page, PdfHeader, PdfFooter,
 } from '@/components/pdf/pdf-template'
 import type { Invoice, InvoiceLine } from './types'
-import { INVOICE_STATUSES, getInvoiceStatusMeta } from './invoice-utils'
+import {
+  INVOICE_STATUSES, getInvoiceStatusMeta,
+  buildInvoiceWhatsAppMessage, overdueDays,
+} from './invoice-utils'
 
 // ============================================================
 // Fatura Detay Dialog
@@ -56,6 +60,7 @@ export function InvoiceDetailDialog({
   const [deleting, setDeleting] = useState(false)
   const [changing, setChanging] = useState(false)
   const [pdfOpen, setPdfOpen] = useState(false)
+  const [quickBusy, setQuickBusy] = useState<string | null>(null)
 
   // Detay sorgu
   const { data: detail, isLoading } = useQuery({
@@ -66,8 +71,8 @@ export function InvoiceDetailDialog({
 
   if (!invoice) return null
 
-  const status = getInvoiceStatusMeta(invoice.status)
   const d = detail ?? invoice
+  const status = getInvoiceStatusMeta(d.status)
 
   const changeStatus = async (newStatus: string) => {
     setChanging(true)
@@ -98,10 +103,95 @@ export function InvoiceDetailDialog({
     }
   }
 
-  // Gecikmiş mi?
-  const isOverdue = invoice.status === 'odeme_bekliyor' && invoice.dueDate
-    ? new Date(invoice.dueDate).getTime() < Date.now()
+  // Gecikmiş mi? — canlı detay (d) üzerinden okunur; hızlı aksiyonlar
+  // sonrası prop güncellenmeden bile arayüz doğru duruma geçer
+  const isOverdue = d.status === 'odeme_bekliyor' && d.dueDate
+    ? new Date(d.dueDate).getTime() < Date.now()
     : false
+
+  // ----- Hızlı tahsilat aksiyonları (liste menüsündeki aksiyonların detaya taşınması) -----
+  const isPending = d.status === 'odeme_bekliyor' || d.status === 'gecikti'
+  const quickActionInvalid = (e: unknown, fallback: string) => {
+    toast.error(e instanceof Error ? e.message : fallback)
+  }
+
+  // Ödendi işaretle / geri al
+  const handleQuickStatus = async (status: 'odendi' | 'odeme_bekliyor') => {
+    setQuickBusy(status)
+    try {
+      await apiPatch(`/api/invoices/${invoice.id}`, { status })
+      qc.invalidateQueries({ queryKey: ['invoice', invoice.id] })
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      toast.success(
+        status === 'odendi'
+          ? `${invoice.number} ödendi olarak işaretlendi 🎉`
+          : `${invoice.number} ödeme bekliyor durumuna alındı`,
+      )
+    } catch (e) {
+      quickActionInvalid(e, 'İşlem başarısız')
+    } finally {
+      setQuickBusy(null)
+    }
+  }
+
+  // Vade uzat +7 gün
+  const handleExtendDue = async () => {
+    setQuickBusy('extend')
+    try {
+      const base = invoice.dueDate && !isNaN(new Date(invoice.dueDate).getTime())
+        ? new Date(invoice.dueDate)
+        : new Date()
+      base.setDate(base.getDate() + 7)
+      await apiPatch(`/api/invoices/${invoice.id}`, { dueDate: base.toISOString() })
+      qc.invalidateQueries({ queryKey: ['invoice', invoice.id] })
+      qc.invalidateQueries({ queryKey: ['invoices'] })
+      toast.success(`${invoice.number} vadesi ${formatDate(base.toISOString())} olarak uzatıldı`)
+    } catch (e) {
+      quickActionInvalid(e, 'Vade uzatılamadı')
+    } finally {
+      setQuickBusy(null)
+    }
+  }
+
+  // Ödeme hatırlatma (WhatsApp) — detaydaki müşteri telefonuyla wa.me linki + aktivite kaydı
+  const handleRemind = async () => {
+    setQuickBusy('remind')
+    try {
+      const phone = d.customer?.phone ?? null
+      if (!phone) {
+        toast.error(`${d.customer?.name ?? 'Müşteri'} için telefon numarası kayıtlı değil`)
+        return
+      }
+      const overdue = isOverdue || d.status === 'gecikti'
+      const msg = buildInvoiceWhatsAppMessage({
+        number: invoice.number,
+        customerName: d.customer?.name ?? '',
+        total: invoice.total,
+        currency: invoice.currency,
+        dueDate: invoice.dueDate,
+        isOverdue: overdue,
+      })
+      window.open(whatsappLink(phone, msg), '_blank', 'noopener,noreferrer')
+      toast.success(`${invoice.number} için hatırlatma mesajı hazırlandı`)
+
+      // Müşteri 360 zaman tüneliğine kaydet
+      const customerId = d.customer?.id ?? invoice.customerId
+      if (customerId) {
+        try {
+          await apiPost('/api/customers/' + customerId + '/activities', {
+            type: 'whatsapp',
+            subject: `Ödeme hatırlatması gönderildi: ${invoice.number}`,
+            detail: `${invoice.total.toLocaleString('tr-TR')} ${invoice.currency} · Vade: ${invoice.dueDate ? formatDate(invoice.dueDate) : '—'}`,
+            outcome: overdue ? null : 'basarili',
+          })
+        } catch { /* aktivite kaydı akışı etkilemez */ }
+      }
+    } catch (e) {
+      quickActionInvalid(e, 'Hatırlatma hazırlanamadı')
+    } finally {
+      setQuickBusy(null)
+    }
+  }
 
   const lines: InvoiceLine[] = d.lines ?? []
   // Ağırlık kontrolü (F4)
@@ -296,12 +386,12 @@ export function InvoiceDetailDialog({
                   {INVOICE_STATUSES.map((s) => (
                     <Button
                       key={s.value}
-                      variant={invoice.status === s.value ? 'default' : 'outline'}
+                      variant={d.status === s.value ? 'default' : 'outline'}
                       size="sm"
-                      disabled={changing || invoice.status === s.value}
+                      disabled={changing || d.status === s.value}
                       onClick={() => changeStatus(s.value)}
                       className={cn(
-                        invoice.status === s.value && 'bg-amber-600 hover:bg-amber-700',
+                        d.status === s.value && 'bg-amber-600 hover:bg-amber-700',
                       )}
                     >
                       <s.icon className="w-3.5 h-3.5 mr-1" />
@@ -310,7 +400,7 @@ export function InvoiceDetailDialog({
                   ))}
                 </div>
 
-                {invoice.status === 'odendi' && d.paidDate && (
+                {d.status === 'odendi' && d.paidDate && (
                   <div className="p-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4" />
                     Ödendi — {formatDate(d.paidDate)}
@@ -320,6 +410,72 @@ export function InvoiceDetailDialog({
                   <div className="p-2 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" />
                     Vade tarihi geçti. &quot;Gecikti&quot; olarak işaretleyebilirsiniz.
+                  </div>
+                )}
+
+                {/* Hızlı tahsilat aksiyonları — listedeki menünün aynısı, detaydan erişilebilir */}
+                {(isPending || d.status === 'odendi') && (
+                  <div className="pt-1">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <HandCoins className="w-3.5 h-3.5 text-fuchsia-600" />
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Hızlı Tahsilat</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {isPending && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={quickBusy !== null}
+                            onClick={() => handleQuickStatus('odendi')}
+                            className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 h-8 text-xs"
+                          >
+                            {quickBusy === 'odendi'
+                              ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                              : <CircleCheckBig className="w-3.5 h-3.5 mr-1" />}
+                            Ödendi İşaretle
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={quickBusy !== null}
+                            onClick={handleRemind}
+                            className="h-8 text-xs border-sky-200 dark:border-sky-900/50 hover:bg-sky-50 dark:hover:bg-sky-950/30"
+                          >
+                            {quickBusy === 'remind'
+                              ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                              : <MessageCircle className="w-3.5 h-3.5 mr-1" />}
+                            Hatırlat (WhatsApp)
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={quickBusy !== null}
+                            onClick={handleExtendDue}
+                            className="h-8 text-xs"
+                          >
+                            {quickBusy === 'extend'
+                              ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                              : <CalendarClock className="w-3.5 h-3.5 mr-1" />}
+                            Vade Uzat +7
+                          </Button>
+                        </>
+                      )}
+                      {d.status === 'odendi' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={quickBusy !== null}
+                          onClick={() => handleQuickStatus('odeme_bekliyor')}
+                          className="text-amber-700 hover:text-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/30 border-amber-200 dark:border-amber-900/50 h-8 text-xs"
+                        >
+                          {quickBusy === 'odeme_bekliyor'
+                            ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                            : <Undo2 className="w-3.5 h-3.5 mr-1" />}
+                          Ödemeyi Geri Al
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

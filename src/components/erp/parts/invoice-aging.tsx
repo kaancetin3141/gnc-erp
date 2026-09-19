@@ -28,7 +28,7 @@ export const AGING_BUCKETS: {
   {
     value: 'notdue',
     label: 'Vadesi Geçmemiş',
-    short: 'Vadesi gelmemiş',
+    short: 'Vadesi geçmemiş',
     color: 'bg-slate-400 dark:bg-slate-500',
     chipCls: 'text-slate-700 border-slate-300 bg-slate-50 dark:text-slate-300 dark:border-slate-700 dark:bg-slate-900/40',
   },
