@@ -50,6 +50,7 @@ model Tenant {
   socialPosts      SocialPost[]
   socialInboxMessages SocialInboxMessage[]
   irsaliyeler      Irsaliye[]
+  exportDocs       ExportDoc[]
   invoiceTemplate     InvoiceTemplate?
   whatsappMessages WhatsAppMessage[]
 }
@@ -163,6 +164,7 @@ model Customer {
   invoices    Invoice[]
   orders      Order[]
   irsaliyeler Irsaliye[]
+  exportDocs  ExportDoc[]
   whatsappMessages WhatsAppMessage[]
 }
 
@@ -566,6 +568,54 @@ model Order {
   productionItems ProductionItem[]
   invoice      Invoice?
   irsaliyeler  Irsaliye[]
+  exportDocs   ExportDoc[]
+}
+
+// ============================================================
+// İHRACAT BELGELERİ — Dış ticaret evrakları
+// ============================================================
+// Belge türleri ve numara formatları (tenant + yıl bazlı):
+//   atr        → ATR-2026-001   ATR Dolaşım Belgesi (AB ülkeleri)
+//   eur1       → EUR1-2026-001  EUR.1 Dolaşım Belgesi (STA ülkeleri)
+//   mense      → MSH-2026-001   Menşe Şahadetnamesi (Certificate of Origin)
+//   gumruk     → GBE-2026-001   İhracat/Gümrük Beyannamesi
+//   konsimento → KNS-2026-001   Konşimento (Bill of Lading)
+//   sigorta    → SIG-2026-001   Sigorta Poliçesi / Sertifikası
+// Durum: taslak | hazir | imzalandi | gonderildi | iptal
+model ExportDoc {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  type        String   // atr | eur1 | mense | gumruk | konsimento | sigorta
+  number      String
+  status      String   @default("hazir")
+  issueDate   DateTime @default(now())
+  // Dış ticaret bilgileri
+  transportMode     String?  // karayolu | denizyolu | havayolu | demiryolu
+  incoterms         String?  // EXW | FCA | FOB | CFR | CIF | CPT | CIP | DAP | DPU | DDP
+  destinationCountry String?
+  portOfLoading     String?
+  portOfDischarge   String?
+  vesselName        String?  // denizyolu — gemi adı
+  containerNo       String?  // konteyner no
+  vehiclePlate      String?  // karayolu — araç plakası
+  carrierName       String?  // taşıyıcı firma
+  insuranceCompany  String?  // sigorta şirketi
+  policyAmount      Float?   // sigorta tutarı
+  policyCurrency    String?
+  notes             String?
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([tenantId, number])
+  @@index([tenantId, type])
+  @@index([tenantId, orderId])
+  @@index([tenantId, status])
 }
 
 // Sipariş takip adımı — her durum değişiminde otomatik ya da manuel eklenir

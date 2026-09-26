@@ -21,7 +21,7 @@ import { toast } from 'sonner'
 import {
   FileStack, Search, X, RefreshCw, Package, Receipt, Truck,
   ClipboardList, ChevronDown, ChevronRight, Building2,
-  FileCheck2, Loader2, Download, Layers, Printer,
+  FileCheck2, Loader2, Download, Layers, Printer, Globe2,
 } from 'lucide-react'
 import { formatDate, formatCurrency, toCSV, downloadFile } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -33,13 +33,14 @@ import { IrsaliyePdfDialog } from './irsaliye-pdf-dialog'
 import { PackingListPdfDialog } from './parts/packing-list-pdf-dialog'
 import { CombinedOrderPrintDialog } from './parts/combined-docs-print-dialog'
 import { CompanyDocsPrintDialog } from './parts/company-docs-print-dialog'
+import { ExportDocsTab } from './export-docs-tab'
 
 // ============================================================
 // BELGE YÖNETİMİ — Eski "İrsaliyeler" sayfasının yerine geçer.
 // · Şirketler (müşteriler) listelenir, altında SİPARİŞLERİ görünür
 // · Her siparişin yanında YETKİYE GÖRE belge butonları:
-//     · Müdür     → Fatura + İrsaliye + Çeki Listesi
-//     · Depocu    → İrsaliye + Çeki Listesi (fatura butonu görünmez)
+//     · Müdür     → Fatura + İrsaliye + Çeki Listesi + İhracat Belgeleri
+//     · Depocu    → İrsaliye + Çeki Listesi (fatura + ihracat görünmez)
 //     · ERP admin → hepsi
 // · Belgeler OTOMATİK üretilir: butona tıklayınca siparişten
 //   belge yoksa oluşturulur, varsa mevcut belge gösterilir.
@@ -56,6 +57,7 @@ interface OrderDoc {
   quote?: { id: string; number: string } | null
   invoice?: { id: string; number: string; status: string; packingListNo?: string | null } | null
   irsaliyeler?: { id: string; number: string; status: string }[]
+  exportDocs?: { id: string; type: string; number: string; status: string }[]
   _count?: { trackingSteps: number; productionItems?: number }
 }
 
@@ -99,6 +101,7 @@ export function DocumentsView() {
   const canSeeInvoice = hasPermission(su, 'invoices.view') || hasPermission(su, 'erp.manage')
   const canSeeIrsaliye = hasPermission(su, 'irsaliye.view')
   const canSeePacking = canSeeIrsaliye // çeki listesi = irsaliye.view sahiplerine açık (müdür + depocu)
+  const canSeeExport = canSeeInvoice // ihracat belgeleri = ticari evrak (müdür + admin, depocu hariç)
 
   const [search, setSearch] = useState('')
   const [openCompanies, setOpenCompanies] = useState<Record<string, boolean>>({})
@@ -224,7 +227,7 @@ export function DocumentsView() {
             Belge Yönetimi
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Şirketler ve sipariş belgeleri — fatura, irsaliye ve çeki listesi otomatik üretilir
+            Şirketler ve sipariş belgeleri — fatura, irsaliye, çeki listesi ve ihracat belgeleri otomatik üretilir
             {canSeeIrsaliye && !canSeeInvoice && (
               <span className="ml-2 text-violet-600 font-medium">(görüş alanınız: İrsaliye + Çeki Listesi)</span>
             )}
@@ -245,13 +248,18 @@ export function DocumentsView() {
       </div>
 
       <Tabs defaultValue="orders" className="space-y-4">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className={cn('grid w-full max-w-md', canSeeExport ? 'grid-cols-3' : 'grid-cols-2')}>
           <TabsTrigger value="orders" className="gap-1.5">
             <Package className="w-3.5 h-3.5" /> Sipariş Belgeleri
           </TabsTrigger>
           <TabsTrigger value="irsaliye" className="gap-1.5">
             <Truck className="w-3.5 h-3.5" /> İrsaliye Listesi
           </TabsTrigger>
+          {canSeeExport && (
+            <TabsTrigger value="ihracat" className="gap-1.5">
+              <Globe2 className="w-3.5 h-3.5" /> İhracat
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ==================== TAB 1: SİPARİŞ BELGELERİ ==================== */}
@@ -621,6 +629,18 @@ export function DocumentsView() {
         <TabsContent value="irsaliye">
           <IrsaliyeView />
         </TabsContent>
+
+        {/* ==================== TAB 3: İHRACAT BELGELERİ ==================== */}
+        {canSeeExport && (
+          <TabsContent value="ihracat">
+            <ExportDocsTab
+              orders={orders}
+              isLoading={isLoading}
+              search={search}
+              onSearchChange={setSearch}
+            />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* ==================== PDF DIALOG'LARI ==================== */}

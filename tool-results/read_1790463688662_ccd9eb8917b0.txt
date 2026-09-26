@@ -1,0 +1,675 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { apiGet, apiPost } from '@/lib/api-client'
+     6→import type { SessionUser } from '@/types'
+     7→
+     8→import { Card, CardContent } from '@/components/ui/card'
+     9→import { Button } from '@/components/ui/button'
+    10→import { Input } from '@/components/ui/input'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Skeleton } from '@/components/ui/skeleton'
+    13→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    14→import {
+    15→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    16→} from '@/components/ui/table'
+    17→import {
+    18→  Tooltip, TooltipContent, TooltipTrigger,
+    19→} from '@/components/ui/tooltip'
+    20→import { toast } from 'sonner'
+    21→import {
+    22→  FileStack, Search, X, RefreshCw, Package, Receipt, Truck,
+    23→  ClipboardList, ChevronDown, ChevronRight, Building2,
+    24→  FileCheck2, Loader2, Download, Layers, Printer,
+    25→} from 'lucide-react'
+    26→import { formatDate, formatCurrency, toCSV, downloadFile } from '@/lib/format'
+    27→import { cn } from '@/lib/utils'
+    28→import { useAppStore } from '@/store/app-store'
+    29→import { hasPermission } from '@/lib/rbac'
+    30→import { IrsaliyeView } from './irsaliye-view'
+    31→import { InvoicePdfDialog } from './parts/invoice-detail-dialog'
+    32→import { IrsaliyePdfDialog } from './irsaliye-pdf-dialog'
+    33→import { PackingListPdfDialog } from './parts/packing-list-pdf-dialog'
+    34→import { CombinedOrderPrintDialog } from './parts/combined-docs-print-dialog'
+    35→import { CompanyDocsPrintDialog } from './parts/company-docs-print-dialog'
+    36→
+    37→// ============================================================
+    38→// BELGE YÖNETİMİ — Eski "İrsaliyeler" sayfasının yerine geçer.
+    39→// · Şirketler (müşteriler) listelenir, altında SİPARİŞLERİ görünür
+    40→// · Her siparişin yanında YETKİYE GÖRE belge butonları:
+    41→//     · Müdür     → Fatura + İrsaliye + Çeki Listesi
+    42→//     · Depocu    → İrsaliye + Çeki Listesi (fatura butonu görünmez)
+    43→//     · ERP admin → hepsi
+    44→// · Belgeler OTOMATİK üretilir: butona tıklayınca siparişten
+    45→//   belge yoksa oluşturulur, varsa mevcut belge gösterilir.
+    46→// ============================================================
+    47→
+    48→interface OrderDoc {
+    49→  id: string
+    50→  number: string
+    51→  status: string
+    52→  orderDate: string
+    53→  totalAmount?: number
+    54→  currency?: string
+    55→  customer?: { id: string; name: string; segment?: string; status?: string } | null
+    56→  quote?: { id: string; number: string } | null
+    57→  invoice?: { id: string; number: string; status: string; packingListNo?: string | null } | null
+    58→  irsaliyeler?: { id: string; number: string; status: string }[]
+    59→  _count?: { trackingSteps: number; productionItems?: number }
+    60→}
+    61→
+    62→interface OrdersResponse {
+    63→  items: OrderDoc[]
+    64→  total: number
+    65→  hidePrices?: boolean
+    66→}
+    67→
+    68→const ORDER_STATUS_META: Record<string, { label: string; cls: string }> = {
+    69→  hazirlaniyor: { label: 'Hazırlanıyor', cls: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/60' },
+    70→  onaylandi: { label: 'Onaylandı', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/60' },
+    71→  uretimde: { label: 'Üretimde', cls: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:border-violet-900/60' },
+    72→  sevk_yapildi: { label: 'Sevk Edildi', cls: 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/30 dark:text-teal-300 dark:border-teal-900/60' },
+    73→  teslim_edildi: { label: 'Teslim', cls: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900/40 dark:text-slate-300 dark:border-slate-800' },
+    74→  iptal: { label: 'İptal', cls: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900/60' },
+    75→}
+    76→
+    77→// Fatura durumu etiketi (CSV için)
+    78→function ORDER_DOC_LABEL(status: string): string {
+    79→  switch (status) {
+    80→    case 'odeme_bekliyor': return 'Ödeme Bekliyor'
+    81→    case 'odendi': return 'Ödendi'
+    82→    case 'gecikti': return 'Gecikti'
+    83→    case 'iptal': return 'İptal'
+    84→    default: return status
+    85→  }
+    86→}
+    87→
+    88→type GeneratedDoc =
+    89→  | { kind: 'invoice'; invoiceId: string }
+    90→  | { kind: 'irsaliye'; irsaliyeId: string; irsaliyeNumber: string }
+    91→  | { kind: 'packing'; invoiceId: string }
+    92→
+    93→export function DocumentsView() {
+    94→  const qc = useQueryClient()
+    95→  const { user } = useAppStore()
+    96→  const su = user as SessionUser | null
+    97→
+    98→  // Yetkiler
+    99→  const canSeeInvoice = hasPermission(su, 'invoices.view') || hasPermission(su, 'erp.manage')
+   100→  const canSeeIrsaliye = hasPermission(su, 'irsaliye.view')
+   101→  const canSeePacking = canSeeIrsaliye // çeki listesi = irsaliye.view sahiplerine açık (müdür + depocu)
+   102→
+   103→  const [search, setSearch] = useState('')
+   104→  const [openCompanies, setOpenCompanies] = useState<Record<string, boolean>>({})
+   105→  const [generating, setGenerating] = useState<string | null>(null) // "orderId:type"
+   106→  const [activeDoc, setActiveDoc] = useState<GeneratedDoc | null>(null)
+   107→  const [combinedOrder, setCombinedOrder] = useState<{ id: string; number: string; customerName?: string } | null>(null)
+   108→  const [companyPrint, setCompanyPrint] = useState<{ name: string; orders: { id: string; number: string }[] } | null>(null)
+   109→
+   110→  const canExport = hasPermission(su, 'export.data')
+   111→
+   112→  const { data, isLoading, isFetching, refetch } = useQuery({
+   113→    queryKey: ['documents-orders', search],
+   114→    queryFn: () => {
+   115→      const p = new URLSearchParams({ limit: '200' })
+   116→      if (search) p.set('search', search)
+   117→      return apiGet<OrdersResponse>(`/api/orders?${p.toString()}`)
+   118→    },
+   119→  })
+   120→
+   121→  const orders = useMemo(() => data?.items ?? [], [data])
+   122→  const hidePrices = data?.hidePrices === true
+   123→
+   124→  // Şirketlere göre grupla
+   125→  const companies = useMemo(() => {
+   126→    const map = new Map<string, { name: string; segment?: string; orders: OrderDoc[] }>()
+   127→    for (const o of orders) {
+   128→      const key = o.customer?.id ?? '_'
+   129→      if (!map.has(key)) {
+   130→        map.set(key, {
+   131→          name: o.customer?.name ?? 'Bilinmeyen Şirket',
+   132→          segment: o.customer?.segment,
+   133→          orders: [],
+   134→        })
+   135→      }
+   136→      map.get(key)!.orders.push(o)
+   137→    }
+   138→    // Şirket adına göre sırala
+   139→    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+   140→  }, [orders])
+   141→
+   142→  // Özet
+   143→  const stats = useMemo(() => {
+   144→    const invoiced = orders.filter((o) => o.invoice).length
+   145→    const irsaliye = orders.filter((o) => (o.irsaliyeler?.length ?? 0) > 0).length
+   146→    const packing = orders.filter((o) => o.invoice?.packingListNo).length
+   147→    return { orders: data?.total ?? 0, companies: companies.length, invoiced, irsaliye, packing }
+   148→  }, [orders, companies, data])
+   149→
+   150→  // Belge üret + PDF aç
+   151→  const generateDoc = async (order: OrderDoc, type: 'invoice' | 'irsaliye' | 'packing_list') => {
+   152→    const genKey = `${order.id}:${type}`
+   153→    setGenerating(genKey)
+   154→    try {
+   155→      const res = await apiPost<{
+   156→        type: string
+   157→        created: boolean
+   158→        document: {
+   159→          id: string
+   160→          number: string
+   161→          packingListNo?: string | null
+   162→        }
+   163→        documentType: 'invoice' | 'irsaliye'
+   164→      }>(`/api/orders/${order.id}/generate-document`, { type })
+   165→
+   166→      if (res.created) {
+   167→        toast.success(`Belge otomatik oluşturuldu${res.document.number ? `: ${res.document.number}` : ''}`)
+   168→      }
+   169→
+   170→      if (type === 'irsaliye') {
+   171→        setActiveDoc({ kind: 'irsaliye', irsaliyeId: res.document.id, irsaliyeNumber: res.document.number })
+   172→      } else if (type === 'packing_list') {
+   173→        setActiveDoc({ kind: 'packing', invoiceId: res.document.id })
+   174→      } else {
+   175→        setActiveDoc({ kind: 'invoice', invoiceId: res.document.id })
+   176→      }
+   177→
+   178→      // Belge durumlarını tazele
+   179→      qc.invalidateQueries({ queryKey: ['documents-orders'] })
+   180→      qc.invalidateQueries({ queryKey: ['orders'] })
+   181→      qc.invalidateQueries({ queryKey: ['irsaliye'] })
+   182→      qc.invalidateQueries({ queryKey: ['invoices'] })
+   183→    } catch (e) {
+   184→      toast.error(e instanceof Error ? e.message : 'Belge oluşturulamadı')
+   185→    } finally {
+   186→      setGenerating(null)
+   187→    }
+   188→  }
+   189→
+   190→  const toggleCompany = (name: string) => {
+   191→    setOpenCompanies((prev) => ({ ...prev, [name]: !prev[name] }))
+   192→  }
+   193→
+   194→  // CSV dışa aktarma — siparişler + belge durumları
+   195→  const handleExportCSV = () => {
+   196→    if (orders.length === 0) {
+   197→      toast.error('Dışa aktarılacak sipariş yok')
+   198→      return
+   199→    }
+   200→    const rows = orders.map((o) => ({
+   201→      'Sipariş No': o.number,
+   202→      'Şirket': o.customer?.name ?? '',
+   203→      'Tarih': formatDate(o.orderDate),
+   204→      'Durum': ORDER_STATUS_META[o.status]?.label ?? o.status,
+   205→      'Fatura No': o.invoice?.number ?? '',
+   206→      'Fatura Durumu': o.invoice ? ORDER_DOC_LABEL(o.invoice.status) : 'Yok',
+   207→      'İrsaliye No': o.irsaliyeler?.[0]?.number ?? '',
+   208→      'İrsaliye Durumu': o.irsaliyeler?.[0] ? ORDER_STATUS_META[o.irsaliyeler[0].status]?.label ?? o.irsaliyeler[0].status : 'Yok',
+   209→      'Çeki Listesi No': o.invoice?.packingListNo ?? '',
+   210→      ...(hidePrices ? {} : { 'Tutar': o.totalAmount ?? 0, 'Para': o.currency ?? 'TRY' }),
+   211→    }))
+   212→    const csv = toCSV(rows)
+   213→    downloadFile(csv, `belge-yonetimi-${new Date().toISOString().slice(0, 10)}.csv`)
+   214→    toast.success(`${orders.length} sipariş dışa aktarıldı`)
+   215→  }
+   216→
+   217→  return (
+   218→    <div className="space-y-5 animate-fade-in">
+   219→      {/* Header */}
+   220→      <div className="flex items-start justify-between flex-wrap gap-3">
+   221→        <div>
+   222→          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   223→            <FileStack className="w-6 h-6 text-violet-600" />
+   224→            Belge Yönetimi
+   225→          </h2>
+   226→          <p className="text-sm text-muted-foreground mt-0.5">
+   227→            Şirketler ve sipariş belgeleri — fatura, irsaliye ve çeki listesi otomatik üretilir
+   228→            {canSeeIrsaliye && !canSeeInvoice && (
+   229→              <span className="ml-2 text-violet-600 font-medium">(görüş alanınız: İrsaliye + Çeki Listesi)</span>
+   230→            )}
+   231→          </p>
+   232→        </div>
+   233→        <div className="flex gap-2 flex-wrap">
+   234→          {canExport && (
+   235→            <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={orders.length === 0}>
+   236→              <Download className="w-4 h-4 mr-1.5" />
+   237→              CSV Dışa Aktar
+   238→            </Button>
+   239→          )}
+   240→          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+   241→            <RefreshCw className={cn('w-4 h-4 mr-1.5', isFetching && 'animate-spin')} />
+   242→            Yenile
+   243→          </Button>
+   244→        </div>
+   245→      </div>
+   246→
+   247→      <Tabs defaultValue="orders" className="space-y-4">
+   248→        <TabsList className="grid w-full max-w-md grid-cols-2">
+   249→          <TabsTrigger value="orders" className="gap-1.5">
+   250→            <Package className="w-3.5 h-3.5" /> Sipariş Belgeleri
+   251→          </TabsTrigger>
+   252→          <TabsTrigger value="irsaliye" className="gap-1.5">
+   253→            <Truck className="w-3.5 h-3.5" /> İrsaliye Listesi
+   254→          </TabsTrigger>
+   255→        </TabsList>
+   256→
+   257→        {/* ==================== TAB 1: SİPARİŞ BELGELERİ ==================== */}
+   258→        <TabsContent value="orders" className="space-y-4">
+   259→          {/* Stats */}
+   260→          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+   261→            <Card>
+   262→              <CardContent className="p-3">
+   263→                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Sipariş</div>
+   264→                <div className="text-xl font-bold">{stats.orders}</div>
+   265→              </CardContent>
+   266→            </Card>
+   267→            <Card>
+   268→              <CardContent className="p-3">
+   269→                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Şirket</div>
+   270→                <div className="text-xl font-bold">{stats.companies}</div>
+   271→              </CardContent>
+   272→            </Card>
+   273→            {canSeeInvoice && (
+   274→              <Card className="bg-emerald-50/50 dark:bg-emerald-950/20">
+   275→                <CardContent className="p-3">
+   276→                  <div className="text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Faturalı</div>
+   277→                  <div className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{stats.invoiced}</div>
+   278→                </CardContent>
+   279→              </Card>
+   280→            )}
+   281→            {canSeeIrsaliye && (
+   282→              <Card className="bg-violet-50/50 dark:bg-violet-950/20">
+   283→                <CardContent className="p-3">
+   284→                  <div className="text-[10px] uppercase tracking-wider text-violet-700 dark:text-violet-400">İrsaliyeli</div>
+   285→                  <div className="text-xl font-bold text-violet-700 dark:text-violet-400">{stats.irsaliye}</div>
+   286→                </CardContent>
+   287→              </Card>
+   288→            )}
+   289→            {canSeePacking && (
+   290→              <Card className="bg-amber-50/50 dark:bg-amber-950/20">
+   291→                <CardContent className="p-3">
+   292→                  <div className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400">Çeki Listeli</div>
+   293→                  <div className="text-xl font-bold text-amber-700 dark:text-amber-400">{stats.packing}</div>
+   294→                </CardContent>
+   295→              </Card>
+   296→            )}
+   297→          </div>
+   298→
+   299→          {/* Arama */}
+   300→          <Card>
+   301→            <CardContent className="p-4">
+   302→              <div className="relative">
+   303→                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+   304→                <Input
+   305→                  value={search}
+   306→                  onChange={(e) => setSearch(e.target.value)}
+   307→                  placeholder="Şirket veya sipariş no ara..."
+   308→                  className="pl-9"
+   309→                />
+   310→                {search && (
+   311→                  <button
+   312→                    onClick={() => setSearch('')}
+   313→                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded"
+   314→                  >
+   315→                    <X className="w-3.5 h-3.5 text-muted-foreground" />
+   316→                  </button>
+   317→                )}
+   318→              </div>
+   319→            </CardContent>
+   320→          </Card>
+   321→
+   322→          {/* Şirketler → Siparişler */}
+   323→          {isLoading ? (
+   324→            <div className="space-y-3">
+   325→              <Skeleton className="h-16 w-full" />
+   326→              <Skeleton className="h-40 w-full" />
+   327→              <Skeleton className="h-16 w-full" />
+   328→            </div>
+   329→          ) : companies.length === 0 ? (
+   330→            <Card>
+   331→              <CardContent className="p-12 text-center">
+   332→                <Building2 className="w-10 h-10 mx-auto text-muted-foreground/50 mb-2" />
+   333→                <p className="text-sm text-muted-foreground">Sipariş bulunamadı</p>
+   334→              </CardContent>
+   335→            </Card>
+   336→          ) : (
+   337→            <div className="space-y-3">
+   338→              {companies.map((company) => {
+   339→                const isOpen = openCompanies[company.name] ?? true
+   340→                return (
+   341→                  <Card key={company.name} className="overflow-hidden">
+   342→                    {/* Şirket başlığı — tıklanınca açılır/kapanır, sağdaki butonlar tıklamayı yutmaz */}
+   343→                    <div
+   344→                      role="button"
+   345→                      tabIndex={0}
+   346→                      aria-expanded={isOpen}
+   347→                      onClick={() => toggleCompany(company.name)}
+   348→                      onKeyDown={(e) => {
+   349→                        if (e.key === 'Enter' || e.key === ' ') {
+   350→                          e.preventDefault()
+   351→                          toggleCompany(company.name)
+   352→                        }
+   353→                      }}
+   354→                      className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-muted/50 to-muted/20 hover:from-muted/70 hover:to-muted/30 transition-all text-left cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+   355→                    >
+   356→                      {isOpen ? (
+   357→                        <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+   358→                      ) : (
+   359→                        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+   360→                      )}
+   361→                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 flex items-center justify-center shrink-0">
+   362→                        <Building2 className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+   363→                      </div>
+   364→                      <div className="min-w-0 flex-1">
+   365→                        <div className="font-semibold text-sm truncate">{company.name}</div>
+   366→                        <div className="text-[11px] text-muted-foreground">
+   367→                          {company.orders.length} sipariş
+   368→                          {company.segment ? ` · ${company.segment}` : ''}
+   369→                        </div>
+   370→                      </div>
+   371→                      {/* Şirket belge özeti */}
+   372→                      {(() => {
+   373→                        const inv = company.orders.filter((o) => o.invoice).length
+   374→                        const irs = company.orders.filter((o) => (o.irsaliyeler?.length ?? 0) > 0).length
+   375→                        const pack = company.orders.filter((o) => o.invoice?.packingListNo).length
+   376→                        return (
+   377→                          <div className="hidden sm:flex items-center gap-1 shrink-0">
+   378→                            {canSeeInvoice && inv > 0 && (
+   379→                              <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/60 gap-0.5">
+   380→                                <Receipt className="w-2.5 h-2.5" /> {inv}
+   381→                              </Badge>
+   382→                            )}
+   383→                            {canSeeIrsaliye && irs > 0 && (
+   384→                              <Badge variant="outline" className="text-[9px] bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:border-violet-900/60 gap-0.5">
+   385→                                <Truck className="w-2.5 h-2.5" /> {irs}
+   386→                              </Badge>
+   387→                            )}
+   388→                            {canSeePacking && pack > 0 && (
+   389→                              <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/60 gap-0.5">
+   390→                                <ClipboardList className="w-2.5 h-2.5" /> {pack}
+   391→                              </Badge>
+   392→                            )}
+   393→                          </div>
+   394→                        )
+   395→                      })()}
+   396→                      <Badge variant="outline" className="text-[10px] shrink-0">
+   397→                        {company.orders.length}
+   398→                      </Badge>
+   399→
+   400→                      {/* ŞİRKET TOPLU BELGE YAZDIRMA — tüm siparişler tek yazdırmada */}
+   401→                      {(canSeeInvoice || canSeeIrsaliye) && (
+   402→                        <Tooltip>
+   403→                          <TooltipTrigger asChild>
+   404→                            <Button
+   405→                              variant="outline"
+   406→                              size="sm"
+   407→                              className="h-7 text-[11px] gap-1 shrink-0 text-violet-700 border-violet-200 hover:bg-violet-50 dark:text-violet-300 dark:border-violet-900/50"
+   408→                              onClick={(e) => {
+   409→                                e.stopPropagation()
+   410→                                setCompanyPrint({
+   411→                                  name: company.name,
+   412→                                  orders: company.orders.map((o) => ({ id: o.id, number: o.number })),
+   413→                                })
+   414→                              }}
+   415→                            >
+   416→                              <Printer className="w-3 h-3" />
+   417→                              <span className="hidden md:inline">Tümünü Yazdır</span>
+   418→                            </Button>
+   419→                          </TooltipTrigger>
+   420→                          <TooltipContent>
+   421→                            Şirketin tüm sipariş belgelerini tek yazdırmada birleştir
+   422→                          </TooltipContent>
+   423→                        </Tooltip>
+   424→                      )}
+   425→                    </div>
+   426→
+   427→                    {/* Sipariş listesi */}
+   428→                    {isOpen && (
+   429→                      <div className="overflow-x-auto border-t">
+   430→                        <Table>
+   431→                          <TableHeader>
+   432→                            <TableRow className="bg-muted/20 hover:bg-muted/20">
+   433→                              <TableHead className="pl-4 min-w-[120px]">Sipariş No</TableHead>
+   434→                              <TableHead className="min-w-[100px]">Tarih</TableHead>
+   435→                              <TableHead className="min-w-[110px]">Durum</TableHead>
+   436→                              {!hidePrices && (
+   437→                                <TableHead className="text-right min-w-[100px]">Tutar</TableHead>
+   438→                              )}
+   439→                              <TableHead className="min-w-[240px] text-right pr-4">Belgeler</TableHead>
+   440→                            </TableRow>
+   441→                          </TableHeader>
+   442→                          <TableBody>
+   443→                            {company.orders.map((o) => {
+   444→                              const st = ORDER_STATUS_META[o.status] ?? { label: o.status, cls: '' }
+   445→                              const hasIrs = (o.irsaliyeler?.length ?? 0) > 0
+   446→                              return (
+   447→                                <TableRow key={o.id} className="hover:bg-muted/20">
+   448→                                  <TableCell className="pl-4">
+   449→                                    <div className="flex items-center gap-2">
+   450→                                      <Package className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+   451→                                      <span className="font-mono text-xs font-semibold">{o.number}</span>
+   452→                                    </div>
+   453→                                    {o.quote && (
+   454→                                      <div className="text-[10px] text-muted-foreground mt-0.5 ml-5.5">
+   455→                                        Teklif: {o.quote.number}
+   456→                                      </div>
+   457→                                    )}
+   458→                                  </TableCell>
+   459→                                  <TableCell className="text-xs text-muted-foreground">
+   460→                                    {formatDate(o.orderDate)}
+   461→                                  </TableCell>
+   462→                                  <TableCell>
+   463→                                    <Badge variant="outline" className={cn('text-[10px]', st.cls)}>
+   464→                                      {st.label}
+   465→                                    </Badge>
+   466→                                  </TableCell>
+   467→                                  {!hidePrices && (
+   468→                                    <TableCell className="text-right text-sm font-medium tabular-nums">
+   469→                                      {formatCurrency(o.totalAmount ?? 0, o.currency || 'TRY')}
+   470→                                    </TableCell>
+   471→                                  )}
+   472→                                  <TableCell className="text-right pr-4">
+   473→                                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
+   474→                                      {/* FATURA — müdür + ERP admin */}
+   475→                                      {canSeeInvoice && (
+   476→                                        <Tooltip>
+   477→                                          <TooltipTrigger asChild>
+   478→                                            <Button
+   479→                                              variant="outline"
+   480→                                              size="sm"
+   481→                                              className={cn(
+   482→                                                'h-7 text-[11px] gap-1',
+   483→                                                o.invoice
+   484→                                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/50 dark:text-emerald-300'
+   485→                                                  : 'text-muted-foreground',
+   486→                                              )}
+   487→                                              disabled={generating === `${o.id}:invoice`}
+   488→                                              onClick={() => generateDoc(o, 'invoice')}
+   489→                                            >
+   490→                                              {generating === `${o.id}:invoice` ? (
+   491→                                                <Loader2 className="w-3 h-3 animate-spin" />
+   492→                                              ) : (
+   493→                                                <Receipt className="w-3 h-3" />
+   494→                                              )}
+   495→                                              Fatura
+   496→                                              {o.invoice && <FileCheck2 className="w-3 h-3 text-emerald-600" />}
+   497→                                            </Button>
+   498→                                          </TooltipTrigger>
+   499→                                          <TooltipContent>
+   500→                                            {o.invoice ? `Faturayı görüntüle (${o.invoice.number})` : 'Faturayı otomatik oluştur'}
+   501→                                          </TooltipContent>
+   502→                                        </Tooltip>
+   503→                                      )}
+   504→
+   505→                                      {/* İRSALİYE — müdür + depocu */}
+   506→                                      {canSeeIrsaliye && (
+   507→                                        <Tooltip>
+   508→                                          <TooltipTrigger asChild>
+   509→                                            <Button
+   510→                                              variant="outline"
+   511→                                              size="sm"
+   512→                                              className={cn(
+   513→                                                'h-7 text-[11px] gap-1',
+   514→                                                hasIrs
+   515→                                                  ? 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100 dark:bg-violet-950/30 dark:border-violet-900/50 dark:text-violet-300'
+   516→                                                  : 'text-muted-foreground',
+   517→                                              )}
+   518→                                              disabled={generating === `${o.id}:irsaliye`}
+   519→                                              onClick={() => generateDoc(o, 'irsaliye')}
+   520→                                            >
+   521→                                              {generating === `${o.id}:irsaliye` ? (
+   522→                                                <Loader2 className="w-3 h-3 animate-spin" />
+   523→                                              ) : (
+   524→                                                <Truck className="w-3 h-3" />
+   525→                                              )}
+   526→                                              İrsaliye
+   527→                                              {hasIrs && <FileCheck2 className="w-3 h-3 text-violet-600" />}
+   528→                                            </Button>
+   529→                                          </TooltipTrigger>
+   530→                                          <TooltipContent>
+   531→                                            {hasIrs ? `İrsaliyeyi görüntüle (${o.irsaliyeler![0].number})` : 'İrsaliyeyi otomatik oluştur'}
+   532→                                          </TooltipContent>
+   533→                                        </Tooltip>
+   534→                                      )}
+   535→
+   536→                                      {/* TÜM BELGELER — birleşik yazdırma */}
+   537→                                      <Tooltip>
+   538→                                        <TooltipTrigger asChild>
+   539→                                          <Button
+   540→                                            variant="outline"
+   541→                                            size="sm"
+   542→                                            className="h-7 text-[11px] gap-1 text-violet-700 border-violet-200 hover:bg-violet-50 dark:text-violet-300 dark:border-violet-900/50"
+   543→                                            disabled={generating === `${o.id}:combined`}
+   544→                                            onClick={() =>
+   545→                                              setCombinedOrder({
+   546→                                                id: o.id,
+   547→                                                number: o.number,
+   548→                                                customerName: o.customer?.name,
+   549→                                              })
+   550→                                            }
+   551→                                          >
+   552→                                            <Layers className="w-3 h-3" />
+   553→                                            Tümü
+   554→                                          </Button>
+   555→                                        </TooltipTrigger>
+   556→                                        <TooltipContent>
+   557→                                          Tüm belgeleri tek yazdırmada birleştir (her belge ayrı A4)
+   558→                                        </TooltipContent>
+   559→                                      </Tooltip>
+   560→
+   561→                                      {/* ÇEKİ LİSTESİ — müdür + depocu */}
+   562→                                      {canSeePacking && (
+   563→                                        <Tooltip>
+   564→                                          <TooltipTrigger asChild>
+   565→                                            <Button
+   566→                                              variant="outline"
+   567→                                              size="sm"
+   568→                                              className={cn(
+   569→                                                'h-7 text-[11px] gap-1',
+   570→                                                o.invoice?.packingListNo
+   571→                                                  ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-300'
+   572→                                                  : 'text-muted-foreground',
+   573→                                              )}
+   574→                                              disabled={generating === `${o.id}:packing_list`}
+   575→                                              onClick={() => generateDoc(o, 'packing_list')}
+   576→                                            >
+   577→                                              {generating === `${o.id}:packing_list` ? (
+   578→                                                <Loader2 className="w-3 h-3 animate-spin" />
+   579→                                              ) : (
+   580→                                                <ClipboardList className="w-3 h-3" />
+   581→                                              )}
+   582→                                              Çeki Listesi
+   583→                                              {o.invoice?.packingListNo && <FileCheck2 className="w-3 h-3 text-amber-600" />}
+   584→                                            </Button>
+   585→                                          </TooltipTrigger>
+   586→                                          <TooltipContent>
+   587→                                            {o.invoice?.packingListNo
+   588→                                              ? `Çeki listesini görüntüle (${o.invoice.packingListNo})`
+   589→                                              : 'Çeki listesini otomatik oluştur'}
+   590→                                          </TooltipContent>
+   591→                                        </Tooltip>
+   592→                                      )}
+   593→                                    </div>
+   594→                                  </TableCell>
+   595→                                </TableRow>
+   596→                              )
+   597→                            })}
+   598→                          </TableBody>
+   599→                        </Table>
+   600→                      </div>
+   601→                    )}
+   602→                  </Card>
+   603→                )
+   604→              })}
+   605→            </div>
+   606→          )}
+   607→
+   608→          {/* Alt bilgi */}
+   609→          {!isLoading && orders.length > 0 && (
+   610→            <div className="flex items-center justify-between text-xs text-muted-foreground">
+   611→              <div className="flex items-center gap-2">
+   612→                <FileStack className="w-3.5 h-3.5" />
+   613→                <span>{orders.length} sipariş · {companies.length} şirket gösteriliyor</span>
+   614→              </div>
+   615→              <span>Belgeler otomatik üretilir — butona tıkladığınızda oluşturulur ve açılır</span>
+   616→            </div>
+   617→          )}
+   618→        </TabsContent>
+   619→
+   620→        {/* ==================== TAB 2: İRSALİYE LİSTESİ ==================== */}
+   621→        <TabsContent value="irsaliye">
+   622→          <IrsaliyeView />
+   623→        </TabsContent>
+   624→      </Tabs>
+   625→
+   626→      {/* ==================== PDF DIALOG'LARI ==================== */}
+   627→      {/* Fatura PDF */}
+   628→      {activeDoc?.kind === 'invoice' && (
+   629→        <InvoicePdfDialog
+   630→          invoice={{ id: activeDoc.invoiceId } as never}
+   631→          detail={null}
+   632→          onClose={() => setActiveDoc(null)}
+   633→        />
+   634→      )}
+   635→
+   636→      {/* İrsaliye PDF */}
+   637→      {activeDoc?.kind === 'irsaliye' && (
+   638→        <IrsaliyePdfDialog
+   639→          irsaliyeId={activeDoc.irsaliyeId}
+   640→          irsaliyeNumber={activeDoc.irsaliyeNumber}
+   641→          open={!!activeDoc}
+   642→          onOpenChange={(v) => { if (!v) setActiveDoc(null) }}
+   643→        />
+   644→      )}
+   645→
+   646→      {/* Çeki Listesi PDF */}
+   647→      {activeDoc?.kind === 'packing' && (
+   648→        <PackingListPdfDialog
+   649→          invoiceId={activeDoc.invoiceId}
+   650→          open={!!activeDoc}
+   651→          onOpenChange={(v) => { if (!v) setActiveDoc(null) }}
+   652→        />
+   653→      )}
+   654→
+   655→      {/* Tüm Belgeler — birleşik yazdırma */}
+   656→      <CombinedOrderPrintDialog
+   657→        order={combinedOrder}
+   658→        canSeeInvoice={canSeeInvoice}
+   659→        canSeeIrsaliye={canSeeIrsaliye}
+   660→        open={!!combinedOrder}
+   661→        onOpenChange={(v) => { if (!v) setCombinedOrder(null) }}
+   662→      />
+   663→
+   664→      {/* ŞİRKET TOPLU BELGE YAZDIRMA — şirketin tüm siparişleri */}
+   665→      <CompanyDocsPrintDialog
+   666→        company={companyPrint}
+   667→        canSeeInvoice={canSeeInvoice}
+   668→        canSeeIrsaliye={canSeeIrsaliye}
+   669→        open={!!companyPrint}
+   670→        onOpenChange={(v) => { if (!v) setCompanyPrint(null) }}
+   671→      />
+   672→    </div>
+   673→  )
+   674→}
+   675→

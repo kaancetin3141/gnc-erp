@@ -38,14 +38,14 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCompactNumber, formatRelative } from '@/lib/format'
-import { PLATFORMS, PLATFORM_LIST } from '@/lib/social/platforms'
+import { PLATFORMS, PLATFORM_LIST, platformProfileUrl, tokenExpiryStatus } from '@/lib/social/platforms'
 import type { PlatformKey } from '@/lib/social/platforms'
 import type { SocialAccountItem } from '@/lib/social/types'
 import { PlatformAvatar } from './platform-badge'
 import { AccountCredentialsDialog } from './account-credentials-dialog'
 import {
   Plus, CheckCircle2, BadgeCheck, Users, FileText, RefreshCw,
-  Unplug, Loader2, Sparkles, KeyRound,
+  Unplug, Loader2, Sparkles, KeyRound, ExternalLink, AlertTriangle,
 } from 'lucide-react'
 
 export function AccountsView() {
@@ -130,6 +130,10 @@ export function AccountsView() {
           {/* Bağlı hesaplar */}
           {accountsList.map((a) => {
             const def = PLATFORMS[a.platform]
+            const expiry = tokenExpiryStatus(a.tokenExpiresAt)
+            const daysLeft = a.tokenExpiresAt
+              ? Math.ceil((new Date(a.tokenExpiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+              : null
             return (
               <Card key={a.id} className="overflow-hidden group">
                 {/* Gradient header */}
@@ -137,6 +141,17 @@ export function AccountsView() {
                   <div className="absolute top-2 right-2">
                     <PlatformAvatar platform={a.platform} size={32} className="border-2 border-background" />
                   </div>
+                  {/* Profil linki — gradient header sol altı */}
+                  <a
+                    href={platformProfileUrl(a.platform, a.handle)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${def.label} profilini aç`}
+                    className="absolute bottom-2 left-2 inline-flex items-center gap-1 text-[10px] font-medium text-white/90 hover:text-white bg-black/25 hover:bg-black/40 rounded-md px-1.5 py-0.5 transition-colors"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    Profili Aç
+                  </a>
                 </div>
                 <CardContent className="p-4 pt-3 space-y-3">
                   <div className="flex items-start justify-between">
@@ -175,6 +190,22 @@ export function AccountsView() {
                     Bağlandı {formatRelative(a.connectedAt)}
                     {a.lastSyncedAt && ` · Son sync ${formatRelative(a.lastSyncedAt)}`}
                   </div>
+                  {/* Token bitiş uyarısı — gerçek hesaplarda */}
+                  {a.authMethod !== 'mock' && (expiry === 'expired' || expiry === 'soon') && (
+                    <div
+                      className={cn(
+                        'flex items-center gap-1.5 text-[10px] font-medium rounded-md px-2 py-1 border',
+                        expiry === 'expired'
+                          ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900'
+                          : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+                      )}
+                    >
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                      {expiry === 'expired'
+                        ? 'Token süresi doldu — yeniden bağlayın'
+                        : `Token ${daysLeft} gün içinde bitiyor`}
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     {a.authMethod === 'mock' && (
                       <Button

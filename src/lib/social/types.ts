@@ -20,6 +20,7 @@ export interface SocialAccountItem {
   isActive: boolean
   connectedAt: string
   lastSyncedAt: string | null
+  tokenExpiresAt: string | null
   authMethod: 'mock' | 'oauth' | 'manual_token'
   hasAccessToken: boolean
   hasApiKeys: boolean

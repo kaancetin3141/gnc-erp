@@ -135,6 +135,7 @@ export async function GET(req: NextRequest) {
         quote: { select: { id: true, number: true } },
         invoice: { select: { id: true, number: true, status: true, packingListNo: true } },
         irsaliyeler: { select: { id: true, number: true, status: true } },
+        exportDocs: { select: { id: true, type: true, number: true, status: true } },
         _count: { select: { trackingSteps: true, productionItems: true } },
       },
       orderBy: { createdAt: 'desc' },

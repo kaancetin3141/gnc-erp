@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     isActive: a.isActive,
     connectedAt: a.connectedAt,
     lastSyncedAt: a.lastSyncedAt,
+    tokenExpiresAt: a.tokenExpiresAt,
     authMethod: a.authMethod,
     hasAccessToken: !!a.accessToken,
     hasApiKeys: !!(a.apiKey && a.apiSecret),
@@ -118,33 +119,44 @@ export async function POST(req: NextRequest) {
     if (verifyResult.isVerified) verifiedIsVerified = verifyResult.isVerified
   }
 
-  // Aynı platform + handle var mı?
+  // Aynı platform + handle kaydı var mı?
+  // · AKTİF kayıt → gerçekten bağlı, 409
+  // · PASİF kayıt (bağlantısı kesilmiş) → YENİDEN BAĞLA: kaydı güncelle, hata verme
+  //   (kullanıcı raporu: "hesap bağlantısını koparıp tekrar hesap açmak isteyince
+  //    bu hesap bağlı diyor" — soft-delete kayıtları tekrar bağlantıyı engelliyordu)
   const existing = await db.socialAccount.findUnique({
     where: { tenantId_platform_handle: { tenantId: user!.tenantId, platform, handle: verifiedHandle } },
   })
-  if (existing) return err('Bu hesap zaten bağlı', 409)
+  if (existing && existing.isActive) {
+    return err('Bu hesap zaten bağlı', 409)
+  }
 
-  const account = await db.socialAccount.create({
-    data: {
-      tenantId: user!.tenantId,
-      platform,
-      handle: verifiedHandle,
-      displayName: verifiedDisplayName ?? null,
-      bio: bio ?? null,
-      avatarUrl: verifiedAvatar ?? null,
-      followerCount: verifiedFollowers,
-      isVerified: verifiedIsVerified,
-      accessToken: finalAccessToken ?? (authMethod === 'mock' ? `mock_token_${Date.now()}` : null),
-      refreshToken: finalRefreshToken ?? null,
-      tokenExpiresAt: finalExpiresAt,
-      apiKey: apiKey ?? null,
-      apiSecret: apiSecret ?? null,
-      username: username ?? null,
-      authMethod,
-      scopes: scopes ? JSON.stringify(scopes) : null,
-      lastSyncedAt: authMethod !== 'mock' ? new Date() : null,
-    },
-  })
+  const accountData = {
+    displayName: verifiedDisplayName ?? null,
+    bio: bio ?? null,
+    avatarUrl: verifiedAvatar ?? null,
+    followerCount: verifiedFollowers,
+    isVerified: verifiedIsVerified,
+    accessToken: finalAccessToken ?? (authMethod === 'mock' ? `mock_token_${Date.now()}` : null),
+    refreshToken: finalRefreshToken ?? null,
+    tokenExpiresAt: finalExpiresAt,
+    apiKey: apiKey ?? null,
+    apiSecret: apiSecret ?? null,
+    username: username ?? null,
+    authMethod,
+    scopes: scopes ? JSON.stringify(scopes) : null,
+    // Yeniden bağlantı: pasif kaydı aktife çevir
+    isActive: true,
+    connectedAt: new Date(),
+    lastSyncedAt: authMethod !== 'mock' ? new Date() : null,
+    disconnectedAt: null,
+  }
+
+  const account = existing
+    ? await db.socialAccount.update({ where: { id: existing.id }, data: accountData })
+    : await db.socialAccount.create({
+        data: { tenantId: user!.tenantId, platform, handle: verifiedHandle, ...accountData },
+      })
 
   await writeAuditLog({
     tenantId: user!.tenantId,

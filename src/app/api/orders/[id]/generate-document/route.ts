@@ -6,19 +6,32 @@ import { writeAuditLog } from '@/lib/auth'
 // ============================================================
 // OTOMATİK BELGE ÜRETİMİ — Belge Yönetimi sayfası için
 // POST /api/orders/[id]/generate-document
-// Body: { type: 'invoice' | 'irsaliye' | 'packing_list' }
+// Body: { type: 'invoice' | 'irsaliye' | 'packing_list' | 'atr' | 'eur1' | 'mense' | 'gumruk' | 'konsimento' | 'sigorta' }
 //
 // · invoice      → Siparişten otomatik FATURA üret (yoksa)
 // · irsaliye     → Siparişten otomatik İRSALİYE üret (yoksa)
 // · packing_list → Siparişin faturasına otomatik ÇEKİ LİSTESİ no üret
+// · atr/eur1/mense/gumruk/konsimento/sigorta → İHRACAT BELGESİ üret
 //
 // Belgeler mevcutsa yeniden üretilmez, mevcut belge döner.
 // Yetkiler (kullanıcı isteği):
-//   · müdür        → fatura + irsaliye + çeki listesi görebilir
+//   · müdür        → fatura + irsaliye + çeki listesi + ihracat belgeleri
 //   · depocu       → yalnızca irsaliye + çeki listesi görebilir
 // ============================================================
 
-type DocType = 'invoice' | 'irsaliye' | 'packing_list'
+type DocType = 'invoice' | 'irsaliye' | 'packing_list' | 'atr' | 'eur1' | 'mense' | 'gumruk' | 'konsimento' | 'sigorta'
+
+const EXPORT_DOC_TYPES: DocType[] = ['atr', 'eur1', 'mense', 'gumruk', 'konsimento', 'sigorta']
+
+// İhracat belgesi tür meta — numara ön eki + başlık
+const EXPORT_DOC_META: Record<string, { prefix: string; title: string }> = {
+  atr: { prefix: 'ATR', title: 'ATR Dolaşım Belgesi' },
+  eur1: { prefix: 'EUR1', title: 'EUR.1 Dolaşım Belgesi' },
+  mense: { prefix: 'MSH', title: 'Menşe Şahadetnamesi' },
+  gumruk: { prefix: 'GBE', title: 'İhracat Beyannamesi' },
+  konsimento: { prefix: 'KNS', title: 'Konşimento (Bill of Lading)' },
+  sigorta: { prefix: 'SIG', title: 'Sigorta Poliçesi' },
+}
 
 // Fatura numarası üret: FAT-2025-001
 async function generateInvoiceNumber(tenantId: string): Promise<string> {
@@ -41,6 +54,15 @@ async function generatePackingListNo(tenantId: string): Promise<string> {
     where: { tenantId, packingListNo: { not: null } },
   })
   return `CL-${year}-${String(count + 1).padStart(3, '0')}`
+}
+
+// İhracat belgesi numarası üret: ATR-2026-001 (tür ön eki + yıl + tenant bazlı sıra)
+async function generateExportDocNumber(tenantId: string, prefix: string): Promise<string> {
+  const year = new Date().getFullYear()
+  const count = await db.exportDoc.count({
+    where: { tenantId, type: { in: EXPORT_DOC_TYPES.filter((t) => EXPORT_DOC_META[t].prefix === prefix) } },
+  })
+  return `${prefix}-${year}-${String(count + 1).padStart(3, '0')}`
 }
 
 interface OrderLineDraft {
@@ -142,7 +164,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => ({}))
   const { type } = body as { type?: DocType }
 
-  if (!type || !['invoice', 'irsaliye', 'packing_list'].includes(type)) {
+  if (!type || !['invoice', 'irsaliye', 'packing_list', ...EXPORT_DOC_TYPES].includes(type)) {
     return err('Geçersiz belge türü', 400)
   }
 
@@ -150,8 +172,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // · fatura         → erp.manage VEYA invoices.view (müdür + admin)
   // · irsaliye       → irsaliye.view (müdür + depocu)
   // · çeki listesi   → fiyat içermez! irsaliye.view YETERLİ (müdür + depocu)
+  // · ihracat belgesi → erp.manage VEYA invoices.view (ticari evrak — depocu göremez)
   const perms = user!.permissions
-  if (type === 'irsaliye' || type === 'packing_list') {
+  if (EXPORT_DOC_TYPES.includes(type)) {
+    if (!perms.includes('erp.manage') && !perms.includes('invoices.view')) {
+      return err('İhracat belgesi görüntüleme yetkiniz yok', 403)
+    }
+  } else if (type === 'irsaliye' || type === 'packing_list') {
     if (!perms.includes('irsaliye.view') && !perms.includes('erp.manage') && !perms.includes('invoices.view')) {
       return err(type === 'irsaliye' ? 'İrsaliye görüntüleme yetkiniz yok' : 'Çeki listesi görüntüleme yetkiniz yok', 403)
     }
@@ -173,6 +200,55 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   })
   if (!order) return err('Sipariş bulunamadı', 404)
   if (order.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+
+  // ----------------------------------------------------------
+  // İHRACAT BELGELERİ (ATR / EUR.1 / MENŞE / GÜMRÜK / KONŞİMENTO / SİGORTA)
+  // ----------------------------------------------------------
+  if (EXPORT_DOC_TYPES.includes(type)) {
+    const meta = EXPORT_DOC_META[type]
+    // Idempotent — bu siparişin bu tür belgesi varsa döndür
+    const existingDoc = await db.exportDoc.findFirst({
+      where: { tenantId: user!.tenantId, orderId: order.id, type },
+    })
+    if (existingDoc) {
+      return ok({ type, created: false, document: existingDoc, documentType: 'export_doc' })
+    }
+
+    // Hedef ülke: müşteri ülkesi (TR ise boş — ihracat senaryosunda doldurulur)
+    const destinationCountry = order.customer.country && order.customer.country !== 'TR'
+      ? order.customer.country
+      : 'DE' // demo varsayılan — Almanya ihracat
+
+    const number = await generateExportDocNumber(user!.tenantId, meta.prefix)
+    const doc = await db.exportDoc.create({
+      data: {
+        tenantId: user!.tenantId,
+        orderId: order.id,
+        customerId: order.customerId,
+        type,
+        number,
+        status: 'hazir',
+        // Akıllı varsayılanlar: müşteri ülkesine göre
+        transportMode: 'karayolu',
+        incoterms: 'FOB',
+        destinationCountry,
+        portOfLoading: 'İstanbul (Ambarlı)',
+        notes: `Sipariş ${order.number} üzerinden otomatik oluşturuldu.`,
+        createdById: user!.id,
+      },
+    })
+
+    await writeAuditLog({
+      tenantId: user!.tenantId,
+      actorId: user!.id,
+      action: 'create',
+      entity: 'export_doc',
+      entityId: doc.id,
+      after: safeJsonParse(JSON.stringify({ ...doc, source: 'order_auto', orderId: order.id }), null),
+    })
+
+    return ok({ type, created: true, document: doc, documentType: 'export_doc', title: meta.title })
+  }
 
   // ----------------------------------------------------------
   // FATURA / ÇEKİ LİSTESİ

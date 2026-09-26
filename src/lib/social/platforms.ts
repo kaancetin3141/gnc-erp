@@ -162,6 +162,34 @@ export function platformBadgeClass(p: PlatformKey): string {
   return `${def.bgClass} ${def.textClass}`
 }
 
+// Hesabın genel profil linki — kartlardan tek tıkla platforma geçiş
+export function platformProfileUrl(p: PlatformKey, handle: string): string {
+  const clean = handle.replace(/^@/, '')
+  switch (p) {
+    case 'twitter': return `https://x.com/${clean}`
+    case 'facebook': return `https://facebook.com/${clean}`
+    case 'instagram': return `https://instagram.com/${clean}`
+    case 'linkedin': return `https://linkedin.com/in/${clean}`
+    case 'youtube': return `https://youtube.com/@${clean}`
+    case 'tiktok': return `https://tiktok.com/@${clean}`
+    case 'whatsapp': return `https://wa.me/${clean.replace(/\D/g, '')}`
+    case 'telegram': return `https://t.me/${clean}`
+    case 'pinterest': return `https://pinterest.com/${clean}`
+    case 'reddit': return `https://reddit.com/user/${clean}`
+    case 'bluesky': return `https://bsky.app/profile/${clean}`
+    default: return `https://${clean}`
+  }
+}
+
+// Token bitiş durumu — uyarı renkleri için
+export function tokenExpiryStatus(expiresAt: string | null | undefined): 'none' | 'expired' | 'soon' | 'ok' {
+  if (!expiresAt) return 'none'
+  const diff = new Date(expiresAt).getTime() - Date.now()
+  if (diff <= 0) return 'expired'
+  if (diff < 7 * 24 * 60 * 60 * 1000) return 'soon' // 7 günden az
+  return 'ok'
+}
+
 export function platformInfo(p: PlatformKey): string {
   const def = PLATFORMS[p]
   return `${def.label} · ${def.charLimit} karakter · ${def.description}`

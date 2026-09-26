@@ -259,6 +259,41 @@ Bu komut şunları üretir:
 
 ## 📊 Ölçeklendirme
 
+### VPS Donanım Gereksinimleri (VDS'e kurulum)
+
+Bu uygulama **Next.js 16 (Node/Bun) + SQLite** tabanlıdır. Aşağıdaki tablo kullanıcı sayısına göre önerilen VDS/VPS konfigürasyonlarıdır:
+
+| Ölçek | Kullanıcı | vCPU | RAM   | Disk (SSD/NVMe) | Aylık Trafik | Tahmini Aylık Maliyet* |
+|-------|-----------|------|-------|-----------------|--------------|--------------------------|
+| **Demo/Test** | 1–10 | 1 | 2 GB | 20 GB NVMe | 500 GB | ~$5–10 |
+| **KOBİ (önerilen minimum)** | 10–50 | 2 | 4 GB | 40 GB NVMe | 1 TB | ~$10–20 |
+| **Büyüyen işletme** | 50–250 | 4 | 8 GB | 80 GB NVMe | 2 TB | ~$25–40 |
+| **Kurumsal** | 250–1.000 | 8 | 16 GB | 160 GB NVMe | 4 TB | ~$60–100 |
+
+> *Fiyatlar Türkiye'deki sağlayıcılar (Netdirekt, Radore, Jixo, Turhost) ve yurtdışı (Hetzner, Contabo, DigitalOcean) ortalamasıdır; güncel fiyatı sağlayıcıdan teyit edin.
+
+**Önemli notlar:**
+- **RAM kritik**: Next.js production server + Turbopack dev build bellek sever. 2 GB altında OOM (bellek taşması) yaşanır — production için **minimum 4 GB** önerilir. (Kendi sandbox'ımızda 4 GB sunucuda next-server 2 GB'a tırmanabiliyor.)
+- **Disk**: SQLite tek dosya (db/custom.db) kullanır; NVMe şart değil ama SSD önerilir. Yedekler için +disk düşünün.
+- **İşletim sistemi**: Ubuntu 22.04/24.04 LTS (veya Debian 12).
+- **Yazılım gereksinimleri**: Bun v1.1+ (veya Node.js 20+), Caddy (reverse proxy + otomatik SSL), 80/443 port erişimi.
+- **Yedekleme**: SQLite dosyası olduğu için günlük `cp` + off-site (S3) yeterli — VPS snapshot özelliği açıksa ekstra kolaylık.
+- **Swap**: 4 GB RAM'de 2 GB swap ekleyin (bellek spike'larına karşı tampon).
+
+**Kurulum adımları özeti:**
+```bash
+# 1. Ubuntu 22.04+ VDS üzerinde
+curl -fsSL https://bun.sh/install | bash
+# 2. Projeyi klonla + kur
+git clone <repo> && cd my-project && bun install
+# 3. DB şemasını uygula + build al
+bun run db:push && bun run build
+# 4. Caddy reverse proxy (80/443 → 3000)
+# 5. systemd service veya auto-restart.sh ile watchdogg başlat
+```
+
+> 1.000 kullanıcıdan sonra SQLite → PostgreSQL geçişi ve çoklu sunucu mimarisi gerekir (aşağıdaki "Çoklu sunucu" bölümü).
+
 ### Tek sunucu (~1.000 kullanıcı)
 - 1× Docker container (2GB RAM)
 - SQLite yeterli

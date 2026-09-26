@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils'
 import type { Invoice } from './types'
 import type { IrsaliyePdfData } from './irsaliye-types'
 import { getIrsaliyeStatusMeta, formatKg } from './irsaliye-utils'
+import type { ExportDocPdfData } from './export-doc-types'
+import { EXPORT_DOC_TYPES, TRANSPORT_MODES, INCOTERMS } from './export-doc-types'
 
 // ----- FATURA SAYFASI -----
 export function InvoiceDocPage({ invoice, tpl: tplInput }: { invoice: Invoice; tpl?: InvoiceTemplate | null }) {
@@ -247,5 +249,208 @@ export function PackingDocPage({
       </div>
       <PdfFooter tpl={tpl} />
     </TemplateA4Page>
+  )
+}
+
+// ----- İHRACAT BELGESİ SAYFASI (ATR / EUR.1 / Menşe / Beyanname / Konşimento / Sigorta) -----
+export function ExportDocDocPage({ doc, tpl: tplInput }: { doc: ExportDocPdfData; tpl?: InvoiceTemplate | null }) {
+  const tpl = tplInput ?? undefined
+  const meta = EXPORT_DOC_TYPES[doc.type]
+  const title = meta?.label?.toUpperCase() ?? 'İHRACAT BELGESİ'
+  const hasPrices = doc.goods.some((g) => g.unitPrice > 0)
+  const totalQty = doc.goods.reduce((s, g) => s + g.qty, 0)
+  const totalValue = doc.goods.reduce((s, g) => s + g.lineTotal, 0)
+  const totalWeight = doc.goods.reduce((s, g) => s + (g.totalWeight ?? 0), 0)
+  const transportLabel = TRANSPORT_MODES.find((t) => t.key === doc.transportMode)?.label ?? doc.transportMode
+  const incotermLabel = doc.incoterms
+    ? (INCOTERMS.find((i) => i.key === doc.incoterms)?.label ?? doc.incoterms)
+    : null
+
+  // Belgeye özel ek bloklar
+  const renderTypeSpecific = () => {
+    switch (doc.type) {
+      case 'konsimento':
+        return (
+          <div className="mb-6 grid grid-cols-2 gap-4 text-sm border border-gray-200 rounded-md p-4">
+            <div className="space-y-1.5">
+              <InfoRow label="Gemi Adı" value={doc.vesselName} />
+              <InfoRow label="Konteyner No" value={doc.containerNo} />
+              <InfoRow label="Taşıyıcı" value={doc.carrierName} />
+            </div>
+            <div className="space-y-1.5">
+              <InfoRow label="Yükleme Limanı" value={doc.portOfLoading} />
+              <InfoRow label="Boşaltma Limanı" value={doc.portOfDischarge} />
+            </div>
+          </div>
+        )
+      case 'sigorta':
+        return (
+          <div className="mb-6 text-sm border rounded-md p-4 bg-emerald-50/50 border-emerald-200">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <InfoRow label="Sigorta Şirketi" value={doc.insuranceCompany} />
+                <InfoRow label="Poliçe Tutarı" value={doc.policyAmount != null ? formatCurrency(doc.policyAmount, doc.policyCurrency || doc.currency) : null} />
+              </div>
+              <div className="space-y-1.5">
+                <InfoRow label="Teminat Kapsamı" value={incotermLabel ? `Incoterms ${doc.incoterms}` : null} />
+                <InfoRow label="Taşıma Şekli" value={transportLabel} />
+              </div>
+            </div>
+          </div>
+        )
+      case 'gumruk':
+        return (
+          <div className="mb-6 grid grid-cols-2 gap-4 text-sm border border-violet-200 rounded-md p-4">
+            <div className="space-y-1.5">
+              <InfoRow label="Taşıma Şekli" value={transportLabel} />
+              <InfoRow label="Araç Plakası" value={doc.vehiclePlate} />
+            </div>
+            <div className="space-y-1.5">
+              <InfoRow label="Çıkış Gümrüğü" value={doc.portOfLoading} />
+              <InfoRow label="Varış Gümrüğü" value={doc.portOfDischarge} />
+            </div>
+          </div>
+        )
+      default:
+        return (
+          <div className="mb-6 grid grid-cols-2 gap-4 text-sm border border-gray-200 rounded-md p-4">
+            <div className="space-y-1.5">
+              <InfoRow label="Taşıma Şekli" value={transportLabel} />
+              {doc.type !== 'mense' && <InfoRow label="Araç Plakası" value={doc.vehiclePlate} />}
+            </div>
+            <div className="space-y-1.5">
+              <InfoRow label="Hedef Ülke" value={doc.destinationCountry} />
+              {doc.type !== 'mense' && <InfoRow label="Varış Yeri" value={doc.portOfDischarge} />}
+            </div>
+          </div>
+        )
+    }
+  }
+
+  return (
+    <TemplateA4Page tpl={tpl}>
+      <PdfHeader
+        tpl={tpl}
+        title={title}
+        docNumber={doc.number}
+        date={formatDate(doc.issueDate)}
+      />
+      {/* Belge açıklaması */}
+      <p className="text-xs text-gray-500 mb-4">{meta?.description}</p>
+
+      {/* Taraflar */}
+      <div className="mb-5 grid grid-cols-2 gap-4">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">İhracatçı (Satıcı)</div>
+          <div className="text-sm font-semibold">{tpl?.companyName ?? '—'}</div>
+          {tpl?.companyAddress && <div className="text-xs text-gray-600 mt-0.5">{tpl.companyAddress}</div>}
+          {tpl?.taxNumber && <div className="text-xs text-gray-600">VKN: {tpl.taxNumber}</div>}
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">İthalatçı (Alıcı)</div>
+          <div className="text-sm font-semibold">{doc.customer.name}</div>
+          {doc.customer.address && <div className="text-xs text-gray-600 mt-0.5">{doc.customer.address}</div>}
+          <div className="text-xs text-gray-600">
+            Ülke: {doc.customer.country || doc.destinationCountry || '—'}
+            {doc.customer.taxNumber ? ` · VKN: ${doc.customer.taxNumber}` : ''}
+          </div>
+        </div>
+      </div>
+
+      {/* Ticari bilgiler satırı */}
+      <div className="mb-5 flex flex-wrap gap-x-6 gap-y-1 text-xs bg-gray-50 rounded-md px-3 py-2.5 border border-gray-200">
+        <span>Sipariş: <span className="font-mono font-semibold">{doc.order.number}</span></span>
+        {doc.order.quote?.number && <span>Teklif: <span className="font-mono">{doc.order.quote.number}</span></span>}
+        {doc.incoterms && <span>Incoterms: <span className="font-semibold">{doc.incoterms}</span></span>}
+        {transportLabel && <span>Taşıma: <span className="font-semibold">{transportLabel}</span></span>}
+        {doc.destinationCountry && <span>Hedef: <span className="font-semibold">{doc.destinationCountry}</span></span>}
+      </div>
+
+      {renderTypeSpecific()}
+
+      {/* Mal kalemleri */}
+      <table className="w-full text-sm mb-6 border border-gray-200">
+        <thead>
+          <tr className="bg-gray-50 border-b-2 border-gray-300">
+            <th className="text-left py-2.5 px-3 text-xs uppercase tracking-wider text-gray-600 w-10">#</th>
+            <th className="text-left py-2.5 px-3 text-xs uppercase tracking-wider text-gray-600">Malın Tanımı</th>
+            <th className="text-right py-2.5 px-3 text-xs uppercase tracking-wider text-gray-600 w-20">Miktar</th>
+            {hasPrices && (
+              <th className="text-right py-2.5 px-3 text-xs uppercase tracking-wider text-gray-600 w-28">Değer ({doc.currency})</th>
+            )}
+            {totalWeight > 0 && (
+              <th className="text-right py-2.5 px-3 text-xs uppercase tracking-wider text-gray-600 w-24">Ağırlık</th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {doc.goods.length > 0 ? doc.goods.map((g, i) => (
+            <tr key={i} className="border-b border-gray-100">
+              <td className="py-2 px-3 text-gray-500 tabular-nums">{i + 1}</td>
+              <td className="py-2 px-3 font-medium">{g.description}</td>
+              <td className="text-right py-2 px-3 tabular-nums">{g.qty}</td>
+              {hasPrices && (
+                <td className="text-right py-2 px-3 tabular-nums font-medium">{formatCurrency(g.lineTotal, doc.currency)}</td>
+              )}
+              {totalWeight > 0 && (
+                <td className="text-right py-2 px-3 tabular-nums">{g.totalWeight != null ? formatKg(g.totalWeight) : '—'}</td>
+              )}
+            </tr>
+          )) : (
+            <tr>
+              <td colSpan={hasPrices ? 5 : 4} className="py-4 text-center text-gray-400 text-xs">Kalem bulunamadı</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Özet */}
+      <div className="flex justify-end mb-8">
+        <div className="w-full max-w-xs space-y-1.5">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">Toplam Miktar:</span>
+            <span className="tabular-nums font-medium">{totalQty}</span>
+          </div>
+          {totalWeight > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Toplam Ağırlık:</span>
+              <span className="tabular-nums font-medium">{formatKg(totalWeight)}</span>
+            </div>
+          )}
+          {hasPrices && (
+            <div className="flex justify-between text-base font-bold pt-2 border-t-2 border-gray-300">
+              <span>Toplam Değer:</span>
+              <span className="tabular-nums" style={{ color: tpl?.primaryColor || '#047857' }}>
+                {formatCurrency(totalValue, doc.currency)}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Notlar + imza */}
+      <div className="grid grid-cols-2 gap-6 pt-4 border-t border-gray-200">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Notlar</div>
+          <div className="text-xs text-gray-700 whitespace-pre-line">{doc.notes || '—'}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">İmza &amp; Kaşe</div>
+          <div className="mt-6 ml-auto w-40 h-14 border border-dashed border-gray-300 flex items-center justify-center text-[10px] text-gray-400">
+            {tpl?.companyName ?? ''}
+          </div>
+        </div>
+      </div>
+      <PdfFooter tpl={tpl} />
+    </TemplateA4Page>
+  )
+}
+
+function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-[10px] uppercase tracking-wider text-gray-500 min-w-[110px]">{label}</span>
+      <span className="font-medium text-sm">{value || '—'}</span>
+    </div>
   )
 }
