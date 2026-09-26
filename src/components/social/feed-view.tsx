@@ -27,15 +27,17 @@ import { ComposeDialog } from './compose-dialog'
 import {
   Heart, MessageCircle, Repeat2, Eye, Send, Pencil, Trash2,
   Plus, Filter, RefreshCw, FileText, Image as ImageIcon, Video as VideoIcon, Link as LinkIcon, Clock,
+  AlertTriangle, FlaskConical, RotateCcw, ExternalLink,
 } from 'lucide-react'
 
-type StatusFilter = 'all' | 'taslak' | 'zamanlandi' | 'yayinlandi'
+type StatusFilter = 'all' | 'taslak' | 'zamanlandi' | 'yayinlandi' | 'basarisiz'
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'Tümü' },
   { value: 'taslak', label: 'Taslak' },
   { value: 'zamanlandi', label: 'Zamanlandı' },
   { value: 'yayinlandi', label: 'Yayınlandı' },
+  { value: 'basarisiz', label: 'Başarısız' },
 ]
 
 const STATUS_BADGES: Record<string, { label: string; className: string }> = {
@@ -54,6 +56,15 @@ const MEDIA_ICON = {
   carousel: ImageIcon,
 } as const
 
+interface PublishResponse {
+  success?: boolean
+  successCount?: number
+  totalTargets?: number
+  finalStatus?: string
+  forceMock?: boolean
+  failures?: { platform: string; handle: string; success: boolean; error: string | null }[]
+}
+
 export function FeedView() {
   const qc = useQueryClient()
   const [filter, setFilter] = useState<StatusFilter>('all')
@@ -69,16 +80,39 @@ export function FeedView() {
     },
   })
 
-  // Publish now
+  function invalidateSocial() {
+    qc.invalidateQueries({ queryKey: ['social-posts'] })
+    qc.invalidateQueries({ queryKey: ['social-calendar'] })
+    qc.invalidateQueries({ queryKey: ['social-analytics'] })
+  }
+
+  // Publish now — sonuç detayına göre doğru toast göster
   const publishMutation = useMutation({
-    mutationFn: (id: string) => apiPost(`/api/social/posts/${id}/publish`, {}),
-    onSuccess: (r: { success?: boolean; successCount?: number; totalTargets?: number }) => {
-      const succ = r.success ? r.successCount ?? 0 : 0
+    mutationFn: ({ id, forceMock }: { id: string; forceMock?: boolean }) =>
+      apiPost<PublishResponse>(`/api/social/posts/${id}/publish`, { forceMock: forceMock ?? false }),
+    onSuccess: (r, vars) => {
+      const succ = r.successCount ?? 0
       const tot = r.totalTargets ?? 0
-      toast.success('Yayınlandı', { description: `${succ}/${tot} hedef başarılı` })
-      qc.invalidateQueries({ queryKey: ['social-posts'] })
-      qc.invalidateQueries({ queryKey: ['social-calendar'] })
-      qc.invalidateQueries({ queryKey: ['social-analytics'] })
+      if (r.success && succ === tot) {
+        toast.success(vars.forceMock ? 'Simülasyon olarak yayınlandı' : 'Yayınlandı', {
+          description: `${succ}/${tot} hedef başarılı`,
+        })
+      } else if (r.success) {
+        // Kısmi başarı — başarısız platformları ve sebeplerini göster
+        const failLines = (r.failures ?? []).map((f) => `• ${f.handle}: ${f.error ?? 'bilinmeyen hata'}`).join('\n')
+        toast.warning(`${succ}/${tot} hedef yayınlandı`, {
+          description: failLines || 'Bazı platformlar başarısız oldu',
+          duration: 10000,
+        })
+      } else {
+        // Tam başarısızlık — tüm sebepleri göster
+        const failLines = (r.failures ?? []).map((f) => `• ${f.handle}: ${f.error ?? 'bilinmeyen hata'}`).join('\n')
+        toast.error('Yayınlanamadı', {
+          description: failLines || 'Tüm platformlar başarısız oldu',
+          duration: 15000,
+        })
+      }
+      invalidateSocial()
     },
     onError: (e: Error) => toast.error('Yayın başarısız', { description: e.message }),
   })
@@ -239,9 +273,44 @@ export function FeedView() {
                   {p.status === 'yayinlandi' && (
                     <div className="grid grid-cols-4 gap-2 pt-2 border-t">
                       <Metric icon={Heart} value={eng.likes} color="text-rose-500" />
-                      <Metric icon={MessageCircle} value={eng.comments} color="text-blue-500" />
-                      <Metric icon={Repeat2} value={eng.shares} color="text-emerald-500" />
-                      <Metric icon={Eye} value={eng.views} color="text-amber-500" />
+                      <Metric icon={MessageCircle} value={eng.comments} color="text-emerald-500" />
+                      <Metric icon={Repeat2} value={eng.shares} color="text-amber-500" />
+                      <Metric icon={Eye} value={eng.views} color="text-primary" />
+                    </div>
+                  )}
+
+                  {/* Yayın bağlantıları */}
+                  {p.status === 'yayinlandi' && p.targets?.some((t) => t.externalUrl) && (
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
+                      {p.targets.filter((t) => t.externalUrl).map((t) => (
+                        <a
+                          key={t.id}
+                          href={t.externalUrl!}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-primary hover:underline flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          {t.account?.handle ?? t.platform} görüntüle
+                        </a>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Hata detayı — neden yayınlanamadı? */}
+                  {p.targets?.some((t) => t.status === 'basarisiz' && t.errorMessage) && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/30 p-3 space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-red-700 dark:text-red-300">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Yayın hatası — sebep:
+                      </div>
+                      {p.targets.filter((t) => t.status === 'basarisiz' && t.errorMessage).map((t) => (
+                        <div key={t.id} className="flex items-start gap-2 text-xs text-red-700 dark:text-red-300 pl-5">
+                          <span>
+                            <b>{t.account?.handle ?? t.platform}:</b> {t.errorMessage}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   )}
 
@@ -251,10 +320,23 @@ export function FeedView() {
                       <Button
                         size="sm"
                         variant="default"
-                        onClick={() => publishMutation.mutate(p.id)}
+                        onClick={() => publishMutation.mutate({ id: p.id })}
                         disabled={publishMutation.isPending}
                       >
-                        <Send className="w-3.5 h-3.5" /> Yayınla
+                        <RotateCcw className={cn('w-3.5 h-3.5', p.status === 'basarisiz' && 'hidden')} />
+                        <Send className={cn('w-3.5 h-3.5', p.status !== 'basarisiz' && 'hidden')} />
+                        {p.status === 'basarisiz' ? 'Tekrar Dene' : 'Yayınla'}
+                      </Button>
+                    )}
+                    {canManage && p.status === 'basarisiz' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => publishMutation.mutate({ id: p.id, forceMock: true })}
+                        disabled={publishMutation.isPending}
+                        title="Gerçek API çağrısı yapmadan yayınla — hatalı token kredisi bitmiş olsa bile gönderi sistemde yayınlandı olarak işaretlenir"
+                      >
+                        <FlaskConical className="w-3.5 h-3.5" /> Simülasyon
                       </Button>
                     )}
                     {canManage && (

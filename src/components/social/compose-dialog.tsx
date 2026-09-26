@@ -25,8 +25,14 @@ import type { SocialAccountItem, SocialPostItem } from '@/lib/social/types'
 import { PlatformBadge } from './platform-badge'
 import {
   Image as ImageIcon, Video, Link as LinkIcon, FileText, Plus, Send, Calendar as CalIcon,
-  AlertTriangle, ChevronDown, ChevronRight, Hash, X, Loader2, Sparkles,
+  AlertTriangle, ChevronDown, ChevronRight, Hash, X, Loader2, Sparkles, FlaskConical, Zap,
 } from 'lucide-react'
+
+interface CreatePostResponse {
+  id: string
+  status: 'taslak' | 'zamanlandi' | 'yayinlandi' | 'basarisiz'
+  publishResults?: { platform: string; handle: string; success: boolean; error: string | null }[]
+}
 
 interface ComposeDialogProps {
   open: boolean
@@ -176,14 +182,34 @@ export function ComposeDialog({
         publishNow: scheduleMode === 'now',
       }
       if (editPost) {
-        return apiPatch(`/api/social/posts/${editPost.id}`, body)
+        return apiPatch<CreatePostResponse>(`/api/social/posts/${editPost.id}`, body)
       }
-      return apiPost('/api/social/posts', body)
+      return apiPost<CreatePostResponse>('/api/social/posts', body)
     },
-    onSuccess: () => {
-      toast.success(editPost ? 'Gönderi güncellendi' : scheduleMode === 'now' ? 'Yayınlandı!' : 'Zamanlandı!', {
-        description: `${selected.length} platforma${scheduleMode === 'now' ? ' yayınlandı' : ' zamanlandı'}`,
-      })
+    onSuccess: (r) => {
+      if (!editPost && scheduleMode === 'now' && r.publishResults) {
+        // Gerçek yayınlama sonucuna göre toast — yanıltıcı "Yayınlandı!" gösterme
+        const results = r.publishResults
+        const succ = results.filter((x) => x.success).length
+        const fails = results.filter((x) => !x.success)
+        if (succ === results.length) {
+          toast.success('Yayınlandı!', { description: `${succ}/${results.length} platforma gönderildi` })
+        } else if (succ > 0) {
+          toast.warning(`${succ}/${results.length} platform yayınlandı`, {
+            description: fails.map((f) => `• ${f.handle}: ${f.error ?? 'bilinmeyen hata'}`).join('\n'),
+            duration: 12000,
+          })
+        } else {
+          toast.error('Yayınlanamadı', {
+            description: fails.map((f) => `• ${f.handle}: ${f.error ?? 'bilinmeyen hata'}`).join('\n') || 'Tüm platformlar başarısız oldu',
+            duration: 15000,
+          })
+        }
+      } else {
+        toast.success(editPost ? 'Gönderi güncellendi' : scheduleMode === 'now' ? 'Yayınlandı!' : 'Zamanlandı!', {
+          description: `${selected.length} platforma${scheduleMode === 'now' ? ' yayınlandı' : ' zamanlandı'}`,
+        })
+      }
       qc.invalidateQueries({ queryKey: ['social-posts'] })
       qc.invalidateQueries({ queryKey: ['social-calendar'] })
       qc.invalidateQueries({ queryKey: ['social-analytics'] })
@@ -247,6 +273,9 @@ export function ComposeDialog({
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {visiblePlatforms.map((p) => {
                   const checked = selected.includes(p.key)
+                  // Bu platformdaki hesap gerçek mi simülasyon mu?
+                  const plAccounts = accountsList.filter((a) => a.platform === p.key)
+                  const isReal = plAccounts.some((a) => a.authMethod !== 'mock' && a.hasAccessToken)
                   return (
                     <label
                       key={p.key}
@@ -265,12 +294,36 @@ export function ComposeDialog({
                       <span className="text-xs text-muted-foreground truncate">
                         {p.charLimit}kr
                       </span>
+                      {isReal ? (
+                        <span
+                          className="ml-auto shrink-0 inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                          title="Gerçek API token'ı ile yayınlanacak"
+                        >
+                          <Zap className="w-2.5 h-2.5" /> Gerçek
+                        </span>
+                      ) : (
+                        <span
+                          className="ml-auto shrink-0 inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                          title="Simülasyon — platform API'sine gerçek çağrı yapılmaz"
+                        >
+                          <FlaskConical className="w-2.5 h-2.5" /> Sim.
+                        </span>
+                      )}
                     </label>
                   )
                 })}
               </div>
               {selected.length === 0 && (
                 <p className="text-xs text-amber-600 mt-1.5">En az bir platform seçin.</p>
+              )}
+              {selected.some((p) => {
+                const plAccounts = accountsList.filter((a) => a.platform === p)
+                return !plAccounts.some((a) => a.authMethod !== 'mock' && a.hasAccessToken)
+              }) && (
+                <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                  <FlaskConical className="w-3 h-3" />
+                  Seçili platformlardan en az biri simülasyon modunda — gerçek API çağrısı yapılmaz.
+                </p>
               )}
             </div>
 

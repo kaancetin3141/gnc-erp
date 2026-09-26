@@ -169,6 +169,9 @@ export async function POST(req: NextRequest) {
   await db.socialPostTarget.createMany({ data: targetData })
 
   // Hemen yayınla isteği — her platforma paralel gönder
+  const publishResults: {
+    platform: string; handle: string; success: boolean; error: string | null
+  }[] = []
   if (isPublishNow) {
     await Promise.all(accounts.map(async (account) => {
       const perPlatformText = perPlatformContent?.[account.platform] ?? content
@@ -207,6 +210,12 @@ export async function POST(req: NextRequest) {
         where: { postId: post.id, accountId: account.id },
         data: updateData,
       })
+      publishResults.push({
+        platform: account.platform,
+        handle: account.handle,
+        success: result.success,
+        error: result.errorMessage,
+      })
     }))
 
     // Post'un status'unu güncelle (en az 1 başarılı ise yayinlandi)
@@ -229,5 +238,12 @@ export async function POST(req: NextRequest) {
     after: { platforms, status, scheduledAt: scheduledDate, publishNow: isPublishNow },
   })
 
-  return ok({ id: post.id, status, publishedAt: isPublishNow ? new Date() : null }, 201)
+  return ok({
+    id: post.id,
+    status: isPublishNow
+      ? (publishResults.some((r) => r.success) ? 'yayinlandi' : 'basarisiz')
+      : status,
+    publishedAt: isPublishNow ? new Date() : null,
+    publishResults,
+  }, 201)
 }

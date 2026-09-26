@@ -7,6 +7,8 @@ import { publishToPlatform } from '@/lib/social/publish'
 import type { PlatformKey } from '@/lib/social/platforms'
 
 // POST — zamanlanmış/taslak post'u şimdi yayınla (tüm hedef platformlara)
+// Body: { forceMock?: boolean } — true ise gerçek API yerine simülasyon kullanılır
+// (gerçek token hatalı/kredi bitik olsa bile gönderi "yayınlandı" olarak işaretlenir)
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
@@ -14,6 +16,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!hasPermission(user!, 'social.manage')) return err('Sosyal medya yönetme yetkiniz yok', 403)
 
   const { id } = await params
+  const body = await req.json().catch(() => ({})) as { forceMock?: boolean }
+  const forceMock = body?.forceMock === true
+
   const post = await db.socialPost.findFirst({
     where: { id, tenantId: user!.tenantId },
     include: {
@@ -41,8 +46,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       content: perPlatformContent[target.platform] ?? post.content,
       mediaUrls,
       linkUrl: post.linkUrl ?? null,
-      // Gerçek hesap bilgileri (varsa)
-      authMethod: target.account.authMethod as 'mock' | 'oauth' | 'manual_token',
+      // Gerçek hesap bilgileri (varsa) — forceMock ise simülasyona düş
+      authMethod: forceMock ? 'mock' : target.account.authMethod as 'mock' | 'oauth' | 'manual_token',
       accessToken: target.account.accessToken,
       refreshToken: target.account.refreshToken,
       apiKey: target.account.apiKey,
@@ -69,7 +74,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       where: { id: target.id },
       data: updateData,
     })
-    return { targetId: target.id, platform: target.platform, success: result.success, externalUrl: result.externalUrl, error: result.errorMessage }
+    return {
+      targetId: target.id,
+      platform: target.platform,
+      handle: target.account.handle,
+      success: result.success,
+      externalUrl: result.externalUrl,
+      error: result.errorMessage,
+    }
   }))
 
   const successCount = results.filter((r) => 'success' in r && r.success).length
@@ -86,13 +98,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     action: 'social.post.publish',
     entity: 'social_post',
     entityId: id,
-    after: { successCount, totalTargets: post.targets.length, finalStatus },
+    after: { successCount, totalTargets: post.targets.length, finalStatus, forceMock },
   })
+
+  const failures = results.filter((r) => 'success' in r && !r.success) as {
+    targetId: string; platform: string; handle: string; success: boolean; error: string | null
+  }[]
 
   return ok({
     success: successCount > 0,
     successCount,
     totalTargets: post.targets.length,
+    finalStatus,
+    forceMock,
+    failures,
     results,
   })
 }

@@ -7341,3 +7341,38 @@ Stage Summary:
 - VPS cevabı kullanıcıya verildi: 10-50 kullanıcı için 2vCPU/4GB RAM/40GB NVMe (minimum), büyüyen işletmede 4vCPU/8GB; RAM production'da kritik
 - Risk: ihracat belge sayıları orders API'sinden geliyor — 200 limit üzerindeki siparişlerde istatistik eksik olabilir (mevcut demo hacminde sorunsuz); ExportDoc silme sadece erp.manage'te (bilinçli)
 - Sonraki tur önerileri: ihracat belgelerine şirket bazlı toplu yazdırma (CompanyDocsPrintDialog benzeri 6-belge paketi), belge PDF'ine QR doğrulama kodu, EUR.1/ATR'de dolaşım belgesi resmi form düzeni (satır/kolon ızgarası), sosyal medyada gerçek OAuth (şu an mock + manuel token), inbox'a otomatik yanıt şablonları
+
+---
+Task ID: FIX-POST-PUBLISH
+Agent: Main (Gönderi Yayınlama Bug Teşhis + Fix)
+Task: Kullanıcı raporu "gönderi yayınlamıyor sebebi nedir" — teşhis ve fix.
+
+## Teşhis (Kök Neden)
+- DB: `socialPost cmuj1g3mo0013m7z221u8jn77` status='basarisiz', target hatası **"credits depleted"**
+- Hesap `twitter/ctnkqn` **manual_token** (gerçek access token, 91 kr) ile bağlı
+- Yayınlama gerçek X (Twitter) API v2 `POST /2/tweets` çağrısı yapıyor → token'ın API plan kredisi tükendi → platform isteği reddetti
+- **UX bug'ları hatayı gizliyordu:**
+  1. feed-view publish onSuccess her zaman yeşil "Yayınlandı 0/1" toast'u gösteriyordu (HTTP 200 = success sanılıyordu)
+  2. Target'taki `errorMessage` ("credits depleted") UI'da hiçbir yerde render edilmiyordu
+  3. Filtre çiplerinde "Başarısız" durumu yoktu; nedeni görmek/yeniden denemek imkânsızdı
+  4. compose-dialog da publishNow'da her zaman "Yayınlandı!" başarılı toast'u basıyordu
+
+## Tamamlanan Modifikasyonlar
+1. **`src/lib/social/api-clients/index.ts`** — `friendlyApiError()` eklendi: ham platform hatalarını Türkçe + çözüm önerili mesaja çevirir (credits depleted, token expired/invalid, yetki eksik, duplicate, rate limit, IG görsel zorunlu, ağ). Dispatcher'da tüm başarısız sonuçlara uygulanıyor.
+2. **`/api/social/posts/[id]/publish`** — `forceMock` body paramı: true ise gerçek API yerine simülasyon; yanıt `failures[]`, `finalStatus`, `forceMock` döndürüyor.
+3. **`/api/social/posts` POST** — publishNow'da `publishResults[]` (platform/handle/success/error) döndürüyor; status alanı gerçek final status.
+4. **`feed-view.tsx`** — toast'lar sonua göre: tam başarı/başarısız; kısmi → warning + per-hata satırları; tam başarısızlık → error + sebepler (10-15sn duration). Başarısız kartta kırmızı hata kutusu ("Yayın hatası — sebep:") + "Tekrar Dene" + "Simülasyon" butonları. "Başarısız" filtre çipi. Yayınlanan post'ta "görüntüle" dış linki.
+5. **`compose-dialog.tsx`** — publishNow sonucuna göre doğru toast; platform seçicilerde **"Gerçek"** (yeşil ⚡) / **"Sim."** (flask) rozetleri; simülasyon uyarı notu.
+
+## Doğrulama (agent-browser e2e)
+- ✅ curl: gerçek token publish → `{"success":false, error:"API kredisi tükendi — ..."}` (çevrilmiş)
+- ✅ curl: forceMock → `{"success":true, finalStatus:"yayinlandi"}`
+- ✅ UI: compose → X Gerçek rozetli → publish → kırmızı "Yayınlanamadı" toast + kartta hata kutusu + Tekrar Dene/Simülasyon butonları
+- ✅ UI: Simülasyon butonu → "Simülasyon olarak yayınlandı 1/1" → kart Yayınlandı + metrikler + dış link
+- ✅ Silme + Başarısız filtre (boş durum) + mobil 390px responsive
+- ✅ eslint 0 hata, dev.log temiz, console error yok
+
+## Çözülmemiş / Sonraki
+- Kullanıcının X token'ı için: plan yükseltme veya yeni token gerekli (app tarafı değişemez) — ya da Simülasyon modu kullanılır
+- youtube/tiktok/whatsapp/pinterest gerçek API client'ları hâlâ TODO
+- Publish başarısızlıklarında e-posta/bildirim tetikleme eklenebilir
