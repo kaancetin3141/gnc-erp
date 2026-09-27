@@ -1,19 +1,19 @@
 'use client'
 
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   MapPin, Search, Download, Plus, Star, Phone, Globe, Check, X,
   Loader2, Users, Eye, UserPlus, ZoomIn, ZoomOut, Layers, History,
   Clock, ChevronRight, Building2, Filter, FileSpreadsheet, AlertCircle,
-  CheckCircle2, UserCircle, Sparkles, Navigation,
+  CheckCircle2, UserCircle, Sparkles, Navigation, MessageCircle,
 } from 'lucide-react'
 
 import { apiGet, apiPost, apiPatch, qk } from '@/lib/api-client'
 import { CITIES, MAPS_CATEGORIES, LEAD_STATUSES, getLabel, getColor } from '@/lib/constants'
 import {
-  formatPhone, formatDate, formatRelative, telLink, toCSV, downloadFile,
+  formatPhone, formatDate, formatRelative, telLink, toCSV, downloadFile, whatsappLink,
 } from '@/lib/format'
 import { hasPermission } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
@@ -740,8 +740,52 @@ function LeadDetailDialog({
   open: boolean
   onOpenChange: (o: boolean) => void
 }) {
+  const qc = useQueryClient()
+  const [noteText, setNoteText] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [statusChanging, setStatusChanging] = useState(false)
+
+  // Dialog her açıldığında not input'unu sıfırla
+  useEffect(() => {
+    if (open) setNoteText('')
+  }, [open, lead?.id])
+
   if (!lead) return null
-  const statusColor = getColor(LEAD_STATUSES, lead.status)
+
+  // Durum değiştir — 'donustu' dönüşümü tablodaki Dönüştür butonuyla yapılır
+  const changeStatus = async (status: string) => {
+    if (status === lead.status) return
+    setStatusChanging(true)
+    try {
+      await apiPatch<Lead>(`/api/leads/${lead.id}`, { status })
+      toast.success(`Durum güncellendi: ${getLabel(LEAD_STATUSES, status)}`)
+      qc.invalidateQueries({ queryKey: ['leads'] })
+      onOpenChange(false)
+    } catch (e) {
+      toast.error('Durum güncellenemedi', { description: e instanceof Error ? e.message : '' })
+    } finally {
+      setStatusChanging(false)
+    }
+  }
+
+  const addNote = async () => {
+    const text = noteText.trim()
+    if (!text) return
+    setNoteSaving(true)
+    try {
+      const newNotes = [...(Array.isArray(lead.notes) ? lead.notes : []), text]
+      await apiPatch<Lead>(`/api/leads/${lead.id}`, { notes: newNotes })
+      toast.success('Not eklendi')
+      setNoteText('')
+      qc.invalidateQueries({ queryKey: ['leads'] })
+      onOpenChange(false)
+    } catch (e) {
+      toast.error('Not eklenemedi', { description: e instanceof Error ? e.message : '' })
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -757,14 +801,12 @@ function LeadDetailDialog({
 
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div className="space-y-1">
-            <div className="text-xs text-muted-foreground">Durum</div>
-            <Badge variant="outline" className={cn('text-xs', statusColor)}>
-              {getLabel(LEAD_STATUSES, lead.status)}
-            </Badge>
-          </div>
-          <div className="space-y-1">
             <div className="text-xs text-muted-foreground">Sahip</div>
             <div>{lead.owner?.name ?? '—'}</div>
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground">Puan</div>
+            <StarRating rating={lead.rating} reviewCount={lead.reviewCount} />
           </div>
           <div className="space-y-1">
             <div className="text-xs text-muted-foreground">Telefon</div>
@@ -782,17 +824,81 @@ function LeadDetailDialog({
               </a>
             ) : <span>—</span>}
           </div>
-          <div className="space-y-1">
-            <div className="text-xs text-muted-foreground">Puan</div>
-            <StarRating rating={lead.rating} reviewCount={lead.reviewCount} />
-          </div>
-          <div className="space-y-1">
-            <div className="text-xs text-muted-foreground">Oluşturulma</div>
-            <div>{formatDate(lead.createdAt)}</div>
-          </div>
           <div className="col-span-2 space-y-1">
             <div className="text-xs text-muted-foreground">Adres</div>
             <div className="text-sm">{lead.address || '—'}</div>
+          </div>
+        </div>
+
+        {/* Hızlı iletişim */}
+        {lead.phone && (
+          <div className="flex gap-2">
+            <Button asChild size="sm" variant="outline" className="flex-1 h-8 text-xs text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+              <a href={telLink(lead.phone)}><Phone className="w-3.5 h-3.5 mr-1" /> Ara</a>
+            </Button>
+            <Button asChild size="sm" variant="outline" className="flex-1 h-8 text-xs text-[#25D366] border-[#25D366]/40 hover:bg-[#25D366]/10">
+              <a href={whatsappLink(lead.phone, `Merhaba, ${lead.name} işletmenizle iletişime geçmek istiyoruz.`)} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp
+              </a>
+            </Button>
+          </div>
+        )}
+
+        {/* Durum değiştirme — gerçek çalışan workflow */}
+        {lead.status !== 'donustu' && (
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium text-muted-foreground">Durumu Değiştir</div>
+            <div className="flex flex-wrap gap-1.5">
+              {LEAD_STATUSES.filter((s) => s.value !== 'donustu').map((s) => (
+                <button
+                  key={s.value}
+                  disabled={statusChanging}
+                  onClick={() => changeStatus(s.value)}
+                  className={cn(
+                    'px-2.5 py-1 rounded-md text-xs font-medium border transition-all disabled:opacity-50',
+                    s.value === lead.status
+                      ? cn(s.color, 'ring-2 ring-offset-1 ring-current/30')
+                      : 'text-muted-foreground border-border hover:border-foreground/30 hover:text-foreground',
+                  )}
+                >
+                  {statusChanging && <Loader2 className="w-3 h-3 mr-1 inline animate-spin" />}
+                  {s.label}
+                </button>
+              ))}
+              <button
+                disabled
+                title="Dönüştürmek için tablodaki kişiler ekle butonunu kullanın"
+                className="px-2.5 py-1 rounded-md text-xs font-medium border border-emerald-200 bg-emerald-50 text-emerald-700/50 dark:bg-emerald-950/30 dark:text-emerald-400/50 dark:border-emerald-900/50 cursor-not-allowed"
+              >
+                Dönüştü ←
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Notlar — ekle + listele */}
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">Notlar ({Array.isArray(lead.notes) ? lead.notes.length : 0})</div>
+          {Array.isArray(lead.notes) && lead.notes.length > 0 && (
+            <div className="max-h-24 overflow-y-auto custom-scroll space-y-1.5">
+              {lead.notes.map((n, i) => (
+                <div key={i} className="text-xs p-2 rounded-md bg-muted/60 border border-border/50">
+                  {n}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Input
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Not ekle — örn. 'Aradım, fiyat bilgisi istedi'..."
+              className="h-8 text-xs"
+              onKeyDown={(e) => { if (e.key === 'Enter') addNote() }}
+            />
+            <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={addNote} disabled={noteSaving || !noteText.trim()}>
+              {noteSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            </Button>
           </div>
         </div>
 
@@ -977,6 +1083,21 @@ export function LeadMiningView() {
     },
   })
   const leads = leadsQuery.data?.items ?? []
+
+  // Durum sayıları — filtre çiplerinde rozet olarak gösterilir
+  const allLeadsQuery = useQuery({
+    queryKey: qk.leads({ source: 'google_maps', status: 'all-count' }),
+    queryFn: () => apiGet<LeadsResponse>('/api/leads?source=google_maps&limit=500'),
+    staleTime: 30_000,
+  })
+  const leadStatusCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const l of (allLeadsQuery.data?.items ?? [])) {
+      counts[l.status] = (counts[l.status] ?? 0) + 1
+    }
+    return counts
+  }, [allLeadsQuery.data])
+  const leadTotal = allLeadsQuery.data?.total ?? (allLeadsQuery.data?.items?.length ?? 0)
 
   const convertMutation = useMutation({
     mutationFn: (id: string) =>
@@ -1439,7 +1560,7 @@ export function LeadMiningView() {
                       : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted',
                   )}
                 >
-                  Tümü
+                  Tümü <span className="ml-1 tabular-nums opacity-60">{leadTotal}</span>
                 </button>
                 {LEAD_STATUSES.map((s) => (
                   <button
@@ -1453,7 +1574,7 @@ export function LeadMiningView() {
                         : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted',
                     )}
                   >
-                    {s.label}
+                    {s.label} <span className="ml-1 tabular-nums opacity-60">{leadStatusCounts[s.value] ?? 0}</span>
                   </button>
                 ))}
               </div>

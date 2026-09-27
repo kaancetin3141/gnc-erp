@@ -144,6 +144,12 @@ export const MAPS_CATEGORIES = [
   { query: 'gym fitness', category: 'Spor Salonu', namePrefix: ['Spor Salonu', 'Fitness', 'Gym', 'Pilates Stüdyosu'] },
   { query: 'avukat', category: 'Hukuk Bürosu', namePrefix: ['Hukuk Bürosu', 'Avukat', 'Danışmanlık'] },
   { query: 'muhasebe', category: 'Muhasebe', namePrefix: ['Mali Müşavirlik', 'Muhasebe', 'Danışmanlık'] },
+  { query: 'cafe', category: 'Kafe', namePrefix: ['Kafe', 'Coffee', 'Pastane', 'Fırın'] },
+  { query: 'market', category: 'Market', namePrefix: ['Market', 'Süper Market', 'Bakkal', 'Manav'] },
+  { query: 'otel', category: 'Otel', namePrefix: ['Otel', 'Hotel', 'Pansiyon', 'Apart'] },
+  { query: 'veteriner', category: 'Veteriner', namePrefix: ['Veteriner Kliniği', 'Pet Shop', 'Veteriner', 'Pet'] },
+  { query: 'eğitim', category: 'Eğitim', namePrefix: ['Kurs', 'Etüt Merkezi', 'Dershane', 'Anaokulu'] },
+  { query: 'emlak', category: 'Emlak', namePrefix: ['Emlak', 'Gayrimenkul', 'İnşaat', 'Realty'] },
 ] as const
 
 export const TAG_COLORS = [

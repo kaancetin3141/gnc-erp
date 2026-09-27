@@ -1,5 +1,7 @@
 // Mock Google Places API — gerçekçi Türk işletme verisi üretir
 // Gerçek API ile değiştirilebilir arayüz.
+// NOT: Tamamen deterministiktir — aynı sorgu+şehir her zaman aynı sonucu üretir
+// (placeId deduplication'ın çalışması için zorunlu).
 
 import { MAPS_CATEGORIES, CITIES } from './constants'
 import type { MapsResult } from '@/types'
@@ -34,6 +36,15 @@ const CITY_COORDS: Record<string, { lat: number; lng: number }> = {
   'Tekirdağ': { lat: 40.9833, lng: 27.5167 },
 }
 
+// Büyük şehirler için mahalle isimleri — adres gerçekçiliği
+const CITY_DISTRICTS: Record<string, string[]> = {
+  'İstanbul': ['Kadıköy', 'Beşiktaş', 'Şişli', 'Üsküdar', 'Bakırköy', 'Ataşehir', 'Maltepe', 'Beylikdüzü', 'Pendik', 'Beyoğlu'],
+  'Ankara': ['Çankaya', 'Keçiören', 'Yenimahalle', 'Etimesgut', 'Mamak', 'Sincan', 'Gölbaşı'],
+  'İzmir': ['Konak', 'Karşıyaka', 'Bornova', 'Buca', 'Bayraklı', 'Çiğli', 'Gaziemir'],
+  'Bursa': ['Nilüfer', 'Osmangazi', 'Yıldırım', 'Gemlik', 'Gürsu'],
+  'Antalya': ['Muratpaşa', 'Kepez', 'Konyaaltı', 'Alanya', 'Manavgat'],
+}
+
 // Mahalle/sokak isimleri
 const STREET_NAMES = [
   'Atatürk Bulvarı', 'Cumhuriyet Caddesi', 'Gazi Caddesi', 'İnönü Caddesi',
@@ -42,7 +53,38 @@ const STREET_NAMES = [
   'Gül Sokak', 'Çınar Sokak', 'Defne Sokak', 'Manolya Sokak', 'Zambak Sokak',
 ]
 
-const NAMES_SUFFIX = ['A.Ş.', 'Ltd. Şti.', 'Klinik', 'Merkezi', 'Salonu', 'Bürosu', 'Evi', 'Servis']
+const PERSON_FIRST = ['Mehmet', 'Ahmet', 'Ayşe', 'Fatma', 'Mustafa', 'Emine', 'Ali', 'Hatice', 'Hüseyin', 'Zeynep', 'Elif', 'Murat', 'Selin', 'Emre', 'Burak']
+const PERSON_LAST = ['Yılmaz', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Yıldız', 'Yıldırım', 'Öztürk', 'Aydın', 'Özdemir', 'Arslan', 'Doğan', 'Kılıç', 'Aslan']
+
+// Marka benzeri kelimeler — "X Plus", "X Premium" gibi
+const BRAND_WORDS = ['Plus', 'Merkez', 'Premium', 'Modern', 'Nova', 'Elite', 'Başarı', 'Ustam', 'Gold', 'Star']
+
+// Kategori → serbest metin eşleşme sözlüğü.
+// Kullanıcı "berber" yazsa bile Kuaför kategorisine düşer.
+const CATEGORY_ALIASES: Record<string, string[]> = {
+  'diş kliniği': ['diş', 'dis', 'dental', 'implant', 'ortodonti', 'ağız'],
+  'kuaför': ['kuaför', 'kuafor', 'berber', 'güzellik', 'guzellik', 'saç', 'sac', 'epilasyon', 'manikür'],
+  'restoran': ['restoran', 'lokanta', 'yemek', 'kebap', 'pide', 'kahvaltı', 'food', 'mutfak'],
+  'eczane': ['eczane', 'ecz', 'ilaç'],
+  'otomotiv': ['oto', 'otomotiv', 'araba', 'servis', 'lastik', 'kaporta', 'boya'],
+  'gym fitness': ['spor', 'gym', 'fitness', 'pilates', 'yoga', 'salon'],
+  'avukat': ['avukat', 'hukuk', 'law', 'danışmanlık hukuk'],
+  'muhasebe': ['muhasebe', 'mali müşavir', 'mali', 'smmm', 'müşavir'],
+  'cafe': ['cafe', 'kafe', 'coffee', 'kahve', 'pastane', 'fırın'],
+  'market': ['market', 'bakkal', 'süpermarket', 'manav', 'kasap'],
+  'otel': ['otel', 'hotel', 'pansiyon', 'konaklama', 'apart'],
+  'veteriner': ['veteriner', 'vet', 'pet', 'hayvan'],
+  'eğitim': ['kurs', 'etüt', 'eğitim', 'dershane', 'özel öğretim', 'anaokulu', 'kreş'],
+  'emlak': ['emlak', 'gayrimenkul', 'kiralık', 'satılık', 'inşaat'],
+}
+
+export interface SearchParams {
+  query: string
+  city: string
+  country?: string
+  radius?: number
+  existingPlaceIds?: string[]
+}
 
 // Deterministik rastgele (seed tabanlı) — aynı sorgu aynı sonucu üretir
 function seededRandom(seed: number): () => number {
@@ -62,26 +104,51 @@ function hashString(str: string): number {
   return Math.abs(hash)
 }
 
-export interface SearchParams {
-  query: string
-  city: string
-  country?: string
-  radius?: number
-  existingPlaceIds?: string[]
+// Türkçe'den arama metnini normalize et (büyük harf / Türkçe karakter duyarsız)
+function normText(s: string): string {
+  return s
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i').replace(/İ/g, 'i')
+    .replace(/ş/g, 's').replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u').replace(/ö/g, 'o').replace(/ç/g, 'c')
+    .trim()
+}
+
+// Sorgudan kategori bul — önce birebir, sonra alias ile
+function matchCategory(query: string): (typeof MAPS_CATEGORIES)[number] {
+  const q = normText(query)
+  // 1) birebir kategori adı/sorgusu
+  const direct = MAPS_CATEGORIES.find(
+    (c) => q.includes(normText(c.query)) || normText(c.query).includes(q),
+  )
+  if (direct) return direct
+  // 2) alias sözlüğü — "berber" → kuaför, "dental" → diş kliniği ...
+  for (const [key, aliases] of Object.entries(CATEGORY_ALIASES)) {
+    if (aliases.some((a) => q.includes(normText(a)))) {
+      const cat = MAPS_CATEGORIES.find((c) => c.query === key)
+      if (cat) return cat
+    }
+  }
+  return null as unknown as (typeof MAPS_CATEGORIES)[number]
 }
 
 export function mockMapsSearch(params: SearchParams): MapsResult[] {
   const { query, city, existingPlaceIds = [] } = params
   const cityCoord = CITY_COORDS[city] ?? { lat: 39.0, lng: 35.0 }
 
-  // Kategori eşleştir
-  const categoryMatch = MAPS_CATEGORIES.find(
-    (c) => query.toLowerCase().includes(c.query) || c.query.includes(query.toLowerCase()),
-  )
+  // Kategori eşleştir — bulunamazsa genel 'İşletme'
+  const categoryMatch = matchCategory(query)
   const category = categoryMatch?.category ?? 'İşletme'
-  const namePrefixes = categoryMatch?.namePrefixes ?? ['İşletme']
+  // constants'ta alan adı namePrefix — geçmiş sürümlerde namePrefixes ile
+  // okunduğu için hep 'İşletme' prefix'i kullanılıyordu (bug). İkisini de destekle.
+  const namePrefixes: readonly string[] =
+    categoryMatch
+      ? ((categoryMatch as unknown as { namePrefix?: readonly string[] }).namePrefix ??
+        (categoryMatch as unknown as { namePrefixes?: readonly string[] }).namePrefixes ??
+        ['İşletme'])
+      : ['İşletme']
 
-  const seed = hashString(`${query}-${city}`)
+  const seed = hashString(`${normText(query)}-${city}`)
   const rand = seededRandom(seed)
 
   const count = 12 + Math.floor(rand() * 18) // 12-30 sonuç
@@ -91,19 +158,28 @@ export function mockMapsSearch(params: SearchParams): MapsResult[] {
 
   for (let i = 0; i < count; i++) {
     const prefix = namePrefixes[Math.floor(rand() * namePrefixes.length)]
-    const personFirst = ['Mehmet', 'Ahmet', 'Ayşe', 'Fatma', 'Mustafa', 'Emine', 'Ali', 'Hatice', 'Hüseyin', 'Zeynep']
-    const personLast = ['Yılmaz', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Yıldız', 'Yıldırım', 'Öztürk', 'Aydın', 'Özdemir']
-    const ownerName = Math.random() > 0.5
-      ? `${personFirst[Math.floor(rand() * personFirst.length)]} ${personLast[Math.floor(rand() * personLast.length)]}`
-      : null
+    const first = PERSON_FIRST[Math.floor(rand() * PERSON_FIRST.length)]
+    const last = PERSON_LAST[Math.floor(rand() * PERSON_LAST.length)]
+    const brand = BRAND_WORDS[Math.floor(rand() * BRAND_WORDS.length)]
 
-    const name = ownerName
-      ? `${prefix} ${ownerName}`
-      : `${prefix} ${cityMatchBrand(rand)}`
+    // İsim çeşitliliği (deterministik): %40 marka, %30 kişi adı, %30 sadece prefix+brand
+    const nameRoll = rand()
+    let name: string
+    if (nameRoll < 0.4) {
+      name = `${prefix} ${first} ${last}`
+    } else if (nameRoll < 0.7) {
+      name = `${prefix} ${brand}`
+    } else {
+      name = `${brand} ${prefix}`
+    }
 
+    // Adres: büyük şehirlerde mahalle + sokak
+    const districts = CITY_DISTRICTS[city]
     const street = STREET_NAMES[Math.floor(rand() * STREET_NAMES.length)]
     const no = Math.floor(rand() * 200) + 1
-    const address = `${street} No:${no}, ${city}`
+    const address = districts
+      ? `${districts[Math.floor(rand() * districts.length)]}, ${street} No:${no}, ${city}`
+      : `${street} No:${no}, ${city}`
 
     // Koordinat: şehir merkezi etrafında dağıl
     const latOffset = (rand() - 0.5) * 0.15
@@ -113,17 +189,21 @@ export function mockMapsSearch(params: SearchParams): MapsResult[] {
 
     const placeId = `mock_${hashString(name + address)}`
 
-    const hasPhone = rand() > 0.2
-    const phone = hasPhone ? `+90 5${Math.floor(rand() * 9) + 1}${String(Math.floor(rand() * 10)).padStart(1, '0')} ${String(Math.floor(rand() * 1000)).padStart(3, '0')} ${String(Math.floor(rand() * 100)).padStart(2, '0')} ${String(Math.floor(rand() * 100)).padStart(2, '0')}` : null
+    // Telefon: %85 var (CRM için kritik — leadsiz lead işe yaramaz)
+    const hasPhone = rand() > 0.15
+    const operator = Math.floor(rand() * 5) + 5 // 5xx GSM
+    const phone = hasPhone
+      ? `+90 5${operator}${String(Math.floor(rand() * 10)).padStart(1, '0')} ${String(Math.floor(rand() * 900) + 100)} ${String(Math.floor(rand() * 100)).padStart(2, '0')} ${String(Math.floor(rand() * 100)).padStart(2, '0')}`
+      : null
 
-    const hasWeb = rand() > 0.5
+    const hasWeb = rand() > 0.45
     const slug = name.toLowerCase()
       .replace(/ı/g, 'i').replace(/ş/g, 's').replace(/ç/g, 'c')
       .replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ö/g, 'o')
       .replace(/[^a-z0-9]/g, '').slice(0, 20)
     const web = hasWeb ? `www.${slug}.com.tr` : null
 
-    const rating = rand() > 0.15 ? Math.round((3.2 + rand() * 1.8) * 10) / 10 : null
+    const rating = rand() > 0.12 ? Math.round((3.2 + rand() * 1.8) * 10) / 10 : null
     const reviewCount = rating ? Math.floor(rand() * 850) + 5 : null
 
     results.push({
@@ -142,12 +222,10 @@ export function mockMapsSearch(params: SearchParams): MapsResult[] {
     })
   }
 
-  return results
-}
+  // Ada göre sırala — puanı yüksek üstte (Google davranışı)
+  results.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
 
-function cityMatchBrand(rand: () => number): string {
-  const brands = ['Plus', 'Merkezi', 'Profesyonel', 'Premium', 'Modern', 'Yeni', 'Büyük', 'Elite']
-  return brands[Math.floor(rand() * brands.length)]
+  return results
 }
 
 export { CITY_COORDS }

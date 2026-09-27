@@ -7437,3 +7437,32 @@ Stage Summary:
 - Tüm ticari belgeler (fatura, irsaliye, çeki listesi, teklif, proforma, 6 ihracat belgesi) artık doğrulama QR'lı çıkıyor — barkod okutulunca belge künyesi + tutar/ağırlık + kontrol kodu görünür; sahtecilik karşılaştırması için yazıcıda fiziksel doğrulama sağlar
 - Dosyalar: +social-widget.tsx, widgets-section.tsx (düzen), pdf-template.tsx (QR altyapısı + PdfFooter qr prop), doc-pages.tsx, invoice-detail-dialog.tsx, quote-pdf-dialog.tsx, packing-list-pdf-dialog.tsx, irsaliye-pdf-dialog.tsx, package.json (+react-qr-code)
 - Sonraki tur önerileri: QR içeriğine imzalı JWT ekleyerek /verify sayfasıyla gerçek online doğrulama (tek route kısıtı — sayfa içi state ile), ihracat belgelerine şirket bazlı 6-belge paketi toplu yazdırma, Mesaj Merkezi'ne tür bazlı toplu işlemler, sosyal medyada gerçek OAuth
+
+---
+Task ID: 14
+Agent: Z.ai Code (Ana tur — 5 talepli tur)
+Task: Kullanıcı talepleri: (1) Potansiyel müşteri bölümü gerçekten çalışsın, (2) soldaki AI butonu kaldırılsın, (3) Belge Yönetimi'nde teklif+proforma görünsün, (4) otomatik onay anahtarı Randevu Ekle'nin yanına, (5) diğer işletmelerin programları geliştirilsin
+
+Work Log:
+- QA (agent-browser): Potansiyel Müşteri sayfası canlı test edildi — arama/aktarım/dönüşüm API'leri çalışıyor ama 3 veri kalitesi bug'ı bulundu
+- BUG 1 (maps-mock.ts): constants'ta `namePrefix`, mock'ta `namePrefixes` okunuyordu → TÜM sonuçlar "İşletme X" adlı üretimiyordu. İkisi de desteklendi + gerçekçi isim üretimi (marka/kişi/prefix karışımı)
+- BUG 2: `Math.random()` determinizmi bozuyordu → aynı aramada farklı isimler → placeId değişiyordu → TEKRARLI ARAMA MÜKERRER LEAD ÜRETİYORDU. Tamamen seed-based rand'a çevrildi
+- BUG 3: serbest metin "berber" sorgusu kategoriye eşleşmiyordu → CATEGORY_ALIASES sözlüğü eklendi (berber→kuaför, dental→diş, smmm→muhasebe vb.)
+- GELİŞTİRME: mahalle'li gerçekçi adresler (büyük şehirlerde), %85 telefon doluluğu (CRM için kritik), puana göre sıralama, 6 YENİ kategori (Kafe, Market, Otel, Veteriner, Eğitim, Emlak)
+- LeadDetailDialog salt-okunurdu → GERÇEK WORKFLOW: durum değiştirme butonları (yeni/iletişimde/nitelikli/kaybedildi), not ekleme+listeleme, Ara/WhatsApp hızlı iletişim butonları
+- Lead filtre çipleri artık SAYI gösteriyor: "Tümü 56 · Yeni 54 · Dönüştü 2 ..." (ayrı all-count query + useMemo)
+- AI BUTONU KALDIRILDI: AiAssistantWidget (fixed sağ-alt, hiçbir işlevi yoktu, install-prompt butonlarını KAPATIYORDU ve tıklamaları engelliyordu) — layout.tsx + dashboard-view.tsx'den çıkarıldı, dosya silindi. UI'da tıklama engeli de ortadan kalktı
+- BELGE YÖNETİMİ + TEKLİF & PROFORMA SEKMESİ: 4. sekme (erp.manage yetkisiyle). İstatistik kartları (Teklif/Proforma/Onaylanan/Şirket + toplam tutarlar), tür filtre çipleri, şirkete göre gruplu tablo (belge no/tür/tarih/geçerlilik+süre geçti uyarısı/durum/tutar), satır başına PDF önizleme (QuotePdfDialog — şablonlu). Mobilde sekme listesi 2x2 wrap, desktop'ta grid-cols-4
+- RANDEVU BAŞLIĞINA OTOMATİK ONAY ANAHTARI: "Randevu Ekle" yanında emerald/amber durum pill'i + Switch. PATCH /api/appointments/providers/[id] autoApprove, 4 query key invalidate, toast bilgilendirme. DB kalıcı — browser e2e: kapat→"Onay gerekli", aç→"Otomatik onay". Provider arayüzüne autoApprove eklendi
+- SECTOR DEMO SEED (scripts/seed-sector-demo.ts — idempotent): Cafe tenant'ı 0 kayıtlıydı → 1 kafe + 8 masa (kuş bakışı konumlu) + 4 kategori + 15 menü + 6 ödenmiş sipariş+ödeme. Market tenant'ı 0 kayıtlıydı → 1 market + 5 raf + 15 ürün + 15 EAN-13 barkod + shelf item + açık vardiya + 10 fiş (nakit/kart karışık). Artık "Henüz market yok/kafe yok" ekranı yok
+- e2e DOĞRULAMA (agent-browser): Market POS altın yol — ürün sepete → kart ödemesi → FIS-011 fiş dialog; Kafe sipariş akışı — Masa 1 seç → Serpme+Mantı → "Siparişi Gönder" → #S-0007 570₺ Aktif Siparişler'de; Cafe dashboard "418₺ ciro" gösteriyor; Market modülü 5 raf/15 barkod/10 satış özetiyle açılıyor; Site Yönetimi 2 blok/12 aidat/3 şikayet verisiyle çalışıyor
+- MOBİL: 390px'te Belge Yönetimi tab listesi ilk denemede üst üste biniyordu → flex-wrap/scroll responsive fix, 2x2 grid doğrulandı (screenshot)
+- eslint 0 hata; dev.log temiz
+
+Stage Summary:
+- Potansiyel Müşteri artık uçtan uca gerçekten çalışıyor: gerçekçi sonuçlar → seç → lead olarak aktar → durum ilerlet → not ekle → Ara/WhatsApp → müşteriye dönüştür. Mükerrer lead sorunu kökten çözüldü
+- Float AI butonu tamamen kaldırıldı — tıklama engeli ve install-prompt çakışması da bitti
+- Belge Yönetimi şimdi tüm satış evrakını tek ekranda topluyor: sipariş belgeleri + TEKLİF/PROFORMA + irsaliye + ihracat
+- Otomatik onay anahtarı artık tek tıkla, Randevu Ekle'nin yanında
+- Kafe/Market/Site demo tenant'ları canlı veriyle dolu — "diğer işletmelerin programları" artık boş değil, POS/sipariş akışları e2e test edildi
+- Sonraki tur önerileri: lead'e aktivite kaydı (arama/toplantı geçmişi), Belge Yönetimi CSV'sine teklif/proforma satırları, cafe raporlarına günlük Z-özeti, market raporlarına en-çok-satanlar grafiği, real OAuth (social)

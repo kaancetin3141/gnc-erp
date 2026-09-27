@@ -17,7 +17,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate, formatTime, whatsappLink } from '@/lib/format'
-import { Calendar, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap } from 'lucide-react'
+import { Calendar, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
 import { ProviderSettings } from './provider-settings'
 import { formatDateTime } from '@/lib/format'
 
@@ -25,6 +26,7 @@ interface Provider {
   id: string; name: string; type: string; address: string | null; city: string | null
   phone: string | null; email: string | null; photo: string | null
   workingHoursParsed: Record<string, unknown>
+  autoApprove?: boolean
   staff: Staff[]; services: Service[]
   _count?: { appointments: number }
 }
@@ -85,6 +87,31 @@ export function AppointmentsView() {
     enabled: !!providerId,
   })
 
+  // Otomatik onay — başlıkta hızlı anahtar (ayrıca İşletme Ayarları'nda da var)
+  const autoApprove = provider?.autoApprove ?? true
+  const [autoApproveSaving, setAutoApproveSaving] = useState(false)
+  const toggleAutoApprove = async (checked: boolean) => {
+    if (!providerId) return
+    setAutoApproveSaving(true)
+    try {
+      await apiPatch(`/api/appointments/providers/${providerId}`, { autoApprove: checked })
+      qc.invalidateQueries({ queryKey: ['provider', providerId] })
+      qc.invalidateQueries({ queryKey: ['appointment-provider', providerId] })
+      qc.invalidateQueries({ queryKey: ['providers'] })
+      qc.invalidateQueries({ queryKey: ['appointment-providers'] })
+      toast.success(
+        checked
+          ? 'Otomatik onay açıldı — yeni randevular onaysız kabul edilir'
+          : 'Otomatik onay kapatıldı — yeni randevular onay bekler',
+        { icon: checked ? '⚡' : '⏳' },
+      )
+    } catch (e) {
+      toast.error('Ayar değiştirilemedi', { description: e instanceof Error ? e.message : '' })
+    } finally {
+      setAutoApproveSaving(false)
+    }
+  }
+
   if (!providersData) {
     return <div className="p-8"><Skeleton className="h-32" /></div>
   }
@@ -112,7 +139,29 @@ export function AppointmentsView() {
             {provider?.name} · {PROVIDER_TYPES.find((t) => t.value === provider?.type)?.label}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
+          {/* Otomatik onay anahtarı — Randevu Ekle'nin yanı sıra */}
+          <div
+            className={cn(
+              'flex items-center gap-2 h-9 px-3 rounded-lg border transition-colors',
+              autoApprove
+                ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/60'
+                : 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/60',
+            )}
+          >
+            {autoApprove
+              ? <Zap className="w-4 h-4 text-emerald-600 shrink-0" />
+              : <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />}
+            <span className={cn('text-xs font-medium whitespace-nowrap', autoApprove ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400')}>
+              {autoApprove ? 'Otomatik onay' : 'Onay gerekli'}
+            </span>
+            <Switch
+              checked={autoApprove}
+              onCheckedChange={toggleAutoApprove}
+              disabled={autoApproveSaving}
+              aria-label="Randevuları otomatik onayla"
+            />
+          </div>
           <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-40" />
           <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setBookOpen(true)}>
             <Plus className="w-4 h-4 mr-1.5" /> Randevu Ekle

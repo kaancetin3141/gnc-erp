@@ -8,7 +8,6 @@ import { QueryProvider } from "@/components/providers/query-provider";
 import { ServiceWorkerProvider } from "@/components/providers/sw-provider";
 import { InstallPromptProvider } from "@/components/providers/install-prompt-provider";
 import { ErrorBoundary } from "@/components/providers/error-boundary";
-import { AiAssistantWidget } from "@/components/ai/ai-assistant-widget";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -147,7 +146,6 @@ export default function RootLayout({
               <ServiceWorkerProvider>
                 <InstallPromptProvider>
                   {children}
-                  <AiAssistantWidget />
                   <Toaster />
                   <SonnerToaster position="top-right" richColors />
                 </InstallPromptProvider>

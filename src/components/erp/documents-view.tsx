@@ -22,6 +22,7 @@ import {
   FileStack, Search, X, RefreshCw, Package, Receipt, Truck,
   ClipboardList, ChevronDown, ChevronRight, Building2,
   FileCheck2, Loader2, Download, Layers, Printer, Globe2,
+  FileText, Clock,
 } from 'lucide-react'
 import { formatDate, formatCurrency, toCSV, downloadFile } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -34,6 +35,8 @@ import { PackingListPdfDialog } from './parts/packing-list-pdf-dialog'
 import { CombinedOrderPrintDialog } from './parts/combined-docs-print-dialog'
 import { CompanyDocsPrintDialog } from './parts/company-docs-print-dialog'
 import { ExportDocsTab } from './export-docs-tab'
+import { QuotePdfDialog } from './parts/quote-pdf-dialog'
+import { getQuoteStatusMeta } from './parts/quote-utils'
 
 // ============================================================
 // BELGE YÖNETİMİ — Eski "İrsaliyeler" sayfasının yerine geçer.
@@ -92,6 +95,22 @@ type GeneratedDoc =
   | { kind: 'irsaliye'; irsaliyeId: string; irsaliyeNumber: string }
   | { kind: 'packing'; invoiceId: string }
 
+// Teklif / Proforma satırı — /api/quotes döner
+interface QuoteDoc {
+  id: string
+  number: string
+  status: string
+  isProforma: boolean
+  subtotal: number
+  taxTotal: number
+  total: number
+  currency: string
+  issueDate: string
+  validUntil: string | null
+  customer?: { id: string; name: string; segment?: string; status?: string } | null
+  _count?: { lines: number }
+}
+
 export function DocumentsView() {
   const qc = useQueryClient()
   const { user } = useAppStore()
@@ -102,6 +121,7 @@ export function DocumentsView() {
   const canSeeIrsaliye = hasPermission(su, 'irsaliye.view')
   const canSeePacking = canSeeIrsaliye // çeki listesi = irsaliye.view sahiplerine açık (müdür + depocu)
   const canSeeExport = canSeeInvoice // ihracat belgeleri = ticari evrak (müdür + admin, depocu hariç)
+  const canSeeQuotes = hasPermission(su, 'erp.manage') // teklif/proforma API'si erp.manage ister
 
   const [search, setSearch] = useState('')
   const [openCompanies, setOpenCompanies] = useState<Record<string, boolean>>({})
@@ -109,6 +129,8 @@ export function DocumentsView() {
   const [activeDoc, setActiveDoc] = useState<GeneratedDoc | null>(null)
   const [combinedOrder, setCombinedOrder] = useState<{ id: string; number: string; customerName?: string } | null>(null)
   const [companyPrint, setCompanyPrint] = useState<{ name: string; orders: { id: string; number: string }[] } | null>(null)
+  const [quoteType, setQuoteType] = useState<'all' | 'teklif' | 'proforma'>('all')
+  const [quotePdfId, setQuotePdfId] = useState<string | null>(null)
 
   const canExport = hasPermission(su, 'export.data')
 
@@ -123,6 +145,37 @@ export function DocumentsView() {
 
   const orders = useMemo(() => data?.items ?? [], [data])
   const hidePrices = data?.hidePrices === true
+
+  // Teklif & Proforma listesi — sekmeye özgü
+  const { data: quotesData, isLoading: quotesLoading, isFetching: quotesFetching, refetch: refetchQuotes } = useQuery({
+    queryKey: ['documents-quotes'],
+    queryFn: () => apiGet<{ items: QuoteDoc[]; total: number }>('/api/quotes?limit=500'),
+    enabled: canSeeQuotes,
+  })
+  const quotes = useMemo(() => quotesData?.items ?? [], [quotesData])
+  const filteredQuotes = useMemo(
+    () => (quoteType === 'all' ? quotes : quotes.filter((q) => quoteType === 'proforma' ? q.isProforma : !q.isProforma)),
+    [quotes, quoteType],
+  )
+  const quoteCompanies = useMemo(() => {
+    const map = new Map<string, { name: string; quotes: QuoteDoc[] }>()
+    for (const q of filteredQuotes) {
+      const key = q.customer?.id ?? '_'
+      if (!map.has(key)) map.set(key, { name: q.customer?.name ?? 'Bilinmeyen Şirket', quotes: [] })
+      map.get(key)!.quotes.push(q)
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+  }, [filteredQuotes])
+  const quoteStats = useMemo(() => {
+    const teklif = quotes.filter((q) => !q.isProforma)
+    const proforma = quotes.filter((q) => q.isProforma)
+    return {
+      teklifCount: teklif.length,
+      proformaCount: proforma.length,
+      teklifTotal: teklif.reduce((s, q) => s + (q.total ?? 0), 0),
+      proformaTotal: proforma.reduce((s, q) => s + (q.total ?? 0), 0),
+    }
+  }, [quotes])
 
   // Şirketlere göre grupla
   const companies = useMemo(() => {
@@ -248,15 +301,29 @@ export function DocumentsView() {
       </div>
 
       <Tabs defaultValue="orders" className="space-y-4">
-        <TabsList className={cn('grid w-full max-w-md', canSeeExport ? 'grid-cols-3' : 'grid-cols-2')}>
-          <TabsTrigger value="orders" className="gap-1.5">
+        <TabsList
+          className={cn(
+            'w-full h-auto max-w-full flex justify-start gap-1 p-1 overflow-x-auto custom-scroll',
+            canSeeQuotes
+              ? 'sm:max-w-2xl sm:grid sm:grid-cols-4 sm:overflow-visible'
+              : canSeeExport
+                ? 'sm:max-w-xl sm:grid sm:grid-cols-3 sm:overflow-visible'
+                : 'sm:max-w-md sm:grid sm:grid-cols-2 sm:overflow-visible',
+          )}
+        >
+          <TabsTrigger value="orders" className="gap-1.5 shrink-0 whitespace-nowrap text-xs sm:text-sm">
             <Package className="w-3.5 h-3.5" /> Sipariş Belgeleri
           </TabsTrigger>
-          <TabsTrigger value="irsaliye" className="gap-1.5">
+          {canSeeQuotes && (
+            <TabsTrigger value="teklif" className="gap-1.5 shrink-0 whitespace-nowrap text-xs sm:text-sm">
+              <FileText className="w-3.5 h-3.5" /> Teklif & Proforma
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="irsaliye" className="gap-1.5 shrink-0 whitespace-nowrap text-xs sm:text-sm">
             <Truck className="w-3.5 h-3.5" /> İrsaliye Listesi
           </TabsTrigger>
           {canSeeExport && (
-            <TabsTrigger value="ihracat" className="gap-1.5">
+            <TabsTrigger value="ihracat" className="gap-1.5 shrink-0 whitespace-nowrap text-xs sm:text-sm">
               <Globe2 className="w-3.5 h-3.5" /> İhracat
             </TabsTrigger>
           )}
@@ -625,7 +692,176 @@ export function DocumentsView() {
           )}
         </TabsContent>
 
-        {/* ==================== TAB 2: İRSALİYE LİSTESİ ==================== */}
+        {/* ==================== TAB 2: TEKLİF & PROFORMA ==================== */}
+        {canSeeQuotes && (
+          <TabsContent value="teklif" className="space-y-4">
+            {/* Teklif/Proforma istatistikleri */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Card>
+                <CardContent className="p-3">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <FileText className="w-3 h-3" /> Teklif
+                  </div>
+                  <div className="text-xl font-bold">{quoteStats.teklifCount}</div>
+                  {!hidePrices && (
+                    <div className="text-[11px] text-muted-foreground tabular-nums">{formatCurrency(quoteStats.teklifTotal)}</div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card className="bg-teal-50/50 dark:bg-teal-950/20">
+                <CardContent className="p-3">
+                  <div className="text-[10px] uppercase tracking-wider text-teal-700 dark:text-teal-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Proforma
+                  </div>
+                  <div className="text-xl font-bold text-teal-700 dark:text-teal-400">{quoteStats.proformaCount}</div>
+                  {!hidePrices && (
+                    <div className="text-[11px] text-muted-foreground tabular-nums">{formatCurrency(quoteStats.proformaTotal)}</div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card className="bg-emerald-50/50 dark:bg-emerald-950/20">
+                <CardContent className="p-3">
+                  <div className="text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Onaylanan</div>
+                  <div className="text-xl font-bold text-emerald-700 dark:text-emerald-400">
+                    {quotes.filter((q) => q.status === 'onaylandi' || q.status === 'faturalandi').length}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-3">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Şirket</div>
+                  <div className="text-xl font-bold">{quoteCompanies.length}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Tür filtresi + yenile */}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex gap-1.5 flex-wrap">
+                {([
+                  { value: 'all', label: `Tümü (${quotes.length})` },
+                  { value: 'teklif', label: `Teklifler (${quoteStats.teklifCount})` },
+                  { value: 'proforma', label: `Proformalar (${quoteStats.proformaCount})` },
+                ] as const).map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setQuoteType(t.value)}
+                    className={cn(
+                      'text-xs px-3 py-1.5 rounded-full border transition-colors',
+                      quoteType === t.value
+                        ? 'bg-foreground text-background border-foreground font-medium'
+                        : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted',
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" onClick={() => refetchQuotes()} disabled={quotesFetching}>
+                <RefreshCw className={cn('w-4 h-4 mr-1.5', quotesFetching && 'animate-spin')} />
+                Yenile
+              </Button>
+            </div>
+
+            {/* Teklif/Proforma listesi — şirkete göre gruplu */}
+            {quotesLoading ? (
+              <div className="space-y-3">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-40 w-full" />
+              </div>
+            ) : quoteCompanies.length === 0 ? (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <FileText className="w-10 h-10 mx-auto text-muted-foreground/50 mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    {quoteType === 'all' ? 'Teklif veya proforma bulunamadı' : quoteType === 'proforma' ? 'Proforma bulunamadı' : 'Teklif bulunamadı'}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {quoteCompanies.map((company) => (
+                  <Card key={company.name} className="overflow-hidden">
+                    <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-teal-50/60 to-transparent dark:from-teal-950/20">
+                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-100 to-emerald-100 dark:from-teal-900/60 dark:to-emerald-900/40 flex items-center justify-center shrink-0">
+                        <Building2 className="w-4 h-4 text-teal-700 dark:text-teal-300" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-sm truncate">{company.name}</div>
+                        <div className="text-[11px] text-muted-foreground">{company.quotes.length} belge</div>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/30">
+                            <TableHead className="pl-4">Belge No</TableHead>
+                            <TableHead>Tür</TableHead>
+                            <TableHead className="hidden md:table-cell">Tarih</TableHead>
+                            <TableHead className="hidden lg:table-cell">Geçerlilik</TableHead>
+                            <TableHead>Durum</TableHead>
+                            {!hidePrices && <TableHead className="text-right">Tutar</TableHead>}
+                            <TableHead className="text-right pr-4">İşlem</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {company.quotes.map((q) => {
+                            const meta = getQuoteStatusMeta(q.status)
+                            const expired = q.validUntil && new Date(q.validUntil).getTime() < Date.now() && (q.status === 'gonderildi' || q.status === 'taslak')
+                            return (
+                              <TableRow key={q.id} className="hover:bg-muted/30">
+                                <TableCell className="pl-4 font-medium text-xs">{q.number}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className={cn(
+                                    'text-[10px] gap-1',
+                                    q.isProforma
+                                      ? 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/30 dark:text-teal-300 dark:border-teal-900/60'
+                                      : 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-900/60',
+                                  )}>
+                                    {q.isProforma ? <Clock className="w-2.5 h-2.5" /> : <FileText className="w-2.5 h-2.5" />}
+                                    {q.isProforma ? 'Proforma' : 'Teklif'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{formatDate(q.issueDate)}</TableCell>
+                                <TableCell className={cn('hidden lg:table-cell text-xs', expired ? 'text-red-600' : 'text-muted-foreground')}>
+                                  {q.validUntil ? formatDate(q.validUntil) : '—'}
+                                  {expired && <span className="ml-1">(süresi geçti)</span>}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className={cn('text-[10px] gap-1', meta.color)}>
+                                    {meta.label}
+                                  </Badge>
+                                </TableCell>
+                                {!hidePrices && (
+                                  <TableCell className="text-right text-xs font-semibold tabular-nums whitespace-nowrap">
+                                    {formatCurrency(q.total)} <span className="text-[10px] font-normal text-muted-foreground">{q.currency}</span>
+                                  </TableCell>
+                                )}
+                                <TableCell className="text-right pr-4">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-[11px] gap-1"
+                                    onClick={() => setQuotePdfId(q.id)}
+                                  >
+                                    <Printer className="w-3 h-3" /> PDF
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        )}
+
+        {/* ==================== TAB 3: İRSALİYE LİSTESİ ==================== */}
         <TabsContent value="irsaliye">
           <IrsaliyeView />
         </TabsContent>
@@ -688,6 +924,13 @@ export function DocumentsView() {
         canSeeIrsaliye={canSeeIrsaliye}
         open={!!companyPrint}
         onOpenChange={(v) => { if (!v) setCompanyPrint(null) }}
+      />
+
+      {/* Teklif / Proforma PDF önizleme */}
+      <QuotePdfDialog
+        quoteId={quotePdfId}
+        open={!!quotePdfId}
+        onOpenChange={(v) => { if (!v) setQuotePdfId(null) }}
       />
     </div>
   )

@@ -36,7 +36,6 @@ import { WidgetsSection } from './widgets/widgets-section'
 import {
   CafeDashboard, MarketDashboard, SiteDashboard, AppointmentsDashboard,
 } from './sector-dashboards'
-import { AiAssistantWidget } from '@/components/ai/ai-assistant-widget'
 import type {
   CafeDashboardData, MarketDashboardData,
   SiteDashboardData, AppointmentsDashboardData,
@@ -199,9 +198,6 @@ export function DashboardView() {
 
       {/* Widget'lar — hava durumu, mesajlar, döviz, haberler, streak — tüm sektörlerde ortak */}
       <WidgetsSection />
-
-      {/* AI Assistant floating widget — tüm dashboard'larda görünür */}
-      <AiAssistantWidget />
     </div>
   )
 }
