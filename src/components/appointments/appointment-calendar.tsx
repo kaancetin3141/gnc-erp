@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-client'
 import { Card, CardContent } from '@/components/ui/card'
@@ -33,10 +33,13 @@ import {
 } from '@/lib/appointment-utils'
 import { formatCurrency, whatsappLink, formatPhone } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { RejectDialog, type RejectTarget } from './reject-dialog'
+import { CustomerHistoryDialog } from './customer-history-dialog'
 import {
   ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus,
-  Phone, MessageCircle, CheckCircle2, XCircle,
-  UserX, Check, Clock, Trash2, Pencil, CalendarDays,
+  Phone, MessageCircle, CheckCircle2, XCircle, Ban, History,
+  UserX, Check, Clock, Trash2, Pencil, CalendarDays, AlertTriangle,
+  Users, Move, LayoutGrid,
 } from 'lucide-react'
 
 // ============================================================
@@ -48,6 +51,7 @@ interface Staff {
   name: string
   title: string | null
   photo: string | null
+  isActive?: boolean
 }
 
 interface Service {
@@ -84,8 +88,36 @@ interface ProviderResponse {
   autoApprove?: boolean
 }
 
+const STAFF_COLORS = [
+  'bg-emerald-600', 'bg-teal-600', 'bg-amber-600', 'bg-rose-500',
+  'bg-violet-600', 'bg-cyan-600', 'bg-orange-500', 'bg-pink-500',
+]
+
+function initials(name: string) {
+  return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('')
+}
+
+function apptEndMs(a: Appointment) {
+  const st = new Date(a.date).getTime()
+  return a.endTime ? new Date(a.endTime).getTime() : st + (a.service?.duration || 30) * 60_000
+}
+
+function hhmm(d: Date) {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+// Slot hücresi tanımı — gün/hafta ve personel görünümünde ortak
+interface SlotCellSpec {
+  key: string
+  date: Date
+  appts: Appointment[]
+  inHours: boolean
+  isToday: boolean
+  staffId?: string // drop hedefi (personel görünümü) — 'any' = atanmamış kolonu
+}
+
 // ============================================================
-// Calendar (Day/Week view)
+// Calendar (Day / Staff / Week view)
 // ============================================================
 
 interface CalendarProps {
@@ -94,7 +126,7 @@ interface CalendarProps {
 
 export function AppointmentCalendar({ providerId }: CalendarProps) {
   const qc = useQueryClient()
-  const [view, setView] = useState<'day' | 'week'>('day')
+  const [view, setView] = useState<'day' | 'staff' | 'week'>('day')
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
@@ -102,8 +134,27 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
   })
   const [staffFilter, setStaffFilter] = useState<string>('all')
 
+  // "Şimdi" göstergesi — her dakika güncellenir
+  const [nowMin, setNowMin] = useState(() => {
+    const n = new Date()
+    return n.getHours() * 60 + n.getMinutes()
+  })
+  useEffect(() => {
+    const t = setInterval(() => {
+      const n = new Date()
+      setNowMin(n.getHours() * 60 + n.getMinutes())
+    }, 60_000)
+    return () => clearInterval(t)
+  }, [])
+
   // Detail dialog
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null)
+  const [rejectTarget, setRejectTarget] = useState<RejectTarget | null>(null)
+  const [historyTarget, setHistoryTarget] = useState<{ name: string; phone: string } | null>(null)
+
+  // Sürükle-bırak
+  const [dragAppt, setDragAppt] = useState<Appointment | null>(null)
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
 
   // Provider (çalışma saatleri)
   const { data: providerData } = useQuery({
@@ -123,17 +174,17 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
 
   const { data: staffData } = useQuery({
     queryKey: ['appointment-staff', providerId],
-    queryFn: () => apiGet<StaffResponse>(`/api/appointments/providers/${providerId}/staff`),
+    queryFn: () => apiGet<StaffResponse | Staff[]>(`/api/appointments/providers/${providerId}/staff`),
     enabled: !!providerId,
   })
-  const staffList = staffData?.items ?? []
+  const staffList = useMemo(() => (Array.isArray(staffData) ? staffData : staffData?.items ?? []), [staffData])
 
   const { data: serviceData } = useQuery({
     queryKey: ['appointment-services', providerId],
-    queryFn: () => apiGet<ServiceResponse>(`/api/appointments/providers/${providerId}/services`),
+    queryFn: () => apiGet<ServiceResponse | Service[]>(`/api/appointments/providers/${providerId}/services`),
     enabled: !!providerId,
   })
-  const services = serviceData?.items ?? []
+  const services = useMemo(() => (Array.isArray(serviceData) ? serviceData : serviceData?.items ?? []), [serviceData])
 
   const dateRange = useMemo(() => {
     const start = new Date(currentDate)
@@ -205,6 +256,70 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
     return map
   }, [appointments])
 
+  const todayKey = new Date().toDateString()
+
+  // ---------- Doluluk (utilization) ----------
+  const utilByDay = useMemo(() => {
+    const map = new Map<string, { pct: number; booked: number; work: number; count: number }>()
+    for (const day of dateRange) {
+      const dk = dayKeyFromDate(day)
+      const sched = workingHours[dk]
+      const workMin = !sched || sched.closed || !sched.start || !sched.end
+        ? 0
+        : Math.max(0, timeToMinutes(sched.end) - timeToMinutes(sched.start))
+      const list = apptsByDay.get(day.toDateString()) ?? []
+      const booked = list
+        .filter((a) => ['beklemede', 'onaylandi', 'tamamlandi'].includes(a.status))
+        .reduce((s, a) => s + Math.max(0, (apptEndMs(a) - new Date(a.date).getTime()) / 60_000), 0)
+      const pct = workMin > 0 ? Math.min(100, Math.round((booked / workMin) * 100)) : 0
+      map.set(day.toDateString(), {
+        pct,
+        booked,
+        work: workMin,
+        count: list.filter((a) => !['iptal', 'reddedildi'].includes(a.status)).length,
+      })
+    }
+    return map
+  }, [dateRange, apptsByDay, workingHours])
+
+  // ---------- Çakışma tespiti (görsel) ----------
+  const overlapIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const [, list] of apptsByDay) {
+      const active = list.filter((a) => ['beklemede', 'onaylandi'].includes(a.status))
+      for (let i = 0; i < active.length; i++) {
+        for (let j = i + 1; j < active.length; j++) {
+          const a = active[i]
+          const b = active[j]
+          if (a.staffId && b.staffId && a.staffId !== b.staffId) continue
+          const aStart = new Date(a.date).getTime()
+          const bStart = new Date(b.date).getTime()
+          if (aStart < apptEndMs(b) && bStart < apptEndMs(a)) {
+            ids.add(a.id)
+            ids.add(b.id)
+          }
+        }
+      }
+    }
+    return ids
+  }, [apptsByDay])
+
+  // ---------- Personel görünümü kolonları ----------
+  const staffColumns = useMemo(() => {
+    if (view !== 'staff') return []
+    let cols: { id: string; name: string; title: string | null }[] = staffList
+      .filter((s) => s.isActive !== false)
+      .map((s) => ({ id: s.id, name: s.name, title: s.title }))
+    if (staffFilter !== 'all') {
+      cols = cols.filter((c) => c.id === staffFilter)
+    }
+    const dayAppts = apptsByDay.get(dateRange[0].toDateString()) ?? []
+    if (dayAppts.some((a) => !a.staffId) && staffFilter === 'all') {
+      cols.push({ id: 'unassigned', name: 'Atanmamış', title: null })
+    }
+    return cols
+  }, [view, staffList, staffFilter, apptsByDay, dateRange])
+
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editAppt, setEditAppt] = useState<Appointment | null>(null)
   const [form, setForm] = useState({
@@ -220,6 +335,31 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
   })
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null)
+
+  // ---------- Form çakışma uyarısı ----------
+  const formConflicts = useMemo(() => {
+    if (!form.date || !form.time || !form.serviceId) return []
+    const [y, m, d] = form.date.split('-').map(Number)
+    const [hh, mm] = form.time.split(':').map(Number)
+    if (!y || !m || !d || isNaN(hh) || isNaN(mm)) return []
+    const start = new Date(y, m - 1, d, hh, mm, 0, 0)
+    const svc = services.find((s) => s.id === form.serviceId)
+    const end = new Date(start.getTime() + (svc?.duration || 30) * 60_000)
+    const sid = form.staffId === 'any' ? null : form.staffId
+    return appointments.filter((a) => {
+      if (editAppt && a.id === editAppt.id) return false
+      if (!['beklemede', 'onaylandi', 'tamamlandi'].includes(a.status)) return false
+      if (sid) {
+        if (a.staffId !== sid) return false
+      } else if (a.staffId) {
+        return false
+      }
+      const as = new Date(a.date)
+      if (as.toDateString() !== start.toDateString()) return false
+      const aeMs = apptEndMs(a)
+      return as < end && aeMs > start.getTime()
+    })
+  }, [form, appointments, editAppt, services])
 
   function prevPeriod() {
     const d = new Date(currentDate)
@@ -237,12 +377,12 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
     setCurrentDate(d)
   }
 
-  function openCreate(date?: Date, hour?: number, minute?: number) {
+  function openCreate(date?: Date, hour?: number, minute?: number, staffOverride?: string) {
     setEditAppt(null)
     const targetDate = date ?? new Date()
     targetDate.setHours(hour ?? 10, minute ?? 0, 0, 0)
     setForm({
-      staffId: staffFilter !== 'all' ? staffFilter : 'any',
+      staffId: staffOverride ?? (staffFilter !== 'all' ? staffFilter : 'any'),
       serviceId: services[0]?.id ?? '',
       customerName: '',
       customerPhone: '',
@@ -304,6 +444,8 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
         customerNote: form.customerNote || undefined,
         date: start.toISOString(),
         status: form.status,
+        // Çakışma varsa kullanıcı uyarıldı — bilinçli override
+        force: formConflicts.length > 0 ? true : undefined,
       }
       if (editAppt) {
         await apiPatch(
@@ -355,6 +497,144 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
     }
   }
 
+  // ---------- Sürükle-bırak taşıma ----------
+  async function handleDrop(target: Date, staffColId?: string) {
+    const appt = dragAppt
+    setDragAppt(null)
+    setDragOverKey(null)
+    if (!appt) return
+    // target = hedef hücrenin TAM tarihi + saati (gün/hafta/personel görünümünden)
+    const old = new Date(appt.date)
+    const nd = target
+    const newStaff = staffColId === undefined ? undefined : staffColId === 'any' ? 'any' : staffColId
+    const sameTime = nd.getTime() === old.getTime()
+    const sameStaff = newStaff === undefined || newStaff === (appt.staffId ?? 'any')
+    if (sameTime && sameStaff) return
+    try {
+      const payload: Record<string, unknown> = { date: nd.toISOString() }
+      if (newStaff !== undefined) payload.staffId = newStaff
+      await apiPatch(`/api/appointments/providers/${providerId}/appointments/${appt.id}`, payload)
+      qc.invalidateQueries({ queryKey: ['appointment-appointments', providerId] })
+      toast.success('Randevu taşındı', {
+        description: `${appt.customerName} → ${nd.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })} ${hhmm(nd)}`,
+      })
+    } catch (e) {
+      toast.error('Taşıma başarısız', {
+        description: e instanceof Error ? e.message : 'Saat dilimi dolu olabilir',
+      })
+    }
+  }
+
+  // handleDrop'a her zaman güncel erişim (native document dinleyicileri için)
+  const handleDropRef = useRef(handleDrop)
+  handleDropRef.current = handleDrop
+
+  // Sürükleme aktifken document-seviyesi native dragover/drop —
+  // React'ın root capture-phase drop kaydı untrusted event'lerde tetiklenmediği için
+  // native dinleyici kullanılır (gerçek tarayıcı + otomasyon uyumlu).
+  useEffect(() => {
+    if (!dragAppt) return
+    const onDocDragOver = (e: DragEvent) => {
+      const cell = (e.target as HTMLElement | null)?.closest?.('[data-appt-cell]') as HTMLElement | null
+      if (cell && cell.dataset.inHours === '1') {
+        e.preventDefault()
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+        const key = cell.dataset.cellKey ?? null
+        setDragOverKey((prev) => (prev === key ? prev : key))
+      } else {
+        setDragOverKey((prev) => (prev === null ? prev : null))
+      }
+    }
+    const onDocDrop = (e: DragEvent) => {
+      const cell = (e.target as HTMLElement | null)?.closest?.('[data-appt-cell]') as HTMLElement | null
+      if (!cell) return
+      e.preventDefault()
+      const dayIso = cell.dataset.dayIso
+      const slotMin = Number(cell.dataset.slotMin)
+      if (!dayIso || isNaN(slotMin)) return
+      const d = new Date(dayIso)
+      const staffId = cell.dataset.staffId // undefined = personeli koru (gün/hafta)
+      handleDropRef.current(
+        new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(slotMin / 60), slotMin % 60),
+        staffId,
+      )
+    }
+    const onDocDragEnd = () => {
+      setDragAppt(null)
+      setDragOverKey(null)
+    }
+    document.addEventListener('dragover', onDocDragOver)
+    document.addEventListener('drop', onDocDrop)
+    document.addEventListener('dragend', onDocDragEnd)
+    return () => {
+      document.removeEventListener('dragover', onDocDragOver)
+      document.removeEventListener('drop', onDocDrop)
+      document.removeEventListener('dragend', onDocDragEnd)
+    }
+  }, [dragAppt])
+
+  // ---------- Slot hücresi üretimi ----------
+  function buildDayWeekCells(slot: { min: number }): SlotCellSpec[] {
+    return dateRange.map((d) => {
+      const dk = dayKeyFromDate(d)
+      const sched = workingHours[dk]
+      const isClosed = !sched || sched.closed || !sched.start || !sched.end
+      const inHours = !isClosed &&
+        slot.min >= timeToMinutes(sched!.start!) &&
+        slot.min < timeToMinutes(sched!.end!)
+      const dayAppts = apptsByDay.get(d.toDateString()) ?? []
+      const slotAppts = dayAppts.filter((a) => {
+        const ad = new Date(a.date)
+        const aMin = ad.getHours() * 60 + ad.getMinutes()
+        return aMin >= slot.min && aMin < slot.min + 30
+      })
+      return {
+        key: `${d.toISOString()}-${slot.min}`,
+        date: d,
+        appts: slotAppts,
+        inHours,
+        isToday: d.toDateString() === todayKey,
+      }
+    })
+  }
+
+  function buildStaffCells(slot: { min: number }): SlotCellSpec[] {
+    const day = dateRange[0]
+    const dk = dayKeyFromDate(day)
+    const sched = workingHours[dk]
+    const inHours = !!sched && !sched.closed && !!sched.start && !!sched.end &&
+      slot.min >= timeToMinutes(sched.start) &&
+      slot.min < timeToMinutes(sched.end)
+    const dayAppts = apptsByDay.get(day.toDateString()) ?? []
+    return staffColumns.map((col) => {
+      const colAppts = dayAppts.filter((a) => {
+        if (col.id === 'unassigned') return !a.staffId
+        return a.staffId === col.id
+      }).filter((a) => {
+        const ad = new Date(a.date)
+        const aMin = ad.getHours() * 60 + ad.getMinutes()
+        return aMin >= slot.min && aMin < slot.min + 30
+      })
+      return {
+        key: `${col.id}-${slot.min}`,
+        date: day,
+        appts: colAppts,
+        inHours,
+        isToday: day.toDateString() === todayKey,
+        staffId: col.id === 'unassigned' ? 'any' : col.id,
+      }
+    })
+  }
+
+  function handleSlotClick(cell: SlotCellSpec, hour: number, minute: number) {
+    openCreate(
+      new Date(cell.date.getFullYear(), cell.date.getMonth(), cell.date.getDate(), hour, minute),
+      hour,
+      minute,
+      cell.staffId && cell.staffId !== 'any' ? cell.staffId : undefined,
+    )
+  }
+
   if (isLoading) {
     return (
       <Card>
@@ -362,6 +642,11 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
       </Card>
     )
   }
+
+  const utilToday = utilByDay.get(dateRange[0].toDateString())
+  const gridCols = view === 'week'
+    ? 'grid-cols-[60px_repeat(7,1fr)]'
+    : 'grid-cols-[60px_1fr]'
 
   return (
     <div className="space-y-3">
@@ -383,12 +668,29 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <CalendarIcon className="w-4 h-4 text-emerald-600 shrink-0" />
               <span className="font-semibold text-sm truncate">
-                {view === 'day'
-                  ? currentDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
-                  : `${rangeStart.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} - ${new Date(rangeEnd.getTime() - 86400000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                {view === 'week'
+                  ? `${rangeStart.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} - ${new Date(rangeEnd.getTime() - 86400000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                  : currentDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })}
               </span>
+              {/* Doluluk göstergesi */}
+              {view !== 'week' && utilToday && utilToday.work > 0 && (
+                <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                  <div className="h-1.5 w-14 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all',
+                        utilToday.pct > 90 ? 'bg-rose-500' : utilToday.pct > 70 ? 'bg-amber-500' : 'bg-emerald-500',
+                      )}
+                      style={{ width: `${utilToday.pct}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
+                    %{utilToday.pct} dolu
+                  </span>
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               <Select value={staffFilter} onValueChange={setStaffFilter}>
                 <SelectTrigger className="h-9 w-40 text-xs">
                   <SelectValue placeholder="Tüm personel" />
@@ -404,18 +706,29 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                 <Button
                   size="sm"
                   variant={view === 'day' ? 'default' : 'ghost'}
-                  className={cn('rounded-none h-9', view === 'day' && 'bg-emerald-600 hover:bg-emerald-700')}
+                  className={cn('rounded-none h-9 px-2.5', view === 'day' && 'bg-emerald-600 hover:bg-emerald-700')}
                   onClick={() => setView('day')}
                 >
-                  Gün
+                  <CalendarDays className="w-3.5 h-3.5 sm:mr-1" />
+                  <span className="hidden sm:inline">Gün</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant={view === 'staff' ? 'default' : 'ghost'}
+                  className={cn('rounded-none h-9 px-2.5', view === 'staff' && 'bg-emerald-600 hover:bg-emerald-700')}
+                  onClick={() => setView('staff')}
+                >
+                  <Users className="w-3.5 h-3.5 sm:mr-1" />
+                  <span className="hidden sm:inline">Personel</span>
                 </Button>
                 <Button
                   size="sm"
                   variant={view === 'week' ? 'default' : 'ghost'}
-                  className={cn('rounded-none h-9', view === 'week' && 'bg-emerald-600 hover:bg-emerald-700')}
+                  className={cn('rounded-none h-9 px-2.5', view === 'week' && 'bg-emerald-600 hover:bg-emerald-700')}
                   onClick={() => setView('week')}
                 >
-                  Hafta
+                  <LayoutGrid className="w-3.5 h-3.5 sm:mr-1" />
+                  <span className="hidden sm:inline">Hafta</span>
                 </Button>
               </div>
               <Button size="sm" onClick={() => openCreate()} className="bg-emerald-600 hover:bg-emerald-700">
@@ -428,63 +741,158 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
       </Card>
 
       {/* Calendar Grid */}
-      <Card>
-        <CardContent className="p-0 overflow-x-auto">
-          <div className={cn('grid min-w-[640px]', view === 'week' ? 'grid-cols-[60px_repeat(7,1fr)]' : 'grid-cols-[60px_1fr]')}>
-            <div className="border-b border-r bg-muted/30 p-2 text-[10px] text-muted-foreground text-right">
-              S
+      {view === 'staff' && staffColumns.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Users className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+            <p className="text-sm text-muted-foreground">
+              Personel görünümü için önce personel ekleyin veya bu güne randevu girin
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0 overflow-x-auto">
+            <div
+              className={cn('grid', view !== 'staff' && `min-w-[640px] ${gridCols}`)}
+              style={view === 'staff'
+                ? {
+                    gridTemplateColumns: `60px repeat(${staffColumns.length}, minmax(110px, 1fr))`,
+                    minWidth: 60 + staffColumns.length * 120,
+                  }
+                : undefined}
+            >
+              {/* Başlık satırı */}
+              <div className="border-b border-r bg-muted/30 p-2 text-[10px] text-muted-foreground text-right">
+                S
+              </div>
+
+              {view === 'staff'
+                ? staffColumns.map((col, i) => {
+                    const dayAppts = apptsByDay.get(dateRange[0].toDateString()) ?? []
+                    const colCount = dayAppts.filter((a) =>
+                      col.id === 'unassigned' ? !a.staffId : a.staffId === col.id,
+                    ).filter((a) => !['iptal', 'reddedildi'].includes(a.status)).length
+                    const u = utilByDay.get(dateRange[0].toDateString())
+                    return (
+                      <div key={col.id} className="border-b border-r p-2 bg-muted/30">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={cn(
+                              'w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0',
+                              col.id === 'unassigned' ? 'bg-slate-400' : STAFF_COLORS[i % STAFF_COLORS.length],
+                            )}
+                          >
+                            {col.id === 'unassigned' ? '?' : initials(col.name)}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold truncate">{col.name}</div>
+                            {col.title && (
+                              <div className="text-[9px] text-muted-foreground truncate">{col.title}</div>
+                            )}
+                          </div>
+                          <span className="ml-auto text-[9px] text-muted-foreground tabular-nums shrink-0">
+                            {colCount} rnd
+                          </span>
+                        </div>
+                        {u && u.work > 0 && (
+                          <div className="mt-1.5 h-1 rounded-full bg-background/80 overflow-hidden">
+                            <div
+                              className={cn(
+                                'h-full rounded-full',
+                                u.pct > 90 ? 'bg-rose-500' : u.pct > 70 ? 'bg-amber-500' : 'bg-emerald-500',
+                              )}
+                              style={{ width: `${u.pct}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                : dateRange.map((d) => {
+                    const isToday = d.toDateString() === todayKey
+                    const dk = dayKeyFromDate(d)
+                    const sched = workingHours[dk]
+                    const isClosed = !sched || sched.closed
+                    const u = utilByDay.get(d.toDateString())
+                    return (
+                      <div
+                        key={d.toISOString()}
+                        className={cn(
+                          'border-b border-r p-2 text-center',
+                          isToday && 'bg-emerald-50 dark:bg-emerald-950/20',
+                          isClosed && 'bg-muted/20',
+                          view === 'week' && 'cursor-pointer hover:bg-accent/50 transition-colors',
+                        )}
+                        onClick={view === 'week'
+                          ? () => { setCurrentDate(new Date(d.getFullYear(), d.getMonth(), d.getDate())); setView('day') }
+                          : undefined}
+                        title={view === 'week' ? 'Gün görünümüne geç' : undefined}
+                      >
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {d.toLocaleDateString('tr-TR', { weekday: 'short' })}
+                        </div>
+                        <div className={cn('text-sm font-semibold', isToday && 'text-emerald-600')}>
+                          {d.getDate()}
+                        </div>
+                        {isClosed && (
+                          <div className="text-[9px] text-muted-foreground">kapalı</div>
+                        )}
+                        {u && u.work > 0 && (
+                          <div className="mt-1 flex items-center justify-center gap-1">
+                            <div className="h-0.5 w-8 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={cn(
+                                  'h-full rounded-full',
+                                  u.pct > 90 ? 'bg-rose-500' : u.pct > 70 ? 'bg-amber-500' : 'bg-emerald-500',
+                                )}
+                                style={{ width: `${u.pct}%` }}
+                              />
+                            </div>
+                            <span className="text-[8px] text-muted-foreground tabular-nums">{u.count}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+
+              {/* Zaman dilimi satırları */}
+              {hourSlots.map((slot) => (
+                <SlotRow
+                  key={slot.min}
+                  slot={slot}
+                  cells={view === 'staff' ? buildStaffCells(slot) : buildDayWeekCells(slot)}
+                  nowMin={nowMin}
+                  dragActive={!!dragAppt}
+                  dragOverKey={dragOverKey}
+                  overlapIds={overlapIds}
+                  onSlotClick={handleSlotClick}
+                  onApptClick={(appt) => setDetailAppt(appt)}
+                  onDragStartAppt={setDragAppt}
+                  onDragEndAppt={() => { setDragAppt(null); setDragOverKey(null) }}
+                />
+              ))}
             </div>
-            {dateRange.map((d) => {
-              const isToday = d.toDateString() === new Date().toDateString()
-              const dk = dayKeyFromDate(d)
-              const sched = workingHours[dk]
-              const isClosed = !sched || sched.closed
-              return (
-                <div
-                  key={d.toISOString()}
-                  className={cn(
-                    'border-b border-r p-2 text-center',
-                    isToday && 'bg-emerald-50 dark:bg-emerald-950/20',
-                    isClosed && 'bg-muted/20',
-                  )}
-                >
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    {d.toLocaleDateString('tr-TR', { weekday: 'short' })}
-                  </div>
-                  <div className={cn('text-sm font-semibold', isToday && 'text-emerald-600')}>
-                    {d.getDate()}
-                  </div>
-                  {isClosed && (
-                    <div className="text-[9px] text-muted-foreground">kapalı</div>
-                  )}
-                </div>
-              )
-            })}
+          </CardContent>
+        </Card>
+      )}
 
-            {hourSlots.map((slot) => (
-              <SlotRow
-                key={slot.min}
-                slot={slot}
-                dateRange={dateRange}
-                apptsByDay={apptsByDay}
-                workingHours={workingHours}
-                onSlotClick={(date) => openCreate(date, slot.min / 60, slot.min % 60)}
-                onApptClick={(appt) => setDetailAppt(appt)}
-              />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Legend */}
-      <div className="flex items-center gap-3 flex-wrap text-[10px] text-muted-foreground">
-        <span>Durum:</span>
-        {APPOINTMENT_STATUSES.slice(0, 5).map((s) => (
-          <span key={s.value} className="flex items-center gap-1">
-            <span className={cn('w-2.5 h-2.5 rounded-sm', s.bg)} />
-            {s.label}
-          </span>
-        ))}
+      {/* Legend + ipucu */}
+      <div className="flex items-center justify-between gap-2 flex-wrap text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span>Durum:</span>
+          {APPOINTMENT_STATUSES.slice(0, 5).map((s) => (
+            <span key={s.value} className="flex items-center gap-1">
+              <span className={cn('w-2.5 h-2.5 rounded-sm', s.bg)} />
+              {s.label}
+            </span>
+          ))}
+        </div>
+        <span className="flex items-center gap-1.5">
+          <Move className="w-3 h-3" /> Taşımak için sürükleyin
+          <span className="mx-1">·</span>
+          <span className="w-2.5 h-2.5 rounded-sm ring-2 ring-rose-400" /> çakışma
+        </span>
       </div>
 
       {/* Detail Dialog */}
@@ -559,7 +967,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                     {detailAppt.notes && (
                       <div className="col-span-2">
                         <div className="text-xs text-muted-foreground">İç Notlar</div>
-                        <div className="text-sm bg-muted/30 p-2 rounded">{detailAppt.notes}</div>
+                        <div className="text-sm bg-muted/30 p-2 rounded whitespace-pre-line">{detailAppt.notes}</div>
                       </div>
                     )}
                   </div>
@@ -577,6 +985,17 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                         <Phone className="w-3.5 h-3.5 mr-1" />
                         Ara
                       </a>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setHistoryTarget({ name: detailAppt.customerName, phone: detailAppt.customerPhone })
+                        setDetailAppt(null)
+                      }}
+                    >
+                      <History className="w-3.5 h-3.5 mr-1" />
+                      Geçmiş
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => openEdit(detailAppt)}>
                       <Pencil className="w-3.5 h-3.5 mr-1" />
@@ -606,6 +1025,12 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                         <UserX className="w-3.5 h-3.5 mr-2 text-rose-600" /> Gelmedi
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => { setRejectTarget(detailAppt); setDetailAppt(null) }}
+                        className="text-red-600"
+                      >
+                        <Ban className="w-3.5 h-3.5 mr-2" /> Reddet (sebep bildir)
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleStatusChange(detailAppt, 'iptal')}
                         className="text-red-600"
@@ -747,6 +1172,30 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                 </Select>
               </div>
             )}
+            {formConflicts.length > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/60 p-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  Çakışma uyarısı — bu saatte {formConflicts.length} randevu var:
+                </div>
+                <ul className="mt-1 space-y-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+                  {formConflicts.map((c) => {
+                    const cs = new Date(c.date)
+                    const ce = c.endTime ? new Date(c.endTime) : null
+                    return (
+                      <li key={c.id}>
+                        • <strong>{c.customerName}</strong> {hhmm(cs)}{ce ? `–${hhmm(ce)}` : ''}
+                        {c.service?.name ? ` (${c.service.name})` : ''}
+                        {c.staff?.name ? ` · ${c.staff.name}` : ' · atanmamış'}
+                      </li>
+                    )
+                  })}
+                </ul>
+                <div className="text-[10px] mt-1 text-amber-600 dark:text-amber-500">
+                  Kaydet&apos;e basarsanız randevu üst üste kaydedilir.
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             {editAppt && (
@@ -762,8 +1211,20 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
               Kapat
             </Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700">
-              {saving ? 'Kaydediliyor...' : editAppt ? 'Güncelle' : 'Oluştur'}
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              className={cn(
+                formConflicts.length > 0
+                  ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-emerald-600 hover:bg-emerald-700',
+              )}
+            >
+              {saving
+                ? 'Kaydediliyor...'
+                : formConflicts.length > 0
+                  ? 'Çakışmaya Rağmen Kaydet'
+                  : editAppt ? 'Güncelle' : 'Oluştur'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -776,7 +1237,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
             <AlertDialogTitle>Randevuyu iptal et</AlertDialogTitle>
             <AlertDialogDescription>
               <strong>{deleteTarget?.customerName}</strong> adına ait randevuyu iptal etmek istediğinize emin misiniz?
-              (Randevu silinmez, durumu "iptal" olarak işaretlenir.)
+              (Randevu silinmez, durumu &quot;iptal&quot; olarak işaretlenir.)
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -787,30 +1248,60 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Reddet diyaloğu */}
+      {rejectTarget && (
+        <RejectDialog
+          target={rejectTarget}
+          providerId={providerId}
+          onOpenChange={(o) => !o && setRejectTarget(null)}
+          onDone={() => qc.invalidateQueries({ queryKey: ['appointment-appointments', providerId] })}
+        />
+      )}
+
+      {/* Müşteri geçmişi */}
+      {historyTarget && (
+        <CustomerHistoryDialog
+          providerId={providerId}
+          customerName={historyTarget.name}
+          phone={historyTarget.phone}
+          onOpenChange={(o) => !o && setHistoryTarget(null)}
+        />
+      )}
     </div>
   )
 }
 
 // ============================================================
-// Slot row — bir zaman dilimi için tüm günleri render eder
+// Slot row — bir zaman dilimi için tüm kolonları render eder
+// (gün/hafta: kolon = gün · personel görünümü: kolon = personel)
 // ============================================================
 
 function SlotRow({
   slot,
-  dateRange,
-  apptsByDay,
-  workingHours,
+  cells,
+  nowMin,
+  dragActive,
+  dragOverKey,
+  overlapIds,
   onSlotClick,
   onApptClick,
+  onDragStartAppt,
+  onDragEndAppt,
 }: {
   slot: { min: number; label: string }
-  dateRange: Date[]
-  apptsByDay: Map<string, Appointment[]>
-  workingHours: WorkingHours
-  onSlotClick: (date: Date) => void
+  cells: SlotCellSpec[]
+  nowMin: number
+  dragActive: boolean
+  dragOverKey: string | null
+  overlapIds: Set<string>
+  onSlotClick: (cell: SlotCellSpec, hour: number, minute: number) => void
   onApptClick: (appt: Appointment) => void
+  onDragStartAppt: (appt: Appointment) => void
+  onDragEndAppt: () => void
 }) {
   const isHourLine = slot.min % 60 === 0
+  const hasNow = nowMin >= slot.min && nowMin < slot.min + 30
   return (
     <>
       <div
@@ -820,47 +1311,66 @@ function SlotRow({
         )}
       >
         {isHourLine ? slot.label : ''}
+        {hasNow && <span className="block text-rose-500 font-bold leading-none">●</span>}
       </div>
-      {dateRange.map((d) => {
-        const dk = dayKeyFromDate(d)
-        const sched = workingHours[dk]
-        const isClosed = !sched || sched.closed || !sched.start || !sched.end
-        const inHours = !isClosed &&
-          slot.min >= timeToMinutes(sched!.start!) &&
-          slot.min < timeToMinutes(sched!.end!)
-
-        const dayAppts = apptsByDay.get(d.toDateString()) ?? []
-        const slotAppts = dayAppts.filter((a) => {
-          const ad = new Date(a.date)
-          const aMin = ad.getHours() * 60 + ad.getMinutes()
-          return aMin >= slot.min && aMin < slot.min + 30
-        })
-
+      {cells.map((cell) => {
+        const showNow = cell.isToday && hasNow
         return (
           <div
-            key={`${d.toISOString()}-${slot.min}`}
+            key={cell.key}
+            data-appt-cell
+            data-cell-key={cell.key}
+            data-day-iso={cell.date.toISOString()}
+            data-slot-min={slot.min}
+            data-in-hours={cell.inHours ? '1' : '0'}
+            data-staff-id={cell.staffId}
             className={cn(
               'border-r border-b relative h-7 group',
               isHourLine ? 'border-b-border' : 'border-b-muted/40',
-              inHours ? 'bg-card hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10 cursor-pointer' : 'bg-muted/10',
+              cell.inHours
+                ? 'bg-card hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10 cursor-pointer'
+                : 'bg-muted/10',
+              dragActive && cell.inHours && dragOverKey === cell.key &&
+                'ring-2 ring-inset ring-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30',
             )}
-            onClick={() => inHours && onSlotClick(new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(slot.min / 60), slot.min % 60))}
+            onClick={() => cell.inHours && onSlotClick(cell, Math.floor(slot.min / 60), slot.min % 60)}
           >
-            {slotAppts.map((appt) => {
+            {showNow && (
+              <div
+                className="absolute left-0 right-0 h-0.5 bg-rose-500/80 z-20 pointer-events-none"
+                style={{ top: Math.min(26, ((nowMin - slot.min) / 30) * 28) }}
+              />
+            )}
+            {cell.appts.map((appt) => {
               const meta = getStatusMeta(appt.status)
               const isCancelled = appt.status === 'iptal' || appt.status === 'reddedildi'
+              const hasOverlap = overlapIds.has(appt.id)
               return (
                 <button
                   key={appt.id}
                   type="button"
+                  draggable
+                  onDragStart={(e) => {
+                    onDragStartAppt(appt)
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('text/plain', appt.id)
+                  }}
+                  onDragEnd={onDragEndAppt}
                   onClick={(e) => { e.stopPropagation(); onApptClick(appt) }}
                   className={cn(
-                    'absolute inset-x-0.5 top-0.5 px-1.5 py-0.5 rounded text-[10px] text-left truncate transition-shadow hover:shadow-md z-10',
+                    'absolute inset-x-0.5 top-0.5 px-1.5 py-0.5 rounded text-[10px] text-left truncate transition-shadow hover:shadow-md z-10 cursor-grab active:cursor-grabbing',
                     meta.bg, meta.color,
                     isCancelled && 'opacity-50 line-through',
+                    hasOverlap && 'ring-2 ring-rose-400 ring-inset',
                   )}
-                  title={`${appt.customerName} · ${appt.service?.name ?? ''} · ${appt.staff?.name ?? 'Herhangi biri'}`}
+                  title={[
+                    hasOverlap ? '⚠ Çakışma!' : null,
+                    appt.customerName,
+                    appt.service?.name ?? '',
+                    appt.staff?.name ?? 'Herhangi biri',
+                  ].filter(Boolean).join(' · ')}
                 >
+                  {hasOverlap && <span className="mr-0.5">⚠</span>}
                   <span className="font-semibold">{appt.customerName}</span>
                   {appt.service && <span className="opacity-80"> · {appt.service.name}</span>}
                 </button>

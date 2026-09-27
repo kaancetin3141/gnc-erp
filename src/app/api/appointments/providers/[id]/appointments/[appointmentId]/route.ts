@@ -21,7 +21,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json()
   const {
     status, notes, reminderSent,
-    staffId, serviceId, customerName, customerPhone, customerEmail, customerNote, date,
+    staffId, serviceId, customerName, customerPhone, customerEmail, customerNote, date, force,
   } = body as {
     status?: string
     notes?: string
@@ -33,6 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     customerEmail?: string | null
     customerNote?: string | null
     date?: string
+    force?: boolean
   }
 
   const validStatuses = ['beklemede', 'onaylandi', 'reddedildi', 'tamamlandi', 'iptal', 'gelmedi']
@@ -76,8 +77,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const startTime = new Date(date)
     if (isNaN(startTime.getTime())) return err('Geçersiz tarih', 400)
     const duration = service?.duration || 30
+    const newEnd = new Date(startTime.getTime() + duration * 60 * 1000)
     updateData.date = startTime
-    updateData.endTime = new Date(startTime.getTime() + duration * 60 * 1000)
+    updateData.endTime = newEnd
+
+    // Çakışma kontrolü — taşımada aynı personelde örtüşen randevu var mı?
+    // (force=true ile atlanır; sürükle-bırak güvenli taşima için önce reddeder)
+    const effStaffId = (updateData.staffId !== undefined ? updateData.staffId : existing.staffId) as string | null
+    if (effStaffId && !force) {
+      const conflicts = await db.appointment.findMany({
+        where: {
+          providerId: id,
+          staffId: effStaffId,
+          id: { not: appointmentId },
+          status: { in: ['beklemede', 'onaylandi'] },
+          date: { lt: newEnd },
+          endTime: { gt: startTime },
+        },
+        select: { customerName: true, date: true },
+      })
+      if (conflicts.length > 0) {
+        const c = conflicts[0]
+        const cTime = new Date(c.date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+        return err(`Çakışma: ${c.customerName} (${cTime}) randevusu ile örtüşüyor`, 409)
+      }
+    }
   }
   if (service && serviceId !== undefined) updateData.price = service.price
 

@@ -7501,3 +7501,27 @@ Stage Summary:
 - Personel ve Hizmet yönetimi tam yetkili: ekle/düzenle/sil/aktif-pasif/hizmet atama — istenen "personel ve hizmet ekleme butonları" artık yerinde
 - Program modülü büyüdü: yeni Takvim sekmesi (gün/hafta), gün özeti kartları, durum filtreleri, onay kuyruğu bandı, toplu onay
 - Sonraki tur önerileri: onay reddi akışı ('reddedildi' + müşteriye sebep bildirimi), randevu saatinden önce otomatik WhatsApp hatırlatma (cron zaten reminder tetikliyor — appointment'a bağlanabilir), Takvim'e sürükle-bırak ile saat değiştirme, müşteri geçmiş randevu geçmişi paneli
+
+---
+Task ID: 16
+Agent: Z.ai Code (Ana tur — "programı geliştir")
+Task: Kullanıcı talebi "programı geliştir" — Randevu/Takvim modülüne 6 büyük program özelliği eklendi
+
+Work Log:
+- QA: agent-browser ile Takvim modülü dolaşıldı; Task 15'in bıraktığı temel sağlam
+- KEŞFEDİLEN ÖNCÜL BUG: Takvim bileşeninde staff/services API'leri ham dizi dönmesine rağmen {items} bekleniyordu → Personel filtre dropdown'ı ve formdaki hizmet listesi BOŞ geliyordu (Task 15'te StaffManager düzeltilmiş ama takvim unutulmuştu). Array.isArray çift-şekil uyumu eklendi
+- ÖZELLİK 1 — PERSONEL GÖRÜNÜMÜ (3. görünüm modu Gün|Personel|Hafta): personel başına kolon (renkli avatar baş harfleri, unvan, randevu sayacı, kişiye özel doluluk barı); atanmamış randevular için "Atanmamış" kolonu otomatik; boş kolona tıklayınca Randevu Ekle formu o personelle ön-dolu açılır
+- ÖZELLİK 2 — SÜRÜKLE-BIRAK TAŞIMA: randevu bloğu draggable; document-seviyesi NATİVE dragover/drop dinleyicileri (React 19 drop'u root'ta capture fazında dinlediği ve sentetik/untrusted event'lerde tetiklenmediği için — hata ayıklamada bulunmuş kök neden); hücrelere data-day-iso/data-slot-min/data-staff-id verildi; taşımada sunucu endTime'ı hizmet süresine göre yeniden hesaplıyor; başarı toast'ı "X → 28 Eyl Pzt 11:30"
+- ÖZELLİK 3 — "ŞİMDİ" GÖSTERCİSİ + DOLULUK: bugünün sütununda canlı kırmızı zaman çizgisi (her dakika tick); gün görünümü araç çubuğunda %X dolu progress barı; hafta görünümü başlıklarında mini doluluk barı + randevu sayacı; hafta başlığına tıklayınca o güne gün görünümüne geçiş
+- ÖZELLİK 4 — ÇAKIŞMA TESPİTİ (üç katman): (a) form'da canlı amber uyarı kutusu — aynı personel + örtüşen saat listelenir, buton "Çakışmaya Rağmen Kaydet" olur ve force=true ile kaydeder; (b) takvimde üst üste binen randevularda ⚠ + rose ring; (c) POST/PATCH API'da çakışma kontrolü — taşımada 409 "Çakışma: {müşteri} (saat) randevusu ile örtüşüyor" (force ile atlanabilir)
+- ÖZELLİK 5 — RED AKIŞI: yeni RejectDialog — sebep zorunlu textarea + hızlı çipler ("Personel izinli" vb.) + "WhatsApp ile bildir" anahtarı; kayıtta status=reddedildi + notes'a "Reddedilme sebebi: ..." eklenir; WhatsApp mesajı otomatik kurulur (sebep + özür + yönlendirme). Detay diyaloğuna ve Randevular listesindeki beklemede satırlarına Reddet butonu eklendi
+- ÖZELLİK 6 — MÜŞTERİ RANDEVU GEÇMİŞİ: yeni CustomerHistoryDialog — telefonla arama (API phone parametresi; DB'deki boşluklu formatları normalize ederek JS'te eşleme), 4 istatistik kartı (Toplam/Tamamlanan/İptal-Gelmedi/Harcama), "Sıradaki randevu" vurgusu, son 30 kayıt listesi. Detay diyaloğunda "Geçmiş" butonu + listede müşteri adına tıklayınca açılır
+- API değişiklikleri: GET ?phone= (geçmiş araması), POST ?force, PATCH force + tarih değişiminde çakışma kontrolü (id != self, aynı staff, status beklemede/onaylandi)
+- e2e (agent-browser): Personel görünümü 3 kolon render ✓; kolona tıkla → form personel ön-dolu ✓; randevu oluştur → beklemede + doluluk %6 güncel ✓; sürükle-bırak 10:00→11:30 DB'de doğrulandı + endTime 12:00 ✓; çakışan kayıt force ile ✓; ⚠ ringler ✓; dolu slota sürükleme 409 toast ✓; Reddet akışı DB (reddedildi + not) + WhatsApp mesaj URL'si (sebep dahil) ✓; Müşteri Geçmişi diyaloğu istatistiklerle ✓; Hafta görünümü mini barlar ✓
+- BULUNAN+SONRA DÜZELTİLEN handleDrop bug'ı: hedef hücrenin saatini yok sayıp randevunun eski saatini koruyordu → aynı gün içinde taşımada nd==old çıkıp sessizce dönüyordu; nd=target olarak düzeltildi
+- Test verileri temizlendi (Test Yılmaz, Çakışan Deneme silindi); eslint 0 hata; dev.log temiz
+
+Stage Summary:
+- Program/Takvim modülü artık profesyonel çizelge düzeyinde: 3 görünüm (Gün/Personel/Hafta), sürükle-bırak saat değiştirme, canlı zaman çizgisi, doluluk metrikleri, üç katmanlı çakışma koruması, sebep bildirimli red akışı ve müşteri geçmişi paneli
+- Öne çıkan teknik kazanım: HTML5 DnD'nin React 19 capture-phase drop uyumsuzluğuna karşı document-seviyesi native dinleyici deseni — hem gerçek tarayıcıda hem otomasyonda güvenilir
+- Sonraki tur önerileri: personel bazlı izin/uygun olmama günleri (staff time-off), takvimde seçili hafta için günlük Z-özeti raporu, randevu onay/red e-postası (şablonla), sürükle-bırak'a dokunmatik desteği (pointer events fallback), müşteri geçmişine not ekleme

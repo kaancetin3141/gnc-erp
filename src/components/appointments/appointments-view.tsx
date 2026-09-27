@@ -17,12 +17,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate, formatTime, whatsappLink } from '@/lib/format'
-import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet } from 'lucide-react'
+import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { ProviderSettings } from './provider-settings'
 import { StaffManager } from './staff-manager'
 import { ServiceManager } from './service-manager'
 import { AppointmentCalendar } from './appointment-calendar'
+import { RejectDialog } from './reject-dialog'
+import { CustomerHistoryDialog } from './customer-history-dialog'
 import { formatDateTime } from '@/lib/format'
 
 interface Provider {
@@ -56,6 +58,7 @@ const APPT_STATUS = [
   { value: 'beklemede', label: 'Beklemede', color: 'text-amber-600 bg-amber-50 border-amber-200' },
   { value: 'onaylandi', label: 'Onaylandı', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
   { value: 'tamamlandi', label: 'Tamamlandı', color: 'text-teal-600 bg-teal-50 border-teal-200' },
+  { value: 'reddedildi', label: 'Reddedildi', color: 'text-slate-600 bg-slate-100 border-slate-200' },
   { value: 'iptal', label: 'İptal', color: 'text-red-600 bg-red-50 border-red-200' },
   { value: 'gelmedi', label: 'Gelmedi', color: 'text-rose-600 bg-rose-50 border-rose-200' },
 ] as const
@@ -67,6 +70,8 @@ export function AppointmentsView() {
   const [bookOpen, setBookOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
   const [statusFilter, setStatusFilter] = useState('all')
+  const [rejectTarget, setRejectTarget] = useState<Appointment | null>(null)
+  const [historyTarget, setHistoryTarget] = useState<{ name: string; phone: string } | null>(null)
 
   // Provider list
   const { data: providersData } = useQuery({
@@ -96,7 +101,7 @@ export function AppointmentsView() {
     const pending = appointments.filter((a) => a.status === 'beklemede')
     const approved = appointments.filter((a) => a.status === 'onaylandi')
     const done = appointments.filter((a) => a.status === 'tamamlandi')
-    const cancelled = appointments.filter((a) => a.status === 'iptal' || a.status === 'gelmedi')
+    const cancelled = appointments.filter((a) => a.status === 'iptal' || a.status === 'gelmedi' || a.status === 'reddedildi')
     const expectedRevenue = [...pending, ...approved].reduce((sum, a) => sum + (a.price || 0), 0)
     return {
       total: appointments.length,
@@ -110,7 +115,7 @@ export function AppointmentsView() {
 
   const filteredAppointments = useMemo(() => {
     if (statusFilter === 'all') return appointments
-    if (statusFilter === 'iptal') return appointments.filter((a) => a.status === 'iptal' || a.status === 'gelmedi')
+    if (statusFilter === 'iptal') return appointments.filter((a) => a.status === 'iptal' || a.status === 'gelmedi' || a.status === 'reddedildi')
     return appointments.filter((a) => a.status === statusFilter)
   }, [appointments, statusFilter])
 
@@ -315,7 +320,13 @@ export function AppointmentsView() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{apt.customerName}</span>
+                          <button
+                            onClick={() => setHistoryTarget({ name: apt.customerName, phone: apt.customerPhone })}
+                            className="font-medium text-sm hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline text-left"
+                            title="Müşteri geçmişini gör"
+                          >
+                            {apt.customerName}
+                          </button>
                           <Badge variant="outline" className={cn('text-[10px]', st?.color ?? '')}>{st?.label}</Badge>
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
@@ -328,6 +339,13 @@ export function AppointmentsView() {
                           <Button size="sm" className="h-8 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
                             onClick={async () => { await apiPatch(`/api/appointments/providers/${providerId}/appointments/${apt.id}`, { status: 'onaylandi' }); qc.invalidateQueries({ queryKey: ['appointments'] }); toast.success('Randevu onaylandı — WhatsApp ile bilgi gönderebilirsiniz') }}>
                             <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Onayla
+                          </Button>
+                        )}
+                        {/* Beklemede → sebep ile reddet */}
+                        {apt.status === 'beklemede' && (
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" title="Reddet (sebep bildir)"
+                            onClick={() => setRejectTarget(apt)}>
+                            <Ban className="w-4 h-4" />
                           </Button>
                         )}
                         {/* Onaylandı → WhatsApp ile bilgi gönder */}
@@ -415,6 +433,26 @@ export function AppointmentsView() {
           open={bookOpen}
           onOpenChange={setBookOpen}
           onSuccess={() => qc.invalidateQueries({ queryKey: ['appointments'] })}
+        />
+      )}
+
+      {/* Reddet diyaloğu — sebep + WhatsApp bildirimi */}
+      {rejectTarget && providerId && (
+        <RejectDialog
+          target={rejectTarget}
+          providerId={providerId}
+          onOpenChange={(o) => !o && setRejectTarget(null)}
+          onDone={() => qc.invalidateQueries({ queryKey: ['appointments'] })}
+        />
+      )}
+
+      {/* Müşteri randevu geçmişi */}
+      {historyTarget && providerId && (
+        <CustomerHistoryDialog
+          providerId={providerId}
+          customerName={historyTarget.name}
+          phone={historyTarget.phone}
+          onOpenChange={(o) => !o && setHistoryTarget(null)}
         />
       )}
     </div>

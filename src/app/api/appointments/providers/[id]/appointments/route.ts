@@ -19,10 +19,33 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const endDate = url.searchParams.get('endDate') // ISO
   const staffId = url.searchParams.get('staffId') || ''
   const status = url.searchParams.get('status') || ''
+  const phone = url.searchParams.get('phone') // müşteri randevu geçmişi
 
   const where: Record<string, unknown> = { providerId: id }
   if (staffId && staffId !== 'all') where.staffId = staffId
   if (status) where.status = status
+
+  // Müşteri geçmişi: telefon numarasına göre ara (tarih filtresi yok)
+  // DB'de telefon boşluklu kayıtlı olabilir → iki tarafı da normalize ederek JS'te eşle
+  const isHistory = !!phone
+  if (isHistory) {
+    const digits = phone.replace(/\D/g, '')
+    if (digits.length < 4) return err('Telefon en az 4 hane olmalı', 400)
+    const all = await db.appointment.findMany({
+      where: { providerId: id },
+      include: {
+        staff: { select: { id: true, name: true, title: true, photo: true } },
+        service: { select: { id: true, name: true, duration: true, price: true } },
+      },
+      orderBy: { date: 'desc' },
+      take: 200,
+    })
+    const matched = all.filter((a) => {
+      const storedDigits = (a.customerPhone || '').replace(/\D/g, '')
+      return storedDigits.includes(digits)
+    })
+    return ok(matched.slice(0, 50))
+  }
   if (date) {
     const start = new Date(date + 'T00:00:00')
     const end = new Date(date + 'T23:59:59')
@@ -52,7 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params
   const body = await req.json()
-  const { staffId, serviceId, customerName, customerPhone, customerEmail, customerNote, date, source } = body
+  const { staffId, serviceId, customerName, customerPhone, customerEmail, customerNote, date, source, force } = body
 
   if (!customerName || !customerPhone || !date) return err('Müşteri adı, telefon ve tarih gerekli', 400)
 
@@ -70,8 +93,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const startTime = new Date(date)
   const endTime = new Date(startTime.getTime() + duration * 60 * 1000)
 
-  // Çakışma kontrolü (aynı personel, aynı zaman aralığı)
-  if (staffId) {
+  // Çakışma kontrolü (aynı personel, aynı zaman aralığı) — force=true ile atlanır
+  if (staffId && !force) {
     const conflicts = await db.appointment.findMany({
       where: {
         providerId: id,
@@ -81,7 +104,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         endTime: { gt: startTime },
       },
     })
-    if (conflicts.length > 0) return err('Bu saatte aynı personelin başka randevusu var', 409)
+    if (conflicts.length > 0) {
+      const c = conflicts[0]
+      const cTime = new Date(c.date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+      return err(`Çakışma: ${c.customerName} (${cTime}) randevusu ile örtüşüyor`, 409)
+    }
   }
 
   const appointment = await db.appointment.create({
