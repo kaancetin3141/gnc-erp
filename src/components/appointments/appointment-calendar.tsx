@@ -35,6 +35,8 @@ import { formatCurrency, whatsappLink, formatPhone } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { RejectDialog, type RejectTarget } from './reject-dialog'
 import { CustomerHistoryDialog } from './customer-history-dialog'
+import { CustomerAutocomplete } from './customer-autocomplete'
+import { CustomerDetailDialog } from './customer-manager'
 import {
   ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus,
   Phone, MessageCircle, CheckCircle2, XCircle, Ban, History,
@@ -66,6 +68,7 @@ interface Appointment {
   id: string
   staffId: string | null
   serviceId: string | null
+  customerId?: string | null
   customerName: string
   customerPhone: string
   customerEmail: string | null
@@ -335,6 +338,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
   })
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null)
+  const [customerDetailId, setCustomerDetailId] = useState<string | null>(null)
 
   // ---------- Form çakışma uyarısı ----------
   const formConflicts = useMemo(() => {
@@ -990,12 +994,16 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        setHistoryTarget({ name: detailAppt.customerName, phone: detailAppt.customerPhone })
+                        if (detailAppt.customerId) {
+                          setCustomerDetailId(detailAppt.customerId)
+                        } else {
+                          setHistoryTarget({ name: detailAppt.customerName, phone: detailAppt.customerPhone })
+                        }
                         setDetailAppt(null)
                       }}
                     >
                       <History className="w-3.5 h-3.5 mr-1" />
-                      Geçmiş
+                      Müşteri Kartı
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => openEdit(detailAppt)}>
                       <Pencil className="w-3.5 h-3.5 mr-1" />
@@ -1114,26 +1122,13 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
               </Select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="a-name" className="text-xs">Müşteri Adı *</Label>
-                <Input
-                  id="a-name"
-                  value={form.customerName}
-                  onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))}
-                  placeholder="Ad Soyad"
-                  className="mt-1 h-9 text-sm"
-                />
-              </div>
-              <div>
-                <Label htmlFor="a-phone" className="text-xs">Telefon *</Label>
-                <Input
-                  id="a-phone"
-                  value={form.customerPhone}
-                  onChange={(e) => setForm((f) => ({ ...f, customerPhone: e.target.value }))}
-                  placeholder="+90 5xx..."
-                  className="mt-1 h-9 text-sm"
-                />
-              </div>
+              <CustomerAutocomplete
+                providerId={providerId}
+                name={form.customerName}
+                phone={form.customerPhone}
+                onNameChange={(v) => setForm((f) => ({ ...f, customerName: v }))}
+                onPhoneChange={(v) => setForm((f) => ({ ...f, customerPhone: v }))}
+              />
             </div>
             <div>
               <Label htmlFor="a-email" className="text-xs">E-posta (opsiyonel)</Label>
@@ -1266,6 +1261,16 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
           customerName={historyTarget.name}
           phone={historyTarget.phone}
           onOpenChange={(o) => !o && setHistoryTarget(null)}
+        />
+      )}
+
+      {/* Müşteri kayıt kartı — kayıt defterinde kayıtlıysa */}
+      {customerDetailId && (
+        <CustomerDetailDialog
+          providerId={providerId}
+          customerId={customerDetailId}
+          onOpenChange={(o) => !o && setCustomerDetailId(null)}
+          onUpdated={() => qc.invalidateQueries({ queryKey: ['appointment-appointments', providerId] })}
         />
       )}
     </div>

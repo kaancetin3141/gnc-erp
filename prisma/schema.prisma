@@ -1102,6 +1102,7 @@ model ServiceProvider {
   staff       Staff[]
   services    Service[]
   appointments Appointment[]
+  customers   AppointmentCustomer[]
 }
 
 // Personel (berber, kuaför, diş hekimi, vs.)
@@ -1158,6 +1159,8 @@ model Appointment {
   id          String   @id @default(cuid())
   providerId  String
   provider    ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  customerId  String?
+  customer    AppointmentCustomer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   staffId     String?
   staff       Staff?   @relation(fields: [staffId], references: [id], onDelete: SetNull)
   serviceId   String?
@@ -1179,6 +1182,31 @@ model Appointment {
   @@index([providerId, date])
   @@index([staffId, date])
   @@index([status])
+  @@index([customerId])
+}
+
+// Kalıcı müşteri kayıt defteri — işletme bazlı müşteri profilleri.
+// Randevu oluşturulduğunda telefonla otomatik eşleştirilir/oluşturulur.
+model AppointmentCustomer {
+  id          String   @id @default(cuid())
+  providerId  String
+  provider    ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  name        String
+  phone       String
+  phoneDigits String   // normalleştirilmiş rakamlar (05321234567) — eşleştirme anahtarı
+  email       String?
+  address     String?
+  notes       String?  // kalıcı not: tercihler, alerji, VIP bilgisi vb.
+  tags        String?  // JSON: ["VIP","Sabit müşteri"]
+  birthday    String?  // "05-23" (MM-DD) — yıllık hatırlatma için
+  isBlocked   Boolean  @default(false) // sorunlu müşteri — randevu almaz
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@unique([providerId, phoneDigits])
+  @@index([providerId, name])
 }
 
 // ============================================================

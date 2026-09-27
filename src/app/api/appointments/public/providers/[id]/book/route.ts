@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, err, safeJsonParse } from '@/lib/api-utils'
+import { upsertCustomerForAppointment } from '@/lib/appointment-customer-server'
 import {
   type WorkingHours,
   dayKeyFromDate,
@@ -103,6 +104,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     finalStaffId = freeStaff
   }
 
+  // Müşteri kayıt defteri: telefonla eşleştir/oluştur + engelli kontrolü
+  const registryCustomer = await upsertCustomerForAppointment({
+    providerId: id, name: customerName, phone: customerPhone, email: customerEmail,
+  })
+  if (registryCustomer?.isBlocked) {
+    return err('Randevu oluşturulamadı — lütfen işletmeyle iletişime geçin', 403)
+  }
+
   const startDate = new Date(date)
   if (isNaN(startDate.getTime())) return err('Geçersiz tarih', 400)
   const endDate = new Date(startDate.getTime() + service.duration * 60_000)
@@ -145,6 +154,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const appointment = await db.appointment.create({
     data: {
       providerId: id,
+      customerId: registryCustomer?.id ?? null,
       staffId: finalStaffId,
       serviceId,
       customerName: customerName.trim(),

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err, safeJsonParse } from '@/lib/api-utils'
+import { upsertCustomerForAppointment } from '@/lib/appointment-customer-server'
 
 // GET — randevu listesi (tarih/staff/status filtreli)
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       include: {
         staff: { select: { id: true, name: true, title: true, photo: true } },
         service: { select: { id: true, name: true, duration: true, price: true } },
+        customer: { select: { id: true, isBlocked: true } },
       },
       orderBy: { date: 'desc' },
       take: 200,
@@ -59,6 +61,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     include: {
       staff: { select: { id: true, name: true, title: true, photo: true } },
       service: { select: { id: true, name: true, duration: true, price: true } },
+      customer: { select: { id: true, isBlocked: true } },
     },
     orderBy: { date: 'asc' },
     take: 200,
@@ -93,6 +96,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const startTime = new Date(date)
   const endTime = new Date(startTime.getTime() + duration * 60 * 1000)
 
+  // Müşteri kayıt defteri: telefonla eşleştir/oluştur + engelli kontrolü
+  const registryCustomer = await upsertCustomerForAppointment({
+    providerId: id, name: customerName, phone: customerPhone, email: customerEmail,
+  })
+  if (registryCustomer?.isBlocked) {
+    return err('Bu müşteri kayıt defterinde engellendi — randevu oluşturulamaz', 403)
+  }
+
   // Çakışma kontrolü (aynı personel, aynı zaman aralığı) — force=true ile atlanır
   if (staffId && !force) {
     const conflicts = await db.appointment.findMany({
@@ -114,6 +125,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const appointment = await db.appointment.create({
     data: {
       providerId: id,
+      customerId: registryCustomer?.id ?? null,
       staffId: staffId || null,
       serviceId: serviceId || null,
       customerName,

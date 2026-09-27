@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate, formatTime, whatsappLink } from '@/lib/format'
-import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban } from 'lucide-react'
+import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban, UserCheck, UserX, RotateCcw, UserPlus } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { ProviderSettings } from './provider-settings'
 import { StaffManager } from './staff-manager'
@@ -25,6 +25,8 @@ import { ServiceManager } from './service-manager'
 import { AppointmentCalendar } from './appointment-calendar'
 import { RejectDialog } from './reject-dialog'
 import { CustomerHistoryDialog } from './customer-history-dialog'
+import { CustomerManager, CustomerDetailDialog, type RegistryCustomer } from './customer-manager'
+import { CustomerAutocomplete } from './customer-autocomplete'
 import { formatDateTime } from '@/lib/format'
 
 interface Provider {
@@ -38,7 +40,8 @@ interface Provider {
 interface Staff { id: string; name: string; title: string | null; photo: string | null; phone: string | null }
 interface Service { id: string; name: string; description: string | null; duration: number; price: number; category: string | null; photo: string | null }
 interface Appointment {
-  id: string; customerName: string; customerPhone: string; customerEmail: string | null
+  id: string; customerId?: string | null; customer?: { id: string; isBlocked: boolean } | null
+  customerName: string; customerPhone: string; customerEmail: string | null
   customerNote: string | null; date: string; endTime: string | null; status: string
   price: number; source: string; notes: string | null; reminderSent?: boolean
   staff: { id: string; name: string } | null
@@ -72,6 +75,8 @@ export function AppointmentsView() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [rejectTarget, setRejectTarget] = useState<Appointment | null>(null)
   const [historyTarget, setHistoryTarget] = useState<{ name: string; phone: string } | null>(null)
+  const [customerDetailId, setCustomerDetailId] = useState<string | null>(null)
+  const [bookInitial, setBookInitial] = useState<{ name?: string; phone?: string; serviceId?: string; staffId?: string } | undefined>(undefined)
 
   // Provider list
   const { data: providersData } = useQuery({
@@ -131,6 +136,26 @@ export function AppointmentsView() {
     } catch (e) {
       toast.error('Toplu onay başarısız', { description: e instanceof Error ? e.message : '' })
     }
+  }
+
+  // Müşteri adına tıklanınca: kayıt defterinde kayıtlıysa tam kart, değilse telefonla geçmiş
+  const openCustomerInfo = (apt: Appointment) => {
+    if (apt.customerId) setCustomerDetailId(apt.customerId)
+    else setHistoryTarget({ name: apt.customerName, phone: apt.customerPhone })
+  }
+
+  // Tekrar planla — tamamlanan randevuyu aynı müşteri/hizmetle yeniden oluştur
+  const rebookAppointment = (apt: Appointment) => {
+    const next = new Date()
+    next.setDate(next.getDate() + 7)
+    setBookInitial({
+      name: apt.customerName,
+      phone: apt.customerPhone,
+      serviceId: apt.service?.id,
+      staffId: apt.staff?.id,
+    })
+    setSelectedDate(next.toISOString().slice(0, 10))
+    setBookOpen(true)
   }
 
   // Otomatik onay — başlıkta hızlı anahtar (ayrıca İşletme Ayarları'nda da var)
@@ -223,6 +248,7 @@ export function AppointmentsView() {
         <TabsList>
           <TabsTrigger value="appointments" className="text-xs"><Calendar className="w-3.5 h-3.5 mr-1" /> Randevular</TabsTrigger>
           <TabsTrigger value="calendar" className="text-xs"><CalendarDays className="w-3.5 h-3.5 mr-1" /> Takvim</TabsTrigger>
+          <TabsTrigger value="customers" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Müşteriler</TabsTrigger>
           <TabsTrigger value="staff" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Personel</TabsTrigger>
           <TabsTrigger value="services" className="text-xs"><Scissors className="w-3.5 h-3.5 mr-1" /> Hizmetler</TabsTrigger>
           <TabsTrigger value="booking" className="text-xs"><Store className="w-3.5 h-3.5 mr-1" /> Müşteri Görünümü</TabsTrigger>
@@ -321,12 +347,20 @@ export function AppointmentsView() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setHistoryTarget({ name: apt.customerName, phone: apt.customerPhone })}
+                            onClick={() => openCustomerInfo(apt)}
                             className="font-medium text-sm hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline text-left"
-                            title="Müşteri geçmişini gör"
+                            title={apt.customerId ? 'Müşteri kartını aç (kayıt defteri)' : 'Müşteri geçmişini gör'}
                           >
                             {apt.customerName}
                           </button>
+                          {apt.customerId && (
+                            <span
+                              className="inline-flex items-center gap-0.5 text-[9px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900 rounded px-1 py-px shrink-0"
+                              title="Kayıt defterinde kayıtlı müşteri"
+                            >
+                              <UserCheck className="w-2.5 h-2.5" /> kayıtlı
+                            </span>
+                          )}
                           <Badge variant="outline" className={cn('text-[10px]', st?.color ?? '')}>{st?.label}</Badge>
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
@@ -375,6 +409,20 @@ export function AppointmentsView() {
                             {apt.reminderSent ? 'Bilgi Gönderildi' : 'WhatsApp ile Bilgi Gönder'}
                           </Button>
                         )}
+                        {/* Onaylandı → Gelmedi (no-show) hızlı aksiyon */}
+                        {apt.status === 'onaylandi' && (
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500" title="Gelmedi olarak işaretle"
+                            onClick={async () => { await apiPatch(`/api/appointments/providers/${providerId}/appointments/${apt.id}`, { status: 'gelmedi' }); qc.invalidateQueries({ queryKey: ['appointments'] }); toast.success('"Gelmedi" olarak işaretlendi') }}>
+                            <UserX className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {/* Tamamlandı → Tekrar Planla (aynı müşteri+hizmet) */}
+                        {apt.status === 'tamamlandi' && (
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600" title="Tekrar planla — aynı müşteri ve hizmetle yeni randevu"
+                            onClick={() => rebookAppointment(apt)}>
+                            <RotateCcw className="w-4 h-4" />
+                          </Button>
+                        )}
                         <a href={whatsappLink(apt.customerPhone, `Merhaba ${apt.customerName}, ${formatDate(apt.date)} ${formatTime(apt.date)} randevunuz hatırlatmasıdır.`)} target="_blank" rel="noopener">
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600"><MessageCircle className="w-4 h-4" /></Button>
                         </a>
@@ -405,6 +453,19 @@ export function AppointmentsView() {
           {providerId && <AppointmentCalendar providerId={providerId} />}
         </TabsContent>
 
+        {/* Müşteriler tab — kalıcı müşteri kayıt defteri */}
+        <TabsContent value="customers" className="mt-4">
+          {providerId && (
+            <CustomerManager
+              providerId={providerId}
+              onNewAppointment={(c) => {
+                setBookInitial({ name: c.name, phone: c.phone })
+                setBookOpen(true)
+              }}
+            />
+          )}
+        </TabsContent>
+
         {/* Personel tab — ekleme/düzenleme/silme yetenekli yönetici */}
         <TabsContent value="staff" className="mt-4">
           {providerId && <StaffManager providerId={providerId} />}
@@ -431,7 +492,8 @@ export function AppointmentsView() {
         <ManualBookingDialog
           provider={provider}
           open={bookOpen}
-          onOpenChange={setBookOpen}
+          initial={bookInitial}
+          onOpenChange={(v) => { setBookOpen(v); if (!v) setBookInitial(undefined) }}
           onSuccess={() => qc.invalidateQueries({ queryKey: ['appointments'] })}
         />
       )}
@@ -453,6 +515,16 @@ export function AppointmentsView() {
           customerName={historyTarget.name}
           phone={historyTarget.phone}
           onOpenChange={(o) => !o && setHistoryTarget(null)}
+        />
+      )}
+
+      {/* Müşteri kayıt kartı — kayıt defterinde kayıtlıysa */}
+      {customerDetailId && providerId && (
+        <CustomerDetailDialog
+          providerId={providerId}
+          customerId={customerDetailId}
+          onOpenChange={(o) => !o && setCustomerDetailId(null)}
+          onUpdated={() => qc.invalidateQueries({ queryKey: ['appointments'] })}
         />
       )}
     </div>
@@ -651,13 +723,15 @@ function PublicBooking({ provider, onBooked }: { provider: Provider; onBooked: (
   )
 }
 
-// Manual booking dialog (admin)
-function ManualBookingDialog({ provider, open, onOpenChange, onSuccess }: {
+// Manual booking dialog (admin) — kayıt defteri otomatik tamamlamalı
+function ManualBookingDialog({ provider, open, onOpenChange, onSuccess, initial }: {
   provider: Provider; open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => void
+  initial?: { name?: string; phone?: string; serviceId?: string; staffId?: string }
 }) {
   const [form, setForm] = useState({
-    serviceId: '', staffId: '', date: new Date().toISOString().slice(0, 10),
-    time: '10:00', name: '', phone: '', email: '', note: '',
+    serviceId: initial?.serviceId ?? '', staffId: initial?.staffId ?? '',
+    date: new Date().toISOString().slice(0, 10),
+    time: '10:00', name: initial?.name ?? '', phone: initial?.phone ?? '', email: '', note: '',
   })
   const [saving, setSaving] = useState(false)
 
@@ -720,8 +794,13 @@ function ManualBookingDialog({ provider, open, onOpenChange, onSuccess }: {
             <div><Label className="text-xs">Tarih</Label><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
             <div><Label className="text-xs">Saat</Label><Input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} /></div>
           </div>
-          <div><Label className="text-xs">Ad Soyad *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-          <div><Label className="text-xs">Telefon *</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+90 5xx" /></div>
+          <CustomerAutocomplete
+            providerId={provider.id}
+            name={form.name}
+            phone={form.phone}
+            onNameChange={(v) => setForm({ ...form, name: v })}
+            onPhoneChange={(v) => setForm({ ...form, phone: v })}
+          />
           <div><Label className="text-xs">Not</Label><Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="h-16" /></div>
         </div>
         <DialogFooter>
