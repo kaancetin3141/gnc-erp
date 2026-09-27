@@ -15,7 +15,7 @@ import { formatCurrency, formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { formatWeight, calculateTotalWeight } from '@/lib/weight-utils'
 import {
-  useInvoiceTemplate, TemplateA4Page, PdfHeader, PdfFooter,
+  useInvoiceTemplate, TemplateA4Page, PdfHeader, PdfFooter, DocVerifyQr,
 } from '@/components/pdf/pdf-template'
 import type { Quote } from './types'
 import { getProformaStatusMeta } from './proforma-utils'
@@ -234,7 +234,21 @@ export function QuotePdfDialog({ quoteId, open, onOpenChange }: Props) {
               </div>
 
               {/* Şablon alt bilgi: footer text + şirket bilgileri + banka + imza */}
-              <PdfFooter tpl={tpl} />
+              <PdfFooter
+                tpl={tpl}
+                qr={
+                  <DocVerifyQr
+                    data={{
+                      docType: docTitle,
+                      docNumber: quote.number,
+                      companyName: tpl?.companyName,
+                      partyName: quote.customer?.name,
+                      amount: formatCurrency(quote.total, quote.currency),
+                      date: formatDate(quote.issueDate),
+                    }}
+                  />
+                }
+              />
             </TemplateA4Page>
           </div>
         )}

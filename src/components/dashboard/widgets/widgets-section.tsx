@@ -8,6 +8,7 @@ import { MessagesWidget } from './messages-widget'
 import { NewsWidget } from './news-widget'
 import { CurrencyWidget } from './currency-widget'
 import { StreakWidget } from './streak-widget'
+import { SocialMediaWidget } from './social-widget'
 import type { WidgetsData } from './types'
 
 export function WidgetsSection() {
@@ -45,10 +46,12 @@ export function WidgetsSection() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* News (3 col) */}
-        <div className="lg:col-span-3">
+        {/* News (2 col) */}
+        <div className="lg:col-span-2">
           <NewsWidget data={isLoading ? undefined : data?.news} />
         </div>
+        {/* Social media (1 col) */}
+        <SocialMediaWidget />
         {/* Streak (1 col) */}
         <StreakWidget data={isLoading ? undefined : data?.streak} />
       </div>

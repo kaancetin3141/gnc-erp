@@ -7408,3 +7408,32 @@ Task: Kullanıcı raporu: "credits depleted hatası veriyor ama X developer pane
 1. developer.x.com → **Billing / API Credits** bölümü (Usage değil!) — bakiye/plan durumu orada
 2. Free planın aylık ücretsiz kredisi sınırlı; biterse ay başında yenilenir veya Basic plana geçilir
 3. Uygulamada beklemek istemezse: gönderi kartında "Simülasyon" butonu ile API'siz yayın
+
+---
+Task ID: 13
+Agent: Z.ai Code (Ana tur — "uygulamayı geliştir")
+Task: Kullanıcı talebi "uygulamayı geliştir" — QA sonrası 2 yeni özellik: Dashboard Sosyal Medya widget'ı + tüm belge PDF'lerine QR doğrulama kodu
+
+Work Log:
+- QA: agent-browser ile Genel Bakış + Sosyal Medya + Belge Yönetimi dolaşıldı; önceki turların fix'leri (hata kutusu, Test Et, Takvim, İhracat sekmesi) çalışıyor; yeni bug yok
+- ÖZELLİK 1 — Dashboard Sosyal Medya Widget'ı (src/components/dashboard/widgets/social-widget.tsx YENİ):
+  - /api/social/posts?limit=100 + /api/social/accounts'tan kendi verisini çeker (2 dk refetch)
+  - 4 istatistik hücresi: Bu ay yayın (emerald) / Zamanlandı (amber) / Başarısız (varsa kırmızı) / 30g erişim (teal, targets.reach toplamı)
+  - Gerçek API hesabı yoksa amber uyarı şeridi ("simülasyon modunda — gerçek API anahtarı ekleyin")
+  - Son 3 gönderi listesi: durum noktası + platform emoji rozetleri (PLATFORMS.accent ile renkli) + göreli zaman; tıklayınca Sosyal Medya modülüne gider
+  - "Sosyal Medya Yönetimi'ni Aç" butonu (setView('social')) + hover'da ok animasyonu
+  - widgets-section düzeni: Haberler 3→2 kolon, 2. satır = Haberler(2) + Sosyal(1) + Streak(1)
+- ÖZELLİK 2 — Belge Doğrulama QR (react-qr-code@2.2.0 eklendi):
+  - pdf-template.tsx: docVerifyCode() (djb2→base36, 7 kr kontrol kodu), buildDocVerifyPayload() (TÜR/NO/FİRMA/CARI/TUTAR/TARİH/KOD satırları), DocVerifyQr bileşeni (68px QR + kontrol kodu + "Belge Doğrulama" etiketi)
+  - PdfFooter'a opsiyonel `qr` prop'u: varken footer flex'e dönüyor — sol tarafta şirket/banka bilgisi (2 kolon), sağda QR bloğu; yoksa eski grid düzeni (geriye dönük uyumlu)
+  - 8 PDF yüzeyine bağlandı: doc-pages.tsx (Fatura, İrsaliye, Çeki Listesi, İhracat — toplu yazdırma sayfaları) + invoice-detail-dialog, quote-pdf-dialog (Teklif/PROFORMA), packing-list-pdf-dialog, irsaliye-pdf-dialog (tek belge önizlemeleri)
+  - Tutar: fatura/teklif/proforma/ihracat'ta para tutarı; irsaliye/çeki'de Brüt/Net ağırlık (fiyatsız belgeler için)
+- Doğrulama (agent-browser): FAT-2026-004 fatura PDF'inde QR + GWE3ASJ kontrol kodu göründü; ATR-2026-001 ihracat belgesinde QR + GFCTO9M göründü; Dashboard widget'ı desktop'ta (1 hesap, 1 Başarısız kırmızı, sekma postu + X ikonu) ve mobil 390px'te (4 kolon sığdı, taşma yok) doğrulandı; lint 0 hata
+- NOT: İlk testte QR görünmüyordu — sayfa yeniden yüklenince düzeldi (stale client chunk); PDF bileşeni değişince tarayıcıyı yeniden açmak gerekiyor
+- `POST /api/cron/reminders 403` log'da var — cron token uyuşmazlığı, kullanıcının gördüğü bir etkisi yok (önceki turlardan bilinen)
+
+Stage Summary:
+- Dashboard artık sosyal medya performansını da tek bakışta gösteriyor (hesap sayısı, aylık yayın, zamanlanmış, başarısız, 30g erişim, son gönderiler) — başarısız gönderi varsa kırmızı görselle uyarır
+- Tüm ticari belgeler (fatura, irsaliye, çeki listesi, teklif, proforma, 6 ihracat belgesi) artık doğrulama QR'lı çıkıyor — barkod okutulunca belge künyesi + tutar/ağırlık + kontrol kodu görünür; sahtecilik karşılaştırması için yazıcıda fiziksel doğrulama sağlar
+- Dosyalar: +social-widget.tsx, widgets-section.tsx (düzen), pdf-template.tsx (QR altyapısı + PdfFooter qr prop), doc-pages.tsx, invoice-detail-dialog.tsx, quote-pdf-dialog.tsx, packing-list-pdf-dialog.tsx, irsaliye-pdf-dialog.tsx, package.json (+react-qr-code)
+- Sonraki tur önerileri: QR içeriğine imzalı JWT ekleyerek /verify sayfasıyla gerçek online doğrulama (tek route kısıtı — sayfa içi state ile), ihracat belgelerine şirket bazlı 6-belge paketi toplu yazdırma, Mesaj Merkezi'ne tür bazlı toplu işlemler, sosyal medyada gerçek OAuth

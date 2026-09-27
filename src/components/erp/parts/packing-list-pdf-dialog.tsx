@@ -12,7 +12,7 @@ import { Printer, ClipboardList } from 'lucide-react'
 import { formatDate } from '@/lib/format'
 import { formatWeight, calculateTotalWeight } from '@/lib/weight-utils'
 import {
-  useInvoiceTemplate, TemplateA4Page, PdfHeader, PdfFooter,
+  useInvoiceTemplate, TemplateA4Page, PdfHeader, PdfFooter, DocVerifyQr,
 } from '@/components/pdf/pdf-template'
 import type { Invoice } from './types'
 
@@ -199,7 +199,21 @@ export function PackingListPdfDialog({ invoiceId, open, onOpenChange }: Props) {
                 </div>
               </div>
 
-              <PdfFooter tpl={tpl} />
+              <PdfFooter
+                tpl={tpl}
+                qr={
+                  <DocVerifyQr
+                    data={{
+                      docType: 'ÇEKİ LİSTESİ',
+                      docNumber: invoice.packingListNo || invoice.number,
+                      companyName: tpl?.companyName,
+                      partyName: invoice.customer?.name,
+                      amount: totalNetWeight != null ? `Net ${formatWeight(totalNetWeight, 'kg')}` : `Kalem ${lines.length}`,
+                      date: formatDate(invoice.packingListDate ?? invoice.issueDate),
+                    }}
+                  />
+                }
+              />
             </TemplateA4Page>
           </div>
         )}

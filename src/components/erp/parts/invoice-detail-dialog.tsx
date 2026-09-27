@@ -36,7 +36,7 @@ import { sendWhatsAppTracked } from '@/lib/whatsapp-hub'
 import { cn } from '@/lib/utils'
 import { formatWeight, calculateTotalWeight } from '@/lib/weight-utils'
 import {
-  useInvoiceTemplate, TemplateA4Page, PdfHeader, PdfFooter,
+  useInvoiceTemplate, TemplateA4Page, PdfHeader, PdfFooter, DocVerifyQr,
 } from '@/components/pdf/pdf-template'
 import type { Invoice, InvoiceLine } from './types'
 import {
@@ -753,7 +753,21 @@ export function InvoicePdfDialog({ invoice, detail, onClose }: {
             </div>
 
             {/* Footer — şablon: footer text + şirket bilgileri + banka + imza */}
-            <PdfFooter tpl={tpl} />
+            <PdfFooter
+              tpl={tpl}
+              qr={
+                <DocVerifyQr
+                  data={{
+                    docType: 'FATURA',
+                    docNumber: d.number,
+                    companyName: tpl?.companyName,
+                    partyName: d.customer?.name,
+                    amount: formatCurrency(d.total, d.currency),
+                    date: formatDate(d.issueDate),
+                  }}
+                />
+              }
+            />
           </TemplateA4Page>
         </div>
       </DialogContent>

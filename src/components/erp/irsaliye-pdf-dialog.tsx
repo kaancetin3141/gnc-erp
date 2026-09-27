@@ -13,7 +13,7 @@ import { Printer, Truck } from 'lucide-react'
 import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import {
-  useInvoiceTemplate, TemplateA4Page, PdfHeader, PdfFooter,
+  useInvoiceTemplate, TemplateA4Page, PdfHeader, PdfFooter, DocVerifyQr,
 } from '@/components/pdf/pdf-template'
 import type { IrsaliyePdfData } from './parts/irsaliye-types'
 import {
@@ -240,7 +240,21 @@ export function IrsaliyePdfDialog({ irsaliyeId, irsaliyeNumber, open, onOpenChan
               </div>
 
               {/* Footer — şablon: footer text + şirket bilgileri + banka + imza */}
-              <PdfFooter tpl={tpl} />
+              <PdfFooter
+                tpl={tpl}
+                qr={
+                  <DocVerifyQr
+                    data={{
+                      docType: 'İRSALİYE',
+                      docNumber: irs.number,
+                      companyName: tpl?.companyName,
+                      partyName: irs.customer?.name,
+                      amount: `Brüt ${formatKg(irs.weights.totalGrossWeight)}`,
+                      date: formatDate(irs.date),
+                    }}
+                  />
+                }
+              />
             </TemplateA4Page>
           </div>
         )}

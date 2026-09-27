@@ -7,7 +7,7 @@
 // render eder; dış sarmalayıcı print:break-after-page ekler.
 // ============================================================
 
-import { TemplateA4Page, PdfHeader, PdfFooter, type InvoiceTemplate } from '@/components/pdf/pdf-template'
+import { TemplateA4Page, PdfHeader, PdfFooter, DocVerifyQr, type InvoiceTemplate } from '@/components/pdf/pdf-template'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { formatWeight, calculateTotalWeight } from '@/lib/weight-utils'
 import { cn } from '@/lib/utils'
@@ -67,7 +67,21 @@ export function InvoiceDocPage({ invoice, tpl: tplInput }: { invoice: Invoice; t
           </span>
         </div>
       </div>
-      <PdfFooter tpl={tpl} />
+      <PdfFooter
+        tpl={tpl}
+        qr={
+          <DocVerifyQr
+            data={{
+              docType: 'FATURA',
+              docNumber: invoice.number,
+              companyName: tpl?.companyName,
+              partyName: invoice.customer?.name,
+              amount: formatCurrency(invoice.total, invoice.currency),
+              date: formatDate(invoice.issueDate),
+            }}
+          />
+        }
+      />
     </TemplateA4Page>
   )
 }
@@ -147,7 +161,21 @@ export function IrsaliyeDocPage({ irs, tpl: tplInput }: { irs: IrsaliyePdfData; 
           </div>
         </div>
       </div>
-      <PdfFooter tpl={tpl} />
+      <PdfFooter
+        tpl={tpl}
+        qr={
+          <DocVerifyQr
+            data={{
+              docType: 'İRSALİYE',
+              docNumber: irs.number,
+              companyName: irs.tenantName,
+              partyName: irs.customer?.name,
+              amount: `Brüt ${formatKg(irs.weights.totalGrossWeight)}`,
+              date: formatDate(irs.date),
+            }}
+          />
+        }
+      />
     </TemplateA4Page>
   )
 }
@@ -247,7 +275,21 @@ export function PackingDocPage({
           <div className="mt-8 ml-auto w-40 h-14 border border-dashed border-gray-300 flex items-center justify-center text-[10px] text-gray-400">İmza</div>
         </div>
       </div>
-      <PdfFooter tpl={tpl} />
+      <PdfFooter
+        tpl={tpl}
+        qr={
+          <DocVerifyQr
+            data={{
+              docType: 'ÇEKİ LİSTESİ',
+              docNumber: invoice.packingListNo || invoice.number,
+              companyName: tpl?.companyName,
+              partyName: invoice.customer?.name,
+              amount: totalNetWeight != null ? `Net ${formatWeight(totalNetWeight, 'kg')}` : `Kalem ${lines.length}`,
+              date: formatDate(invoice.packingListDate ?? invoice.issueDate),
+            }}
+          />
+        }
+      />
     </TemplateA4Page>
   )
 }
@@ -441,7 +483,21 @@ export function ExportDocDocPage({ doc, tpl: tplInput }: { doc: ExportDocPdfData
           </div>
         </div>
       </div>
-      <PdfFooter tpl={tpl} />
+      <PdfFooter
+        tpl={tpl}
+        qr={
+          <DocVerifyQr
+            data={{
+              docType: title,
+              docNumber: doc.number,
+              companyName: tpl?.companyName,
+              partyName: doc.customer.name,
+              amount: hasPrices ? formatCurrency(totalValue, doc.currency) : totalWeight > 0 ? `Brüt ${formatKg(totalWeight)}` : null,
+              date: formatDate(doc.issueDate),
+            }}
+          />
+        }
+      />
     </TemplateA4Page>
   )
 }
