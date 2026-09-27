@@ -31,17 +31,19 @@ import {
   type WorkingHours, type DaySchedule, dayKeyFromDate, minutesToTime,
   timeToMinutes,
 } from '@/lib/appointment-utils'
+import { timeOffCoversRange, timeOffLabel } from '@/lib/appointment-timeoff'
 import { formatCurrency, whatsappLink, formatPhone } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { RejectDialog, type RejectTarget } from './reject-dialog'
 import { CustomerHistoryDialog } from './customer-history-dialog'
 import { CustomerAutocomplete } from './customer-autocomplete'
 import { CustomerDetailDialog } from './customer-manager'
+import { WeekSummaryDialog } from './week-summary-dialog'
 import {
   ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus,
   Phone, MessageCircle, CheckCircle2, XCircle, Ban, History,
   UserX, Check, Clock, Trash2, Pencil, CalendarDays, AlertTriangle,
-  Users, Move, LayoutGrid,
+  Users, Move, LayoutGrid, Palmtree, Cake, BarChart3,
 } from 'lucide-react'
 
 // ============================================================
@@ -83,6 +85,28 @@ interface Appointment {
   service?: Service | null
 }
 
+interface TimeOffEntry {
+  id: string
+  staffId: string
+  date: string
+  isFullDay: boolean
+  startTime: string | null
+  endTime: string | null
+  reason: string | null
+  staff?: { id: string; name: string } | null
+}
+
+interface BirthdayEntry {
+  id: string
+  name: string
+  phone: string
+  birthday: string
+  nextDate: string
+  daysUntil: number
+  isToday: boolean
+  appointmentCount: number
+}
+
 type ApptsResponse = Appointment[]
 interface StaffResponse { items: Staff[] }
 interface ServiceResponse { items: Service[] }
@@ -117,6 +141,7 @@ interface SlotCellSpec {
   inHours: boolean
   isToday: boolean
   staffId?: string // drop hedefi (personel görünümü) — 'any' = atanmamış kolonu
+  timeOffs?: TimeOffEntry[] // bu hücrede izin kayıtları (personel görünümü)
 }
 
 // ============================================================
@@ -224,6 +249,51 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
     enabled: !!providerId,
   })
   const appointments = useMemo(() => (Array.isArray(apptData) ? apptData : (apptData as unknown as { items?: Appointment[] })?.items ?? []), [apptData])
+
+  // ---------- İzin kayıtları (görünen aralık ±1 gün) ----------
+  const timeOffRangeStart = useMemo(() => new Date(rangeStart.getTime() - 24 * 60 * 60_000), [rangeStart])
+  const timeOffRangeEnd = useMemo(() => new Date(rangeEnd.getTime() + 24 * 60 * 60_000), [rangeEnd])
+  const { data: timeOffData } = useQuery({
+    queryKey: ['appointment-timeoff-range', providerId, timeOffRangeStart.toISOString(), timeOffRangeEnd.toISOString()],
+    queryFn: () => apiGet<TimeOffEntry[]>(
+      `/api/appointments/providers/${providerId}/time-off?startDate=${timeOffRangeStart.toISOString()}&endDate=${timeOffRangeEnd.toISOString()}`,
+    ),
+    enabled: !!providerId,
+  })
+  const timeOffs = useMemo(() => (Array.isArray(timeOffData) ? timeOffData : []), [timeOffData])
+
+  // key: `${staffId}|${toDateString}` → o günün izin kayıtları
+  const timeOffsByStaffDay = useMemo(() => {
+    const map = new Map<string, TimeOffEntry[]>()
+    for (const t of timeOffs) {
+      const key = `${t.staffId}|${new Date(t.date).toDateString()}`
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(t)
+    }
+    return map
+  }, [timeOffs])
+
+  // O gün izinli personel sayısı (gün/hafta başlığı için)
+  const timeOffCountByDay = useMemo(() => {
+    const map = new Map<string, Set<string>>()
+    for (const t of timeOffs) {
+      const dayKey = new Date(t.date).toDateString()
+      if (!map.has(dayKey)) map.set(dayKey, new Set())
+      map.get(dayKey)!.add(t.staffId)
+    }
+    return map
+  }, [timeOffs])
+
+  // ---------- Yaklaşan doğum günleri (7 gün) ----------
+  const { data: birthdayData } = useQuery({
+    queryKey: ['appointment-birthdays', providerId],
+    queryFn: () => apiGet<{ items: BirthdayEntry[] }>(
+      `/api/appointments/providers/${providerId}/birthdays?days=7`,
+    ),
+    enabled: !!providerId,
+    staleTime: 5 * 60_000,
+  })
+  const birthdays = useMemo(() => birthdayData?.items ?? [], [birthdayData])
 
   const { visStart, visEnd } = useMemo(() => {
     let minMin = 24 * 60
@@ -339,6 +409,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null)
   const [customerDetailId, setCustomerDetailId] = useState<string | null>(null)
+  const [summaryOpen, setSummaryOpen] = useState(false)
 
   // ---------- Form çakışma uyarısı ----------
   const formConflicts = useMemo(() => {
@@ -364,6 +435,18 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
       return as < end && aeMs > start.getTime()
     })
   }, [form, appointments, editAppt, services])
+
+  // ---------- Form izin uyarısı: seçili personel bu aralıkta izinli mi? ----------
+  const formTimeOffConflicts = useMemo(() => {
+    if (!form.date || !form.time || form.staffId === 'any') return []
+    const [y, m, d] = form.date.split('-').map(Number)
+    const [hh, mm] = form.time.split(':').map(Number)
+    if (!y || !m || !d || isNaN(hh) || isNaN(mm)) return []
+    const start = new Date(y, m - 1, d, hh, mm, 0, 0)
+    const svc = services.find((s) => s.id === form.serviceId)
+    const end = new Date(start.getTime() + (svc?.duration || 30) * 60_000)
+    return timeOffs.filter((t) => t.staffId === form.staffId && timeOffCoversRange(t, start.getTime(), end.getTime()))
+  }, [form, services, timeOffs])
 
   function prevPeriod() {
     const d = new Date(currentDate)
@@ -436,6 +519,13 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
     }
     setSaving(true)
     try {
+      if (formTimeOffConflicts.length > 0) {
+        toast.error('Personel bu saatte izinli', {
+          description: `${timeOffLabel(formTimeOffConflicts[0])} — izni kaldırın veya başka personel seçin.`,
+        })
+        setSaving(false)
+        return
+      }
       const [y, m, d] = form.date.split('-').map(Number)
       const [hh, mm] = form.time.split(':').map(Number)
       const start = new Date(y, m - 1, d, hh, mm, 0, 0)
@@ -610,6 +700,8 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
       slot.min >= timeToMinutes(sched.start) &&
       slot.min < timeToMinutes(sched.end)
     const dayAppts = apptsByDay.get(day.toDateString()) ?? []
+    const slotStartMs = day.getTime() + slot.min * 60_000
+    const slotEndMs = slotStartMs + 30 * 60_000
     return staffColumns.map((col) => {
       const colAppts = dayAppts.filter((a) => {
         if (col.id === 'unassigned') return !a.staffId
@@ -619,6 +711,9 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
         const aMin = ad.getHours() * 60 + ad.getMinutes()
         return aMin >= slot.min && aMin < slot.min + 30
       })
+      // Bu personel bu slot'ta izinli mi?
+      const dayTimeOffs = col.id === 'unassigned' ? [] : (timeOffsByStaffDay.get(`${col.id}|${day.toDateString()}`) ?? [])
+      const slotTimeOffs = dayTimeOffs.filter((t) => timeOffCoversRange(t, slotStartMs, slotEndMs))
       return {
         key: `${col.id}-${slot.min}`,
         date: day,
@@ -626,6 +721,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
         inHours,
         isToday: day.toDateString() === todayKey,
         staffId: col.id === 'unassigned' ? 'any' : col.id,
+        timeOffs: slotTimeOffs.length > 0 ? slotTimeOffs : undefined,
       }
     })
   }
@@ -735,6 +831,15 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                   <span className="hidden sm:inline">Hafta</span>
                 </Button>
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSummaryOpen(true)}
+                title="Görünen aralığın özeti"
+              >
+                <BarChart3 className="w-3.5 h-3.5 sm:mr-1" />
+                <span className="hidden sm:inline">Özet</span>
+              </Button>
               <Button size="sm" onClick={() => openCreate()} className="bg-emerald-600 hover:bg-emerald-700">
                 <Plus className="w-4 h-4 mr-1" />
                 <span className="hidden sm:inline">Randevu</span>
@@ -743,6 +848,61 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Yaklaşan doğum günleri bandı */}
+      {birthdays.length > 0 && (
+        <div className="rounded-lg border border-pink-200 bg-gradient-to-r from-pink-50 via-rose-50 to-amber-50 dark:border-pink-900/60 dark:from-pink-950/20 dark:via-rose-950/10 dark:to-amber-950/20 px-3 py-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-pink-800 dark:text-pink-200 shrink-0">
+              <Cake className="w-4 h-4" />
+              Doğum günleri
+              <Badge className="text-[9px] py-0 bg-pink-200 text-pink-900 border-0 dark:bg-pink-900/60 dark:text-pink-100">
+                {birthdays.length}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {birthdays.slice(0, 6).map((b) => (
+                <div
+                  key={b.id}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px]',
+                    b.isToday
+                      ? 'border-pink-400 bg-pink-100 dark:bg-pink-900/50 font-semibold text-pink-900 dark:text-pink-100'
+                      : 'border-pink-200 bg-white/70 dark:bg-pink-950/30 text-pink-800 dark:text-pink-200',
+                  )}
+                  title={`${b.name} · ${b.appointmentCount} randevu`}
+                >
+                  <span>🎂</span>
+                  <span className="font-medium max-w-28 truncate">{b.name}</span>
+                  <span className="opacity-75">
+                    {b.isToday
+                      ? 'bugün!'
+                      : `${new Date(b.nextDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} · ${b.daysUntil} gün`}
+                  </span>
+                  <a
+                    href={whatsappLink(
+                      b.phone,
+                      `Merhaba ${b.name}, doğum gününüz kutlu olsun! 🎉 Bu özel gününüzde sizi görmekten mutluluk duyarız.`,
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-full bg-emerald-100 dark:bg-emerald-900/50 p-0.5 hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-colors"
+                    title="WhatsApp ile kutlama gönder"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MessageCircle className="w-3 h-3 text-emerald-700 dark:text-emerald-300" />
+                  </a>
+                </div>
+              ))}
+              {birthdays.length > 6 && (
+                <span className="text-[10px] text-pink-700 dark:text-pink-300">
+                  +{birthdays.length - 6} kişi daha
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Calendar Grid */}
       {view === 'staff' && staffColumns.length === 0 ? (
@@ -778,8 +938,10 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                       col.id === 'unassigned' ? !a.staffId : a.staffId === col.id,
                     ).filter((a) => !['iptal', 'reddedildi'].includes(a.status)).length
                     const u = utilByDay.get(dateRange[0].toDateString())
+                    const colTimeOffs = col.id === 'unassigned' ? [] : (timeOffsByStaffDay.get(`${col.id}|${dateRange[0].toDateString()}`) ?? [])
+                    const fullDayOff = colTimeOffs.find((t) => t.isFullDay)
                     return (
-                      <div key={col.id} className="border-b border-r p-2 bg-muted/30">
+                      <div key={col.id} className={cn('border-b border-r p-2 bg-muted/30', fullDayOff && 'bg-amber-50/70 dark:bg-amber-950/20')}>
                         <div className="flex items-center gap-1.5">
                           <span
                             className={cn(
@@ -799,7 +961,16 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                             {colCount} rnd
                           </span>
                         </div>
-                        {u && u.work > 0 && (
+                        {colTimeOffs.length > 0 && (
+                          <div
+                            className="mt-1 flex items-center gap-1 text-[9px] font-medium text-amber-700 dark:text-amber-300"
+                            title={colTimeOffs.map((t) => timeOffLabel(t)).join(', ')}
+                          >
+                            <Palmtree className="w-2.5 h-2.5" />
+                            <span className="truncate">İzinli · {colTimeOffs.map((t) => t.isFullDay ? 'tam gün' : `${t.startTime}-${t.endTime}`).join(', ')}</span>
+                          </div>
+                        )}
+                        {u && u.work > 0 && colTimeOffs.length === 0 && (
                           <div className="mt-1.5 h-1 rounded-full bg-background/80 overflow-hidden">
                             <div
                               className={cn(
@@ -819,6 +990,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                     const sched = workingHours[dk]
                     const isClosed = !sched || sched.closed
                     const u = utilByDay.get(d.toDateString())
+                    const dayOffCount = timeOffCountByDay.get(d.toDateString())?.size ?? 0
                     return (
                       <div
                         key={d.toISOString()}
@@ -841,6 +1013,15 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                         </div>
                         {isClosed && (
                           <div className="text-[9px] text-muted-foreground">kapalı</div>
+                        )}
+                        {!isClosed && dayOffCount > 0 && (
+                          <div
+                            className="text-[8px] text-amber-700 dark:text-amber-300 flex items-center justify-center gap-0.5"
+                            title={`${dayOffCount} personel izinli`}
+                          >
+                            <Palmtree className="w-2 h-2" />
+                            {dayOffCount} izinli
+                          </div>
                         )}
                         {u && u.work > 0 && (
                           <div className="mt-1 flex items-center justify-center gap-1">
@@ -896,6 +1077,8 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
           <Move className="w-3 h-3" /> Taşımak için sürükleyin
           <span className="mx-1">·</span>
           <span className="w-2.5 h-2.5 rounded-sm ring-2 ring-rose-400" /> çakışma
+          <span className="mx-1">·</span>
+          <Palmtree className="w-3 h-3 text-amber-600" /> personel izni
         </span>
       </div>
 
@@ -1167,6 +1350,24 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                 </Select>
               </div>
             )}
+            {formTimeOffConflicts.length > 0 && (
+              <div className="rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-900/60 p-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-red-800 dark:text-red-300">
+                  <Palmtree className="w-3.5 h-3.5" />
+                  Personel izinli — randevu oluşturulamaz:
+                </div>
+                <ul className="mt-1 space-y-0.5 text-[11px] text-red-700 dark:text-red-400">
+                  {formTimeOffConflicts.map((t) => (
+                    <li key={t.id}>
+                      • {staffList.find((s) => s.id === t.staffId)?.name ?? 'Personel'} — {timeOffLabel(t)}
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-[10px] mt-1 text-red-600 dark:text-red-500">
+                  Başka bir personel seçin veya Personel sekmesinden izni kaldırın.
+                </div>
+              </div>
+            )}
             {formConflicts.length > 0 && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/60 p-2.5">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">
@@ -1208,18 +1409,22 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || formTimeOffConflicts.length > 0}
               className={cn(
-                formConflicts.length > 0
-                  ? 'bg-amber-600 hover:bg-amber-700'
-                  : 'bg-emerald-600 hover:bg-emerald-700',
+                formTimeOffConflicts.length > 0
+                  ? 'bg-red-400 hover:bg-red-500 cursor-not-allowed'
+                  : formConflicts.length > 0
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700',
               )}
             >
-              {saving
-                ? 'Kaydediliyor...'
-                : formConflicts.length > 0
-                  ? 'Çakışmaya Rağmen Kaydet'
-                  : editAppt ? 'Güncelle' : 'Oluştur'}
+              {formTimeOffConflicts.length > 0
+                ? 'Personel İzinli'
+                : saving
+                  ? 'Kaydediliyor...'
+                  : formConflicts.length > 0
+                    ? 'Çakışmaya Rağmen Kaydet'
+                    : editAppt ? 'Güncelle' : 'Oluştur'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1273,6 +1478,22 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
           onUpdated={() => qc.invalidateQueries({ queryKey: ['appointment-appointments', providerId] })}
         />
       )}
+
+      {/* Gün/Hafta özeti diyaloğu */}
+      <WeekSummaryDialog
+        open={summaryOpen}
+        onOpenChange={setSummaryOpen}
+        appointments={appointments}
+        staffList={staffList.map((s) => ({ id: s.id, name: s.name }))}
+        days={dateRange.map((d) => {
+          const dk = dayKeyFromDate(d)
+          const sched = workingHours[dk]
+          const workMinutes = !sched || sched.closed || !sched.start || !sched.end
+            ? 0
+            : Math.max(0, timeToMinutes(sched.end) - timeToMinutes(sched.start))
+          return { date: d, workMinutes }
+        })}
+      />
     </div>
   )
 }
@@ -1320,6 +1541,7 @@ function SlotRow({
       </div>
       {cells.map((cell) => {
         const showNow = cell.isToday && hasNow
+        const cellTimeOff = cell.timeOffs && cell.timeOffs.length > 0 ? cell.timeOffs[0] : null
         return (
           <div
             key={cell.key}
@@ -1332,14 +1554,26 @@ function SlotRow({
             className={cn(
               'border-r border-b relative h-7 group',
               isHourLine ? 'border-b-border' : 'border-b-muted/40',
-              cell.inHours
-                ? 'bg-card hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10 cursor-pointer'
-                : 'bg-muted/10',
+              cellTimeOff
+                ? 'bg-[repeating-linear-gradient(45deg,rgba(245,158,11,0.14)_0,rgba(245,158,11,0.14)_6px,transparent_6px,transparent_12px)]'
+                : cell.inHours
+                  ? 'bg-card hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10 cursor-pointer'
+                  : 'bg-muted/10',
               dragActive && cell.inHours && dragOverKey === cell.key &&
                 'ring-2 ring-inset ring-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30',
             )}
             onClick={() => cell.inHours && onSlotClick(cell, Math.floor(slot.min / 60), slot.min % 60)}
           >
+            {cellTimeOff && (
+              <div
+                className="absolute inset-0 flex items-center justify-center pointer-events-none z-[5]"
+                title={`İzinli · ${timeOffLabel(cellTimeOff)}`}
+              >
+                <span className="text-[8px] font-semibold text-amber-700/80 dark:text-amber-300/80 flex items-center gap-0.5">
+                  <Palmtree className="w-2 h-2" /> izin
+                </span>
+              </div>
+            )}
             {showNow && (
               <div
                 className="absolute left-0 right-0 h-0.5 bg-rose-500/80 z-20 pointer-events-none"

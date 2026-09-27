@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
+import { timeOffCoversRange, timeOffLabel } from '@/lib/appointment-timeoff'
 
 // PATCH — randevu güncelle (durum + tüm düzenleme alanları)
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string; appointmentId: string }> }) {
@@ -100,6 +101,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const c = conflicts[0]
         const cTime = new Date(c.date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
         return err(`Çakışma: ${c.customerName} (${cTime}) randevusu ile örtüşüyor`, 409)
+      }
+    }
+
+    // PERSONEL İZİN KONTROLÜ — taşınan/atanan personel bu aralıkta izinliyse engelle
+    if (effStaffId) {
+      const timeOffs = await db.staffTimeOff.findMany({
+        where: {
+          providerId: id,
+          staffId: effStaffId,
+          date: {
+            gte: new Date(startTime.getTime() - 24 * 60 * 60_000),
+            lte: new Date(newEnd.getTime() + 24 * 60 * 60_000),
+          },
+        },
+      })
+      const hit = timeOffs.find((t) => timeOffCoversRange(t, startTime.getTime(), newEnd.getTime()))
+      if (hit) {
+        return err(`Personel bu saatte izinli (${timeOffLabel(hit)}) — randevu izinli personele taşınamaz`, 409)
       }
     }
   }

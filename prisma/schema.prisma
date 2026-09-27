@@ -1103,6 +1103,7 @@ model ServiceProvider {
   services    Service[]
   appointments Appointment[]
   customers   AppointmentCustomer[]
+  timeOffs    StaffTimeOff[]
 }
 
 // Personel (berber, kuaför, diş hekimi, vs.)
@@ -1121,6 +1122,26 @@ model Staff {
 
   appointments Appointment[]
   staffServices StaffService[]
+  timeOffs     StaffTimeOff[]
+}
+
+// Personel izin günleri — tam gün veya saat aralıklı izin kaydı.
+// İzinli personel bu aralıkta randevu alamaz (manuel + public booking + takvim taşıma dahil).
+model StaffTimeOff {
+  id          String   @id @default(cuid())
+  providerId  String
+  provider    ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  staffId     String
+  staff       Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  date        DateTime // günün başlangıcı (00:00)
+  isFullDay   Boolean  @default(true)
+  startTime   String?  // "HH:MM" — isFullDay=false ise zorunlu
+  endTime     String?  // "HH:MM"
+  reason      String?  // "Yıllık izin", "Hastalık", "Eğitim" ...
+  createdAt   DateTime @default(now())
+
+  @@index([providerId, date])
+  @@index([staffId, date])
 }
 
 // Hizmet (saç kesimi, saç boyama, diş temizleme, vs.)

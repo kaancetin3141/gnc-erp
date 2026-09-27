@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err, safeJsonParse } from '@/lib/api-utils'
 import { upsertCustomerForAppointment } from '@/lib/appointment-customer-server'
+import { timeOffCoversRange, timeOffLabel } from '@/lib/appointment-timeoff'
 
 // GET — randevu listesi (tarih/staff/status filtreli)
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -119,6 +120,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const c = conflicts[0]
       const cTime = new Date(c.date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
       return err(`Çakışma: ${c.customerName} (${cTime}) randevusu ile örtüşüyor`, 409)
+    }
+  }
+
+  // PERSONEL İZİN KONTROLÜ — izinli personele randevu verilemez (hard block)
+  if (staffId) {
+    const timeOffs = await db.staffTimeOff.findMany({
+      where: {
+        providerId: id,
+        staffId,
+        date: {
+          gte: new Date(startTime.getTime() - 24 * 60 * 60_000),
+          lte: new Date(endTime.getTime() + 24 * 60 * 60_000),
+        },
+      },
+    })
+    const hit = timeOffs.find((t) => timeOffCoversRange(t, startTime.getTime(), endTime.getTime()))
+    if (hit) {
+      return err(`Personel bu saatte izinli (${timeOffLabel(hit)}) — başka bir personel seçin veya izin kaydını kaldırın`, 409)
     }
   }
 

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, err, safeJsonParse } from '@/lib/api-utils'
 import { upsertCustomerForAppointment } from '@/lib/appointment-customer-server'
+import { timeOffCoversRange } from '@/lib/appointment-timeoff'
 import {
   type WorkingHours,
   dayKeyFromDate,
@@ -93,7 +94,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       select: { staffId: true, date: true, endTime: true },
     })
-    const freeStaff = activeStaffIds.find((sId) => {
+
+    // İzinli personel aday listesinden çıkar (tam gün veya bu saat aralığı)
+    const staffTimeOffs = await db.staffTimeOff.findMany({
+      where: { providerId: id, staffId: { in: activeStaffIds } },
+    })
+    const availableCandidates = activeStaffIds.filter((sId) => {
+      const onLeave = staffTimeOffs.some(
+        (t) => t.staffId === sId && timeOffCoversRange(t, startDate.getTime(), endDate.getTime()),
+      )
+      return !onLeave
+    })
+    if (availableCandidates.length === 0) {
+      return err('Seçilen zaman için müsait personel yok', 409)
+    }
+
+    const freeStaff = availableCandidates.find((sId) => {
       const staffAppts = dayAppts.filter((a) => a.staffId === sId)
       return !staffAppts.some((a) => {
         const aEnd = a.endTime ? new Date(a.endTime) : new Date(a.date.getTime() + service.duration * 60_000)
@@ -118,6 +134,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Çakışma kontrolü (belirli staff seçildiyse)
   if (staffId && staffId !== 'any' && finalStaffId) {
+    // İZİN KONTROLÜ — seçilen personel bu saatte izinliyse reddet
+    const staffTimeOffs = await db.staffTimeOff.findMany({
+      where: { providerId: id, staffId: finalStaffId },
+    })
+    const onLeave = staffTimeOffs.some(
+      (t) => timeOffCoversRange(t, startDate.getTime(), endDate.getTime()),
+    )
+    if (onLeave) {
+      return err('Seçtiğiniz personel bu saatte müsait değil, lütfen başka bir saat veya personel deneyin', 409)
+    }
+
     const candidates = await db.appointment.findMany({
       where: {
         staffId: finalStaffId,

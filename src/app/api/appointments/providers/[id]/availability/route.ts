@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err, safeJsonParse } from '@/lib/api-utils'
+import { timeOffCoversRange } from '@/lib/appointment-timeoff'
 import {
   type WorkingHours,
   type DaySchedule,
@@ -110,6 +111,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     select: { staffId: true, date: true, endTime: true, serviceId: true },
   })
 
+  // İzin kayıtları — izinli personel slot üretmez
+  const staffTimeOffs = await db.staffTimeOff.findMany({
+    where: { providerId: id, staffId: { in: staffIds.length > 0 ? staffIds : undefined } },
+  })
+
   // Her slot için: en az bir personel müsait mi?
   const availableSlots: string[] = []
   for (const slot of allSlots) {
@@ -131,6 +137,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const staffAppts = appointments.filter((a) => a.staffId === sId)
       const slotStart = slotToDateTime(dateStr, slot)
       const slotEnd = new Date(slotStart.getTime() + serviceDuration * 60_000)
+      // İzinli personel bu slot için aday değil
+      const onLeave = staffTimeOffs.some(
+        (t) => t.staffId === sId && timeOffCoversRange(t, slotStart.getTime(), slotEnd.getTime()),
+      )
+      if (onLeave) continue
       const conflict = staffAppts.some((a) => {
         const aEnd = a.endTime ? new Date(a.endTime) : new Date(a.date.getTime() + 30 * 60_000)
         return a.date < slotEnd && slotStart < aEnd

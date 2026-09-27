@@ -23,7 +23,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { initials } from '@/lib/format'
-import { Plus, Pencil, Trash2, Phone, User, Scissors } from 'lucide-react'
+import { StaffTimeOffDialog } from './staff-timeoff-dialog'
+import { Plus, Pencil, Trash2, Phone, User, Scissors, CalendarOff } from 'lucide-react'
 
 // ============================================================
 // Tipler
@@ -46,6 +47,16 @@ interface Staff {
   sortOrder: number
   services?: Service[]
   _count?: { appointments: number }
+}
+
+interface TimeOffEntry {
+  id: string
+  staffId: string
+  date: string
+  isFullDay: boolean
+  startTime: string | null
+  endTime: string | null
+  reason: string | null
 }
 
 type StaffResponse = Staff[]
@@ -85,6 +96,26 @@ export function StaffManager({ providerId }: { providerId: string }) {
   const [saving, setSaving] = useState(false)
 
   const [deleteTarget, setDeleteTarget] = useState<Staff | null>(null)
+
+  // İzin yönetimi
+  const [timeOffTarget, setTimeOffTarget] = useState<Staff | null>(null)
+
+  // Yaklaşan izinler (önümüzdeki 60 gün) — kartlarda rozet göstermek için
+  const timeOffRangeStart = new Date()
+  const timeOffRangeEnd = new Date(Date.now() + 60 * 24 * 60 * 60_000)
+  const { data: timeOffData } = useQuery({
+    queryKey: ['appointment-timeoff-range', providerId, 'staff-manager'],
+    queryFn: () => apiGet<TimeOffEntry[]>(
+      `/api/appointments/providers/${providerId}/time-off?startDate=${timeOffRangeStart.toISOString()}&endDate=${timeOffRangeEnd.toISOString()}`,
+    ),
+    enabled: !!providerId,
+  })
+  const timeOffs = Array.isArray(timeOffData) ? timeOffData : []
+  const timeOffByStaff = new Map<string, TimeOffEntry[]>()
+  for (const t of timeOffs) {
+    if (!timeOffByStaff.has(t.staffId)) timeOffByStaff.set(t.staffId, [])
+    timeOffByStaff.get(t.staffId)!.push(t)
+  }
 
   function openCreate() {
     setEditStaff(null)
@@ -297,12 +328,33 @@ export function StaffManager({ providerId }: { providerId: string }) {
                     {s._count?.appointments ?? 0} randevu
                   </span>
                   <div className="flex items-center gap-2">
+                    {(timeOffByStaff.get(s.id) ?? []).length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTimeOffTarget(s)}
+                        className="text-[10px] font-medium text-amber-700 bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 rounded-full px-2 py-0.5 hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors"
+                        title="Yaklaşan izinleri görüntüle"
+                      >
+                        {timeOffByStaff.get(s.id)!.length} izin
+                      </button>
+                    )}
                     <span className="text-[10px] text-muted-foreground">{s.isActive ? 'Aktif' : 'Pasif'}</span>
                     <Switch
                       checked={s.isActive}
                       onCheckedChange={() => handleToggleActive(s)}
                     />
                   </div>
+                </div>
+                <div className="flex gap-1.5 mt-2.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[11px] flex-1 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-900/60 dark:text-amber-300 dark:hover:bg-amber-950/30"
+                    onClick={() => setTimeOffTarget(s)}
+                  >
+                    <CalendarOff className="w-3 h-3 mr-1" />
+                    İzin Ver
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -433,6 +485,16 @@ export function StaffManager({ providerId }: { providerId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* İzin günleri diyaloğu */}
+      {timeOffTarget && (
+        <StaffTimeOffDialog
+          providerId={providerId}
+          staff={{ id: timeOffTarget.id, name: timeOffTarget.name, title: timeOffTarget.title }}
+          open={!!timeOffTarget}
+          onOpenChange={(o) => !o && setTimeOffTarget(null)}
+        />
+      )}
 
       {/* Delete Confirm */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>

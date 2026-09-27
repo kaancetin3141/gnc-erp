@@ -281,6 +281,27 @@ export function CustomerDetailDialog({
     return s
   }, [history])
 
+  // Son 6 ayın randevu adedi — mini çubuk grafik
+  const monthlyCounts = useMemo(() => {
+    const months: { label: string; count: number; year: number; month: number }[] = []
+    const now = new Date()
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      months.push({
+        label: d.toLocaleDateString('tr-TR', { month: 'short' }),
+        count: 0,
+        year: d.getFullYear(),
+        month: d.getMonth(),
+      })
+    }
+    for (const a of history) {
+      const d = new Date(a.date)
+      const m = months.find((x) => x.year === d.getFullYear() && x.month === d.getMonth())
+      if (m) m.count++
+    }
+    return months
+  }, [history])
+
   const tags = customer ? parseTags(customer.tags) : []
 
   return (
@@ -380,6 +401,47 @@ export function CustomerDetailDialog({
                   <CalendarClock className="w-3.5 h-3.5 mx-auto text-emerald-600 mt-0.5" />
                   <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 mt-0.5">{stats.nextVisit ? formatDate(stats.nextVisit) : '—'}</div>
                   <div className="text-[9px] text-muted-foreground">Sıradaki Randevu</div>
+                </div>
+              </div>
+
+              {/* Son 6 ay — mini çubuk grafik */}
+              <div className="rounded-lg border p-2.5">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" /> Son 6 Ay Randevu Trendi
+                  </div>
+                  <div className="text-[10px] tabular-nums text-muted-foreground">
+                    toplam {monthlyCounts.reduce((s, m) => s + m.count, 0)}
+                  </div>
+                </div>
+                <div className="flex items-end gap-1.5 h-14">
+                  {monthlyCounts.map((m, i) => {
+                    const max = Math.max(...monthlyCounts.map((x) => x.count), 1)
+                    const h = m.count === 0 ? 3 : Math.max(10, Math.round((m.count / max) * 100))
+                    const isCurrent = i === monthlyCounts.length - 1
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                        <span className={cn('text-[9px] font-semibold tabular-nums', m.count > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground/50')}>
+                          {m.count > 0 ? m.count : ''}
+                        </span>
+                        <div
+                          className={cn(
+                            'w-full rounded-t-sm transition-all',
+                            m.count > 0
+                              ? isCurrent
+                                ? 'bg-emerald-500'
+                                : 'bg-emerald-300 dark:bg-emerald-700'
+                              : 'bg-muted',
+                          )}
+                          style={{ height: `${h}%` }}
+                          title={`${m.label}: ${m.count} randevu`}
+                        />
+                        <span className={cn('text-[8px]', isCurrent ? 'font-semibold text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground')}>
+                          {m.label}
+                        </span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
