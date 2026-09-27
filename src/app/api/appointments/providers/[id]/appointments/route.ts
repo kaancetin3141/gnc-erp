@@ -9,18 +9,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (authErr) return authErr
 
   const { id } = await params
+  const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
+  if (!provider) return err('İşletme bulunamadı', 404)
+  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+
   const url = new URL(req.url)
-  const date = url.searchParams.get('date') // YYYY-MM-DD
+  const date = url.searchParams.get('date') // YYYY-MM-DD (tek gün)
+  const startDate = url.searchParams.get('startDate') // ISO (takvim aralığı)
+  const endDate = url.searchParams.get('endDate') // ISO
   const staffId = url.searchParams.get('staffId') || ''
   const status = url.searchParams.get('status') || ''
 
   const where: Record<string, unknown> = { providerId: id }
-  if (staffId) where.staffId = staffId
+  if (staffId && staffId !== 'all') where.staffId = staffId
   if (status) where.status = status
   if (date) {
     const start = new Date(date + 'T00:00:00')
     const end = new Date(date + 'T23:59:59')
     where.date = { gte: start, lte: end }
+  } else if (startDate && endDate) {
+    where.date = { gte: new Date(startDate), lte: new Date(endDate) }
   }
 
   const appointments = await db.appointment.findMany({
@@ -47,6 +55,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { staffId, serviceId, customerName, customerPhone, customerEmail, customerNote, date, source } = body
 
   if (!customerName || !customerPhone || !date) return err('Müşteri adı, telefon ve tarih gerekli', 400)
+
+  // İşletme ayarı: otomatik onay kapalıysa randevu BEKLEMEDE oluşur
+  const provider = await db.serviceProvider.findUnique({
+    where: { id },
+    select: { id: true, tenantId: true, autoApprove: true },
+  })
+  if (!provider) return err('İşletme bulunamadı', 404)
+  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
 
   // Hizmet süresini al
   const service = serviceId ? await db.service.findUnique({ where: { id: serviceId } }) : null
@@ -79,7 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       customerNote: customerNote || null,
       date: startTime,
       endTime,
-      status: 'onaylandi',
+      status: provider.autoApprove ? 'onaylandi' : 'beklemede',
       price: service?.price || 0,
       source: source || 'web',
     },

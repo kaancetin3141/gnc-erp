@@ -17,9 +17,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate, formatTime, whatsappLink } from '@/lib/format'
-import { Calendar, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck } from 'lucide-react'
+import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { ProviderSettings } from './provider-settings'
+import { StaffManager } from './staff-manager'
+import { ServiceManager } from './service-manager'
+import { AppointmentCalendar } from './appointment-calendar'
 import { formatDateTime } from '@/lib/format'
 
 interface Provider {
@@ -63,6 +66,7 @@ export function AppointmentsView() {
   const [tab, setTab] = useState('appointments')
   const [bookOpen, setBookOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+  const [statusFilter, setStatusFilter] = useState('all')
 
   // Provider list
   const { data: providersData } = useQuery({
@@ -86,6 +90,43 @@ export function AppointmentsView() {
     queryFn: () => apiGet<Appointment[]>(`/api/appointments/providers/${providerId}/appointments?date=${selectedDate}`),
     enabled: !!providerId,
   })
+
+  // Gün özeti + durum filtresi (program geliştirmesi)
+  const dayStats = useMemo(() => {
+    const pending = appointments.filter((a) => a.status === 'beklemede')
+    const approved = appointments.filter((a) => a.status === 'onaylandi')
+    const done = appointments.filter((a) => a.status === 'tamamlandi')
+    const cancelled = appointments.filter((a) => a.status === 'iptal' || a.status === 'gelmedi')
+    const expectedRevenue = [...pending, ...approved].reduce((sum, a) => sum + (a.price || 0), 0)
+    return {
+      total: appointments.length,
+      pendingCount: pending.length,
+      approvedCount: approved.length,
+      doneCount: done.length,
+      cancelledCount: cancelled.length,
+      expectedRevenue,
+    }
+  }, [appointments])
+
+  const filteredAppointments = useMemo(() => {
+    if (statusFilter === 'all') return appointments
+    if (statusFilter === 'iptal') return appointments.filter((a) => a.status === 'iptal' || a.status === 'gelmedi')
+    return appointments.filter((a) => a.status === statusFilter)
+  }, [appointments, statusFilter])
+
+  const approveAllPending = async () => {
+    const pending = appointments.filter((a) => a.status === 'beklemede')
+    if (pending.length === 0 || !providerId) return
+    try {
+      await Promise.all(pending.map((a) =>
+        apiPatch(`/api/appointments/providers/${providerId}/appointments/${a.id}`, { status: 'onaylandi' }),
+      ))
+      qc.invalidateQueries({ queryKey: ['appointments'] })
+      toast.success(`${pending.length} randevu onaylandı`, { description: 'Müşterilere WhatsApp ile bilgi gönderebilirsiniz' })
+    } catch (e) {
+      toast.error('Toplu onay başarısız', { description: e instanceof Error ? e.message : '' })
+    }
+  }
 
   // Otomatik onay — başlıkta hızlı anahtar (ayrıca İşletme Ayarları'nda da var)
   const autoApprove = provider?.autoApprove ?? true
@@ -169,9 +210,14 @@ export function AppointmentsView() {
         </div>
       </div>
 
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={(v) => {
+        setTab(v)
+        // Personel/hizmet değişiklikleri Müşteri Görünümü'ne ve listeye yansısın
+        if (v === 'booking' || v === 'appointments') qc.invalidateQueries({ queryKey: ['provider', providerId] })
+      }}>
         <TabsList>
           <TabsTrigger value="appointments" className="text-xs"><Calendar className="w-3.5 h-3.5 mr-1" /> Randevular</TabsTrigger>
+          <TabsTrigger value="calendar" className="text-xs"><CalendarDays className="w-3.5 h-3.5 mr-1" /> Takvim</TabsTrigger>
           <TabsTrigger value="staff" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Personel</TabsTrigger>
           <TabsTrigger value="services" className="text-xs"><Scissors className="w-3.5 h-3.5 mr-1" /> Hizmetler</TabsTrigger>
           <TabsTrigger value="booking" className="text-xs"><Store className="w-3.5 h-3.5 mr-1" /> Müşteri Görünümü</TabsTrigger>
@@ -179,17 +225,86 @@ export function AppointmentsView() {
         </TabsList>
 
         {/* Randevular tab */}
-        <TabsContent value="appointments" className="mt-4">
+        <TabsContent value="appointments" className="mt-4 space-y-3">
+          {/* Gün özeti kartları */}
+          {!isLoading && appointments.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <Card className="shadow-soft"><CardContent className="p-3">
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Calendar className="w-3.5 h-3.5" /> Bugün</div>
+                <div className="text-xl font-bold mt-0.5 tabular-nums">{dayStats.total}</div>
+                <div className="text-[10px] text-muted-foreground">randevu</div>
+              </CardContent></Card>
+              <Card className="shadow-soft"><CardContent className="p-3">
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Clock className="w-3.5 h-3.5 text-amber-500" /> Bekleyen</div>
+                <div className="text-xl font-bold mt-0.5 tabular-nums text-amber-600">{dayStats.pendingCount}</div>
+                <div className="text-[10px] text-muted-foreground">onay bekliyor</div>
+              </CardContent></Card>
+              <Card className="shadow-soft"><CardContent className="p-3">
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Onaylı</div>
+                <div className="text-xl font-bold mt-0.5 tabular-nums text-emerald-600">{dayStats.approvedCount}</div>
+                <div className="text-[10px] text-muted-foreground">{dayStats.doneCount} tamamlandı</div>
+              </CardContent></Card>
+              <Card className="shadow-soft"><CardContent className="p-3">
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Wallet className="w-3.5 h-3.5 text-teal-500" /> Beklenen</div>
+                <div className="text-xl font-bold mt-0.5 tabular-nums text-teal-600">{formatCurrency(dayStats.expectedRevenue)}</div>
+                <div className="text-[10px] text-muted-foreground">ciro potansiyeli</div>
+              </CardContent></Card>
+            </div>
+          )}
+
+          {/* Onay bekleyen uyarı bandı — otomatik onay kapalıyken */}
+          {!isLoading && !autoApprove && dayStats.pendingCount > 0 && (
+            <div className="flex items-center justify-between gap-3 flex-wrap rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/60 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="text-sm text-amber-800 dark:text-amber-300">
+                  <strong>{dayStats.pendingCount} randevu</strong> onayınızı bekliyor — otomatik onay kapalı
+                </span>
+              </div>
+              <Button size="sm" className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={approveAllPending}>
+                <CheckCheck className="w-3.5 h-3.5 mr-1.5" /> Tümünü Onayla
+              </Button>
+            </div>
+          )}
+
+          {/* Durum filtre çipleri */}
+          {!isLoading && appointments.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {([
+                { key: 'all', label: 'Tümü', count: dayStats.total, cls: 'bg-primary text-primary-foreground border-transparent' },
+                { key: 'beklemede', label: 'Beklemede', count: dayStats.pendingCount, cls: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900' },
+                { key: 'onaylandi', label: 'Onaylı', count: dayStats.approvedCount, cls: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900' },
+                { key: 'tamamlandi', label: 'Tamamlanan', count: dayStats.doneCount, cls: 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-900' },
+                { key: 'iptal', label: 'İptal/Gelmedi', count: dayStats.cancelledCount, cls: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900' },
+              ] as const).map((c) => (
+                <button
+                  key={c.key}
+                  onClick={() => setStatusFilter(c.key)}
+                  className={cn(
+                    'h-7 px-2.5 rounded-full border text-[11px] font-medium transition-colors',
+                    statusFilter === c.key ? c.cls : 'bg-background text-muted-foreground border-border hover:bg-accent',
+                  )}
+                >
+                  {c.label} · {c.count}
+                </button>
+              ))}
+            </div>
+          )}
+
           {isLoading ? (
             <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
-          ) : appointments.length === 0 ? (
+          ) : filteredAppointments.length === 0 ? (
             <Card><CardContent className="py-12 text-center">
               <Calendar className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">{formatDate(selectedDate)} tarihinde randevu yok</p>
+              <p className="text-sm text-muted-foreground">
+                {appointments.length === 0
+                  ? `${formatDate(selectedDate)} tarihinde randevu yok`
+                  : 'Bu filtreye uyan randevu yok'}
+              </p>
             </CardContent></Card>
           ) : (
             <div className="space-y-2">
-              {appointments.map((apt) => {
+              {filteredAppointments.map((apt) => {
                 const st = APPT_STATUS.find((s) => s.value === apt.status)
                 return (
                   <Card key={apt.id} className="shadow-soft">
@@ -267,60 +382,19 @@ export function AppointmentsView() {
           )}
         </TabsContent>
 
-        {/* Personel tab */}
-        <TabsContent value="staff" className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {provider?.staff?.map((s) => (
-              <Card key={s.id} className="shadow-soft">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-lg font-semibold shrink-0">
-                    {s.photo ? <img src={s.photo} alt={s.name} className="w-full h-full rounded-full object-cover" /> : s.name.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{s.name}</div>
-                    <div className="text-xs text-muted-foreground">{s.title ?? 'Personel'}</div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-            {(!provider?.staff || provider.staff.length === 0) && (
-              <Card><CardContent className="py-8 text-center col-span-full">
-                <Users className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">Henüz personel eklenmemiş</p>
-              </CardContent></Card>
-            )}
-          </div>
+        {/* Takvim tab — gün/hafta görünümü */}
+        <TabsContent value="calendar" className="mt-4">
+          {providerId && <AppointmentCalendar providerId={providerId} />}
         </TabsContent>
 
-        {/* Hizmetler tab */}
+        {/* Personel tab — ekleme/düzenleme/silme yetenekli yönetici */}
+        <TabsContent value="staff" className="mt-4">
+          {providerId && <StaffManager providerId={providerId} />}
+        </TabsContent>
+
+        {/* Hizmetler tab — ekleme/düzenleme/silme yetenekli yönetici */}
         <TabsContent value="services" className="mt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {provider?.services?.map((s) => (
-              <Card key={s.id} className="shadow-soft">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center shrink-0">
-                      <Scissors className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm">{s.name}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{s.description}</div>
-                      <div className="flex items-center gap-3 mt-2">
-                        <Badge variant="outline" className="text-[10px]"><Clock className="w-3 h-3 mr-1" />{s.duration}dk</Badge>
-                        <span className="text-sm font-semibold text-emerald-600">{formatCurrency(s.price)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-            {(!provider?.services || provider.services.length === 0) && (
-              <Card><CardContent className="py-8 text-center col-span-full">
-                <Scissors className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">Henüz hizmet eklenmemiş</p>
-              </CardContent></Card>
-            )}
-          </div>
+          {providerId && <ServiceManager providerId={providerId} />}
         </TabsContent>
 
         {/* Müşteri Görünümü — Public Booking */}
@@ -356,6 +430,7 @@ function PublicBooking({ provider, onBooked }: { provider: Provider; onBooked: (
   const [selectedTime, setSelectedTime] = useState('')
   const [customer, setCustomer] = useState({ name: '', phone: '', email: '', note: '' })
   const [booking, setBooking] = useState(false)
+  const [bookedStatus, setBookedStatus] = useState<string>('onaylandi')
 
   // Basit slot üretimi (09:00-18:00, 30dk aralık)
   const slots = useMemo(() => {
@@ -371,7 +446,7 @@ function PublicBooking({ provider, onBooked }: { provider: Provider; onBooked: (
     setBooking(true)
     try {
       const dateTime = new Date(`${selectedDate}T${selectedTime}:00`)
-      await apiPost(`/api/appointments/providers/${provider.id}/appointments`, {
+      const created = await apiPost<{ status?: string }>(`/api/appointments/providers/${provider.id}/appointments`, {
         serviceId: selectedService?.id,
         staffId: selectedStaff || undefined,
         customerName: customer.name,
@@ -381,7 +456,11 @@ function PublicBooking({ provider, onBooked }: { provider: Provider; onBooked: (
         date: dateTime.toISOString(),
         source: 'web',
       })
-      toast.success('Randevu oluşturuldu!', { description: `${formatDate(selectedDate)} ${selectedTime}` })
+      setBookedStatus(created?.status ?? 'onaylandi')
+      toast.success(
+        created?.status === 'beklemede' ? 'Randevu talebiniz alındı — onay bekliyor' : 'Randevu oluşturuldu!',
+        { description: `${formatDate(selectedDate)} ${selectedTime}` },
+      )
       setStep(5) // success
       onBooked()
     } catch (e) {
@@ -490,17 +569,36 @@ function PublicBooking({ provider, onBooked }: { provider: Provider; onBooked: (
           </div>
         )}
 
-        {/* Step 5: Success */}
+        {/* Step 5: Success — durum bazlı (onaylandı / onay bekliyor) */}
         {step === 5 && (
           <div className="text-center py-8">
-            <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="w-8 h-8 text-emerald-600" />
-            </div>
-            <h3 className="font-semibold text-lg mb-1">Randevunuz Oluşturuldu!</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {selectedService?.name} · {formatDate(selectedDate)} {selectedTime}
-            </p>
-            <a href={whatsappLink(customer.phone, `Randevunuz onaylandı: ${selectedService?.name}, ${formatDate(selectedDate)} ${selectedTime}`)} target="_blank" rel="noopener">
+            {bookedStatus === 'beklemede' ? (
+              <>
+                <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-950/30 flex items-center justify-center mx-auto mb-4">
+                  <Clock className="w-8 h-8 text-amber-600" />
+                </div>
+                <h3 className="font-semibold text-lg mb-1">Randevu Talebiniz Alındı!</h3>
+                <p className="text-sm text-muted-foreground mb-1">
+                  {selectedService?.name} · {formatDate(selectedDate)} {selectedTime}
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-lg px-3 py-2 inline-block mb-4">
+                  ⏳ İşletme onayladığında randevunuz kesinleşecek
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                </div>
+                <h3 className="font-semibold text-lg mb-1">Randevunuz Oluşturuldu!</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {selectedService?.name} · {formatDate(selectedDate)} {selectedTime}
+                </p>
+              </>
+            )}
+            <a href={whatsappLink(customer.phone, bookedStatus === 'beklemede'
+              ? `Randevu talebiniz alındı: ${selectedService?.name}, ${formatDate(selectedDate)} ${selectedTime}. Onay sonrası bilgi verilecek.`
+              : `Randevunuz onaylandı: ${selectedService?.name}, ${formatDate(selectedDate)} ${selectedTime}`)} target="_blank" rel="noopener">
               <Button variant="outline" size="sm"><MessageCircle className="w-4 h-4 mr-1.5" /> WhatsApp Hatırlatma</Button>
             </a>
             <div className="mt-4">
@@ -553,6 +651,14 @@ function ManualBookingDialog({ provider, open, onOpenChange, onSuccess }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader><DialogTitle>Manuel Randevu</DialogTitle></DialogHeader>
+        {provider.autoApprove === false && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/60 px-3 py-2 -mt-1">
+            <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800 dark:text-amber-300">
+              Otomatik onay <strong>kapalı</strong> — randevu <strong>&quot;Beklemede&quot;</strong> oluşur, onayladıktan sonra kesinleşir.
+            </p>
+          </div>
+        )}
         <div className="space-y-3">
           <div><Label className="text-xs">Hizmet</Label>
             <Select value={form.serviceId || '__none__'} onValueChange={(v) => setForm({ ...form, serviceId: v === '__none__' ? '' : v })}>

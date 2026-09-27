@@ -42,7 +42,7 @@ interface Service {
   _count?: { appointments: number; staffServices: number }
 }
 
-interface ServiceResponse { items: Service[] }
+type ServiceResponse = Service[]
 
 // ============================================================
 // Service Manager
@@ -56,7 +56,7 @@ export function ServiceManager({ providerId }: { providerId: string }) {
     enabled: !!providerId,
   })
 
-  const services = data?.items ?? []
+  const services = Array.isArray(data) ? data : (data as unknown as { items?: Service[] })?.items ?? []
   const categories = useMemo(() => {
     const set = new Set<string>()
     services.forEach((s) => s.category && set.add(s.category))

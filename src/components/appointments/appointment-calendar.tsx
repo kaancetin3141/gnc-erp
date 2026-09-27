@@ -76,11 +76,12 @@ interface Appointment {
   service?: Service | null
 }
 
-interface ApptsResponse { items: Appointment[] }
+type ApptsResponse = Appointment[]
 interface StaffResponse { items: Staff[] }
 interface ServiceResponse { items: Service[] }
 interface ProviderResponse {
   workingHours: string
+  autoApprove?: boolean
 }
 
 // ============================================================
@@ -168,7 +169,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
     },
     enabled: !!providerId,
   })
-  const appointments = apptData?.items ?? []
+  const appointments = useMemo(() => (Array.isArray(apptData) ? apptData : (apptData as unknown as { items?: Appointment[] })?.items ?? []), [apptData])
 
   const { visStart, visEnd } = useMemo(() => {
     let minMin = 24 * 60
@@ -295,7 +296,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
       const [hh, mm] = form.time.split(':').map(Number)
       const start = new Date(y, m - 1, d, hh, mm, 0, 0)
       const payload = {
-        staffId: form.staffId,
+        staffId: form.staffId === 'any' ? undefined : form.staffId,
         serviceId: form.serviceId,
         customerName: form.customerName,
         customerPhone: form.customerPhone,
@@ -307,7 +308,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
       if (editAppt) {
         await apiPatch(
           `/api/appointments/providers/${providerId}/appointments/${editAppt.id}`,
-          payload,
+          { ...payload, staffId: form.staffId },
         )
         toast.success('Randevu güncellendi')
       } else {
@@ -626,7 +627,11 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
           <DialogHeader>
             <DialogTitle>{editAppt ? 'Randevu Düzenle' : 'Yeni Randevu'}</DialogTitle>
             <DialogDescription>
-              {editAppt ? 'Randevu bilgilerini güncelleyin.' : 'Yeni randevu oluşturun.'}
+              {editAppt
+                ? 'Randevu bilgilerini güncelleyin.'
+                : providerData?.autoApprove
+                  ? 'Yeni randevu oluşturun — otomatik onay açık, anında onaylanır.'
+                  : 'Yeni randevu oluşturun — otomatik onay kapalı, randevu "Beklemede" oluşur.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

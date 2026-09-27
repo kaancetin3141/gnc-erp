@@ -7466,3 +7466,38 @@ Stage Summary:
 - Otomatik onay anahtarı artık tek tıkla, Randevu Ekle'nin yanında
 - Kafe/Market/Site demo tenant'ları canlı veriyle dolu — "diğer işletmelerin programları" artık boş değil, POS/sipariş akışları e2e test edildi
 - Sonraki tur önerileri: lead'e aktivite kaydı (arama/toplantı geçmişi), Belge Yönetimi CSV'sine teklif/proforma satırları, cafe raporlarına günlük Z-özeti, market raporlarına en-çok-satanlar grafiği, real OAuth (social)
+
+---
+Task ID: 15
+Agent: Z.ai Code (Ana tur — randevu modülü bug + program geliştirme)
+Task: Kullanıcı talepleri: (1) "otomatik onay kapalı olsa da randevu onaylı görünüyor" BUG, (2) "personel ve hizmet ekleme butonları yok", (3) "programı geliştir"
+
+Work Log:
+- KÖK NEDEN (BUG 1): POST /api/appointments/providers/[id]/appointments status'u SABİT 'onaylandi' yazıyordu — provider.autoApprove hiç kontrol edilmiyordu. Public book route doğruydu ama dashboard içi tüm akışlar (Randevu Ekle, Müşteri Görünümü, Takvim) auth'lu route'u kullanıyordu → autoApprove kapalıyken bile randevu "Onaylandı" görünüyordu
+- FİX 1: POST route artık provider'ı çekiyor (autoApprove + tenant kontrolü eklendi) ve status = autoApprove ? 'onaylandi' : 'beklemede' hesaplıyor
+- KÖK NEDEN (BUG 2): Personel/Hizmetler sekmeleri SADECE OKUNUR listedi; tam dolu StaffManager/ServiceManager (ekle/düzenle/sil/hizmet atama/aktif toggle) bileşenleri HİÇ import edilmemiş öksüz durumdaydı
+- FİX 2: Personel sekmesi → <StaffManager>, Hizmetler sekmesi → <ServiceManager> bağlandı; API yanıt şekli uyumsuzluğu giderildi (route raw array dönüyordu, bileşenler {items} bekliyordu — iki taraflı uyumlu yapıldı)
+- ÖKSÜZ BUG'LAR zinciri: AppointmentCalendar (870 satır) de import edilmemişti + startDate/endDate parametreleri route'da yoktu + {items} şekli uyuşmuyordu → her zaman boş görünürdü. Route'a range query desteği + takvime raw-array uyumu eklendi; PATCH route'u yalnız status/notes destekliyordu, takvimin tam düzenleme payload'ı sessizce yutuluyordu → PATCH artık date (endTime yeniden hesaplı), staffId ('any'→null), serviceId (fiyat günceller), müşteri alanlarını destekliyor
+- GÜVENLİK: appointments GET/POST/PATCH/DELETE + staff GET/POST + services GET/POST route'larına tenant sahiplik kontrolü eklendi (önceden herhangi auth'lu kullanıcı başka tenant'ın randevusunu değiştirebilirdi)
+- staff/services GET artık pasif kayıtları da döner (yönetici pasifleştirdiğini kaybetmesin) + staff yanıtında staffServices→services düzleştirme
+- PROGRAM GELİŞTİRMELERİ (Randevular sekmesi): 4 gün özeti kartı (Bugün/Bekleyen/Onaylı+Beklenen ciro), durum filtre çipleri sayılarla (Tümü·Beklemede·Onaylı·Tamamlanan·İptal/Gelmedi), autoApprove kapalıyken amber "X randevu onayınızı bekliyor" bandı + "Tümünü Onayla" toplu onay
+- YENİ SEKME: Takvim (gün/hafta görünümü, personel filtresi, slota tıkla→randevu oluştur, randevuya tıkla→detay+Durum Değiştir dropdown, Bugün/ileri-geri navigasyon, durum lejantı)
+- Manuel Randevu diyalogu: autoApprove kapalıyken amber uyarı ("randevu 'Beklemede' oluşur"); Takvim oluşturma diyalogu açıklaması da duruma göre değişiyor
+- Müşteri Görünümü (PublicBooking): başarı ekranı artık API'nin döndürdüğü status'e göre — beklemede ise amber "Randevu Talebiniz Alındı! İşletme onayladığında kesinleşecek", onaylıysa yeşil; WhatsApp mesajı da duruma göre
+- Tab değişiminde provider query invalidate (personel/hizmet değişikliği Müşteri Görünümü'ne anında yansır)
+
+## Doğrulama (agent-browser e2e — Kuaför Yöneticisi olarak)
+- ✅ curl: autoApprove OFF→POST→'beklemede'; ON→POST→'onaylandi'
+- ✅ curl: startDate/endDate range query (takvim için) çalışıyor; PATCH date→endTime yeniden hesaplandı
+- ✅ UI: "Randevu Ekle" → amber "Otomatik onay kapalı" uyarısı → oluştur → kart "Beklemede" + amber band + "Tümünü Onayla" + Bekleyen 1 / Beklenen 650₺
+- ✅ UI: Personel sekmesi "Yeni Personel" → hizmet seçmeli form → "Personel eklendi" (3→4)
+- ✅ UI: Hizmetler sekmesi "Yeni Hizmet" → ad/süre/fiyat → "Hizmet eklendi" (6→7)
+- ✅ UI: Takvim sekmesi — gün/hafta grid, randevu bloğu 10:00'da, detay dialog → Durum Değiştir → Onayla → "Durum: Onaylandı"
+- ✅ Mobil 390px: header pill+switch+buton dikey stack, 2x2 stats, çip wrap — screenshot doğrulandı
+- ✅ eslint 0 hata; dev.log temiz; test kayıtları DB'den temizlendi
+
+Stage Summary:
+- Otomatik onay anahtarı artık GERÇEKTEN çalışıyor: kapalıyken hiçbir oluşturma yolu randevuyu otomatik onaylamıyor (manuel, müşteri görünümü, takvim — üçü de server-side garanti altında)
+- Personel ve Hizmet yönetimi tam yetkili: ekle/düzenle/sil/aktif-pasif/hizmet atama — istenen "personel ve hizmet ekleme butonları" artık yerinde
+- Program modülü büyüdü: yeni Takvim sekmesi (gün/hafta), gün özeti kartları, durum filtreleri, onay kuyruğu bandı, toplu onay
+- Sonraki tur önerileri: onay reddi akışı ('reddedildi' + müşteriye sebep bildirimi), randevu saatinden önce otomatik WhatsApp hatırlatma (cron zaten reminder tetikliyor — appointment'a bağlanabilir), Takvim'e sürükle-bırak ile saat değiştirme, müşteri geçmiş randevu geçmişi paneli

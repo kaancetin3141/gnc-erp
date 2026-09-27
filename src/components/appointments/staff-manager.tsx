@@ -48,10 +48,8 @@ interface Staff {
   _count?: { appointments: number }
 }
 
-interface StaffResponse { items: Staff[] }
-interface ServiceResponse {
-  items: Service[]
-}
+type StaffResponse = Staff[]
+type ServiceResponse = Service[]
 
 // ============================================================
 // Staff Manager
@@ -70,8 +68,8 @@ export function StaffManager({ providerId }: { providerId: string }) {
     enabled: !!providerId,
   })
 
-  const staffList = staffData?.items ?? []
-  const services = serviceData?.items ?? []
+  const staffList = Array.isArray(staffData) ? staffData : (staffData as unknown as { items?: Staff[] })?.items ?? []
+  const services = Array.isArray(serviceData) ? serviceData : (serviceData as unknown as { items?: Service[] })?.items ?? []
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editStaff, setEditStaff] = useState<Staff | null>(null)

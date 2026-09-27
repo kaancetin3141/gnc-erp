@@ -2,15 +2,19 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 
-// GET — hizmet listesi
+// GET — hizmet listesi (aktif + pasif; yönetici pasifleri tekrar aktifleştirebilmeli)
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
   if (authErr) return authErr
 
   const { id } = await params
+  const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
+  if (!provider) return err('İşletme bulunamadı', 404)
+  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+
   const services = await db.service.findMany({
-    where: { providerId: id, isActive: true },
+    where: { providerId: id },
     orderBy: { sortOrder: 'asc' },
   })
   return ok(services)
@@ -23,6 +27,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (authErr) return authErr
 
   const { id } = await params
+  const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
+  if (!provider) return err('İşletme bulunamadı', 404)
+  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+
   const body = await req.json()
   const { name, description, duration, price, category, photo } = body
 
