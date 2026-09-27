@@ -7376,3 +7376,35 @@ Task: Kullanıcı raporu "gönderi yayınlamıyor sebebi nedir" — teşhis ve f
 - Kullanıcının X token'ı için: plan yükseltme veya yeni token gerekli (app tarafı değişemez) — ya da Simülasyon modu kullanılır
 - youtube/tiktok/whatsapp/pinterest gerçek API client'ları hâlâ TODO
 - Publish başarısızlıklarında e-posta/bildirim tetikleme eklenebilir
+
+---
+Task ID: FIX-CREDITS-DEPLETED-DIAGNOSIS
+Agent: Main (X API "credits depleted" derin teşhis + Bağlantı Testi özelliği)
+Task: Kullanıcı raporu: "credits depleted hatası veriyor ama X developer panelde bir kullanım gözükmüyor"
+
+## Teşhis (canlı API probu ile kanıtlandı)
+- `GET /2/users/me` → **HTTP 200** — token GEÇERLİ kullanıcı token'ı (@ctnkqn / ctnakn doğrulandı)
+- `GET /2/users/:id/tweets` → **HTTP 402 Payment Required**:
+  `{"detail":"credits depleted","title":"Payment Required","type":"https://api.x.com/2/problems/credits-depleted"}`
+- **SONUÇ**: "credits depleted" = HTTP 402 = X API KREDİ BAKİYESİ BİTTİ (ödeme sorunu). Kullanım kotası DEĞİL!
+  Bu yüzden panelin "Usage" grafiğinde kullanım görünmüyor — sorun bakiyede. Token da sağlam; kimlik doğruluyor.
+
+## Tamamlanan Modifikasyonlar
+1. **YENİ API** `GET /api/social/accounts/[id]/diagnose` — gerçek "me" endpoint probe'u + ham hata gövdesi yakalar;
+   classify(): ok / app_only_token / invalid_token / usage_cap(402-ödeme vs 429-kota) / insufficient_permission / network_error / unknown.
+   Twitter'da 2 aşamalı: users/me (kimlik) + users/:id/tweets (kredi kontrolü — users/me kreditsiz çalıştığı için tek başına yetmez).
+   Facebook + Telegram probe'ları da eklendi; diğerleri "henüz eklenmedi" döner.
+2. **accounts-view.tsx** — gerçek hesaplara 🩺 "Test Et" butonu + `DiagnoseDialog`: renk kodlu sonuç kartı (yeşil/kırmızı/amber),
+   "Ne yapmalısınız?" öneri listesi, doğrulanmış hesap/takipçi bilgisi, katlanabilir ham API yanıtı bloğu, "Tekrar Test Et".
+3. **friendlyApiError + diagnose metinleri** — credits mesajı 402/ödeme gerçeğine göre yeniden yazıldı
+   (Billing/API Credits bölümüne bakın, Free plan aylık kredisi sınırlı, tüm app'ler ortak bakiye, Simülasyon alternatifi).
+
+## Doğrulama (agent-browser e2e)
+- ✅ curl diagnose: kind=usage_cap(402), headline "API kredisi bitti (HTTP 402 — Ödeme Gerekli)", verifiedHandle=ctnkqn
+- ✅ UI: Hesaplar → Test Et → amber sonuç kartı + öneriler + ham detay (HTTP 402 / Payment Required / credits-depleted) görünüyor
+- ✅ eslint 0 hata; dev.log temiz (diagnose 200)
+
+## Kullanıcıya Çözüm Önerisi
+1. developer.x.com → **Billing / API Credits** bölümü (Usage değil!) — bakiye/plan durumu orada
+2. Free planın aylık ücretsiz kredisi sınırlı; biterse ay başında yenilenir veya Basic plana geçilir
+3. Uygulamada beklemek istemezse: gönderi kartında "Simülasyon" butonu ile API'siz yayın

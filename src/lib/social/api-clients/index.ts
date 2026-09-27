@@ -31,9 +31,9 @@ export function friendlyApiError(platform: PlatformKey, raw: string | null | und
   if (!raw) return 'Bilinmeyen hata'
   const msg = raw.toLowerCase()
 
-  // X (Twitter) API kredileri
+  // X (Twitter) API kredileri — HTTP 402 Payment Required (credits-depleted)
   if (msg.includes('credits depleted') || msg.includes('quota') || msg.includes('monthly post cap')) {
-    return 'API kredisi tükendi — hesabın platform API planının aylık gönderim hakkı bitmiş. Yeni bir erişim token\'ı ile yeniden bağlan veya API planını yükselt; ya da "Simülasyon olarak yayınla" seçeneğini kullan.'
+    return 'X API kredisi bitti (HTTP 402 — Ödeme Gerekli): token geçerli ama hesabın X API kredi bakiyesi sıfır. Bu bir kullanım kotası değil ödeme sorunudur — developer panelde "Usage" yerine Billing / API Credits bölümüne bakın. Ücretsiz planın aylık kredisi yenilenene kadar bekleyin, plan yükseltin ya da "Simülasyon olarak yayınla" kullanın. (Hesaplar sekmesindeki "Test Et" ile doğrulayabilirsiniz.)'
   }
   // Token geçersiz / süresi bitmiş
   if (

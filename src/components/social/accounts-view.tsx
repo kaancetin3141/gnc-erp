@@ -46,7 +46,25 @@ import { AccountCredentialsDialog } from './account-credentials-dialog'
 import {
   Plus, CheckCircle2, BadgeCheck, Users, FileText, RefreshCw,
   Unplug, Loader2, Sparkles, KeyRound, ExternalLink, AlertTriangle,
+  Stethoscope, CheckCircle, XCircle, HelpCircle, Info,
 } from 'lucide-react'
+
+// Tanılama yanıtı tipleri (/api/social/accounts/[id]/diagnose)
+interface DiagnoseResponse {
+  platform: PlatformKey
+  authMethod: string
+  handle: string
+  diagnosis: {
+    kind: 'ok' | 'app_only_token' | 'invalid_token' | 'usage_cap' | 'insufficient_permission' | 'network_error' | 'unknown'
+    headline: string
+    explanation: string
+    recommendations: string[]
+    verifiedHandle: string | null
+    verifiedName: string | null
+    followerCount: number | null
+    probe: { httpStatus: number | null; title: string | null; detail: string | null; type: string | null; bodySnippet: string } | null
+  }
+}
 
 export function AccountsView() {
   const qc = useQueryClient()
@@ -54,6 +72,7 @@ export function AccountsView() {
   const [credentialsOpen, setCredentialsOpen] = useState(false)
   const [credentialsPlatform, setCredentialsPlatform] = useState<PlatformKey | null>(null)
   const [disconnectAcc, setDisconnectAcc] = useState<SocialAccountItem | null>(null)
+  const [diagnoseAcc, setDiagnoseAcc] = useState<SocialAccountItem | null>(null)
 
   const { data: accounts, isLoading, refetch, isFetching } = useQuery<SocialAccountItem[]>({
     queryKey: ['social-accounts'],
@@ -207,6 +226,17 @@ export function AccountsView() {
                     </div>
                   )}
                   <div className="flex gap-2">
+                    {a.authMethod !== 'mock' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 text-sky-700 border-sky-200 hover:bg-sky-50 hover:text-sky-800 dark:text-sky-300 dark:border-sky-900 dark:hover:bg-sky-950/40"
+                        onClick={() => setDiagnoseAcc(a)}
+                        title="Gerçek API testi — token sağlığını teşhis et"
+                      >
+                        <Stethoscope className="w-3.5 h-3.5" /> Test Et
+                      </Button>
+                    )}
                     {a.authMethod === 'mock' && (
                       <Button
                         size="sm"
@@ -284,6 +314,15 @@ export function AccountsView() {
         />
       )}
 
+      {/* Bağlantı Tanılama Dialog */}
+      {diagnoseAcc && (
+        <DiagnoseDialog
+          open={!!diagnoseAcc}
+          onOpenChange={(o) => !o && setDiagnoseAcc(null)}
+          account={diagnoseAcc}
+        />
+      )}
+
       {/* Disconnect Alert */}
       <AlertDialog open={!!disconnectAcc} onOpenChange={(o) => !o && setDisconnectAcc(null)}>
         <AlertDialogContent>
@@ -317,6 +356,128 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-sm font-semibold">{value}</div>
       <div className="text-[10px] text-muted-foreground">{label}</div>
     </div>
+  )
+}
+
+// Tanılama türüne göre görünüm
+const KIND_STYLE: Record<string, { color: string; bg: string; icon: typeof CheckCircle }> = {
+  ok: { color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900', icon: CheckCircle },
+  app_only_token: { color: 'text-red-700 dark:text-red-300', bg: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900', icon: XCircle },
+  invalid_token: { color: 'text-red-700 dark:text-red-300', bg: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900', icon: XCircle },
+  usage_cap: { color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900', icon: AlertTriangle },
+  insufficient_permission: { color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900', icon: AlertTriangle },
+  network_error: { color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800', icon: HelpCircle },
+  unknown: { color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800', icon: HelpCircle },
+}
+
+function DiagnoseDialog({
+  open,
+  onOpenChange,
+  account,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  account: SocialAccountItem
+}) {
+  // Her açılışta yeni test — cache kullanma
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<DiagnoseResponse>({
+    queryKey: ['social-diagnose', account.id, open],
+    queryFn: () => apiGet<DiagnoseResponse>(`/api/social/accounts/${account.id}/diagnose`),
+    enabled: open,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  })
+
+  const d = data?.diagnosis
+  const kind = d?.kind ?? 'unknown'
+  const style = KIND_STYLE[kind] ?? KIND_STYLE.unknown
+  const KindIcon = style.icon
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Stethoscope className="w-5 h-5 text-sky-600" />
+            Bağlantı Testi — {PLATFORMS[account.platform]?.label} @{account.handle}
+          </DialogTitle>
+          <DialogDescription>
+            Kayıtlı token platformun gerçek API'sine gönderildi. Sonuç aşağıda.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-10 gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-sky-600" />
+            <p className="text-sm text-muted-foreground">Platform API'si test ediliyor...</p>
+          </div>
+        ) : isError || !d ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 p-4 text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
+            <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>Test çalıştırılamadı: {error instanceof Error ? error.message : 'bilinmeyen hata'}</span>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Sonuç kartı */}
+            <div className={cn('rounded-lg border p-4 space-y-2', style.bg)}>
+              <div className={cn('flex items-center gap-2 font-semibold text-sm', style.color)}>
+                <KindIcon className="w-5 h-5 shrink-0" />
+                {d.headline}
+              </div>
+              <p className={cn('text-xs leading-relaxed', style.color)}>
+                {d.explanation}
+              </p>
+              {d.verifiedHandle && (
+                <div className={cn('text-xs font-medium', style.color)}>
+                  Doğrulanan hesap: @{d.verifiedHandle}
+                  {d.followerCount != null && ` · ${formatCompactNumber(d.followerCount)} takipçi`}
+                </div>
+              )}
+            </div>
+
+            {/* Öneriler */}
+            {d.recommendations.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-semibold mb-1.5">
+                  <Info className="w-3.5 h-3.5 text-muted-foreground" />
+                  Ne yapmalısınız?
+                </div>
+                <ul className="space-y-1.5">
+                  {d.recommendations.map((r, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <span className="mt-1 w-1.5 h-1.5 rounded-full bg-muted-foreground/50 shrink-0" />
+                      <span>{r}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Ham teknik detay */}
+            {d.probe && (
+              <details className="group">
+                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
+                  Teknik detay (ham API yanıtı)
+                </summary>
+                <pre className="mt-2 rounded-md bg-muted/60 border p-3 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap break-all">
+{`HTTP ${d.probe.httpStatus ?? '-'}\ntitle:  ${d.probe.title ?? '-'}\ndetail: ${d.probe.detail ?? '-'}\ntype:   ${d.probe.type ?? '-'}\n\n${d.probe.bodySnippet}`}
+                </pre>
+              </details>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={cn('w-3.5 h-3.5', isFetching && 'animate-spin')} /> Tekrar Test Et
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            Kapat
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
