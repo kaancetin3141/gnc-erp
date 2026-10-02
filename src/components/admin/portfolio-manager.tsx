@@ -337,7 +337,7 @@ export function PortfolioManager({ user }: { user: SessionUser }) {
                 <Input
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="Örn. Meyve Patlat 2"
+                  placeholder="Örn. Fruit Storm 2"
                 />
               </div>
             </div>
