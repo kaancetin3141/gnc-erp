@@ -7994,3 +7994,25 @@ Stage Summary:
 - YENİ PROJE AKIŞI TAM OTOMATİK OLDU: Panel > Yeni Proje (alt alan adı + port) → sunucuda "sudo gnc-proje oyun2 3002" → nginx+SSL kurulu, ana sitede kart otomatik görünür. Kullanıcı paneldeki Sunucu düğmesinden komutu kopyalayabilir
 - "Projeyi Aç açılmıyor" cevabı: alt alan adları için ekstra AWS ayarı YOK — Security Group'ta TCP 80+443 açık olunca tüm subdomain'ler çalışır. En olası 3 sebep: (1) Hostinger'da * yıldız A kaydı eksik, (2) AWS SG 80/443 kapalı, (3) certbot SSL hiç kurulmadı (linkler https:// olduğundan sertifika yoksa tarayıcı açmaz). Çözüm sırası paneldeki teşhis kutusunda + rehber Bölüm 14.1'de
 - Kullanıcı sunucuda bir kez: guncelle-gnc.sh (yeni kod + gnc-proje kurulumu için kurulum.sh v2.1'i yeniden koşması önerilir) + DNS yıldız + AWS SG + certbot
+
+---
+Task ID: 42.2
+Agent: Z.ai Code (Ana tur - 3002 kapatma + guncelle-gnc v3 + Permission denied fix)
+Task: Kullanici sunucuda "bash guncelle-gnc.sh" -> "error: cannot open '.git/FETCH_HEAD': Permission denied" aldini; ardindan "3002 yi suanlik kapat" dedi (onceki turdaki "sudo gnc-proje oyun2 3002" ORNEK komutuna istinaden). NOT: bu turun basinda butun araclari kiran gecici altyapi kesintisi yasandi (Bash/Read/Glob/TodoWrite cagrilarinde "broken session 403") — onceki mesaj teshisle kullaniciya gonderildi, dosya isleri bu tura kaldi.
+
+Work Log:
+- TESHIS (kesinti oncesi tamamlandi): DNS Hostinger'da (dns-parking.com NS) ve wildcard AKTIF — nslookup crm/meyvepatlat.gncinc.online -> 3.76.38.47 cozuluyor. Port 80 acik (nginx/1.24.0 301 -> https yonlendirmesi, certbot izi). Port 443 TUM adreslerde (ana site dahil) yanitsiz -> neredeyse kesin AWS Security Group'ta TCP 443 kapali = "Projeyi Aç" bug'unun ana sebebi (linkler https://)
+- deploy/guncelle-gnc.sh v3 YAZILDI (yeni dosya): 0/7 adiminda .git/APP_DIR yazilabilir degilse sudo chown -R ile SAHIPLIGI KENDISI DUZELTIR (kullanicinin aldigi Permission denied hatasini kalici cozer) + 7 adim guncelleme + 7/7 saglik kontrolu (uygulama ayakta mi, nginx 80/443 dinliyor mu, SG hatirlatmasi)
+- deploy/yeni-proje.sh v1.1: "kaldir" MODU eklendi (kaldir|sil|remove|kapat anahtar kelimeleri): "sudo gnc-proje oyun2 kaldir" -> gnc-proje-$SUB conf'unu sites-available+enabled'dan siler, nginx -t + reload; conf yoksa ana gnc conf'unda olup olmadigini kontrol eder (kurulum.sh'la kurulan crm/meyvepatlat icin elle duzenleme yolu gosterir); pm2/statik dosya/SSL temizlik komutlarini yazdirir (dokunmaz, sadece yonlendirir). bash -n OK + sudo korumasi test edildi
+- deploy/kurulum.sh v2.2: (1) adim 4'te kod cekmeden ONCE chown self-heal, (2) guncelle-gnc.sh artik repo'daki v3'ten kurulur (repo dosyasi yoksa eski heredoc fallback), (3) final ozette SG uyarisi "uygulama portlari (3000/3001/3002) SG'ye ASLA eklenmez" + "Kaldirma: sudo gnc-proje <ad> kaldir" satiri
+- YAYINLAMA-REHBERI.md: Bolum 7'deki ESKI 5-adimli guncelle heredoc'u silindi (bayat SÜRÜM kullanicinin install etmesin) -> v3 kopyalama talimati kondu; YENI 14.2 (Permission denied cozumu), 15 (alt alan adi kaldirma), 15.1 (SG port tablosu: sadece 22/80/443) eklendi
+- portfolio-manager.tsx ServerSetupDialog: "Yayindan kaldirmak icin: sudo gnc-proje <sub> kaldir" satiri eklendi
+- Lint temiz; commit 458a770 push edildi, ls-remote dogrulandi
+- Cron: onceki oturumda kurulan 15 dk'lik webDevReview gorevi (#430359) mevcut, yeniden kurulmadi
+
+Stage Summary:
+- KULLANICININ "3002 kapat" CEVABI: 3002 sadece ORNEK komuttu, otomatik kurulmus bir sey yok. (a) AWS SG'ye 3002 eklediysen sil (sadece 22/80/443 kalmali); (b) gnc-proje oyun2 3002 calistirdiysan "sudo gnc-proje oyun2 kaldir" (yeni komut, guncelle sonrasi) veya manuel: sudo rm -f /etc/nginx/sites-{available,enabled}/gnc-proje-oyun2 && sudo nginx -t && sudo systemctl reload nginx
+- Permission denied hatasi kalici cozuldu: guncelle-gnc.sh v3 artik kendi izinlerini duzeltiyor — kullanici bir kez "sudo chown -R ubuntu:ubuntu /var/www/gnc-erp /var/www/gncinc-ana" dedikten sonra hata tekrarlamaz
+- "Projeyi Aç" ana sebep high-confidence: AWS SG TCP 443 kapali (443 tum domainlerde olcuyle yanitsiz, 80 acik). Kullanici SG'ye 443 ekleyince cozulmeli; sertifika yoksa certbot komutu rehber 14.1'de
+- Sunucuya siradaki deploy: chown -> bash guncelle-gnc.sh (v3 kodu ceker) -> SG 443 -> (gerekirse) certbot
+- App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
