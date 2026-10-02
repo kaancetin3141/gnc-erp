@@ -20,13 +20,15 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
   Send, ArrowLeft, MessageCircle, Search, Trash2, CheckCheck,
-  Paperclip,
+  Paperclip, FileText, Package, FileCheck2, Loader2,
 } from 'lucide-react'
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Tabs, TabsContent, TabsList, TabsTrigger,
+} from '@/components/ui/tabs'
 
 // ─── Types ───────────────────────────────────────────────────────
 interface ChatMessage {
@@ -51,6 +53,14 @@ interface MessagesResponse {
   items: ChatMessage[]
   total: number
 }
+
+interface AttachDoc {
+  id: string
+  number: string
+  label: string
+  meta: string
+}
+type AttachTabKey = 'invoice' | 'order' | 'quote'
 
 interface UsersResponse {
   items: {
@@ -90,13 +100,6 @@ function fmtDateLabel(dateStr: string): string {
   if (isToday) return 'Bugün'
   if (isYesterday) return 'Dün'
   return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })
-}
-
-// ─── Mock online status (deterministic by user id) ───────────────
-function isOnline(userId: string): boolean {
-  // Online: id hash'in %3'ü 0 ise (yaklaşık 1/3)
-  const hash = userId.split('').reduce((s, c) => s + c.charCodeAt(0), 0)
-  return hash % 3 === 0
 }
 
 // ─── Main view ───────────────────────────────────────────────────
@@ -203,11 +206,11 @@ export function ChatView() {
 
         <Card className="overflow-hidden">
           <CardContent className="p-0">
-            <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[320px_1fr] h-[70vh] min-h-[520px]">
+            <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[320px_1fr] h-[70dvh] min-h-[520px]">
               {/* Sol panel — kullanıcı listesi */}
               <div
                 className={cn(
-                  'border-r flex flex-col bg-muted/20',
+                  'border-r flex flex-col bg-muted/20 min-h-0',
                   mobileShowConversation && selectedUserId ? 'hidden md:flex' : 'flex',
                 )}
               >
@@ -246,7 +249,6 @@ export function ChatView() {
                         const meta = userMeta.get(u.id)
                         const unread = meta?.unread ?? 0
                         const isSelected = selectedUserId === u.id
-                        const online = isOnline(u.id)
                         return (
                           <button
                             key={u.id}
@@ -270,9 +272,6 @@ export function ChatView() {
                                   {initials(u.name)}
                                 </AvatarFallback>
                               </Avatar>
-                              {online && (
-                                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-background" />
-                              )}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2">
@@ -307,7 +306,7 @@ export function ChatView() {
               {/* Sağ panel — sohbet */}
               <div
                 className={cn(
-                  'flex flex-col bg-background',
+                  'flex flex-col bg-background min-h-0 overflow-hidden',
                   !mobileShowConversation && selectedUserId ? 'hidden md:flex' : 'flex',
                 )}
               >
@@ -362,11 +361,15 @@ function ConversationPanel({
 }) {
   const qc = useQueryClient()
   const [input, setInput] = useState('')
+  const [attachOpen, setAttachOpen] = useState(false)
+  const [attachTabKey, setAttachTabKey] = useState<AttachTabKey>('invoice')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const sendMut = useMutation({
-    mutationFn: (body: { receiverId: string; content: string }) =>
-      apiPost<ChatMessage>('/api/messages', body),
+    mutationFn: (body: {
+      receiverId: string; content: string
+      attachmentType?: string; attachmentId?: string; attachmentName?: string
+    }) => apiPost<ChatMessage>('/api/messages', body),
     onSuccess: () => {
       setInput('')
       qc.invalidateQueries({ queryKey: ['all-messages'] })
@@ -393,18 +396,46 @@ function ConversationPanel({
     sendMut.mutate({ receiverId: otherUser.id, content: input.trim() })
   }
 
-  // Belge gönder (fatura/sipariş/proforma/çeki listesi)
+  // Belge gönder (gerçek fatura/sipariş/teklif kayıtlarından seçilir)
   const handleSendAttachment = (type: string, id: string, name: string) => {
     if (!otherUser) return
     sendMut.mutate({
       receiverId: otherUser.id,
-      content: `${type} gönderildi: ${name}`,
+      content: `${name} numaralı ${type} belgesi paylaşıldı`,
       attachmentType: type,
       attachmentId: id,
       attachmentName: name,
     })
-    toast.success(`${type} gönderildi`, { description: name })
+    toast.success(`${type} paylaşıldı`, { description: name })
   }
+
+  // Sohbet için gerçek belgeler (son 8 kayıt)
+  const attachQuery = useQuery({
+    queryKey: ['chat-attach-docs'],
+    queryFn: async () => {
+      const [inv, ord, quo] = await Promise.all([
+        apiGet<{ items: Record<string, unknown>[] }>('/api/invoices?limit=10').catch(() => ({ items: [] })),
+        apiGet<{ items: Record<string, unknown>[] }>('/api/orders?limit=10').catch(() => ({ items: [] })),
+        apiGet<{ items: Record<string, unknown>[] }>('/api/quotes?limit=10').catch(() => ({ items: [] })),
+      ])
+      const map = (arr: Record<string, unknown>[] | undefined, label: string): AttachDoc[] =>
+        (arr ?? []).slice(0, 8).map((d) => ({
+          id: String(d.id ?? ''),
+          number: String(d.number ?? d.orderNo ?? d.quoteNo ?? d.id ?? '').slice(0, 24),
+          label,
+          meta: [
+            (d.customer as { name?: string } | null | undefined)?.name ?? '',
+            d.createdAt ? new Date(String(d.createdAt)).toLocaleDateString('tr-TR') : '',
+          ].filter(Boolean).join(' · '),
+        })).filter((d) => d.id)
+      return {
+        invoice: map(inv.items, 'Fatura'),
+        order: map(ord.items, 'Sipariş'),
+        quote: map(quo.items, 'Teklif'),
+      }
+    },
+    enabled: attachOpen,
+  })
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -417,12 +448,26 @@ function ConversationPanel({
     deleteMut.mutate(id)
   }
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll: sohbet açılınca anında, yeni mesajda yumuşak biçimde en alta in
+  const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : ''
+  const convKey = otherUser?.id ?? ''
+  const prevConvKeyRef = useRef('')
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    const el = scrollRef.current
+    if (!el) return
+    const convChanged = prevConvKeyRef.current !== convKey
+    prevConvKeyRef.current = convKey
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: convChanged ? 'auto' : 'smooth' })
+      })
+    })
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
     }
-  }, [messages.length])
+  }, [lastMessageId, messages.length, convKey])
 
   // Mark received messages as read on view
   const unreadReceived = messages.filter(
@@ -461,8 +506,6 @@ function ConversationPanel({
     groups[groups.length - 1].messages.push(m)
   }
 
-  const online = isOnline(otherUser.id)
-
   return (
     <>
       {/* Header */}
@@ -487,16 +530,13 @@ function ConversationPanel({
               {initials(otherUser.name)}
             </AvatarFallback>
           </Avatar>
-          {online && (
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-background" />
-          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold truncate">{otherUser.name}</div>
           <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
             {otherUser.title && <span className="truncate">{otherUser.title}</span>}
             {otherUser.title && <span>·</span>}
-            <span>{online ? 'Çevrimiçi' : 'Çevrimdışı'}</span>
+            <span>Son mesajları görüntüleniyor</span>
           </div>
         </div>
       </div>
@@ -602,29 +642,15 @@ function ConversationPanel({
       {/* Input */}
       <div className="p-3 border-t bg-background">
         <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="shrink-0 h-9 w-9" title="Belge gönder">
-                <Paperclip className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuLabel>Belge Gönder</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => otherUser && handleSendAttachment('Fatura', 'son', otherUser.name)}>
-                🧾 Fatura
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => otherUser && handleSendAttachment('Sipariş', 'son', otherUser.name)}>
-                📦 Sipariş
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => otherUser && handleSendAttachment('Proforma', 'son', otherUser.name)}>
-                📄 Proforma
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => otherUser && handleSendAttachment('Çeki Listesi', 'son', otherUser.name)}>
-                📋 Çeki Listesi
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0 h-9 w-9"
+            title="Belge gönder"
+            onClick={() => setAttachOpen(true)}
+          >
+            <Paperclip className="w-4 h-4" />
+          </Button>
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -646,6 +672,64 @@ function ConversationPanel({
           Enter ile gönder · Shift+Enter ile yeni satır
         </div>
       </div>
+
+      {/* Gerçek belge seçme diyaloğu */}
+      <Dialog open={attachOpen} onOpenChange={setAttachOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Paperclip className="w-4 h-4 text-emerald-600" />
+              Belge Gönder — {otherUser.name}
+            </DialogTitle>
+            <DialogDescription>
+              Sistemdeki gerçek kayıtlardan bir belge seçip mesaj olarak paylaşın.
+            </DialogDescription>
+          </DialogHeader>
+          <Tabs value={attachTabKey} onValueChange={(v) => setAttachTabKey(v as AttachTabKey)}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="invoice" className="gap-1.5 text-xs"><FileText className="w-3.5 h-3.5" />Fatura</TabsTrigger>
+              <TabsTrigger value="order" className="gap-1.5 text-xs"><Package className="w-3.5 h-3.5" />Sipariş</TabsTrigger>
+              <TabsTrigger value="quote" className="gap-1.5 text-xs"><FileCheck2 className="w-3.5 h-3.5" />Teklif</TabsTrigger>
+            </TabsList>
+            {(['invoice', 'order', 'quote'] as AttachTabKey[]).map((key) => {
+              const docs = attachQuery.data?.[key] ?? []
+              const label = key === 'invoice' ? 'Fatura' : key === 'order' ? 'Sipariş' : 'Teklif'
+              return (
+                <TabsContent key={key} value={key} className="max-h-72 overflow-y-auto custom-scroll mt-3 space-y-2">
+                  {attachQuery.isLoading ? (
+                    <div className="flex items-center justify-center py-8 text-xs text-muted-foreground gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Belgeler yükleniyor…
+                    </div>
+                  ) : docs.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-muted-foreground">
+                      Henüz {label.toLowerCase()} kaydı yok.
+                    </div>
+                  ) : (
+                    docs.map((doc) => (
+                      <button
+                        key={doc.id}
+                        onClick={() => {
+                          handleSendAttachment(label, doc.id, doc.number)
+                          setAttachOpen(false)
+                        }}
+                        className="w-full text-left p-3 rounded-lg border hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 dark:hover:border-emerald-800 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium truncate">{doc.number}</span>
+                          <Badge variant="outline" className="shrink-0">{label}</Badge>
+                        </div>
+                        {doc.meta && (
+                          <div className="text-xs text-muted-foreground mt-0.5">{doc.meta}</div>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </TabsContent>
+              )
+            })}
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

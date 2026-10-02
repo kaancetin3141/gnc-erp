@@ -59,6 +59,31 @@ export async function apiDelete<T>(path: string): Promise<T> {
   return data as T
 }
 
+// Dosya indirme (gerçek PDF üretimi vb.) — oturum header'ıyla
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const headers = getHeaders()
+  // Blob indirmede Content-Type JSON başlığı gereksiz; yalnızca oturum header'ı kalsın
+  const { 'Content-Type': _omit, ...authHeaders } = headers as Record<string, string>
+  const res = await fetch(path, { headers: authHeaders })
+  if (!res.ok) {
+    let msg = 'Dosya indirilemedi'
+    try {
+      const data = await res.json()
+      msg = data.error || msg
+    } catch { /* pdf döndü ama hata değil */ }
+    throw new ApiError(msg, res.status)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
+}
+
 // React Query keys
 export const qk = {
   customers: (params?: Record<string, string>) => ['customers', params] as const,

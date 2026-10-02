@@ -29,7 +29,7 @@ import { hasPermission } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 import type { SessionUser } from '@/types'
 import type { Invoice } from '@/components/erp/parts/types'
-import { toTry, overdueDays } from '@/components/erp/parts/invoice-utils'
+import { toTry, overdueDays, useFxRates } from '@/components/erp/parts/invoice-utils'
 import {
   AGING_BUCKETS, bucketOf, type AgingBucket,
 } from '@/components/erp/parts/invoice-aging'
@@ -57,6 +57,8 @@ interface CustomerAgingRow {
 }
 
 export function AgingReportCard() {
+  // Canlı döviz kuru — toTry hesapları bu veriyle güncellenir
+  useFxRates()
   const user = useAppStore((s) => s.user)
   const openCustomer = useAppStore((s) => s.openCustomer)
 
@@ -399,7 +401,7 @@ export function AgingReportCard() {
 
             <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
               <Info className="w-3 h-3 shrink-0" />
-              Tutarlar sabit kur ile TRY bazına çevrilmiştir (USD 42 · EUR 45 · GBP 52). Müşteri adına tıklayınca Müşteri 360 açılır.
+              Tutarlar canlı kur servisi ile TRY bazına çevrilir (USD · EUR · GBP — saatte bir güncellenir). Müşteri adına tıklayınca Müşteri 360 açılır.
             </div>
           </>
         )}

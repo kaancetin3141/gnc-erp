@@ -52,15 +52,17 @@ export async function GET(req: NextRequest) {
     if (onlyUnread) { where.isRead = false; where.receiverId = user!.id }
   }
 
-  const messages = await db.message.findMany({
+  // EN YENİ `limit` mesajı getir (asc+take en eskileri veriyordu) → client'a eskiden yeniye döndür
+  const rows = await db.message.findMany({
     where,
     include: {
       sender: { select: { id: true, name: true, avatarUrl: true, title: true, role: true } },
       receiver: { select: { id: true, name: true, avatarUrl: true, title: true, role: true } },
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     take: limit,
   })
+  const messages = rows.reverse()
   return ok({ items: messages, total: messages.length })
 }
 

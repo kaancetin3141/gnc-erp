@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { getFxToTry } from '@/lib/fx-server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok } from '@/lib/api-utils'
 
@@ -112,8 +113,8 @@ export async function GET(req: NextRequest) {
     const b = bucketOf(irs.date)
     if (b) b.shipped += 1
   }
-  // Ciro: TRY bazına sabit kurlarla (demo)
-  const FX_TO_TRY: Record<string, number> = { TRY: 1, USD: 42, EUR: 45, GBP: 52 }
+  // Ciro: TRY bazına CANLI kurlarla (1 saat cache'li servis)
+  const { rates: FX_TO_TRY } = await getFxToTry()
   for (const inv of invoices) {
     const b = bucketOf(inv.issueDate)
     if (b) b.revenue += inv.total * (FX_TO_TRY[inv.currency] ?? 1)

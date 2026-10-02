@@ -580,32 +580,24 @@ function KvkkTab() {
   )
 }
 
-// ─── Mock denetim kayıtları ───────────────────────────────────────
-interface MockAuditEntry {
+// ─── Gerçek denetim kayıtları (/api/audit) ────────────────────────
+interface AuditLogEntry {
   id: string
-  actor: string
+  actorId: string | null
+  actor?: { id: string; name: string; email: string } | null
   action: string
   entity: string
   entityId: string
-  timestamp: string
+  createdAt: string
 }
-
-const MOCK_AUDIT: MockAuditEntry[] = [
-  { id: '1', actor: 'Demo Admin', action: 'create', entity: 'customer', entityId: 'cust_001', timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString() },
-  { id: '2', actor: 'Demo Admin', action: 'update', entity: 'deal', entityId: 'deal_004', timestamp: new Date(Date.now() - 1000 * 60 * 28).toISOString() },
-  { id: '3', actor: 'Ahmet Y.', action: 'update', entity: 'task', entityId: 'task_012', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString() },
-  { id: '4', actor: 'Demo Admin', action: 'create', entity: 'user', entityId: 'usr_007', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString() },
-  { id: '5', actor: 'Mehmet K.', action: 'delete', entity: 'note', entityId: 'note_099', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString() },
-  { id: '6', actor: 'Ahmet Y.', action: 'update', entity: 'lead', entityId: 'lead_023', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString() },
-  { id: '7', actor: 'Demo Admin', action: 'import', entity: 'lead', entityId: 'maps_002', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString() },
-  { id: '8', actor: 'Mehmet K.', action: 'update', entity: 'customer', entityId: 'cust_014', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString() },
-]
 
 const ACTION_COLORS: Record<string, string> = {
   create: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300',
   update: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300',
   delete: 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300',
   import: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300',
+  login: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300',
+  pdf_download: 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300',
 }
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -615,23 +607,47 @@ const ENTITY_LABELS: Record<string, string> = {
   user: 'Kullanıcı',
   note: 'Not',
   lead: 'Lead',
+  invoice: 'Fatura',
+  message: 'Mesaj',
+  product: 'Ürün',
+  order: 'Sipariş',
+  quote: 'Teklif',
+  proforma: 'Proforma',
+  expense: 'Gider',
+  appointment: 'Randevu',
+  credit_customer: 'Veresiye Müşterisi',
+  sale: 'Satış',
+  setting: 'Ayar',
+  template: 'Şablon',
+  site: 'Site',
 }
 
 function AuditTab() {
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('all')
 
+  // GERÇEK VERİ — tenant denetim günlüğü (audit.view yetkisi gerekir)
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['audit-logs'],
+    queryFn: () => apiGet<{ items: AuditLogEntry[]; nextCursor: string | null }>('/api/audit?limit=200'),
+    refetchInterval: 30_000,
+    retry: false,
+  })
+
   const filtered = useMemo(() => {
-    let list = MOCK_AUDIT
+    let list = data?.items ?? []
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(
-        (e) => e.actor.toLowerCase().includes(q) || e.entityId.toLowerCase().includes(q),
+        (e) =>
+          (e.actor?.name ?? '').toLowerCase().includes(q) ||
+          (e.actor?.email ?? '').toLowerCase().includes(q) ||
+          e.entityId.toLowerCase().includes(q),
       )
     }
     if (actionFilter !== 'all') list = list.filter((e) => e.action === actionFilter)
     return list
-  }, [search, actionFilter])
+  }, [data, search, actionFilter])
 
   return (
     <Card>
@@ -643,7 +659,7 @@ function AuditTab() {
               Denetim Kayıtları
             </CardTitle>
             <CardDescription className="mt-0.5">
-              Sistemde yapılan tüm değişikliklerin kaydı (audit log).
+              Sistemde yapılan tüm değişikliklerin gerçek zamanlı kaydı (audit log).
             </CardDescription>
           </div>
         </div>
@@ -666,6 +682,8 @@ function AuditTab() {
               <SelectItem value="update">Güncelle</SelectItem>
               <SelectItem value="delete">Sil</SelectItem>
               <SelectItem value="import">İçe Aktar</SelectItem>
+              <SelectItem value="login">Giriş</SelectItem>
+              <SelectItem value="pdf_download">PDF İndirme</SelectItem>
             </SelectContent>
           </Select>
           <Badge variant="outline" className="ml-auto text-[11px]">
@@ -673,7 +691,7 @@ function AuditTab() {
           </Badge>
         </div>
 
-        <div className="rounded-lg border">
+        <div className="rounded-lg border max-h-[60vh] overflow-y-auto custom-scroll">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40">
@@ -685,11 +703,24 @@ function AuditTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {isError ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-12">
+                    <ShieldAlert className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    Denetim kayıtlarını görme yetkiniz yok (audit.view gerekli).
+                  </TableCell>
+                </TableRow>
+              ) : isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-12">
+                    Kayıtlar yükleniyor…
+                  </TableCell>
+                </TableRow>
+              ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-12">
                     <ScrollText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    Denetim kaydı yakında.
+                    Henüz denetim kaydı yok — sistemdeki değişiklikler burada listelenecek.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -698,9 +729,9 @@ function AuditTab() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-500 to-slate-600 flex items-center justify-center text-white text-[10px] font-semibold">
-                          {e.actor.split(' ').map((s) => s[0]).join('').slice(0, 2)}
+                          {(e.actor?.name ?? 'S').split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()}
                         </div>
-                        <span className="text-sm font-medium">{e.actor}</span>
+                        <span className="text-sm font-medium">{e.actor?.name ?? 'Sistem'}</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -715,7 +746,7 @@ function AuditTab() {
                       <code className="text-[11px] text-muted-foreground">{e.entityId}</code>
                     </TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">
-                      {formatDateTime(e.timestamp)}
+                      {formatDateTime(e.createdAt)}
                     </TableCell>
                   </TableRow>
                 ))
@@ -727,7 +758,7 @@ function AuditTab() {
         <div className="flex items-start gap-2 p-2.5 rounded-md bg-muted/40">
           <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
           <p className="text-[11px] text-muted-foreground">
-            Denetim kayıtları mock verilerdir. Backend entegrasyonu hazırlandığında gerçek kayıtlar gösterilecektir.
+            Son 200 kayıt gösterilir · 30 saniyede bir otomatik yenilenir.
           </p>
         </div>
       </CardContent>

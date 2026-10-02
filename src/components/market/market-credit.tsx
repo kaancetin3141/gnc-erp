@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-client'
+import { apiGet, apiPost, apiPatch, apiDelete, downloadFile } from '@/lib/api-client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,6 +34,7 @@ import { formatCurrency, formatDateTime, whatsappLink } from '@/lib/format'
 import {
   NotebookPen, Plus, Search, HandCoins, Receipt, Trash2, Phone,
   MessageCircle, AlertTriangle, ArrowDownCircle, ArrowUpCircle, UserRound, Wallet,
+  FileDown, Loader2,
 } from 'lucide-react'
 
 // ============================================================
@@ -485,6 +486,21 @@ function CustomerDetailSheet({ marketId, customerId, onClose, onEdit }: {
     }
   }
 
+  // GERÇEK PDF — cari ekstresini sunucuda pdf-lib ile üretip indir
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const downloadEkstre = async () => {
+    setPdfBusy(true)
+    try {
+      const name = ((detail as { name?: string } | undefined)?.name ?? 'musteri').replace(/[^\w.-]+/g, '-')
+      await downloadFile(`/api/market/${marketId}/credit/${customerId}/pdf`, `Veresiye-Ekstre-${name}.pdf`)
+      toast.success('Cari ekstresi PDF indirildi', { description: 'Tüm borç/ödeme hareketleri + bakiye' })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'PDF indirilemedi')
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   const detailCustomer = detail as (CustomerDetail & { name?: string; phone?: string | null; note?: string | null; creditLimit?: number | null; isActive?: boolean; balance?: number }) | undefined
 
   const reminderText = detailCustomer
@@ -516,6 +532,9 @@ function CustomerDetailSheet({ marketId, customerId, onClose, onEdit }: {
                   </a>
                 </>
               )}
+              <button className="inline-flex items-center gap-1 underline hover:text-foreground disabled:opacity-50" onClick={() => void downloadEkstre()} disabled={pdfBusy || isLoading}>
+                {pdfBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} Ekstre PDF
+              </button>
               <button className="underline hover:text-foreground" onClick={() => onEdit({ id: customerId, name: detailCustomer.name ?? '', phone: detailCustomer.phone ?? null, note: detailCustomer.note ?? null, creditLimit: detailCustomer.creditLimit ?? null })}>düzenle</button>
               <button className={cn('underline hover:text-foreground', detailCustomer.isActive && 'text-red-600')} onClick={() => void toggleActive()}>
                 {detailCustomer.isActive ? 'pasifleştir' : 'aktifleştir'}

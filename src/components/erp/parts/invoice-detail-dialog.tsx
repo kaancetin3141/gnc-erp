@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { apiGet, apiPatch, apiDelete, apiPost } from '@/lib/api-client'
+import { apiGet, apiPatch, apiDelete, apiPost, downloadFile } from '@/lib/api-client'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -29,7 +29,7 @@ import {
   Receipt, Pencil, Trash2, RefreshCw, User, Calendar,
   Clock, CheckCircle2, AlertTriangle, TrendingUp, FileText,
   Printer, Plus, CircleCheckBig, Undo2, MessageCircle, CalendarClock,
-  HandCoins, Loader2,
+  HandCoins, Loader2, Download,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { sendWhatsAppTracked } from '@/lib/whatsapp-hub'
@@ -62,6 +62,7 @@ export function InvoiceDetailDialog({
   const [changing, setChanging] = useState(false)
   const [pdfOpen, setPdfOpen] = useState(false)
   const [quickBusy, setQuickBusy] = useState<string | null>(null)
+  const [pdfBusy, setPdfBusy] = useState(false)
 
   // Detay sorgu
   const { data: detail, isLoading } = useQuery({
@@ -154,6 +155,18 @@ export function InvoiceDetailDialog({
     }
   }
 
+  const handleDownloadPdf = async () => {
+    setPdfBusy(true)
+    try {
+      await downloadFile(`/api/invoices/${invoice.id}/pdf`, `Fatura-${invoice.number}.pdf`)
+      toast.success('Fatura PDF indirildi', { description: `${invoice.number} · Gerçek PDF dosyası` })
+    } catch (e) {
+      toast.error('PDF indirilemedi', { description: e instanceof Error ? e.message : 'Bilinmeyen hata' })
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
   // Ödeme hatırlatma (WhatsApp) — detaydaki müşteri telefonuyla wa.me linki + aktivite kaydı
   const handleRemind = async () => {
     setQuickBusy('remind')
@@ -187,7 +200,8 @@ export function InvoiceDetailDialog({
       })
       toast.success(result.popupOpened
         ? `${invoice.number} için hatırlatma mesajı hazırlandı`
-        : `${invoice.number} hatırlatması kuyruğa alındı — Mesaj Merkezi'nden gönderebilirsiniz`)
+        : `${invoice.number} hatırlatması kuyruğa alındı — Mesaj Merkezi'nden gönderebilirsiniz`,
+      { description: 'Fatura PDF dosyasını da eklemek için PDF İndir düğmesini kullanabilirsiniz' })
 
       // Müşteri 360 zaman tüneliğine kaydet
       const customerId = d.customer?.id ?? invoice.customerId
@@ -242,6 +256,17 @@ export function InvoiceDetailDialog({
                 </DialogDescription>
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={pdfBusy}>
+                      {pdfBusy
+                        ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        : <Download className="w-3.5 h-3.5 mr-1" />}
+                      PDF İndir
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Gerçek PDF dosyası olarak indir (pdf-lib)</TooltipContent>
+                </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="outline" size="sm" onClick={() => setPdfOpen(true)}>
@@ -655,6 +680,19 @@ export function InvoicePdfDialog({ invoice, detail, onClose }: {
     enabled: !!shouldFetch,
   })
   const d = fetched ?? detail ?? invoice
+  // GERÇEK PDF indirme — sunucuda pdf-lib ile üretilir
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const handleDownloadPdf = async () => {
+    setPdfBusy(true)
+    try {
+      await downloadFile(`/api/invoices/${d.id}/pdf`, `Fatura-${d.number}.pdf`)
+      toast.success('Fatura PDF indirildi', { description: `${d.number} · Gerçek PDF dosyası` })
+    } catch (e) {
+      toast.error('PDF indirilemedi', { description: e instanceof Error ? e.message : 'Bilinmeyen hata' })
+    } finally {
+      setPdfBusy(false)
+    }
+  }
   const lines = (d as Invoice & { lines?: { id: string; description: string; qty: number; unitPrice: number; taxRate: number; lineTotal: number; weightPerUnit?: number | null; weightUnit?: string | null; totalWeight?: number | null; product?: { name: string; sku: string | null } | null }[] }).lines ?? []
   // Ağırlık kontrolü (F4)
   const hasWeight = lines.some((l) => l.totalWeight != null && l.totalWeight > 0)
@@ -668,9 +706,17 @@ export function InvoicePdfDialog({ invoice, detail, onClose }: {
         <DialogHeader className="print:hidden">
           <div className="flex items-center justify-between">
             <DialogTitle>Fatura PDF Önizleme</DialogTitle>
-            <Button variant="outline" size="sm" onClick={() => window.print()}>
-              <Printer className="w-4 h-4 mr-1.5" /> Yazdır / PDF
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={pdfBusy}>
+                {pdfBusy
+                  ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  : <Download className="w-4 h-4 mr-1.5" />}
+                PDF İndir
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => window.print()}>
+                <Printer className="w-4 h-4 mr-1.5" /> Yazdır
+              </Button>
+            </div>
           </div>
         </DialogHeader>
         <div className="overflow-y-auto max-h-[60vh] print:overflow-visible print:max-h-none">

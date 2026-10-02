@@ -58,7 +58,7 @@ import {
   formatDate, formatDateTime, daysSince, initials, getActivityStatusColor,
 } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { toTry, overdueDays } from '@/components/erp/parts/invoice-utils'
+import { toTry, overdueDays, useFxRates } from '@/components/erp/parts/invoice-utils'
 import { TemplatePickerDialog } from '@/components/settings/template-picker-dialog'
 import { WhatsAppQuickComposer } from '@/components/whatsapp/quick-composer-dialog'
 import { AiActivitySummaryCard } from '@/components/ai/ai-insights-cards'
@@ -1479,6 +1479,8 @@ function MapTab({ customer }: { customer: Customer360Data }) {
 //   ANA BİLEŞEN — Customer360
 // =========================================================
 export function Customer360() {
+  // Canlı döviz kuru — toTry hesapları bu veriyle güncellenir
+  useFxRates()
   const { user, setView, selectedCustomerId } = useAppStore()
   const [tab, setTab] = useState('timeline')
   const [activityOpen, setActivityOpen] = useState(false)
