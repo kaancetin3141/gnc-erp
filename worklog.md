@@ -8158,3 +8158,22 @@ Stage Summary:
 - Kullanici akisi: git pull + cp (arac tazeleme) + doktor --tamir → TAMIR BASARILI ise site acilir; degilse log yapistirilacak
 - Surec adi fruitstorm, port 3001, klasor /var/www/oyunlar/fruitstorm; skor db'si tamir/redeploy'de korunur (.env + db dosyalari silinmiyor)
 - App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
+
+---
+Task ID: 42.10
+Agent: Z.ai Code (Ana tur - fruitstorm CANLIDA dogrulama + "güvenli değil" teshisi + gnc-oyun v1.3)
+Task: Kullanici "güvenli değil gözüküyor" dedi (onceki tur: "doktor kayıtlı değil" hatasi alinmisti)
+
+Work Log:
+- BUYUK GELISME: https://fruitstorm.gncinc.online -> HTTP 200 (oyun CANLIDA!). Uctan uca dogrulama:
+  (1) <title> = "Fruit Storm! — Sweet Match 3" (dogru oyun), (2) POST /api/ping -> {"ok":true},
+  (3) POST /api/guest -> {"ok":true,"token":"tk_..."} = VERITABANI YAZMA CALISIYOR (DATABASE_URL surece ulasti, SQLite yazilabilir, session olustu) — skor/kalderlik sistemi saglam
+- "güvenli değil" teshisi (sunucu tarafi %100 temiz): fruitstorm cert bugun 10:06 alinmis (Let's Encrypt, 31 Aralık'a kadar), curl -k'siz dogruluyor (zincir OK); ana site cert 07:51 (SAN: www+crm+meyvepatlat); ana sitede http:// karisik icerik YOK; www.fruitstorm DNS'te hic cozulmuyor (*.gncinc.online wildcard tek seviye) = tarayici oraya ulasamiyor, uyarı sebebi olamaz → SONUC: tarayici onbellek/eski durum (cert'ten onceki ziyaret) veya cihaz tarafi (eski tarayici/antivirüs TLS taramasi)
+- gnc-oyun v1.3 (commit 65d8b62 push + ls-remote dogrulandi): .env root:600 olusturuluyordu → ubuntu pm2 sureci OKUYAMAZDI → sonraki deploy'larda DATABASE_URL kaybi (sessiz skor bozuklugu). Fix: .env RUN_USER'a chown ediliyor (3 yerde: deploy olusturma sonrasi, app_start basi, app_restart_fresh basi). bash -n OK
+- Not: kullanicinin "doktor kayıtlı değil" hatasi = /usr/local/bin/gnc-oyun hala eski (v1.1); site yine de ayaga kalktigi icin kullanici araya bir redeploy/tamir kospmus olmali (kesin yolu bilinmiyor; sonuc OK)
+
+Stage Summary:
+- FRUIT STORM YAYINDA VE TAM CALISIYOR: 200 + dogru baslik + API + veritabani yazma (guest test oyuncusu "TestDoktor" olusturuldu, 0 yildiz -> liderlik tablosunda gorunmez, temizlik gerekmez)
+- "güvenli değil" = tarayici onbellek; cozum: tam adres https://fruitstorm.gncinc.online (www'suz) + Ctrl+Shift+R (mobil: gizli sekme). Gizli sekmede bile "not secure" ise cihaz tarafi (eski OS tarayici LE root'a guvenmiyor olabilir veya antivirüs HTTPS taramasi)
+- ONCELIKLI TEHLIKE KAPANDI: v1.3 ile gelecek depolarda .env sahipligi otomatik duzeliyor. Kullanici bir ara: cd /var/www/gnc-erp && git pull && sudo cp deploy/oyun-deploy.sh /usr/local/bin/gnc-oyun (arac tazelesin ki "doktor" komutu da calissin)
+- Sonraki tur: canli izleme (fruitstorm 200 kalmali); kalan uygulama isleri (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
