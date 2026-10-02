@@ -394,22 +394,24 @@
     </article>
 
     <article class="p-card glass reveal">
-      <div class="urlbar"><span class="dots"><i></i><i></i><i></i></span><span class="url-text">https:// meyvepatlat.gncinc.online</span></div>
+      <div class="urlbar"><span class="dots"><i></i><i></i><i></i></span><span class="url-text">https:// fruitstorm.gncinc.online</span></div>
       <div class="p-head">
-        <span class="p-emoji">🍉</span>
+        <span class="p-emoji">🍓</span>
         <div class="p-meta">
-          <div class="p-title">Meyve Patlat</div>
-          <span class="p-badge soon">Yakında</span>
+          <div class="p-title">Fruit Storm</div>
+          <span class="p-badge live">Canlıda</span>
         </div>
       </div>
-      <p class="p-desc">Tarayıcıda oynanan eğlenceli ve hızlı tempolu meyve oyunu. Refleks + rekor kovalamaca; telefondan da oynanabilir.</p>
+      <p class="p-desc">Sweet Match 3 — meyveleri eşleştir, zincirle, yıldızları topla! 8 dilde, çevrimiçi skorlu bulmaca oyunu; telefondan da oynanabilir.</p>
       <ul class="p-feats">
         <li>Dokunmatik &amp; fare desteği</li>
-        <li>Rekor tablosu</li>
+        <li>Çevrimiçi rekor tablosu &amp; klan sistemi</li>
         <li>Kurulum gerektirmez, anında oyna</li>
       </ul>
-      <div class="p-tech"><span>HTML5</span><span>Canvas</span><span>JavaScript</span></div>
-      <div class="p-foot"><span class="p-cta wait">🚧 Yayına Hazırlanıyor</span></div>
+      <div class="p-tech"><span>Next.js 16</span><span>Canvas</span><span>Prisma</span></div>
+      <div class="p-foot"><a class="p-cta open" href="https://fruitstorm.gncinc.online" target="_blank" rel="noreferrer">▶ OYUNA BAŞLA
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.53.85l10.2-6.5a1 1 0 0 0 0-1.7L9.53 4.65A1 1 0 0 0 8 5.5z"/></svg>
+      </a></div>
     </article>
 
     <article class="p-card glass reveal">
@@ -482,7 +484,7 @@
     </div>
     <div class="f-links">
       <a href="https://crm.gncinc.online" target="_blank" rel="noreferrer">CRM</a>
-      <a href="https://meyvepatlat.gncinc.online" target="_blank" rel="noreferrer">Meyve Patlat</a>
+      <a href="https://fruitstorm.gncinc.online" target="_blank" rel="noreferrer">Fruit Storm</a>
       <a href="https://github.com/kaancetin3141" target="_blank" rel="noreferrer">GitHub</a>
     </div>
   </div>
@@ -558,7 +560,10 @@ if ('IntersectionObserver' in window) {
   }
   function ctaHtml(p){
     if(p.status === 'live' && p.url){
-      return '<a class="p-cta open" href="' + esc(p.url) + '" target="_blank" rel="noreferrer">Projeyi Aç' +
+      /* Oyun kartlarında buton metni farklı olsun (subdomain/başlıktan algıla) */
+      var isGame = /oyun|storm|patlat/i.test((p.subdomain || '') + ' ' + (p.title || ''));
+      return '<a class="p-cta open" href="' + esc(p.url) + '" target="_blank" rel="noreferrer">' +
+        (isGame ? '▶ OYUNA BAŞLA' : 'Projeyi Aç') +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7m0 0H8m9 0v9"/></svg></a>';
     }
     if(p.status === 'soon'){ return '<span class="p-cta wait">🚧 Yayına Hazırlanıyor</span>'; }
