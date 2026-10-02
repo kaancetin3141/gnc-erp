@@ -7954,3 +7954,24 @@ Stage Summary:
 - Ana site artik glassmorphism + fütüristik; tek dosya statik oldugu icin sunucuda guncelleme sadece guncelle-gnc.sh (veya yeniden kurulum) ile otomatik yansir
 - Kullanici sunucusuna v2 kurulum komutunu henuz koymadiysa ayni komutlar gecerli; script ana-site klasorunu otomatik kopyaliyor
 - App-side bekleyen isler degismedi (Kuafor raporu, Veresiye PDF, kazandi->fatura zinciri)
+
+---
+Task ID: 41
+Agent: Z.ai Code (Ana tur - mavimsi tema + dark/light mod + panel bagli portfolyo yonetimi)
+Task: Kullanici "ana sitenin rengini değiştir ve dark modu felan ekle renk olarak saydam ve mavimsi tonu kullan ve yeni programlar eklemek isteyince ben nasıl ekleyeceğim bunların panel programınamı koyacağım"
+
+Work Log:
+- ana-site/index.html v3 olarak yeniden yazildi (commit 41a7940, push OK): renk paleti emerald'dan MAVİMSI/SEFFAF'a cevrildi (sky #38bdf8 / cyan #22d3ee / blue #60a5fa, koyu lacivert bg #04101f; aurora blob'lar, grid, cam kartlar hepsi mavi tona boyandi)
+- DARK/LIGHT MOD eklendi: <head>'de inline script boyamadan ONCE tema uygular (flash yok); html[data-theme] degisken sistemi; nav'da gun/ay ikonlu cam toggle; localStorage 'gnc-theme' kalici; ilk ziyarette prefers-color-scheme dinler + sistem degisimini canli izler; meta theme-color toggle ile guncellenir; .theming sinifiyla 350ms gecis animasyonu
+- DINAMIK PROJE LISTESI: sayfa yuklenince /api/portfolio (ayni origin) -> https://crm.gncinc.online/api/portfolio (4.5s timeout) sirasiyla denenir; veri gelirse kartlar JS ile yeniden render edilir + yesil senkron noktasi "Canlı liste · CRM panelinden güncellenir (N proje)"; gelmezse HTML'e gomlu 3 varsayilan kart kalir + gri nokta mesaji — offline/yerel dosyada site her zaman calisir
+- Prisma: PortfolioProject modeli (title, description, url, subdomain, status[live|soon|planned], emoji, tech JSON, features JSON, sortOrder, published) + db push + 3 varsayilan proje seed edildi
+- API: GET /api/portfolio (public, CORS Access-Control-Allow-Origin:* + OPTIONS preflight) ve /api/portfolio-admin (GET/POST) + /api/portfolio-admin/[id] (PATCH/DELETE) — session header ile korunur, admin/superadmin rolü zorunlu; tech/features girisi hem array hem "virgullu metin" kabul eder
+- Admin panel: admin-panel.tsx'e "Portfolyo" tab'i eklendi + yeni src/components/admin/portfolio-manager.tsx (proje kartlari, Yayinda switch'i, ekle/duzenle diyalogu, silme onayi, sira no, subdomain gosterimi, bos durum)
+- agent-browser DOGRULAMA: (a) ana-site dark hero + light hero (sistem tercihi otomatik), toggle click -> dark + localStorage dogrulandi; (b) projeler bolumu yesil senkron noktasiyla 3 cam kart; (c) mobil 390px hero + projeler; (d) CRM admin panel Portfolyo tab: 3 kart listelendi; (e) "Yeni Proje" diyalogu ile Test Projesi EKLENDI -> ana-site 4 projeye gecti; (f) Test Projesi SILINDI -> ana-site 3'e dondu (uçtan uca panel->api->site akisi kanitlandi); (g) footer yil JS'i 2026 calisiyor
+- Bir hata bulundu ve duzeltildi: portfolio-admin route'ta safeJsonParse importu eksikti (500) — import eklendi
+- Lint temiz, dev.log temiz; commit 41a7940 push edildi ve ls-remote ile dogrulandi
+
+Stage Summary:
+- KULLANICININ SORUSUNUN CEVABI: Evet, yeni projeleri CRM panelinden ekleyecek — Admin Paneli > Portfolyo > "Yeni Proje" (baslik, aciklama, site adresi, alt alan adi, durum, emoji, teknolojiler, ozellikler, sira, yayinda switch'i). Kaydettigi anda gncinc.online ana sitesine OTOMATIK dusер (API uzerinden, dosya duzenlemeye gerek yok)
+- Kullanici sunucuda guncelle-gnc.sh (veya yeniden kurulum) kostugunda ana site v3 + portfolyo API'si yayina girer; wildcard DNS zaten * ile acik oldugu icin yeni proje subdomain'i sadece nginx'e eklenecek tek nokta (ileride otomatiklestirilebilir)
+- App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
