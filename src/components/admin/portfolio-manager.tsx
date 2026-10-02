@@ -559,6 +559,13 @@ function ServerSetupDialog({
             gnc-proje komutu sunucuda kurulu değilse önce <b>guncelle-gnc.sh</b> çalıştırın (kurulum.sh v2.1+ bunu otomatik kurar).
           </span>
         </div>
+
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Terminal className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            Yayından kaldırmak için sunucuda: <span className="font-mono">sudo gnc-proje {sub} kaldir</span>
+          </span>
+        </div>
       </DialogContent>
     </Dialog>
   )

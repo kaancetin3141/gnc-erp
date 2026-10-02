@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  GNC PROJE — Tek Komutla Yeni Alt Alan Adı (v1.0)
+#  GNC PROJE — Tek Komutla Yeni Alt Alan Adı (v1.1 — kurma + KALDIRMA)
 #
 #  Ne yapar:
 #   1. <sub>.<domain> için nginx server block oluşturur
@@ -10,9 +10,10 @@
 #   3. SSL sertifikası (certbot, otomatik — istemezsen --no-ssl)
 #
 #  Kullanım:
-#   sudo gnc-proje oyun2 3002        # proxy: oyun2.gncinc.online -> port 3002
-#   sudo gnc-proje tanitim           # statik: /var/www/tanitim.gncinc.online
+#   sudo gnc-proje oyun2 3002            # proxy: oyun2.gncinc.online -> port 3002
+#   sudo gnc-proje tanitim               # statik: /var/www/tanitim.gncinc.online
 #   sudo gnc-proje oyun2 3002 --no-ssl   # SSL kurmadan
+#   sudo gnc-proje oyun2 kaldir          # oyun2.gncinc.online'ı YAYINDAN KALDIR
 #
 #  Gereksinimler: DNS'de * (yıldız) A kaydı bu sunucuyu göstermeli
 #  (AWS kullanıyorsanız Security Group'ta 80 + 443 açık olmalı)
@@ -31,13 +32,21 @@ SUB="$1"; PORT="$2"
 NO_SSL=0
 [[ " $* " == *" --no-ssl "* ]] && NO_SSL=1
 
+# ---- kaldırma modu:  sudo gnc-proje <sub> kaldir  (| sil | remove | kapat) ----
+REMOVE=0
+for a in "$@"; do
+  case "$a" in
+    kaldir|sil|remove|kapat) REMOVE=1 ;;
+  esac
+done
+
 # Port sayı değilse (örn. --no-ssl yanlışlıkla 2. argümansa) port yok say
 if [ -n "$PORT" ] && ! echo "$PORT" | grep -qE '^[0-9]+$'; then PORT=""; fi
 if [ -n "$PORT" ] && { [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; }; then
   die "Geçersiz port: $PORT (1-65535 arası olmalı)"
 fi
 
-[ -z "$SUB" ] && die "Kullanım: sudo gnc-proje <subdomain> [port]\n  Örnek: sudo gnc-proje oyun2 3002"
+[ -z "$SUB" ] && die "Kullanım: sudo gnc-proje <subdomain> [port]  |  sudo gnc-proje <subdomain> kaldir\n  Örnek: sudo gnc-proje oyun2 3002   |   sudo gnc-proje oyun2 kaldir"
 echo "$SUB" | grep -qE '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' || die "Alt alan adı sadece küçük harf, rakam ve tire içerebilir: $SUB"
 
 # ---- Domain'i mevcut nginx conf'tan otomatik tespit et ----
@@ -51,6 +60,39 @@ FQDN="$SUB.$DOMAIN"
 echo -e "${BLUE}════════════════════════════════════════════════${NC}"
 echo -e "${BLUE} GNC PROJE — $FQDN kuruluyor${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+
+# ---- KALDIRMA MODU ----
+if [ "$REMOVE" -eq 1 ]; then
+  step "$FQDN yayından kaldırılıyor..."
+  REMOVED=0
+  if [ -f "/etc/nginx/sites-enabled/gnc-proje-$SUB" ] || [ -f "/etc/nginx/sites-available/gnc-proje-$SUB" ]; then
+    rm -f "/etc/nginx/sites-enabled/gnc-proje-$SUB" "/etc/nginx/sites-available/gnc-proje-$SUB"
+    REMOVED=1
+  fi
+  if [ "$REMOVED" -eq 1 ]; then
+    if nginx -t 2>/dev/null; then
+      systemctl reload nginx
+      info "$FQDN yayından kaldırıldı ✓ (nginx yeniden yüklendi)"
+    else
+      die "nginx testi hatalı — /etc/nginx/sites-* altını elle kontrol edin"
+    fi
+  else
+    if grep -qs "server_name[[:space:]]*.*$FQDN" /etc/nginx/sites-available/gnc 2>/dev/null; then
+      warn "$FQDN ana 'gnc' conf'unda (kurulum.sh ile kurulmuş) — bu komut onu kaldırmaz."
+      info "Elle kaldırma: sudo nano /etc/nginx/sites-available/gnc  -> ilgili server { } bloğunu silin"
+    else
+      warn "$FQDN için nginx kaydı zaten yok — yapılacak bir şey yok."
+    fi
+  fi
+  echo ""
+  info "Ek temizlik (hepsi isteğe bağlı):"
+  info "  pm2'de uygulama çalışıyorsa : pm2 delete $SUB"
+  info "  Statik dosyalar (varsa)     : sudo rm -rf /var/www/$FQDN"
+  info "  SSL sertifikası             : sudo certbot delete --cert-name $FQDN"
+  info "  AWS Security Group'ta gereksiz port açtıysan (örn. 3002): SİL — sadece 22+80+443 kalsın"
+  echo ""
+  exit 0
+fi
 
 # ---- 1) nginx conf ----
 step "1/3 nginx ayarı yazılıyor..."

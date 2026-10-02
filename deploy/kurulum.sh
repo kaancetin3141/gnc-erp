@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  GNC — TEK KOMUT KURULUM (v2.1 — Ana Site + Subdomain + gnc-proje otomasyonu)
+#  GNC — TEK KOMUT KURULUM (v2.2 — + izin self-heal + guncelle-gnc v3 + kaldir komutu)
 #  Ne yapar: sistem güncelleme + swap + Node 20 + pm2 + nginx +
 #  GitHub'dan kod + build + 7/24 çalıştırma + demo verisi +
 #  ANA SİTE (gncinc.online portfolyo) + ALT ALAN ADLARI:
@@ -75,6 +75,15 @@ info "node $(node -v) | pm2 $(pm2 -v)"
 
 # ---- 4) Kodu GitHub'dan al ----
 step "4/10 Kod GitHub'dan alınıyor..."
+# Sahiplik düzeltmesi — root'a ait .git ubuntu'nun güncellemesini bloklamasın
+# (hatıra: "cannot open '.git/FETCH_HEAD': Permission denied")
+if [ -d "$APP_DIR" ] && { [ ! -w "$APP_DIR" ] || [ ! -w "$APP_DIR/.git" ]; }; then
+  info "Klasör sahipliği düzeltiliyor: sudo chown -R $(whoami) $APP_DIR"
+  $SUDO chown -R "$(whoami)" "$APP_DIR" || true
+fi
+if [ -d "$ANA_DIR" ] && [ ! -w "$ANA_DIR" ]; then
+  $SUDO chown -R "$(whoami)" "$ANA_DIR" || true
+fi
 if [ -d "$APP_DIR/.git" ]; then
   cd "$APP_DIR"
   # Eski/yanlış remote adresini otomatik düzelt (örn. eski Neuse0 adresi)
@@ -202,11 +211,16 @@ $SUDO ufw allow OpenSSH >/dev/null 2>&1 || true
 $SUDO ufw allow 'Nginx Full' >/dev/null 2>&1 || true
 $SUDO ufw --force enable >/dev/null 2>&1 || true
 
-# ---- güncelleme scriptini kur ----
-$SUDO tee /usr/local/bin/guncelle-gnc.sh >/dev/null << 'GUNCELLEEOF'
+# ---- güncelleme scriptini kur (v3 — repodaki taze kopya öncelikli) ----
+if [ -f "$APP_DIR/deploy/guncelle-gnc.sh" ]; then
+  $SUDO cp "$APP_DIR/deploy/guncelle-gnc.sh" /usr/local/bin/guncelle-gnc.sh
+  info "Güncelleme komutu kuruldu (v3, izin self-heal'li): guncelle-gnc.sh"
+else
+  $SUDO tee /usr/local/bin/guncelle-gnc.sh >/dev/null << 'GUNCELLEEOF'
 #!/bin/bash
 set -e
 cd /var/www/gnc-erp
+[ -w .git ] || sudo chown -R "$(whoami)" /var/www/gnc-erp /var/www/gncinc-ana
 echo "1/6) git pull...";        git pull
 echo "2/6) npm install...";    npm install
 echo "3/6) prisma db push..."; npx prisma db push
@@ -216,8 +230,9 @@ echo "6/6) ana site güncelle..."
 if [ -d ana-site ]; then cp -r ana-site/. /var/www/gncinc-ana/ 2>/dev/null || sudo cp -r ana-site/. /var/www/gncinc-ana/; fi
 echo "GUNCELLEME TAMAM! — ana site + CRM guncel"
 GUNCELLEEOF
+  info "Güncelleme komutu kuruldu (temel sürüm): guncelle-gnc.sh"
+fi
 $SUDO chmod +x /usr/local/bin/guncelle-gnc.sh
-info "Güncelleme komutu kuruldu: guncelle-gnc.sh"
 
 # ---- gnc-proje: tek komutla yeni alt alan adı ----
 if [ -f "$APP_DIR/deploy/yeni-proje.sh" ]; then
@@ -263,6 +278,7 @@ echo -e "  ${Y}KALAN 3 KÜÇÜK ADIM:${N}"
 echo -e "  0) AWS kullanıyorsanız: EC2 > Security Group > Inbound'da ŞU İKİSİ AÇIK OLSUN:"
 echo -e "        ${B}TCP 80 (HTTP)${N} ve ${B}TCP 443 (HTTPS)${N}  ->  Source: 0.0.0.0/0"
 echo -e "     (Bu ikisi açıksa TÜM alt alan adları da çalışır — ayrıca ayar gerekmez)"
+echo -e "     ${Y}Uygulama portları (3000/3001/3002...) SG'ye ASLA eklenmez — nginx sunucu içinden bağlanır${N}"
 echo -e "  1) Hostinger DNS paneline ŞU 3 KAYDI ekleyin (önemli: * yıldız):"
 echo -e "        ${B}A     · @            · $PUBLIC_IP${N}"
 echo -e "        ${B}CNAME · www          · $DOMAIN${N}"
@@ -279,5 +295,6 @@ echo -e ""
 echo -e "  Faydalı komutlar:"
 echo -e "   Güncelleme : ${B}guncelle-gnc.sh${N}   (kod + ana site birlikte güncellenir)"
 echo -e "   Yeni proje : ${B}sudo gnc-proje <altalanadi> <port>${N}   (nginx + SSL otomatik)"
+echo -e "   Kaldırma   : ${B}sudo gnc-proje <altalanadi> kaldir${N}   (yayından çekme)"
 echo -e "   Durum      : ${B}pm2 status${N}   Loglar: ${B}pm2 logs gnc-crm${N}"
 echo -e "${G}============================================================${N}"

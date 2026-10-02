@@ -403,30 +403,17 @@ pm2 restart gnc-crm
 > asla onlara dokunmaz. Müşteriler, randevular, satışlar — hepsi yerinde kalır.
 > Nginx/SSL kurulumu tekrar gerekmez.
 
-**Tek komutluk güncelleme (kurun, ömür boyu rahat edin):**
+**Tek komutluk güncelleme — v3 (izinleri kendisi düzeltir + ana siteyi de günceller):**
 
 ```bash
-cat > /usr/local/bin/guncelle-gnc.sh << 'EOF'
-#!/bin/bash
-set -e
-cd /var/www/gnc-erp
-echo "1/5) Yeni kod çekiliyor..."
-git pull
-echo "2/5) Bağımlılıklar kontrol ediliyor..."
-npm install
-echo "3/5) Veritabanı şeması güncelleniyor..."
-npx prisma db push
-echo "4/5) Derleme yapılıyor (2-5 dk)..."
-npm run build
-echo "5/5) Uygulama yeniden başlatılıyor..."
-pm2 restart gnc-crm
-pm2 status
-echo "✅ Güncelleme tamam!"
-EOF
-chmod +x /usr/local/bin/guncelle-gnc.sh
+sudo cp /var/www/gnc-erp/deploy/guncelle-gnc.sh /usr/local/bin/guncelle-gnc.sh
+sudo chmod +x /usr/local/bin/guncelle-gnc.sh
 ```
 
-Artık güncelleme = SSH'de tek satır: `guncelle-gnc.sh`
+Artık güncelleme = SSH'de tek satır: `guncelle-gnc.sh` — v3 ayrıca:
+- `/var/www/gnc-erp` root sahipliğindeyse KENDİSİ düzeltir (Permission denied hatası tarihe karışır)
+- ana siteyi (`gncinc.online` portfolyo) da birlikte günceller
+- sonda sağlık kontrolü yapar (uygulama ayakta mı, nginx 80/443 dinliyor mu)
 
 > Rollback gerekirsa: `git checkout <eski-sürüm-etiketi>` ve aynı adımlar; veritabanı dosyası
 > yedeklerinizde güvende.
@@ -1185,6 +1172,53 @@ yeniden yükler ve SSL'i certbot ile otomatik kurar.
 
 > **En sık sebep:** Ana site açılıyor ama `crm.` açılmıyorsa → sırasıyla 2 (DNS yıldız)
 > ve 3 (SSL). `https://` linkler sertifika olmadan KESİNLİKLE açılmaz.
+
+### 14.2 Güncelleme hatası: "cannot open '.git/FETCH_HEAD': Permission denied"
+
+Sebep: `/var/www/gnc-erp` root sahipliğinde ama scripti `ubuntu` çalıştırıyor. Bir kerelik çözüm:
+
+```bash
+sudo chown -R ubuntu:ubuntu /var/www/gnc-erp /var/www/gncinc-ana
+bash guncelle-gnc.sh
+```
+
+**Kalıcı çözüm:** `guncelle-gnc.sh` v3 ve `kurulum.sh` v2.2+ bu durumu otomatik düzeltir —
+hata bir daha çıkmaz.
+
+### 15. Alt alan adı KAPATMA / KALDIRMA
+
+Örnek: `sudo gnc-proje oyun2 3002` ile açtığınız bir projeyi yayından çekmek:
+
+```bash
+sudo gnc-proje oyun2 kaldir
+```
+
+Bu komut: nginx server block'unu (`sites-available` + `enabled`) siler, `nginx -t` yapıp
+yeniden yükler. Asla dokunmaz (isteğe bağlı elle temizlik):
+
+```bash
+pm2 delete oyun2                                # port'ta çalışan uygulama varsa
+sudo rm -rf /var/www/oyun2.gncinc.online        # statik site dosyaları varsa
+sudo certbot delete --cert-name oyun2.gncinc.online   # SSL sertifikası varsa
+```
+
+> `crm` ve `meyvepatlat` ana `gnc` conf'unda (kurulum.sh ile) olduğundan bu komut
+> ONLARI kaldırmaz; komut size elle düzenleme yolunu söyler.
+
+### 15.1 ÖNEMLİ: Uygulama portlarını AWS Security Group'a EKLEMEYİN
+
+Security Group inbound'da SADECE şunlar olmalı:
+
+| Port | Ne için |
+|------|---------|
+| TCP 22 | SSH (sizin bağlantınız) |
+| TCP 80 | HTTP → HTTPS yönlendirme |
+| TCP 443 | HTTPS (tüm siteler + alt alan adları) |
+
+3000/3001/3002... gibi **uygulama portları ASLA eklenmez** — nginx bunlara sunucu
+**içinden** (`127.0.0.1:PORT`) bağlanır, dışarıya açılmaları gerekmez (güvenlik riskidir).
+Fazladan eklediğiniz kuralı silmek için: AWS > EC2 > Security Group > Inbound rules >
+kuralı seç > **Delete inbound rules**.
 
 ---
 
