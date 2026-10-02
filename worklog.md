@@ -7932,3 +7932,25 @@ Stage Summary:
 - Kullanicinin sunucuda yapmasi gereken TEK sey: yeni tokenli komutla scripti yeniden kosmak (sudo rm -rf /var/www/gnc-erp onerilir) + Hostinger DNS'e 3 kayit (@, www, *) + certbot 4 domainli
 - Repodaki script artik remote'u kendisi duzeltir; guncelleme sonrasi ana site da otomatik guncellenir
 - App-side bekleyen isler degismedi (Task 28-30 sonrasi oneriler ayni)
+
+---
+Task ID: 40
+Agent: Z.ai Code (Ana tur - ana site glassmorphism + futuristic redesign)
+Task: Kullanici "anasiteyi glassmorpisihm kullanarak yap ve daha füturistik dursun"
+
+Work Log:
+- ana-site/index.html tamamen yeniden tasarlandi (v2 glassmorphism, commit bd33f75, push OK)
+- Futuristic arka plan: 3 animasyonlu aurora blob (emerald/teal/amber, blur 110px, float keyframes) + perspektif grid overlay (radial mask ile ustte gorunur, asagida kaybolur)
+- Glassmorphism sistem: tum kartlar/bilesenler rgba beyaz + backdrop-filter blur(18-22px) saturate(160%) + inset ust isik cizgisi; ust kenarlarda gradient isik cizgileri (::before)
+- Floating pill nav: sticky top:16px, cam hap formu, logo halkasi ringPulse animasyonlu
+- Hero: SYS.ONLINE monospace badge (pulse nokta), animasyonlu gradient baslik (gradmove 9s), 3 adet surekli yuzen cam rozet (Temiz Kod/Yuksek Performans/7-24 Calisir) — ilk denemede basliga biniyordu, .hero-in disina (hero'ya) tasindi + <=1120px gizleme
+- Proje kartlari: glass + hover'da kayan diyagonal yansima (shine sweep), browser-mockup URL bar cam versiyon, monospace chip'ler, cam status rozetleri
+- Iletisim paneli: mask-composite ile animasyonlu gradient kenar (emerald->amber donen)
+- Space Grotesk font eklendi (Google Fonts + system fallback); prefers-reduced-motion desteği; custom scrollbar; section scroll-margin-top (sticky nav offset)
+- agent-browser dogrulama: hero (rozetler kenarda, cakisma yok), projeler (glass kartlar + yansimalar), iletisim (gradient kenar), mobil 390px (nav sade, stat'lar 2+1 dizilim) — hepsi OK, yil JS'i calisiyor (2026)
+- Lint/dev.log temiz; commit bd33f75 push edildi, ls-remote dogrulandi
+
+Stage Summary:
+- Ana site artik glassmorphism + fütüristik; tek dosya statik oldugu icin sunucuda guncelleme sadece guncelle-gnc.sh (veya yeniden kurulum) ile otomatik yansir
+- Kullanici sunucusuna v2 kurulum komutunu henuz koymadiysa ayni komutlar gecerli; script ana-site klasorunu otomatik kopyaliyor
+- App-side bekleyen isler degismedi (Kuafor raporu, Veresiye PDF, kazandi->fatura zinciri)
