@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  GNC OYUN — Ayrı GitHub repo'sundan oyun/proje deploy (v1.2 — env fix + doktor)
+#  GNC OYUN — Ayrı GitHub repo'sundan oyun/proje deploy (v1.3 — env fix + doktor + .env sahipliği)
 #
 #  gnc-erp'ye ve DİĞER TÜM uygulamalara DOKUNMAZ:
 #   - kod /var/www/oyunlar/<isim> altına klonlanır (kendi klasörü)
@@ -18,6 +18,10 @@
 #     değişkenleri silebiliyordu -> süreç ortamsız başlıyor, Prisma çöküyordu.
 #   - "doktor" modu: pm2 durumu, süreç ortamı, dosyalar, port dinleyicisi, hata logları, RAM/disk
 #   - sağlık kontrolü başarısızsa hata logları OTOMATİK yazdırılır; final bandı dürüst
+#
+#  v1.3 değişiklikleri:
+#   - .env root:600 oluşturuluyordu -> ubuntu pm2 süreci okuyamıyordu (DATABASE_URL kaybı).
+#     Artık .env her yolda RUN_USER'a devrediliyor (deploy + doktor --tamir + her app_start).
 #
 #  Örnek:
 #   sudo gnc-oyun "https://KULLANICI:TOKEN@github.com/kullanici/oyun.git" 3001 meyvepatlat
@@ -60,6 +64,7 @@ pm2x(){ if [ "$RUN_USER" = "root" ]; then pm2 "$@"; else sudo -u ubuntu env PATH
 #  artık env hedef kullanıcının kabuğunda kaynaklanır -> pm2 client -> daemon -> süreç)
 app_start(){ # $1=pm2 hedefi, kalan argümanlar aynen pm2'ye (ör: --name X --time [-- start])
   TARGET="$1"; shift
+  if [ "$RUN_USER" != "root" ] && [ -f "$APP_DIR/.env" ]; then chown "$RUN_USER" "$APP_DIR/.env" 2>/dev/null || true; fi
   if [ "$RUN_USER" = "root" ]; then
     ( cd "$APP_DIR" || exit 1
       if [ -f .env ]; then set -a; . ./.env; set +a; fi
@@ -69,6 +74,7 @@ app_start(){ # $1=pm2 hedefi, kalan argümanlar aynen pm2'ye (ör: --name X --ti
   fi
 }
 app_restart_fresh(){ # doktor --tamir: build almadan, taze env ile yeniden başlat
+  if [ "$RUN_USER" != "root" ] && [ -f "$APP_DIR/.env" ]; then chown "$RUN_USER" "$APP_DIR/.env" 2>/dev/null || true; fi
   if [ "$RUN_USER" = "root" ]; then
     ( cd "$APP_DIR" || exit 1
       if [ -f .env ]; then set -a; . ./.env; set +a; fi
@@ -251,6 +257,7 @@ if [ -f package.json ] && grep -qE '"start"[[:space:]]*:' package.json; then
       chmod 600 .env
       info ".env oluşturuldu (SQLite: db/custom.db)"
     fi
+    if [ "$RUN_USER" != "root" ]; then chown "$RUN_USER" .env 2>/dev/null || true; fi
     npx prisma generate
     npx prisma db push --skip-generate --accept-data-loss && info "veritabanı tabloları hazır ✓" || warn "db push başarısız — sonra elle: cd $APP_DIR && npx prisma db push --accept-data-loss"
     [ "$RUN_USER" != "root" ] && chown -R "$RUN_USER" "$DB_DIR" 2>/dev/null || true
