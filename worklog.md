@@ -8136,3 +8136,25 @@ Stage Summary:
 - Deploy sonrasi dogrulama: curl -I https://fruitstorm.gncinc.online → 200 bekleniyor; pm2 ls ile "fruitstorm" sureci gorunmeli
 - Sonraki turlarda canli izleme: fruitstorm 502→200 gecisini kontrol et (kullanici komutu calistirdiginda); OYUNA BAŞLA butonunun uctan uca calistigini dogrula
 - App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
+
+---
+Task ID: 42.9
+Agent: Z.ai Code (Ana tur - gnc-oyun v1.2: env fix + doktor modu; fruitstorm "errored" teshisi)
+Task: Kullanici VPS'de "sudo: gnc-oyun: command not found" aldi; ardindan deploy sonrasi pm2'de fruitstorm "errored" (15 restart, 0b mem) + https 502 ekran goruntusuyle bildirildi
+
+Work Log:
+- "command not found" sebebi netlesti: VPS'deki guncelle-gnc.sh ESKI surumden kosmustu (v3'un 6/7 arac-kurulum adimi VPS kopyasinda yok); ana siteyi guncellemis ama gnc-oyun'u kurmamisti. Cozum komutlari verildi: cd /var/www/gnc-erp + chown + git pull + sudo cp deploy/oyun-deploy.sh /usr/local/bin/gnc-oyun + deploy
+- Kullanici deploy'u kosti: script TAMAM bandi basti (klon+install+build+pm2 start hepsi set -e altinda gecti = build/klon saglam) ama pm2 status "errored" 15 restart; 4/4 kontrol "https 502" verdi
+- KRITIK SCRIPT BUGI BULUNDU (v1.1, oyun-deploy.sh eski satir 138+141): `.env` root kabugunda kaynaklaniyor ama pm2x `sudo -u ubuntu env PATH=...` ile cagriliyor → sudo env_reset DATABASE_URL'i SILIYOR (sadece komut-satiri atamalari PATH/NODE_ENV/PORT geciyor) → süreç ortamsiz basliyor. db.ts PrismaClient'i module-scope'ta kuruyor; ortamsiz baslangicta Prisma cokme riski tam bu
+- gnc-oyun v1.2 (commit 892b57f push + ls-remote dogrulandi):
+  (1) app_start()/app_restart_fresh() yardimcilari: pm2 start artik hedef kullanici kabugunda `bash -c "cd APP; if [ -f .env ]; then set -a; . ./.env; set +a; fi; NODE_ENV=... PORT=... pm2 start ..."` seklinde kosuyor = env GARANTILI gecis (root durumunda subshell)
+  (2) YENI "doktor" modu: `sudo gnc-oyun doktor <isim> [--tamir]` → 6 adim: pm2 durum (jlist+python3 ayristirma), surec ortaminda DATABASE_URL kontrolu (pm2 env), dosyalar (package.json/node_modules/.env/server.js/db), port dinleyici (ss -tlnp; errored+listener=yetim uyari), yerel curl, son 25 hata logu (pm2 logs --err --nostream), node/RAM/swap/disk/nginx block; --tamir: yetim portu fuser -k temizler + server.js varsa taze env ile delete+start + 30sn saglik poll + pm2 save (build ALMAZ, db korunur)
+  (3) saglik kontrolu basarisizsa hata loglari OTOMATIK yazdiriliyor; final bandi artik durust: uygulama ayaktaysa "TAMAM ... AYAKTA", degilse SARI "DİKKAT: ... AYAKTA DEGIL" + doktor/tamir komutlari
+- Testler: bash -n OK; root-guard OK (sudo'suz cagri dogru die()); python3 jlist ayristirma OK (errored dondu) + coruk input "bilinmiyor" fallback OK; bash -c quote uretimi kuru calisma OK. YAYINLAMA-REHBERI.md'ye 16.2 eklendi (doktor kullanimi + v1.2 notu)
+- Kullaniciya verilen hizli yol: cd /var/www/gnc-erp && git pull && sudo cp deploy/oyun-deploy.sh /usr/local/bin/gnc-oyun && sudo gnc-oyun doktor fruitstorm --tamir (saniyeler surer, rebuild yok); hala cokerse doktor ciktisi/loglar istenecek
+
+Stage Summary:
+- v1.1'in gercek bugi: DATABASE_URL sudo env_reset'te kayboluyordu → pm2 sureci ortamsiz (v1.2 ile kalici duzeltildi). "errored"in birebir sebebini VPS loglari kesinlestirecek (doktor log basiyor); diger adaylar: yetim port EADDRINUSE (doktor --tamir temizler), node surumu (doktor basar)
+- Kullanici akisi: git pull + cp (arac tazeleme) + doktor --tamir → TAMIR BASARILI ise site acilir; degilse log yapistirilacak
+- Surec adi fruitstorm, port 3001, klasor /var/www/oyunlar/fruitstorm; skor db'si tamir/redeploy'de korunur (.env + db dosyalari silinmiyor)
+- App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
