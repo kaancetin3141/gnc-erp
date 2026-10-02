@@ -8016,3 +8016,24 @@ Stage Summary:
 - "Projeyi Aç" ana sebep high-confidence: AWS SG TCP 443 kapali (443 tum domainlerde olcuyle yanitsiz, 80 acik). Kullanici SG'ye 443 ekleyince cozulmeli; sertifika yoksa certbot komutu rehber 14.1'de
 - Sunucuya siradaki deploy: chown -> bash guncelle-gnc.sh (v3 kodu ceker) -> SG 443 -> (gerekirse) certbot
 - App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
+
+---
+Task ID: 42.3
+Agent: Z.ai Code (Ana tur - gnc-oyun izole repo deploy sistemi + canli durum dogrulamasi)
+Task: Kullanici: "oyun2.gncinc.online acinca ana site aciliyor" + "meyve patlat oyununu github'da yayinliyorum, onu da VDS'e yuklemem lazim; sadece ona bagli repoyu alalim, diger repolar degismedikce ona dokunmus olmayalim" (izole repo deploy istegi)
+
+Work Log:
+- CANLI DURUM DOGRULANDI (buyuk gelisme): https://gncinc.online -> 200, https://crm.gncinc.online -> 200 — kullanici AWS SG'ye 443 ekledi VE sertifikalar aktif = "Projeyi Aç" tarayicida artik acilmali. meyvepatlat https -> 502 = nginx block + SSL + 443 HAZIR, sadece port 3001'de uygulama yok (gnc-oyun tam boslugu dolduruyor). oyun2 http -> duz nginx 404 (bos/iceriksiz block) — kullaniciya "hata degil" aciklamasi rehbere yazildi
+- deploy/oyun-deploy.sh (gnc-oyun komutu, v1.0) YAZILDI (bash -n OK, sudo guard test edildi): izole deploy — kod /var/www/oyunlar/<isim>'e klonlanir, KENDI pm2 sureci olarak calisir, gnc-erp/CRM/ana site/nginx'e DOKUNMAZ (kullanicinin birebir istegi). Komutlar: "sudo gnc-oyun <repo> [port] [isim]" ilk kurulum, "sudo gnc-oyun <isim>" guncelleme (kayitli ayar .gnc-oyun.conf), "sudo gnc-oyun liste". OTOMATIK TIP TESPITI: package.json+"start" -> Node (pm2, PORT env; .next/standalone destekli), package.json+"build" -> build + dist|build|out'u pm2 serve --spa, index.html -> statik pm2 serve. pm2 kullanicisi akilli secim (ubuntu'nun daemon'i varsa sudo -u ubuntu ile oraya yazar, yoksa root) — pm2 daemon bolunmesi tuzagina cozum. 3/4 saglik: 127.0.0.1:PORT 60sn poll. 4/4 web kontrolu (nginx'e dokunmaz): block var mi + https kod yorumu (200 canli/502 uygulama yok/000 SG-SSL). Kendini /usr/local/bin'e tazeleme
+- deploy/guncelle-gnc.sh v3 GUNCELLENDI: 6/7 adimi "ana site + ARAÇLAR" oldu — her guncellemede deploy/yeni-proje.sh->gnc-proje ve deploy/oyun-deploy.sh->gnc-oyun /usr/local/bin'e taze kopyalanir (kurulum yeniden kosmaya gerek kalmaz)
+- deploy/kurulum.sh v2.3: gnc-oyun kurulumu eklendi + final ozet satiri "Oyun deploy: sudo gnc-oyun <repo> [port] [isim] (ayrı GitHub repo, izole)"
+- YAYINLAMA-REHBERI.md Bolum 16: gnc-oyun kullanimi + izolasyon garantisi + tip tespiti tablosu + https kod yorumlari; 16.1: "neden bilinmeyen subdomain ana siteyi/404 gosteriyor" aciklamasi (wildcard DNS + default server block + SSL yok)
+- Panel ServerSetupDialog: "Ayrı GitHub repo'sunu bu adrese deploy: sudo gnc-oyun <repo-adresi> <port> <sub>" satiri eklendi
+- Lint temiz; commit ac001bd push edildi, ls-remote dogrulandi
+
+Stage Summary:
+- KULLANICININ ISTEKCEVABI: Meyve Patlat artik TEK KOMUTLA deploy edilebilir — sunucuda "bash guncelle-gnc.sh" (v3, araclari tazeler) sonrasi: "sudo gnc-oyun https://github.com/kaancetin3141/<oyun-repo>.git 3001 meyvepatlat" (private ise token'li adres). Sonrasindaki guncellemeler: "sudo gnc-oyun meyvepatlat". Izolasyon: /var/www/oyunlar/<isim> + kendi pm2 sureci; CRM/ana site/repolar etkilenmez
+- "oyun2 ana siteyi gosteriyor" aciklandi: wildcard DNS her subdomain'i sunucuya getirir; block yoksa nginx default (ana site), bos block varsa 404 — hata degil, arkada proje yok. Oyun2 icin SSL de yok (https hata verir)
+- meyvepatlat 502 bekleniyor: gnc-oyun ile 3001'e uygulama konunca https://meyvepatlat.gncinc.online canlanacak (nginx+SSL hazir)
+- Oyun repo adresi kullaniciya sorulmali/verilmeli — komut hazir bekliyor
+- App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
