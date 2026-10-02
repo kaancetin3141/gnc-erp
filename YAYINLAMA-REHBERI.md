@@ -1247,6 +1247,7 @@ konfigürasyonu HİÇ değişmez. Oyun güncellenirken CRM etkilenmez, tersi de 
 | Repo içeriği | Ne olur |
 |---|---|
 | `package.json` + `"start"` script | Node uygulaması olarak pm2'de (PORT=<port>) |
+| + `prisma/schema.prisma` | `.env` (SQLite) + `prisma generate` + `db push` OTOMATİK yapılır |
 | `package.json` + `"build"` script | build alır, `dist`/`build`/`out` klasörünü servis eder |
 | `index.html` | statik oyun olarak servis edilir |
 

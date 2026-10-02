@@ -1,11 +1,11 @@
 #!/bin/bash
 # ============================================================
-#  GNC OYUN — Ayrı GitHub repo'sundan oyun/proje deploy (v1.0)
+#  GNC OYUN — Ayrı GitHub repo'sundan oyun/proje deploy (v1.1 — + Prisma otomatik kurulum)
 #
 #  gnc-erp'ye ve DİĞER TÜM uygulamalara DOKUNMAZ:
 #   - kod /var/www/oyunlar/<isim> altına klonlanır (kendi klasörü)
 #   - kendi pm2 süreci (<isim>) olarak çalışır
-#   - güncelleme YİNE kendi reponuzdan gelir (git pull)
+#   - güncelleme YİNE kendi reponuzdan gelir (fetch + reset = repo kopyası)
 #
 #  Kullanım:
 #   sudo gnc-oyun <repo-adresi> [port] [isim]    # ilk kurulum
@@ -13,11 +13,11 @@
 #   sudo gnc-oyun liste                          # kurulmuşları listele
 #
 #  Örnek:
-#   sudo gnc-oyun https://github.com/kaancetin3141/meyve-patlat.git 3001 meyvepatlat
-#   (private repoda token'li adres: https://KULLANICI:TOKEN@github.com/.../repo.git)
+#   sudo gnc-oyun "https://KULLANICI:TOKEN@github.com/kullanici/oyun.git" 3001 meyvepatlat
 #
 #  Otomatik tip tespiti:
 #   package.json + "start"  -> Node uygulaması (pm2, PORT=<port>)
+#   + prisma/schema.prisma  -> .env (SQLite) + prisma generate + db push OTOMATİK
 #   package.json + "build"  -> build alır, dist|build|out klasörünü servis eder
 #   index.html              -> statik oyun (pm2 serve)
 # ============================================================
@@ -43,8 +43,10 @@ fi
 
 # ---- pm2 hangi kullanıcıda? (ubuntu'nun daemon'ı varsa onu kullan) ----
 pm2x(){ pm2 "$@"; }
+RUN_USER="root"
 if id -u ubuntu >/dev/null 2>&1 && sudo -u ubuntu pm2 jlist 2>/dev/null | grep -q '"name"'; then
   pm2x(){ sudo -u ubuntu env PATH="$PATH" pm2 "$@"; }
+  RUN_USER="ubuntu"
 fi
 
 # ---- domain tespiti (ana gnc conf'tan) ----
@@ -93,11 +95,14 @@ echo -e "${BLUE} GNC OYUN — $NAME (port $PORT)${NC}"
 echo -e "${BLUE} repo: ${REPO:-kayıtlı}$NC"
 echo -e "${BLUE}════════════════════════════════════════════════${NC}"
 
-# ---- 1) kod: klon veya pull ----
+# ---- 1) kod: klon veya repo-kopyası güncelleme ----
 step "1/4 Kod alınıyor..."
 if [ -d "$APP_DIR/.git" ]; then
   cd "$APP_DIR"
-  git pull --ff-only 2>/dev/null || git pull || warn "pull başarısız — mevcut kodla devam"
+  info "repoya sıfırlanıyor (deploy kopyası = remote ile birebir)..."
+  git fetch --depth 1 origin 2>/dev/null || git fetch origin || true
+  UPD_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+  git reset --hard "origin/$UPD_BRANCH" 2>/dev/null || git pull --ff-only 2>/dev/null || git pull || warn "güncelleme alınamadı — mevcut kodla devam"
 else
   mkdir -p "$BASE_DIR"
   git clone --depth 1 "$REPO" "$APP_DIR" || die "Klonlanamadı: $REPO\n  Private repoda token'li adres kullanın: https://KULLANICI:TOKEN@github.com/kullanici/repo.git"
@@ -105,15 +110,34 @@ else
 fi
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
 printf 'REPO="%s"\nPORT="%s"\nNAME="%s"\nBRANCH="%s"\n' "$REPO" "$PORT" "$NAME" "$BRANCH" > "$APP_DIR/$STATE"
+chmod 600 "$APP_DIR/$STATE" 2>/dev/null || true
 
 # ---- 2) tip tespiti + kurulum ----
 step "2/4 Uygulama tipi tespit ediliyor..."
 pm2x delete "$NAME" >/dev/null 2>&1 || true
 if [ -f package.json ] && grep -qE '"start"[[:space:]]*:' package.json; then
   info "Tip: Node uygulaması (npm start, PORT=$PORT)"
-  npm install
-  if grep -qE '"build"[[:space:]]*:' package.json; then info "build alınıyor..."; npm run build; fi
+  npm install --no-audit --no-fund
+  if [ -f prisma/schema.prisma ]; then
+    info "Prisma tespit edildi — veritabanı hazırlanıyor..."
+    DB_DIR="$APP_DIR/db"; mkdir -p "$DB_DIR"
+    if [ ! -f .env ]; then
+      printf 'DATABASE_URL=file:%s/custom.db\nNODE_ENV=production\n' "$DB_DIR" > .env
+      chmod 600 .env
+      info ".env oluşturuldu (SQLite: db/custom.db)"
+    fi
+    npx prisma generate
+    npx prisma db push --skip-generate --accept-data-loss && info "veritabanı tabloları hazır ✓" || warn "db push başarısız — sonra elle: cd $APP_DIR && npx prisma db push --accept-data-loss"
+    [ "$RUN_USER" != "root" ] && chown -R "$RUN_USER" "$DB_DIR" 2>/dev/null || true
+  fi
+  if grep -qE '"build"[[:space:]]*:' package.json; then
+    info "build alınıyor (2-5 dk)..."
+    NODE_OPTIONS=--max-old-space-size=1536 npm run build
+  fi
+  [ "$RUN_USER" != "root" ] && chown -R "$RUN_USER" "$APP_DIR/.next" 2>/dev/null || true
+  if [ -f .env ]; then set -a; . ./.env; set +a; fi
   if [ -f ".next/standalone/server.js" ]; then
+    info "standalone sunucu başlatılıyor (pm2, PORT=$PORT)"
     NODE_ENV=production PORT=$PORT pm2x start .next/standalone/server.js --name "$NAME" --time
   else
     NODE_ENV=production PORT=$PORT pm2x start npm --name "$NAME" -- start
