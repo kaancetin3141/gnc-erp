@@ -7975,3 +7975,22 @@ Stage Summary:
 - KULLANICININ SORUSUNUN CEVABI: Evet, yeni projeleri CRM panelinden ekleyecek — Admin Paneli > Portfolyo > "Yeni Proje" (baslik, aciklama, site adresi, alt alan adi, durum, emoji, teknolojiler, ozellikler, sira, yayinda switch'i). Kaydettigi anda gncinc.online ana sitesine OTOMATIK dusер (API uzerinden, dosya duzenlemeye gerek yok)
 - Kullanici sunucuda guncelle-gnc.sh (veya yeniden kurulum) kostugunda ana site v3 + portfolyo API'si yayina girer; wildcard DNS zaten * ile acik oldugu icin yeni proje subdomain'i sadece nginx'e eklenecek tek nokta (ileride otomatiklestirilebilir)
 - App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
+
+---
+Task ID: 42
+Agent: Z.ai Code (Ana tur - gnc-proje otomasyonu + "Projeyi Aç" teşhisi)
+Task: Kullanici "otomatikleştir bunu da" (nginx subdomain otomasyonu) + "projeyi aç tuşuna bastığımda proje açılmıyor, aws'den ayar mı yapmam lazım alt adlar için"
+
+Work Log:
+- deploy/yeni-proje.sh YAZILDI (gnc-proje komutu, bash -n OK, sahte PATH ile uçtan uca simüle edildi): "sudo gnc-proje <subdomain> [port]" → (1) nginx server block yazar (port varsa 127.0.0.1:PORT'a websocket destekli proxy; yoksa /var/www/<sub>.<domain> statik + mavi placeholder index.html), (2) nginx -t + reload (hata olursa conf'u geri alır), (3) certbot SSL'i otomatik kurar (--no-ssl ile atlanır). Domain mevcut /etc/nginx/sites-available/gnc conf'tan OTOMATİK tespit edilir. Girdi doğrulama: subdomain regex, port 1-65535, kullanım mesajı. BUG bulundu ve düzeltildi: "gnc-proje tanitim --no-ssl" çağrısında --no-ssl port sanılıyordu → sayı olmayan 2. argüman temizleniyor
+- kurulum.sh v2.1: gnc-proje /usr/local/bin'e kurulur + final özette "KALAN 3 KÜÇÜK ADIM" oldu: 0) AWS Security Group TCP 80+443 (tüm subdomain'lere yeter), 1) DNS @ + www + * yıldız, 2) certbot; + "İLERİDE YENİ PROJE: sudo gnc-proje <ad> <port>" bölümü
+- Prisma: PortfolioProject'e port Int? eklendi + db push; mevcut verilere port yazıldı (crm=3000, meyvepatlat=3001); POST/PATCH API'lere port validasyonlu eklendi
+- Panel (portfolio-manager.tsx): her projeye Sunucu düğmesi (subdomain'i olanlarda) → ServerSetupDialog: siyah terminal bloğunda "$ sudo gnc-proje crm 3000" + Kopyala düğmesi, "komut şunları yapar" listesi, AMBER teşhis kutusu (DNS yıldız/nslookup → AWS SG 80+443 → certbot SSL → curl 127.0.0.1:port), gnc-proje kurulum notu; forma "Sunucu Portu" alanı eklendi (site adresi tam genişlik oldu)
+- YAYINLAMA-REHBERI.md: Bölüm 14 eklendi (gnc-proje kullanımı + 6 satırlık "Projeyi Aç açılmıyor" teşhis tablosu: AWS SG, DNS yıldız, SSL, nginx block, uygulama, Elastic IP)
+- agent-browser doğrulama: Portfolyo tab → 2 Sunucu düğmesi (crm+meyvepatlat, "Sıradaki Proje"de yok — doğru) → diyalogda "sudo gnc-proje crm 3000" + AWS + nslookup metinleri doğrulandı (ekran görüntüsü); düzenleme diyaloğunda port alanı 3000 değeriyle görünüyor. NOT: JS .click() tab'da resetlenmeye yol açıyordu (test artefaktı, app hatası değil) — gerçek mouse click ile sorunsuz
+- Lint temiz; commit bd2c93e push edildi ve ls-remote doğrulandı
+
+Stage Summary:
+- YENİ PROJE AKIŞI TAM OTOMATİK OLDU: Panel > Yeni Proje (alt alan adı + port) → sunucuda "sudo gnc-proje oyun2 3002" → nginx+SSL kurulu, ana sitede kart otomatik görünür. Kullanıcı paneldeki Sunucu düğmesinden komutu kopyalayabilir
+- "Projeyi Aç açılmıyor" cevabı: alt alan adları için ekstra AWS ayarı YOK — Security Group'ta TCP 80+443 açık olunca tüm subdomain'ler çalışır. En olası 3 sebep: (1) Hostinger'da * yıldız A kaydı eksik, (2) AWS SG 80/443 kapalı, (3) certbot SSL hiç kurulmadı (linkler https:// olduğundan sertifika yoksa tarayıcı açmaz). Çözüm sırası paneldeki teşhis kutusunda + rehber Bölüm 14.1'de
+- Kullanıcı sunucuda bir kez: guncelle-gnc.sh (yeni kod + gnc-proje kurulumu için kurulum.sh v2.1'i yeniden koşması önerilir) + DNS yıldız + AWS SG + certbot
