@@ -8115,3 +8115,24 @@ Stage Summary:
 - Oyunun pm2 adi artik "fruitstorm"; guncelleme: "sudo gnc-oyun fruitstorm". Eski meyvepatlat block'u 3001'e de point ettiginden ikisi de ayni oyunu gosterecek — istenirse "sudo gnc-proje meyvepatlat kaldir" ile temizlenebilir (opsiyonel)
 - Sonraki turda canli dogrulama yapilacak: gncinc.online kart butonu + fruitstorm 200 (kullanici komutlari calistirdiktan sonra)
 - App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
+
+---
+Task ID: 42.8
+Agent: Z.ai Code (Ana tur - 502 + "güvenli değil" + oyun açılmıyor teshisi)
+Task: Kullanici: "502 hatası alıyorum ve güvenli değil gözüküyor ve oyun açılmıyor" (fruitstorm.gncinc.online icin)
+
+Work Log:
+- CANLI TESHIS (curl + openssl):
+  (1) https://fruitstorm.gncinc.online = 502 Bad Gateway (nginx/1.24.0) — upstream 3001'de uygulama YOK, gnc-oyun deploy'u hic yapilmamis/hata verdi
+  (2) SSL SERTIFIKASI ARTIK VAR VE GECERLI: CN=fruitstorm.gncinc.online, Let's Encrypt, notBefore=Oct 2 10:06 (BUGUN, ~1 saat once), notAfter=Dec 31 — kullanici "sudo gnc-proje fruitstorm 3001" komutunu calistirmis (42.7'deki adim 2 TAMAM)
+  (3) http->https 301 yonlendirmesi calisiyor (fruitstorm + ana site) — "güvenli değil" uyarisinin sebebi sertifika alinmadan ONCEKI ziyaret/tarayici onbellekligi; sertifika bugun 10:06'da alinmis
+  (4) https://gncinc.online = 200, Last-Modified bugun 11:02 — kullanici "bash guncelle-gnc.sh" calistirmis (42.7 adim 1 TAMAM); canli HTML'de "OYUNA BAŞLA" butonu (2 eslesme) + fruitstorm linkleri + Fruit Storm adi DOGRULANDI
+- KALAN TEK SORUN: 42.7'nin 3. adimi (sudo gnc-oyun ... fruitstorm) calistirilmamis → kullaniciya net komut + token alimi aciklandi
+- Cron: 15 dk'lik webDevReview gorevi (#430623) silinmis bulundu → yeniden kuruldu (#430700, fixed_rate 900sn, webDevReview kind, GNC baglam notu eklendi: VPS'e SSH yok, curl ile canli kontrol, deploy araclari yollari)
+- Cron #430621 (6 saatlik db yedegi) saglikli calisiyor (stage=succeeded)
+
+Stage Summary:
+- TESHIS NETLESTI: kullanici 42.7'nin ilk 2 adimini BUGUN calistirmis (ana site guncel + sertifika alinmis); "güvenli değil" eski onbellek (Ctrl+Shift+R cozum); 502'nin tek sebebi oyunun 3001'de hic kurulmamis olmasi → tek eksik komut: sudo gnc-oyun "https://kaancetin3141:TOKEN@github.com/kaancetin3141/fruit-storm.git" 3001 fruitstorm (~10-15 dk surer)
+- Deploy sonrasi dogrulama: curl -I https://fruitstorm.gncinc.online → 200 bekleniyor; pm2 ls ile "fruitstorm" sureci gorunmeli
+- Sonraki turlarda canli izleme: fruitstorm 502→200 gecisini kontrol et (kullanici komutu calistirdiginda); OYUNA BAŞLA butonunun uctan uca calistigini dogrula
+- App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
