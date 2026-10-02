@@ -55,3 +55,6 @@ server.log
 # deployment security
 .env
 db/
+
+# ayri oyun reposu (nested git repo - CRM repo'suna girmez)
+/oyunlar/
