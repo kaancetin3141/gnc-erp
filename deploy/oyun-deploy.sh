@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  GNC OYUN — Ayrı GitHub repo'sundan oyun/proje deploy (v1.1 — + Prisma otomatik kurulum)
+#  GNC OYUN — Ayrı GitHub repo'sundan oyun/proje deploy (v1.2 — env fix + doktor)
 #
 #  gnc-erp'ye ve DİĞER TÜM uygulamalara DOKUNMAZ:
 #   - kod /var/www/oyunlar/<isim> altına klonlanır (kendi klasörü)
@@ -9,8 +9,15 @@
 #
 #  Kullanım:
 #   sudo gnc-oyun <repo-adresi> [port] [isim]    # ilk kurulum
-#   sudo gnc-oyun meyvepatlat                    # kayıtlı ayarlarla GÜNCELLE
+#   sudo gnc-oyun <isim>                         # kayıtlı ayarlarla GÜNCELLE
 #   sudo gnc-oyun liste                          # kurulmuşları listele
+#   sudo gnc-oyun doktor <isim> [--tamir]        # teşhis (+ hızlı onarım: env'li yeniden başlatma)
+#
+#  v1.2 değişiklikleri:
+#   - .env (DATABASE_URL vb.) artık pm2'ye GARANTİLİ aktarılıyor. v1.1'de sudo env_reset
+#     değişkenleri silebiliyordu -> süreç ortamsız başlıyor, Prisma çöküyordu.
+#   - "doktor" modu: pm2 durumu, süreç ortamı, dosyalar, port dinleyicisi, hata logları, RAM/disk
+#   - sağlık kontrolü başarısızsa hata logları OTOMATİK yazdırılır; final bandı dürüst
 #
 #  Örnek:
 #   sudo gnc-oyun "https://KULLANICI:TOKEN@github.com/kullanici/oyun.git" 3001 meyvepatlat
@@ -42,12 +49,35 @@ if [ -f /usr/local/bin/gnc-oyun ] && [ "$SELF" != "/usr/local/bin/gnc-oyun" ]; t
 fi
 
 # ---- pm2 hangi kullanıcıda? (ubuntu'nun daemon'ı varsa onu kullan) ----
-pm2x(){ pm2 "$@"; }
 RUN_USER="root"
 if id -u ubuntu >/dev/null 2>&1 && sudo -u ubuntu pm2 jlist 2>/dev/null | grep -q '"name"'; then
-  pm2x(){ sudo -u ubuntu env PATH="$PATH" pm2 "$@"; }
   RUN_USER="ubuntu"
 fi
+pm2x(){ if [ "$RUN_USER" = "root" ]; then pm2 "$@"; else sudo -u ubuntu env PATH="$PATH" pm2 "$@"; fi; }
+
+# Uygulamayı .env ortamıyla birlikte DOĞRU kullanıcının kabuğunda başlat.
+# (sudo varsayılan env_reset yaptığı için DATABASE_URL pm2'ye ulaşmıyordu;
+#  artık env hedef kullanıcının kabuğunda kaynaklanır -> pm2 client -> daemon -> süreç)
+app_start(){ # $1=pm2 hedefi, kalan argümanlar aynen pm2'ye (ör: --name X --time [-- start])
+  TARGET="$1"; shift
+  if [ "$RUN_USER" = "root" ]; then
+    ( cd "$APP_DIR" || exit 1
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      NODE_ENV=production PORT="$PORT" pm2 start "$TARGET" "$@" )
+  else
+    sudo -u ubuntu bash -c "cd '$APP_DIR' || exit 1; if [ -f .env ]; then set -a; . ./.env; set +a; fi; NODE_ENV=production PORT='$PORT' pm2 start '$TARGET' $*"
+  fi
+}
+app_restart_fresh(){ # doktor --tamir: build almadan, taze env ile yeniden başlat
+  if [ "$RUN_USER" = "root" ]; then
+    ( cd "$APP_DIR" || exit 1
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      NODE_ENV=production PORT="$PORT" pm2 delete "$NAME" >/dev/null 2>&1 || true
+      NODE_ENV=production PORT="$PORT" pm2 start .next/standalone/server.js --name "$NAME" --time )
+  else
+    sudo -u ubuntu bash -c "cd '$APP_DIR' || exit 1; if [ -f .env ]; then set -a; . ./.env; set +a; fi; NODE_ENV=production PORT='$PORT' pm2 delete '$NAME' >/dev/null 2>&1; NODE_ENV=production PORT='$PORT' pm2 start .next/standalone/server.js --name '$NAME' --time"
+  fi
+}
 
 # ---- domain tespiti (ana gnc conf'tan) ----
 DOMAIN="gncinc.online"
@@ -70,6 +100,101 @@ if [ "$ARG1" = "liste" ] || [ "$ARG1" = "list" ]; then
     found=1
   done
   [ "$found" -eq 0 ] && info "(henüz yok — ilk kurulum: sudo gnc-oyun <repo-adresi> [port] [isim])"
+  exit 0
+fi
+
+# ---- doktor modu: sudo gnc-oyun doktor <isim> [--tamir] ----
+if [ "$ARG1" = "doktor" ]; then
+  DNAME="$2"
+  [ -z "$DNAME" ] && die "Kullanım: sudo gnc-oyun doktor <isim> [--tamir]"
+  TAMIR="0"
+  [ "$3" = "--tamir" ] && TAMIR="1"
+  APP_DIR="$BASE_DIR/$DNAME"; NAME="$DNAME"
+  PORT=""
+  if [ -f "$APP_DIR/$STATE" ]; then
+    # shellcheck disable=SC1090
+    source "$APP_DIR/$STATE"
+  fi
+  [ -n "$PORT" ] || PORT="3001"
+
+  echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+  echo -e "${BLUE} GNC OYUN DOKTOR — $NAME (port $PORT)${NC}"
+  echo -e "${BLUE}════════════════════════════════════════════════${NC}"
+
+  step "1/6 pm2 süreci"
+  PSTATUS=$(pm2x jlist 2>/dev/null | python3 -c "import json,sys
+try:
+    a=json.load(sys.stdin)
+    print(next((p['pm2_env']['status'] for p in a if p.get('name')=='$NAME'),'pm2de-yok'))
+except Exception:
+    print('bilinmiyor')" 2>/dev/null || echo "bilinmiyor")
+  info "durum: $PSTATUS"
+  DENV_URL=$(pm2x env "$NAME" 2>/dev/null | grep -E '^DATABASE_URL=' || true)
+  if [ -n "$DENV_URL" ]; then
+    info "DATABASE_URL süreç ortamında VAR ✓"
+  else
+    warn "DATABASE_URL süreç ortamında YOK → süreç ortamsız başlatılmış (v1.1 hatası). Çözüm: --tamir veya 'sudo gnc-oyun $NAME'"
+  fi
+
+  step "2/6 dosyalar ($APP_DIR)"
+  for f in package.json node_modules .env .next/standalone/server.js db/custom.db; do
+    if [ -e "$APP_DIR/$f" ]; then info "VAR  ✓ $f"; else warn "YOK  ✗ $f"; fi
+  done
+
+  step "3/6 port $PORT dinleyicisi"
+  LISTEN=$(ss -tlnp 2>/dev/null | grep ":$PORT " || true)
+  if [ -n "$LISTEN" ]; then info "$LISTEN"; else warn "port $PORT'ta dinleyici YOK — uygulama şu an çalışmıyor"; fi
+  if { [ "$PSTATUS" = "errored" ] || [ "$PSTATUS" = "stopped" ]; } && [ -n "$LISTEN" ]; then
+    warn "pm2 süreci ölü ama portta başkası dinliyor → yetim süreç çakışması (--tamir temizler)"
+  fi
+
+  step "4/6 yerel yanıt (http://127.0.0.1:$PORT)"
+  LCODE=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "http://127.0.0.1:$PORT" 2>/dev/null || echo "000")
+  info "yerel HTTP kodu: $LCODE"
+
+  step "5/6 son hata logları"
+  pm2x logs "$NAME" --err --nostream --lines 25 2>/dev/null || warn "log okunamadı — elle: pm2 logs $NAME --err --lines 25"
+
+  step "6/6 sistem"
+  info "node: $(node -v 2>/dev/null || echo 'yok')"
+  info "RAM: $(free -h 2>/dev/null | awk 'NR==2{print $3" / "$2}') | swap: $(free -h 2>/dev/null | awk 'NR==3{print $3" / "$2}')"
+  info "disk /: $(df -h / 2>/dev/null | awk 'NR==2{print $4" boş ("$5" dolu)"}')"
+  if grep -qs "server_name[[:space:]]*.*\b$NAME\.$DOMAIN" /etc/nginx/sites-available/* 2>/dev/null; then
+    info "nginx block: VAR ($NAME.$DOMAIN)"
+  else
+    warn "nginx block YOK → bağlamak: sudo gnc-proje $NAME $PORT"
+  fi
+
+  if [ "$TAMIR" = "1" ]; then
+    echo ""
+    step "TAMİR modu"
+    if [ ! -f "$APP_DIR/.next/standalone/server.js" ]; then
+      warn "server.js yok — hızlı tamir yetersiz, YENİ DEPLOY şart: sudo gnc-oyun $NAME"
+    elif [ "$PSTATUS" = "online" ]; then
+      info "süreç zaten online — dokunulmadı"
+    else
+      if [ -n "$LISTEN" ]; then
+        warn "yetim port dinleyicisi temizleniyor (port $PORT)"
+        fuser -k "$PORT"/tcp 2>/dev/null || true
+        sleep 1
+      fi
+      info ".env ortamıyla yeniden başlatılıyor..."
+      app_restart_fresh
+      TAMIR_OK=""
+      for i in $(seq 1 15); do
+        TCODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT" 2>/dev/null || echo "000")
+        if [ "$TCODE" != "000" ] && [ "$TCODE" != "502" ]; then TAMIR_OK="evet"; break; fi
+        sleep 2
+      done
+      if [ -n "$TAMIR_OK" ]; then
+        info "TAMİR BAŞARILI — uygulama AYAKTA (HTTP $TCODE) ✓  Tarayıcıda Ctrl+Shift+R ile açın"
+        pm2x save >/dev/null 2>&1 || true
+      else
+        warn "tamir sonrası hâlâ yanıt yok — yukarıdaki hata loglarını geliştiriciye yapıştırın"
+      fi
+    fi
+  fi
+  echo ""
   exit 0
 fi
 
@@ -134,13 +259,13 @@ if [ -f package.json ] && grep -qE '"start"[[:space:]]*:' package.json; then
     info "build alınıyor (2-5 dk)..."
     NODE_OPTIONS=--max-old-space-size=1536 npm run build
   fi
-  [ "$RUN_USER" != "root" ] && chown -R "$RUN_USER" "$APP_DIR/.next" 2>/dev/null || true
-  if [ -f .env ]; then set -a; . ./.env; set +a; fi
+  if [ "$RUN_USER" != "root" ]; then chown -R "$RUN_USER" "$APP_DIR/.next" 2>/dev/null || true; fi
   if [ -f ".next/standalone/server.js" ]; then
-    info "standalone sunucu başlatılıyor (pm2, PORT=$PORT)"
-    NODE_ENV=production PORT=$PORT pm2x start .next/standalone/server.js --name "$NAME" --time
+    info "standalone sunucu başlatılıyor (pm2, PORT=$PORT, .env ortamı dahil)"
+    app_start ".next/standalone/server.js" --name "$NAME" --time
   else
-    NODE_ENV=production PORT=$PORT pm2x start npm --name "$NAME" -- start
+    info "standalone bulunamadı — npm start ile başlatılıyor (.env ortamı dahil)"
+    app_start npm --name "$NAME" --time -- start
   fi
 elif [ -f package.json ] && grep -qE '"build"[[:space:]]*:' package.json; then
   info "Tip: build alınıp statik servis (dist/build/out)"
@@ -168,7 +293,9 @@ done
 if [ -n "$APP_OK" ]; then
   info "Uygulama AYAKTA (http://127.0.0.1:$PORT -> HTTP $CODE) ✓"
 else
-  warn "Uygulama 60 sn içinde yanıt vermedi — loglar: pm2 logs $NAME"
+  warn "Uygulama 60 sn içinde yanıt vermedi — son hata logları:"
+  pm2x logs "$NAME" --err --nostream --lines 15 2>/dev/null || true
+  warn "Hızlı teşhis/onarım: sudo gnc-oyun doktor $NAME --tamir"
 fi
 
 # ---- 4) web adresi kontrolü (SADECE kontrol — nginx'e DOKUNMAZ) ----
@@ -189,12 +316,23 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}════════════════════════════════════════════════${NC}"
-echo -e "${GREEN} TAMAM! $NAME deploy edildi${NC}"
-echo -e "${GREEN}════════════════════════════════════════════════${NC}"
-echo -e "  Adres       : https://$NAME.$DOMAIN"
-echo -e "  Güncelleme  : ${BLUE}sudo gnc-oyun $NAME${NC}   (repo'dan pull + yeniden başlat)"
-echo -e "  Listeleme   : ${BLUE}sudo gnc-oyun liste${NC}"
-echo -e "  Loglar      : ${BLUE}pm2 logs $NAME${NC}"
-echo -e "  Klasör      : $APP_DIR  (gnc-erp'den TAMAMEN bağımsız)"
+if [ -n "$APP_OK" ]; then
+  echo -e "${GREEN}════════════════════════════════════════════════${NC}"
+  echo -e "${GREEN} TAMAM! $NAME deploy edildi ve AYAKTA ✓${NC}"
+  echo -e "${GREEN}════════════════════════════════════════════════${NC}"
+  echo -e "  Adres       : https://$NAME.$DOMAIN"
+  echo -e "  Güncelleme  : ${BLUE}sudo gnc-oyun $NAME${NC}   (repo'dan pull + yeniden başlat)"
+  echo -e "  Listeleme   : ${BLUE}sudo gnc-oyun liste${NC}"
+  echo -e "  Teşhis      : ${BLUE}sudo gnc-oyun doktor $NAME${NC}"
+  echo -e "  Loglar      : ${BLUE}pm2 logs $NAME${NC}"
+  echo -e "  Klasör      : $APP_DIR  (gnc-erp'den TAMAMEN bağımsız)"
+else
+  echo -e "${YELLOW}════════════════════════════════════════════════${NC}"
+  echo -e "${YELLOW} DİKKAT: deploy bitti ama uygulama AYAKTA DEĞİL${NC}"
+  echo -e "${YELLOW}════════════════════════════════════════════════${NC}"
+  echo -e "  Hızlı tamir : ${BLUE}sudo gnc-oyun doktor $NAME --tamir${NC}"
+  echo -e "  Teşhis      : ${BLUE}sudo gnc-oyun doktor $NAME${NC}"
+  echo -e "  Loglar      : ${BLUE}pm2 logs $NAME --err --lines 30${NC}"
+  echo -e "  Klasör      : $APP_DIR"
+fi
 echo ""

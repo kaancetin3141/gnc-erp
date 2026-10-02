@@ -1264,6 +1264,33 @@ tarayıcıda hata verir. **Bu bir hata değildir** — o adresin arkasında hen�
 proje kurulmadığının göstergesidir. Proje kurulunca (`sudo gnc-proje oyun2 3002` +
 deploy) adres canlanır.
 
+#### 16.2 Oyun "errored" / 502 veriyor — hızlı teşhis ve tamir (`gnc-oyun doktor`)
+
+`pm2 ls` içinde oyun süreci **errored** görünüyorsa süreç açılışta çöküp sürekli
+yeniden başlıyor demektir. Tek komutla tam teşhis:
+
+```bash
+sudo gnc-oyun doktor <isim>            # örnek: sudo gnc-oyun doktor fruitstorm
+```
+
+Doktor şunları raporlar: pm2 sürecinin durumu, **DATABASE_URL'in süreç ortamında
+olup olmadığı** (v1.1 ve öncesinde sudo env_reset yüzünden .env pm2'ye
+ulaşamıyordu — bilinen hata, v1.2'de düzeltildi), dosyalar (server.js, .env,
+db/custom.db), port dinleyicisi (yetim süreç çakışması), son 25 hata logu, node
+sürümü, RAM/swap/disk ve nginx block durumu.
+
+Hızlı onarım (**yeniden build almadan**, saniyeler içinde):
+
+```bash
+sudo gnc-oyun doktor <isim> --tamir
+```
+
+--tamir: yetim port dinleyicisini temizler + uygulamayı `.env` ortamıyla birlikte
+yeniden başlatır. Skorlar korunur (db dosyası silinmez).
+
+Hâlâ çöküyorsa: `pm2 logs <isim> --err --lines 30` çıktısını kaydedin — çökmenin
+gerçek sebebi (node sürümü, OOM, modül hatası) bu loglardadır.
+
 ---
 
 *Bu rehber GNC CRM v1.0 (Next.js 16 + Prisma 6 + SQLite) için hazırlanmıştır. Sorularınız için
