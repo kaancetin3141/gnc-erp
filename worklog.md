@@ -8096,3 +8096,22 @@ Stage Summary:
 - Kullanici istegi (adi "Fruit Storm" + ana sayfada OYNA butonu) TAMAM ve GitHub'da; kalan tek adim VPS'de deploy: repo henuz VPS'ye kurulmadigi icin 42.4'teki ilk kurulum komutu gerekli: sudo gnc-oyun "https://kaancetin3141:TOKEN@github.com/kaancetin3141/fruit-storm.git" 3001 meyvepatlat → 502'den 200'e donecek; sonrasinda guncelleme "sudo gnc-oyun meyvepatlat"
 - Yedek sistemi aktif: cron #430621 (6 saatte bir), son 20 yedek db/backups/ altinda
 - App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
+
+---
+Task ID: 42.7
+Agent: Z.ai Code (Ana tur - ana site OYUNA BASLA butonu + fruitstorm 502 teshisi)
+Task: Kullanici: "https://gncinc.online/ burada oyuna başla butonu yok, https://fruitstorm.gncinc.online/ oyunda sayfada açılmıyor"
+
+Work Log:
+- CANLI TESHIS: fruitstorm.gncinc.online https = 502 (nginx block + SSL VAR — certbot sertifikasi alinmis — ama upstream portta uygulama YOK = gnc-oyun deploy'u hic yapilmamis/olmemis). meyvepatlat = 502 (ayni). gncinc.online = 200 ama oyun karti hala eski hardcode: "Meyve Patlat / Yakında" rozeti + HICBIR buton yok
+- ana-site/index.html DUZENLENDI (commit 5d5df06 push): (1) varsayilan oyun karti -> 🍓 "Fruit Storm" + "Canlıda" rozeti + fruitstorm urlbar + Sweet Match 3 aciklamasi + Buyuk "▶ OYUNA BAŞLA" CTA butonu (link: https://fruitstorm.gncinc.online) — eski "🚧 Yayına Hazırlanıyor" pasif kutusu silindi; (2) dinamik JS ctaHtml()'ine oyun algilama: subdomain/baslikta /oyun|storm|patlat/i -> buton "▶ OYUNA BAŞLA", digerleri "Projeyi Aç" (VPS CRM API'si dolunca da buton dogru kalir); (3) footer linki Fruit Storm + fruitstorm
+- guncelle-gnc.sh zaten ana-site'yi /var/www/gncinc-ana'ya kopyaliyor (satir 41) — VPS'de "bash guncelle-gnc.sh" yeterli
+- VPS CRM /api/portfolio HALEN BOS {"projects":[]} -> ana site "varsayilan liste" (hardcode) gosterecek; panelde proje eklenirse dinamik kartlar devreye girer
+- CRM panel kartinin zaten fruitstorm'a guncellendigi goruldu (subdomain: fruitstorm, url: https://fruitstorm.gncinc.online)
+- Local dogrulama: ana-site python http.server 8899 + agent-browser — Fruit Storm karti, CANLIDA rozeti, "▶ OYUNA BAŞLA" butonu ve link dogrulandi (screenshot); gecici sunucu kapatildi
+
+Stage Summary:
+- KULLANICIYA VERILECEK VPS KOMUTLARI: (1) bash guncelle-gnc.sh → ana siteyi yeniler (OYUNA BASLA butonu gncinc.online'da cikar); (2) sudo gnc-proje fruitstorm 3001 → block kesin 3001'e sabitlenir (sertifika zaten var); (3) sudo gnc-oyun "https://kaancetin3141:TOKEN@github.com/kaancetin3141/fruit-storm.git" 3001 fruitstorm → oyun kurulur, 502→200
+- Oyunun pm2 adi artik "fruitstorm"; guncelleme: "sudo gnc-oyun fruitstorm". Eski meyvepatlat block'u 3001'e de point ettiginden ikisi de ayni oyunu gosterecek — istenirse "sudo gnc-proje meyvepatlat kaldir" ile temizlenebilir (opsiyonel)
+- Sonraki turda canli dogrulama yapilacak: gncinc.online kart butonu + fruitstorm 200 (kullanici komutlari calistirdiktan sonra)
+- App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
