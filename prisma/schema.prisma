@@ -1719,3 +1719,31 @@ model InvoiceTemplate {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+// ============================================================
+// PORTFOLYO PROJESİ — gncinc.online ana sitesindeki "Projeler" bölümü
+// CRM admin panelinden yönetilir, /api/portfolio ile public yayınlanır
+// ============================================================
+
+model PortfolioProject {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  // https://crm.gncinc.online gibi tam adres (boşsa link yok)
+  url         String?
+  // crm, meyvepatlat... (alt alan adı etiketi)
+  subdomain   String?
+  // live | soon | planned
+  status      String   @default("live")
+  emoji       String   @default("🚀")
+  // JSON array: ["Next.js 16", "TypeScript"]
+  tech        String?
+  // JSON array: ["Randevu yönetimi", "Kasa raporları"]
+  features    String?
+  sortOrder   Int      @default(0)
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([published, sortOrder])
+}
