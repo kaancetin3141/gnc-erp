@@ -811,32 +811,36 @@ Domain `gncinc.online` Hostinger'da kayıtlı. Sunucunuz (VDS/VPS) henüz yoksa:
 5. PowerShell'de doğrulayın: `ping gncinc.online` → yeni IP görünmeli
 6. Sonra rehber Bölüm 2'den (sunucu hazırlığı) itibaren devam edin
 
-### 🔀 Hızlı Yol: TEK KOMUTLUK KURULUM SCRIPTI (deploy/kurulum.sh)
+### 🔀 Hızlı Yol: TEK KOMUTLUK KURULUM SCRIPTI (deploy/kurulum.sh) — v2.0
 
-Adım 2–9'un tamamını tek seferde yapan resmi kurulum scripti projede hazır:
-**`deploy/kurulum.sh`** — şunları otomatik yapar: sistem güncelleme, saat dilimi,
-2 GB swap, Node 20, pm2, nginx, GitHub'dan kod, `.env`, prisma, build, 7/24
-çalıştırma, güvenlik duvarı, başlangıç + gerçekçi demo verisi, `guncelle-gnc.sh`.
+Adım 2–9'un tamamını **artı ana siteyi ve alt alan adlarını** tek seferde yapan resmi
+kurulum scripti projede hazır: **`deploy/kurulum.sh`** — şunları otomatik yapar:
+sistem güncelleme, saat dilimi, 2 GB swap, Node 20, pm2, nginx, GitHub'dan kod,
+`.env`, prisma, build, 7/24 çalıştırma, güvenlik duvarı, başlangıç + gerçekçi demo
+verisi, `guncelle-gnc.sh` ve **gncinc.online ana portfolyo sitesi + subdomain ayarları**.
 
-Kullanımı — SSH ile sunucuya girdikten sonra:
+> ⚠️ **Eski script çalıştıysa ve "Repository not found" hatası verdiyse:** sunucudaki
+> script eski Neuse0 adresini kullanıyordur. Aşağıdaki YENİ komutu kullanın — script
+> artık remote adresini otomatik düzeltir. En temizi: `sudo rm -rf /var/www/gnc-erp`
+> deyip script'i token'lı adrese yeniden çalıştırın.
+
+Kullanımı — SSH ile sunucuya girdikten sonra (repo PRIVATE olduğu için TOKEN şart):
 
 ```bash
-# Yöntem 1 (script GitHub'daysa — repoya push edildikten sonra):
-curl -fsSL https://raw.githubusercontent.com/kaancetin3141/gnc-erp/main/deploy/kurulum.sh -o kurulum.sh
-bash kurulum.sh
+# 1) Scripti indir (private repo — token ile):
+curl -fsSL -H "Authorization: token BURAYA_TOKEN" https://raw.githubusercontent.com/kaancetin3141/gnc-erp/main/deploy/kurulum.sh -o kurulum.sh
 
-# Yöntem 2 (script içeriğini kopyala-yapıştır):
-# Sohbetten gelen büyük bloğu terminalinize yapıştırıp Enter'a basın —
-# blok önce kurulum.sh dosyasını yazar, sonra çalıştırır.
+# 2) Çalıştır — 2. parametre TOKEN'LI repo adresi OLMALI (yoksa şifre sorar/bozulur):
+sudo bash kurulum.sh gncinc.online "https://kaancetin3141:BURAYA_TOKEN@github.com/kaancetin3141/gnc-erp.git"
+
+# (Alternatif: sohbetten gelen script bloğunu yapıştırıp aynı parametrelerle çalıştırın)
 ```
 
-> 🔒 **Repo PRIVATE ise:** Yöntem 1 çalışmaz (curl yetkisiz). Yapıştırma (Yöntem 2) yolunda
-> script 4/9 adımında `Username`/`Password` sorarsa: **Username:** GitHub kullanıcı adınız
-> (kaancetin3141), **Password:** PAT token'ınız. Bir kez daha sorumaması için SSH'e girer
-> girmez şunu da çalıştırın: `git config --global credential.helper store`
-> (Ya da scripti token'lı adresle çalıştırın: `bash kurulum.sh gncinc.online "https://kaancetin3141:TOKEN@github.com/kaancetin3141/gnc-erp.git"`)
+> 💡 Script artık **şifre ASLA sormaz** (`GIT_TERMINAL_PROMPT=0`) — token'lı adres
+> vermezseniz uyarıyla durur, donmaz.
 
-Script bitince ekranda sunucunuzun IP'si ve kalan 2 küçük adım (DNS + SSL) yazacaktır.
+Script bitince ekranda sunucunuzun IP'si, site adresleriniz ve kalan 2 küçük adım
+(DNS + SSL) yazacaktır. Mimarinin tamamı için **Bölüm 13**'e bakın.
 
 ### Adım 1 — Alan adını sunucuya bağlayın (DNS) — ÖNCE BUNU YAPIN
 
@@ -1075,6 +1079,73 @@ klasörlü adres yerine `meyvepatlat.gncinc.online` kullanın — profesyonel g�
 - Aylık 100 GB ücretsiz trafik limitini birden fazla uygulama paylaşır (2-3 app için bol)
 - 4+ uygulamaya çıkarsanız veya yavaşlama hissederseniz: 2 GB'lık ücretli instance'a
   geçme zamanı (aylık ~$12)
+
+---
+
+## 🌍 13. Ana Site + Alt Alan Adları Mimarisi (v2)
+
+Artık tek bir CRM sitesi değil, **bir portfolyo + yanında projeler** mimarisi var:
+
+```
+gncinc.online  (ANA SİTE — portfolyo, "Projeler" bölümü)
+│
+├── crm.gncinc.online          → GNC ERP & CRM  (port 3000)
+├── meyvepatlat.gncinc.online  → Meyve Patlat oyunu (port 3001, ileride)
+└── (gelecek projeler)         → her yeni proje yeni bir alt alan adı
+```
+
+- **Ana site** statik bir HTML sayfasıdır (`ana-site/index.html`) — nginx direkt
+  sunar, RAM harcamaz, saniyeler içinde açılır. Üzerinde: hero, **Projeler**
+  bölümü (kartlar canlı adreslere linkedir), Hizmetler ve İletişim bölümleri var.
+- **CRM** `crm.gncinc.online` alt alan adında aynen çalışır — koda dokunulmaz.
+- **Yeni proje eklemek** 3 adım: (1) kodu sunucuda boş bir porta koyun,
+  (2) nginx'e bir `server { server_name yeniproje.gncinc.online; ... }` bloğu ekleyin,
+  (3) `ana-site/index.html`'e bir proje kartı ekleyip `guncelle-gnc.sh` çalıştırın.
+
+### 13.1 DNS — Hostinger paneline girilecek 3 kayıt
+
+| Tür | Ad (Host) | Değer | Ne işe yarar |
+|---|---|---|---|
+| A | `@` | Elastic-IP | ana site: gncinc.online |
+| CNAME | `www` | `gncinc.online` | www.yönlendirmesi |
+| **A** | **`*` (yıldız)** | **Elastic-IP** | **TÜM alt alan adları otomatik: crm. / meyvepatlat. / ileridekiler** |
+
+> ⭐ Yıldız (wildcard) kaydı sayesinde **yarın yeni bir proje daha eksenini
+> düşünmenize gerek kalmaz** — `oyun2.gncinc.online` gibi her adres zaten çözülür.
+> İstemezseniz her alt alan adı için ayrı `A · crm · IP`, `A · meyvepatlat · IP`
+> kayıtları da ekleyebilirsiniz.
+
+### 13.2 SSL — tüm adresler için TEK komut
+
+DNS kayıtları yayıldıktan sonra (ping ile kontrol edin):
+
+```bash
+sudo certbot --nginx -d gncinc.online -d www.gncinc.online -d crm.gncinc.online -d meyvepatlat.gncinc.online
+```
+
+Sonrasında **dört adres de** `https://` ile çalışır ve sertifikalar otomatik yenilenir.
+
+### 13.3 Ana site içeriğini değiştirmek
+
+`ana-site/index.html` tek dosyadır — herhangi bir editörle açıp düzenleyin:
+
+- E-posta adresi: `info@gncinc.online` yazan yeri kendi adresinizle değiştirin
+- Yeni proje kartı: `<!-- MEYVE PATLAT -->` bloğunun kopyasını alıp metinlerini değiştirin
+- Renkler: dosyanın başındaki `:root { --em: ... }` değişkenlerinden yönetilir
+
+Değişiklik repoya push edilip sunucuda `guncelle-gnc.sh` çalışınca ana site de
+otomatik güncellenir.
+
+### 13.4 Sunucuda elle kontrol
+
+```bash
+# Ana site testi (DNS beklemeden):
+curl -H "Host: gncinc.online" http://localhost/
+# CRM testi:
+curl -H "Host: crm.gncinc.online" http://localhost/ -o /dev/null -w "%{http_code}\n"
+# nginx config doğrulama:
+sudo nginx -t
+```
 
 ---
 
