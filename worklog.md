@@ -7580,3 +7580,17 @@ Stage Summary:
 - Özet diyaloğu ek API olmadan görünen aralığın ciro/doluluk/personel performansını veriyor; müşteri kartındaki 6 aylık trend grafiği sadakati görselleştiriyor
 - KRİTİK KAZANIM: customer-manager'daki ölümcül `istory` typo'su (memo bağımlılığı) yakalanıp düzeltildi — müşteri kartı diyaloğu tamamen kırık durumdaydı
 - Sonraki tur önerileri: işletme seviyesinde tatil günü (provider closure, tüm personele izin), izin istek onay akışı (personel talebi → yönetici onayı), takvimde doğum günü ✕ randevu birleşik "bugün" paneli, izin çakışmasında tek tık "randevuları başka personele dağıt" (auto-reassign), aylık doluluk trend grafiği (dashboard)
+---
+Task ID: cron-430621-20261003
+Agent: Super Z (ana ajan)
+Task: 6 saatlik otomatik DB yedeği (bash scripts/backup-db.sh)
+
+Work Log:
+- backup-db.sh bulunamadı (exit 127) — cron'un beklediği script hiç yoktu
+- Script yeniden oluşturuldu: custom.db -> db/backups/custom-<ts>.db, başlık bütünlük kontrolü, son 20 yedek saklama
+- Yedek alındı ve doğrulandı
+
+Stage Summary:
+- OK: db/backups/custom-20261002-163126.db (1.265.664 bayt, kaynakla birebir)
+- Not: sqlite3 CLI sandbox'ta yok; cp + WAL/SHM destegiyle yedekleme yapılıyor
+- Ana görev (CRM geliştirme turu) beklemede: scroll bug + fatura PDF + demo->gerçek dönüşümü
