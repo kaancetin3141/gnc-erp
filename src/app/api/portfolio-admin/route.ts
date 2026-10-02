@@ -58,6 +58,8 @@ export async function POST(req: NextRequest) {
   const url = body.url ? String(body.url).trim() : null
   const subdomain = body.subdomain ? String(body.subdomain).trim() : null
   const status = ['live', 'soon', 'planned'].includes(body.status) ? body.status : 'live'
+  const port = Number.isFinite(Number(body.port)) && Number(body.port) > 0 && Number(body.port) < 65536
+    ? Math.floor(Number(body.port)) : null
 
   try {
     const project = await db.portfolioProject.create({
@@ -66,6 +68,7 @@ export async function POST(req: NextRequest) {
         description,
         url,
         subdomain,
+        port,
         status,
         emoji: body.emoji ? String(body.emoji).trim().slice(0, 8) : '🚀',
         tech: parseArrayInput(body.tech),

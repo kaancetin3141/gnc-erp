@@ -44,6 +44,10 @@ export async function PATCH(
   if (body.description !== undefined) data.description = String(body.description).trim()
   if (body.url !== undefined) data.url = body.url ? String(body.url).trim() : null
   if (body.subdomain !== undefined) data.subdomain = body.subdomain ? String(body.subdomain).trim() : null
+  if (body.port !== undefined) {
+    const n = Number(body.port)
+    data.port = Number.isFinite(n) && n > 0 && n < 65536 ? Math.floor(n) : null
+  }
   if (body.status !== undefined && ['live', 'soon', 'planned'].includes(body.status)) data.status = body.status
   if (body.emoji !== undefined) data.emoji = body.emoji ? String(body.emoji).trim().slice(0, 8) : '🚀'
   if (body.tech !== undefined) data.tech = parseArrayInput(body.tech)

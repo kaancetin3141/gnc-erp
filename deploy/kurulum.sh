@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  GNC — TEK KOMUT KURULUM (v2.0 — Ana Site + Subdomain)
+#  GNC — TEK KOMUT KURULUM (v2.1 — Ana Site + Subdomain + gnc-proje otomasyonu)
 #  Ne yapar: sistem güncelleme + swap + Node 20 + pm2 + nginx +
 #  GitHub'dan kod + build + 7/24 çalıştırma + demo verisi +
 #  ANA SİTE (gncinc.online portfolyo) + ALT ALAN ADLARI:
@@ -219,6 +219,13 @@ GUNCELLEEOF
 $SUDO chmod +x /usr/local/bin/guncelle-gnc.sh
 info "Güncelleme komutu kuruldu: guncelle-gnc.sh"
 
+# ---- gnc-proje: tek komutla yeni alt alan adı ----
+if [ -f "$APP_DIR/deploy/yeni-proje.sh" ]; then
+  $SUDO cp "$APP_DIR/deploy/yeni-proje.sh" /usr/local/bin/gnc-proje
+  $SUDO chmod +x /usr/local/bin/gnc-proje
+  info "Yeni proje komutu kuruldu: gnc-proje"
+fi
+
 # ---- uygulama ayağa kalkana kadar bekle + demo verisini yükle ----
 info "Uygulamanın açılması bekleniyor..."
 APP_OK=""
@@ -252,7 +259,10 @@ echo -e "   GNC CRM     : ${B}http://crm.$DOMAIN${N}"
 echo -e "   Meyve Patlat: ${B}http://meyvepatlat.$DOMAIN${N}  (ileride, port $OYUN_PORT)"
 echo -e "   Şimdilik IP ile: ${B}http://$PUBLIC_IP${N}"
 echo -e ""
-echo -e "  ${Y}KALAN 2 KÜÇÜK ADIM:${N}"
+echo -e "  ${Y}KALAN 3 KÜÇÜK ADIM:${N}"
+echo -e "  0) AWS kullanıyorsanız: EC2 > Security Group > Inbound'da ŞU İKİSİ AÇIK OLSUN:"
+echo -e "        ${B}TCP 80 (HTTP)${N} ve ${B}TCP 443 (HTTPS)${N}  ->  Source: 0.0.0.0/0"
+echo -e "     (Bu ikisi açıksa TÜM alt alan adları da çalışır — ayrıca ayar gerekmez)"
 echo -e "  1) Hostinger DNS paneline ŞU 3 KAYDI ekleyin (önemli: * yıldız):"
 echo -e "        ${B}A     · @            · $PUBLIC_IP${N}"
 echo -e "        ${B}CNAME · www          · $DOMAIN${N}"
@@ -261,7 +271,13 @@ echo -e "     (yıldız istemezseniz ayrıca: A · crm · $PUBLIC_IP ve A · mey
 echo -e "  2) DNS yayılınca (10-30 dk) SSL kurun — TÜM adresler için:"
 echo -e "        ${B}sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN -d crm.$DOMAIN -d meyvepatlat.$DOMAIN${N}"
 echo -e ""
+echo -e "  ${B}İLERİDE YENİ PROJE EKLERKEN (tek komut):${N}"
+echo -e "   CRM paneline projeyi ekleyin, sonra sunucuda:"
+echo -e "        ${B}sudo gnc-proje <altalanadi> <port>${N}"
+echo -e "   Örnek: ${B}sudo gnc-proje oyun2 3002${N}  -> oyun2.$DOMAIN + SSL otomatik"
+echo -e ""
 echo -e "  Faydalı komutlar:"
 echo -e "   Güncelleme : ${B}guncelle-gnc.sh${N}   (kod + ana site birlikte güncellenir)"
+echo -e "   Yeni proje : ${B}sudo gnc-proje <altalanadi> <port>${N}   (nginx + SSL otomatik)"
 echo -e "   Durum      : ${B}pm2 status${N}   Loglar: ${B}pm2 logs gnc-crm${N}"
 echo -e "${G}============================================================${N}"

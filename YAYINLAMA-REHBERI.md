@@ -1149,5 +1149,44 @@ sudo nginx -t
 
 ---
 
+## 🚀 14. Yeni Proje + Alt Alan Adı Otomasyonu (v2.1)
+
+Yeni bir proje yayınlarken artık nginx dosyası elle düzenlemek YOK. Tek komut:
+
+```bash
+sudo gnc-proje oyun2 3002
+```
+
+Bu komut `oyun2.gncinc.online` için nginx server block'unu yazar, test eder,
+yeniden yükler ve SSL'i certbot ile otomatik kurar.
+
+- Port verirseniz → `127.0.0.1:3002`'ye reverse proxy (websocket destekli)
+- Port vermezseniz → statik site: `/var/www/oyun2.gncinc.online/index.html`
+- `--no-ssl` ile SSL'i atlayabilirsiniz (sonra: `sudo certbot --nginx -d oyun2.gncinc.online`)
+
+> `gnc-proje` komutu `kurulum.sh v2.1+` tarafından `/usr/local/bin`'e kurulur.
+> Eski kurulumda yoksa: sunucuda `guncelle-gnc.sh` çalıştırıp kodu çekin, sonra
+> `sudo cp /var/www/gnc-erp/deploy/yeni-proje.sh /usr/local/bin/gnc-proje && sudo chmod +x /usr/local/bin/gnc-proje`
+
+**Akış:** 1) CRM paneli > Portfolyo > Yeni Proje (alt alan adı + port yazın)
+2) Projeyi sunucuya deploy edin (port'ta çalıştırın) 3) `sudo gnc-proje <ad> <port>`
+4) Proje ana sitede otomatik görünür (CRM API'sinden).
+
+### 14.1 "Projeyi Aç"a bastım, site AÇILMIYOR — teşhis sırası
+
+| # | Sebep | Test | Çözüm |
+|---|-------|------|-------|
+| 1 | **AWS Security Group** 80/443 kapalı | AWS Konsolu > EC2 > Security Group > Inbound | **TCP 80** + **TCP 443** ekleyin (Source: 0.0.0.0/0). Alt alan adları için ekstra AWS ayarı GEREKMEZ — bu ikisi tüm subdomain'lere yeteer |
+| 2 | **DNS yıldız kaydı yok** | Sunucuda: `nslookup crm.gncinc.online` | Hostinger DNS: `A · * · SUNUCU_IP` kaydını ekleyin (10-30 dk yayılır) |
+| 3 | **SSL yok** | Tarayıcıda `https://crm...` hata veriyor, `http://` deneyin | `sudo certbot --nginx -d crm.gncinc.online` (linkler https olduğu için SSL ŞART) |
+| 4 | **nginx block eksik** (eski kurulum) | `curl -H "Host: crm.gncinc.online" http://localhost/` sunucuda | `kurulum.sh v2.1`'i yeniden çalıştırın veya `sudo gnc-proje crm 3000` |
+| 5 | **Uygulama çalışmıyor** | `curl http://127.0.0.1:3000` sunucuda | `pm2 status` + `pm2 logs gnc-crm` |
+| 6 | **EC2 IP değişti** (Elastic IP değilse) | `curl -s checkip.amazonaws.com` vs DNS IP | EC2'de Elastic IP ayırın, DNS kaydını güncelleyin |
+
+> **En sık sebep:** Ana site açılıyor ama `crm.` açılmıyorsa → sırasıyla 2 (DNS yıldız)
+> ve 3 (SSL). `https://` linkler sertifika olmadan KESİNLİKLE açılmaz.
+
+---
+
 *Bu rehber GNC CRM v1.0 (Next.js 16 + Prisma 6 + SQLite) için hazırlanmıştır. Sorularınız için
 proje dokümantasyonuna ve `worklog.md` geçmişine bakabilirsiniz.*

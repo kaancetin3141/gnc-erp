@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import {
   LayoutGrid, Plus, Pencil, Trash2, ExternalLink, Globe, Loader2, Rocket,
+  Server, Copy, CheckCircle2, AlertTriangle, Terminal,
 } from 'lucide-react'
 
 interface PortfolioProject {
@@ -39,6 +40,7 @@ interface PortfolioProject {
   description: string
   url: string | null
   subdomain: string | null
+  port: number | null
   status: string // live | soon | planned
   emoji: string
   tech: string[]
@@ -58,6 +60,7 @@ interface FormState {
   description: string
   url: string
   subdomain: string
+  port: string
   status: string
   emoji: string
   tech: string
@@ -71,6 +74,7 @@ const EMPTY_FORM: FormState = {
   description: '',
   url: '',
   subdomain: '',
+  port: '',
   status: 'live',
   emoji: '🚀',
   tech: '',
@@ -84,6 +88,8 @@ export function PortfolioManager({ user }: { user: SessionUser }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<PortfolioProject | null>(null)
   const [deleting, setDeleting] = useState<PortfolioProject | null>(null)
+  const [serverProject, setServerProject] = useState<PortfolioProject | null>(null)
+  const [copied, setCopied] = useState(false)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
 
   const canManage = user.role === 'admin' || user.role === 'superadmin'
@@ -105,6 +111,7 @@ export function PortfolioManager({ user }: { user: SessionUser }) {
         description: form.description,
         url: form.url || null,
         subdomain: form.subdomain || null,
+        port: form.port ? Number(form.port) : null,
         status: form.status,
         emoji: form.emoji || '🚀',
         tech: form.tech,
@@ -148,6 +155,7 @@ export function PortfolioManager({ user }: { user: SessionUser }) {
       description: p.description,
       url: p.url ?? '',
       subdomain: p.subdomain ?? '',
+      port: p.port ? String(p.port) : '',
       status: p.status,
       emoji: p.emoji,
       tech: p.tech.join(', '),
@@ -156,6 +164,16 @@ export function PortfolioManager({ user }: { user: SessionUser }) {
       published: p.published,
     })
     setDialogOpen(true)
+  }
+
+  const copyCmd = (cmd: string) => {
+    try {
+      navigator.clipboard.writeText(cmd)
+    } catch {
+      // pano erişimi yoksa sessizce geç
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   const projects = data?.projects ?? []
@@ -254,6 +272,15 @@ export function PortfolioManager({ user }: { user: SessionUser }) {
                       Yayında
                     </label>
                     <div className="flex items-center gap-1">
+                      {p.subdomain && (
+                        <Button
+                          variant="ghost" size="sm" className="h-7 w-7 p-0 text-sky-600 hover:text-sky-700"
+                          onClick={() => { setServerProject(p); setCopied(false) }}
+                          title="Sunucu kurulum komutu"
+                        >
+                          <Server className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
                       {p.url && (
                         <a
                           href={p.url}
@@ -325,21 +352,31 @@ export function PortfolioManager({ user }: { user: SessionUser }) {
               />
             </div>
 
+            <div className="space-y-1.5">
+              <Label className="text-xs">Site Adresi</Label>
+              <Input
+                value={form.url}
+                onChange={(e) => setForm({ ...form, url: e.target.value })}
+                placeholder="https://yeni.gncinc.online"
+              />
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Site Adresi</Label>
-                <Input
-                  value={form.url}
-                  onChange={(e) => setForm({ ...form, url: e.target.value })}
-                  placeholder="https://yeni.gncinc.online"
-                />
-              </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Alt Alan Adı</Label>
                 <Input
                   value={form.subdomain}
                   onChange={(e) => setForm({ ...form, subdomain: e.target.value })}
                   placeholder="yeni"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Sunucu Portu <span className="text-muted-foreground">(opsiyonel)</span></Label>
+                <Input
+                  type="number"
+                  value={form.port}
+                  onChange={(e) => setForm({ ...form, port: e.target.value })}
+                  placeholder="3002"
                 />
               </div>
             </div>
@@ -430,6 +467,99 @@ export function PortfolioManager({ user }: { user: SessionUser }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Sunucu kurulum komutu */}
+      <ServerSetupDialog
+        project={serverProject}
+        onClose={() => setServerProject(null)}
+        copied={copied}
+        onCopy={copyCmd}
+      />
     </Card>
+  )
+}
+
+// ═══ Sunucu kurulum diyaloğu — tek komut + teşhis rehberi ═══════════
+function ServerSetupDialog({
+  project, onClose, copied, onCopy,
+}: {
+  project: PortfolioProject | null
+  onClose: () => void
+  copied: boolean
+  onCopy: (cmd: string) => void
+}) {
+  if (!project) return null
+  const sub = project.subdomain || 'altalanadi'
+  const cmd = project.port
+    ? `sudo gnc-proje ${sub} ${project.port}`
+    : `sudo gnc-proje ${sub}`
+  const fqdn = `${sub}.gncinc.online`
+
+  return (
+    <Dialog open={!!project} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Server className="w-4 h-4 text-sky-600" />
+            Sunucu Kurulumu — {fqdn}
+          </DialogTitle>
+          <DialogDescription>
+            SSH ile sunucunuza bağlanıp şu TEK komutu çalıştırın — nginx + SSL otomatik kurulur:
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="rounded-lg bg-slate-950 text-slate-100 p-3 font-mono text-xs flex items-center justify-between gap-2">
+          <span className="break-all">$ {cmd}</span>
+          <Button
+            size="sm" variant="outline"
+            className="h-7 shrink-0 bg-slate-800 border-slate-700 text-slate-100 hover:bg-slate-700 hover:text-white"
+            onClick={() => onCopy(cmd)}
+          >
+            {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'Kopyalandı' : 'Kopyala'}
+          </Button>
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            Komut şunları otomatik yapar:
+          </div>
+          <ul className="text-xs text-muted-foreground space-y-1 pl-5 list-disc">
+            <li>nginx&apos;e <span className="font-mono">{fqdn}</span> server block&apos;u ekler{project.port ? <> (port <span className="font-mono">{project.port}</span>&apos;a yönlendirir, websocket destekli)</> : ' (statik site klasörü oluşturur)'}</li>
+            <li>nginx test eder ve yeniden yükler</li>
+            <li>SSL sertifikasını certbot ile otomatik kurar (https)</li>
+          </ul>
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 p-3 space-y-2">
+          <div className="text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Komut çalıştı ama site açılmıyor mu? Sırayla kontrol edin:
+          </div>
+          <ol className="text-xs text-amber-800/90 dark:text-amber-200/80 space-y-1.5 pl-5 list-decimal">
+            <li>
+              <b>DNS (Hostinger):</b> <span className="font-mono">* (yıldız)</span> A kaydı sunucu IP&apos;nize mi bakıyor? Sunucuda test: <span className="font-mono">nslookup {fqdn}</span>
+            </li>
+            <li>
+              <b>AWS Security Group:</b> EC2 &gt; Security Group &gt; Inbound&apos;da <b>TCP 80</b> ve <b>TCP 443</b> açık olmalı (Source: 0.0.0.0/0). Alt alan adları için ekstra AWS ayarı gerekmez — bu ikisi yeterli.
+            </li>
+            <li>
+              <b>SSL kurulu mu?</b> Sunucuda: <span className="font-mono">sudo certbot --nginx -d {fqdn}</span> — https sertifikası yoksa tarayıcı siteyi açmaz.
+            </li>
+            <li>
+              <b>Uygulama çalışıyor mu?</b> {project.port ? <>Sunucuda: <span className="font-mono">curl http://127.0.0.1:{project.port}</span> yanıt vermeli. pm2 ile başlatın: <span className="font-mono">PORT={project.port} pm2 start ...</span></> : <>Statik site — <span className="font-mono">/var/www/{fqdn}</span> içinde index.html olmalı.</>}
+            </li>
+          </ol>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Terminal className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            gnc-proje komutu sunucuda kurulu değilse önce <b>guncelle-gnc.sh</b> çalıştırın (kurulum.sh v2.1+ bunu otomatik kurar).
+          </span>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1733,6 +1733,8 @@ model PortfolioProject {
   url         String?
   // crm, meyvepatlat... (alt alan adı etiketi)
   subdomain   String?
+  // Sunucuda bu projenin çalıştığı port (nginx otomasyonu için; null=statik site)
+  port        Int?
   // live | soon | planned
   status      String   @default("live")
   emoji       String   @default("🚀")
