@@ -1,0 +1,545 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { apiGet, apiPost, apiPatch } from '@/lib/api-client'
+     6→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Input } from '@/components/ui/input'
+     9→import { Label } from '@/components/ui/label'
+    10→import { Textarea } from '@/components/ui/textarea'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Skeleton } from '@/components/ui/skeleton'
+    13→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    14→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+    15→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    16→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    17→import { toast } from 'sonner'
+    18→import { cn } from '@/lib/utils'
+    19→import { formatCurrency, formatDate, formatTime, whatsappLink } from '@/lib/format'
+    20→import { Calendar, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User } from 'lucide-react'
+    21→
+    22→interface Provider {
+    23→  id: string; name: string; type: string; address: string | null; city: string | null
+    24→  phone: string | null; email: string | null; photo: string | null
+    25→  workingHoursParsed: Record<string, unknown>
+    26→  staff: Staff[]; services: Service[]
+    27→  _count?: { appointments: number }
+    28→}
+    29→interface Staff { id: string; name: string; title: string | null; photo: string | null; phone: string | null }
+    30→interface Service { id: string; name: string; description: string | null; duration: number; price: number; category: string | null; photo: string | null }
+    31→interface Appointment {
+    32→  id: string; customerName: string; customerPhone: string; customerEmail: string | null
+    33→  customerNote: string | null; date: string; endTime: string | null; status: string
+    34→  price: number; source: string; notes: string | null
+    35→  staff: { id: string; name: string } | null
+    36→  service: { id: string; name: string; duration: number; price: number } | null
+    37→}
+    38→
+    39→const PROVIDER_TYPES = [
+    40→  { value: 'berber', label: 'Berber', icon: '💈' },
+    41→  { value: 'kuafor', label: 'Kuaför', icon: '💇' },
+    42→  { value: 'disci', label: 'Dişçi', icon: '🦷' },
+    43→  { value: 'guzellik', label: 'Güzellik Merkezi', icon: '💅' },
+    44→  { value: 'spa', label: 'SPA', icon: '🧖' },
+    45→  { value: 'dovme', label: 'Dövmeci', icon: '🎨' },
+    46→] as const
+    47→
+    48→const APPT_STATUS = [
+    49→  { value: 'beklemede', label: 'Beklemede', color: 'text-amber-600 bg-amber-50 border-amber-200' },
+    50→  { value: 'onaylandi', label: 'Onaylandı', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+    51→  { value: 'tamamlandi', label: 'Tamamlandı', color: 'text-teal-600 bg-teal-50 border-teal-200' },
+    52→  { value: 'iptal', label: 'İptal', color: 'text-red-600 bg-red-50 border-red-200' },
+    53→  { value: 'gelmedi', label: 'Gelmedi', color: 'text-rose-600 bg-rose-50 border-rose-200' },
+    54→] as const
+    55→
+    56→export function AppointmentsView() {
+    57→  const qc = useQueryClient()
+    58→  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
+    59→  const [tab, setTab] = useState('appointments')
+    60→  const [bookOpen, setBookOpen] = useState(false)
+    61→  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+    62→
+    63→  // Provider list
+    64→  const { data: providersData } = useQuery({
+    65→    queryKey: ['providers'],
+    66→    queryFn: () => apiGet<{ items: Provider[] }>('/api/appointments/providers'),
+    67→  })
+    68→  const providers = providersData?.items ?? []
+    69→  const currentProvider = providers[0] // first provider for now
+    70→  const providerId = selectedProviderId || currentProvider?.id
+    71→
+    72→  // Provider detail (staff + services)
+    73→  const { data: provider } = useQuery({
+    74→    queryKey: ['provider', providerId],
+    75→    queryFn: () => apiGet<Provider>(`/api/appointments/providers/${providerId}`),
+    76→    enabled: !!providerId,
+    77→  })
+    78→
+    79→  // Appointments for selected date
+    80→  const { data: appointments = [], isLoading } = useQuery({
+    81→    queryKey: ['appointments', providerId, selectedDate],
+    82→    queryFn: () => apiGet<Appointment[]>(`/api/appointments/providers/${providerId}/appointments?date=${selectedDate}`),
+    83→    enabled: !!providerId,
+    84→  })
+    85→
+    86→  if (!providersData) {
+    87→    return <div className="p-8"><Skeleton className="h-32" /></div>
+    88→  }
+    89→
+    90→  if (providers.length === 0) {
+    91→    return (
+    92→      <div className="space-y-5 animate-fade-in">
+    93→        <h2 className="text-2xl font-bold">Randevu Sistemi</h2>
+    94→        <Card><CardContent className="p-8 text-center">
+    95→          <Store className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
+    96→          <p className="text-sm text-muted-foreground mb-4">Henüz işletme kaydı yok. İlk işletmenizi oluşturun.</p>
+    97→          <ProviderCreateDialog tenantId="" onCreated={() => qc.invalidateQueries({ queryKey: ['providers'] })} />
+    98→        </CardContent></Card>
+    99→      </div>
+   100→    )
+   101→  }
+   102→
+   103→  return (
+   104→    <div className="space-y-5 animate-fade-in">
+   105→      {/* Header */}
+   106→      <div className="flex items-center justify-between flex-wrap gap-3">
+   107→        <div>
+   108→          <h2 className="text-2xl font-bold tracking-tight">Randevu Sistemi</h2>
+   109→          <p className="text-sm text-muted-foreground mt-0.5">
+   110→            {provider?.name} · {PROVIDER_TYPES.find((t) => t.value === provider?.type)?.label}
+   111→          </p>
+   112→        </div>
+   113→        <div className="flex gap-2">
+   114→          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-40" />
+   115→          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setBookOpen(true)}>
+   116→            <Plus className="w-4 h-4 mr-1.5" /> Randevu Ekle
+   117→          </Button>
+   118→        </div>
+   119→      </div>
+   120→
+   121→      <Tabs value={tab} onValueChange={setTab}>
+   122→        <TabsList>
+   123→          <TabsTrigger value="appointments" className="text-xs"><Calendar className="w-3.5 h-3.5 mr-1" /> Randevular</TabsTrigger>
+   124→          <TabsTrigger value="staff" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Personel</TabsTrigger>
+   125→          <TabsTrigger value="services" className="text-xs"><Scissors className="w-3.5 h-3.5 mr-1" /> Hizmetler</TabsTrigger>
+   126→          <TabsTrigger value="booking" className="text-xs"><Store className="w-3.5 h-3.5 mr-1" /> Müşteri Görünümü</TabsTrigger>
+   127→        </TabsList>
+   128→
+   129→        {/* Randevular tab */}
+   130→        <TabsContent value="appointments" className="mt-4">
+   131→          {isLoading ? (
+   132→            <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
+   133→          ) : appointments.length === 0 ? (
+   134→            <Card><CardContent className="py-12 text-center">
+   135→              <Calendar className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+   136→              <p className="text-sm text-muted-foreground">{formatDate(selectedDate)} tarihinde randevu yok</p>
+   137→            </CardContent></Card>
+   138→          ) : (
+   139→            <div className="space-y-2">
+   140→              {appointments.map((apt) => {
+   141→                const st = APPT_STATUS.find((s) => s.value === apt.status)
+   142→                return (
+   143→                  <Card key={apt.id} className="shadow-soft">
+   144→                    <CardContent className="p-3 flex items-center gap-3">
+   145→                      <div className="text-center shrink-0 w-16">
+   146→                        <div className="text-lg font-bold tabular-nums">{formatTime(apt.date)}</div>
+   147→                        <div className="text-[10px] text-muted-foreground">{apt.endTime ? formatTime(apt.endTime) : ''}</div>
+   148→                      </div>
+   149→                      <div className="flex-1 min-w-0">
+   150→                        <div className="flex items-center gap-2">
+   151→                          <span className="font-medium text-sm">{apt.customerName}</span>
+   152→                          <Badge variant="outline" className={cn('text-[10px]', st?.color ?? '')}>{st?.label}</Badge>
+   153→                        </div>
+   154→                        <div className="text-xs text-muted-foreground mt-0.5">
+   155→                          {apt.service?.name ?? '—'} · {apt.staff?.name ?? 'Herhangi'} · {formatCurrency(apt.price)}
+   156→                        </div>
+   157→                      </div>
+   158→                      <div className="flex items-center gap-1 shrink-0">
+   159→                        <a href={whatsappLink(apt.customerPhone, `Merhaba ${apt.customerName}, ${formatDate(apt.date)} ${formatTime(apt.date)} randevunuz hatırlatmasıdır.`)} target="_blank" rel="noopener">
+   160→                          <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600"><MessageCircle className="w-4 h-4" /></Button>
+   161→                        </a>
+   162→                        <a href={`tel:${apt.customerPhone}`}><Button variant="ghost" size="icon" className="h-8 w-8"><Phone className="w-4 h-4" /></Button></a>
+   163→                        {apt.status === 'onaylandi' && (
+   164→                          <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600" title="Tamamlandı"
+   165→                            onClick={async () => { await apiPatch(`/api/appointments/providers/${providerId}/appointments/${apt.id}`, { status: 'tamamlandi' }); qc.invalidateQueries({ queryKey: ['appointments'] }); toast.success('Randevu tamamlandı') }}>
+   166→                            <CheckCircle2 className="w-4 h-4" />
+   167→                          </Button>
+   168→                        )}
+   169→                        {apt.status !== 'iptal' && apt.status !== 'tamamlandi' && (
+   170→                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" title="İptal"
+   171→                            onClick={async () => { await apiPatch(`/api/appointments/providers/${providerId}/appointments/${apt.id}`, { status: 'iptal' }); qc.invalidateQueries({ queryKey: ['appointments'] }); toast.success('Randevu iptal edildi') }}>
+   172→                            <XCircle className="w-4 h-4" />
+   173→                          </Button>
+   174→                        )}
+   175→                      </div>
+   176→                    </CardContent>
+   177→                  </Card>
+   178→                )
+   179→              })}
+   180→            </div>
+   181→          )}
+   182→        </TabsContent>
+   183→
+   184→        {/* Personel tab */}
+   185→        <TabsContent value="staff" className="mt-4">
+   186→          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+   187→            {provider?.staff?.map((s) => (
+   188→              <Card key={s.id} className="shadow-soft">
+   189→                <CardContent className="p-4 flex items-center gap-3">
+   190→                  <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-lg font-semibold shrink-0">
+   191→                    {s.photo ? <img src={s.photo} alt={s.name} className="w-full h-full rounded-full object-cover" /> : s.name.charAt(0)}
+   192→                  </div>
+   193→                  <div className="flex-1 min-w-0">
+   194→                    <div className="font-medium text-sm">{s.name}</div>
+   195→                    <div className="text-xs text-muted-foreground">{s.title ?? 'Personel'}</div>
+   196→                  </div>
+   197→                </CardContent>
+   198→              </Card>
+   199→            ))}
+   200→            {(!provider?.staff || provider.staff.length === 0) && (
+   201→              <Card><CardContent className="py-8 text-center col-span-full">
+   202→                <Users className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+   203→                <p className="text-sm text-muted-foreground">Henüz personel eklenmemiş</p>
+   204→              </CardContent></Card>
+   205→            )}
+   206→          </div>
+   207→        </TabsContent>
+   208→
+   209→        {/* Hizmetler tab */}
+   210→        <TabsContent value="services" className="mt-4">
+   211→          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+   212→            {provider?.services?.map((s) => (
+   213→              <Card key={s.id} className="shadow-soft">
+   214→                <CardContent className="p-4">
+   215→                  <div className="flex items-start gap-3">
+   216→                    <div className="w-12 h-12 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center shrink-0">
+   217→                      <Scissors className="w-5 h-5 text-emerald-600" />
+   218→                    </div>
+   219→                    <div className="flex-1 min-w-0">
+   220→                      <div className="font-medium text-sm">{s.name}</div>
+   221→                      <div className="text-xs text-muted-foreground mt-0.5">{s.description}</div>
+   222→                      <div className="flex items-center gap-3 mt-2">
+   223→                        <Badge variant="outline" className="text-[10px]"><Clock className="w-3 h-3 mr-1" />{s.duration}dk</Badge>
+   224→                        <span className="text-sm font-semibold text-emerald-600">{formatCurrency(s.price)}</span>
+   225→                      </div>
+   226→                    </div>
+   227→                  </div>
+   228→                </CardContent>
+   229→              </Card>
+   230→            ))}
+   231→            {(!provider?.services || provider.services.length === 0) && (
+   232→              <Card><CardContent className="py-8 text-center col-span-full">
+   233→                <Scissors className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+   234→                <p className="text-sm text-muted-foreground">Henüz hizmet eklenmemiş</p>
+   235→              </CardContent></Card>
+   236→            )}
+   237→          </div>
+   238→        </TabsContent>
+   239→
+   240→        {/* Müşteri Görünümü — Public Booking */}
+   241→        <TabsContent value="booking" className="mt-4">
+   242→          {provider && <PublicBooking provider={provider} onBooked={() => qc.invalidateQueries({ queryKey: ['appointments'] })} />}
+   243→        </TabsContent>
+   244→      </Tabs>
+   245→
+   246→      {/* Manual booking dialog */}
+   247→      {bookOpen && provider && (
+   248→        <ManualBookingDialog
+   249→          provider={provider}
+   250→          open={bookOpen}
+   251→          onOpenChange={setBookOpen}
+   252→          onSuccess={() => qc.invalidateQueries({ queryKey: ['appointments'] })}
+   253→        />
+   254→      )}
+   255→    </div>
+   256→  )
+   257→}
+   258→
+   259→// Müşteri görünümü — public booking widget
+   260→function PublicBooking({ provider, onBooked }: { provider: Provider; onBooked: () => void }) {
+   261→  const [step, setStep] = useState(1)
+   262→  const [selectedService, setSelectedService] = useState<Service | null>(null)
+   263→  const [selectedStaff, setSelectedStaff] = useState<string>('')
+   264→  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+   265→  const [selectedTime, setSelectedTime] = useState('')
+   266→  const [customer, setCustomer] = useState({ name: '', phone: '', email: '', note: '' })
+   267→  const [booking, setBooking] = useState(false)
+   268→
+   269→  // Basit slot üretimi (09:00-18:00, 30dk aralık)
+   270→  const slots = useMemo(() => {
+   271→    const result: string[] = []
+   272→    for (let h = 9; h < 18; h++) {
+   273→      result.push(`${String(h).padStart(2, '0')}:00`)
+   274→      result.push(`${String(h).padStart(2, '0')}:30`)
+   275→    }
+   276→    return result
+   277→  }, [])
+   278→
+   279→  const handleBook = async () => {
+   280→    setBooking(true)
+   281→    try {
+   282→      const dateTime = new Date(`${selectedDate}T${selectedTime}:00`)
+   283→      await apiPost(`/api/appointments/providers/${provider.id}/appointments`, {
+   284→        serviceId: selectedService?.id,
+   285→        staffId: selectedStaff || undefined,
+   286→        customerName: customer.name,
+   287→        customerPhone: customer.phone,
+   288→        customerEmail: customer.email || undefined,
+   289→        customerNote: customer.note || undefined,
+   290→        date: dateTime.toISOString(),
+   291→        source: 'web',
+   292→      })
+   293→      toast.success('Randevu oluşturuldu!', { description: `${formatDate(selectedDate)} ${selectedTime}` })
+   294→      setStep(5) // success
+   295→      onBooked()
+   296→    } catch (e) {
+   297→      toast.error('Randevu oluşturulamadı', { description: e instanceof Error ? e.message : '' })
+   298→    } finally {
+   299→      setBooking(false)
+   300→    }
+   301→  }
+   302→
+   303→  return (
+   304→    <Card className="shadow-soft max-w-2xl mx-auto">
+   305→      <CardContent className="p-6">
+   306→        {/* Progress */}
+   307→        <div className="flex items-center justify-between mb-6">
+   308→          {['Hizmet', 'Personel', 'Tarih', 'Bilgiler', 'Tamam'].map((label, i) => (
+   309→            <div key={i} className="flex items-center flex-1">
+   310→              <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0',
+   311→                step > i + 1 ? 'bg-emerald-500 text-white' : step === i + 1 ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground')}>
+   312→                {step > i + 1 ? '✓' : i + 1}
+   313→              </div>
+   314→              {i < 4 && <div className={cn('flex-1 h-0.5 mx-1', step > i + 1 ? 'bg-emerald-500' : 'bg-muted')} />}
+   315→            </div>
+   316→          ))}
+   317→        </div>
+   318→
+   319→        {/* Step 1: Service */}
+   320→        {step === 1 && (
+   321→          <div className="space-y-3">
+   322→            <h3 className="font-semibold text-lg">Hizmet Seçin</h3>
+   323→            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+   324→              {provider.services.map((s) => (
+   325→                <button key={s.id} onClick={() => { setSelectedService(s); setStep(2) }}
+   326→                  className="flex items-center gap-3 p-3 rounded-lg border border-border hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors text-left">
+   327→                  <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center shrink-0">
+   328→                    <Scissors className="w-5 h-5 text-emerald-600" />
+   329→                  </div>
+   330→                  <div className="flex-1 min-w-0">
+   331→                    <div className="font-medium text-sm">{s.name}</div>
+   332→                    <div className="text-xs text-muted-foreground">{s.duration}dk · {formatCurrency(s.price)}</div>
+   333→                  </div>
+   334→                </button>
+   335→              ))}
+   336→            </div>
+   337→          </div>
+   338→        )}
+   339→
+   340→        {/* Step 2: Staff */}
+   341→        {step === 2 && (
+   342→          <div className="space-y-3">
+   343→            <h3 className="font-semibold text-lg">Personel Seçin</h3>
+   344→            <button onClick={() => { setSelectedStaff(''); setStep(3) }}
+   345→              className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 transition-colors text-left">
+   346→              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center"><User className="w-5 h-5" /></div>
+   347→              <span className="font-medium text-sm">Herhangi biri</span>
+   348→            </button>
+   349→            {provider.staff.map((s) => (
+   350→              <button key={s.id} onClick={() => { setSelectedStaff(s.id); setStep(3) }}
+   351→                className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors text-left">
+   352→                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-sm font-semibold">{s.name.charAt(0)}</div>
+   353→                <div><div className="font-medium text-sm">{s.name}</div><div className="text-xs text-muted-foreground">{s.title}</div></div>
+   354→              </button>
+   355→            ))}
+   356→            <Button variant="ghost" size="sm" onClick={() => setStep(1)}>← Geri</Button>
+   357→          </div>
+   358→        )}
+   359→
+   360→        {/* Step 3: Date & Time */}
+   361→        {step === 3 && (
+   362→          <div className="space-y-3">
+   363→            <h3 className="font-semibold text-lg">Tarih ve Saat Seçin</h3>
+   364→            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} min={new Date().toISOString().slice(0, 10)} />
+   365→            <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
+   366→              {slots.map((time) => (
+   367→                <button key={time} onClick={() => { setSelectedTime(time); setStep(4) }}
+   368→                  className="px-2 py-2 text-sm rounded-lg border border-border hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors tabular-nums">
+   369→                  {time}
+   370→                </button>
+   371→              ))}
+   372→            </div>
+   373→            <Button variant="ghost" size="sm" onClick={() => setStep(2)}>← Geri</Button>
+   374→          </div>
+   375→        )}
+   376→
+   377→        {/* Step 4: Customer info */}
+   378→        {step === 4 && (
+   379→          <div className="space-y-3">
+   380→            <h3 className="font-semibold text-lg">Bilgilerinizi Girin</h3>
+   381→            <div className="space-y-2">
+   382→              <div><Label className="text-xs">Ad Soyad *</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} placeholder="Adınız Soyadınız" /></div>
+   383→              <div><Label className="text-xs">Telefon *</Label><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} placeholder="+90 5xx xxx xx xx" /></div>
+   384→              <div><Label className="text-xs">E-posta (opsiyonel)</Label><Input value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} placeholder="email@ornek.com" /></div>
+   385→              <div><Label className="text-xs">Not (opsiyonel)</Label><Textarea value={customer.note} onChange={(e) => setCustomer({ ...customer, note: e.target.value })} placeholder="Eklemek istedikleriniz" className="h-16" /></div>
+   386→            </div>
+   387→            <div className="p-3 rounded-lg bg-muted/30 text-sm">
+   388→              <div className="font-medium">Özet</div>
+   389→              <div className="text-xs text-muted-foreground mt-1">
+   390→                {selectedService?.name} · {selectedStaff ? provider.staff.find((s) => s.id === selectedStaff)?.name : 'Herhangi'} · {formatDate(selectedDate)} {selectedTime} · {formatCurrency(selectedService?.price ?? 0)}
+   391→              </div>
+   392→            </div>
+   393→            <div className="flex gap-2">
+   394→              <Button variant="ghost" onClick={() => setStep(3)}>← Geri</Button>
+   395→              <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={handleBook} disabled={booking || !customer.name || !customer.phone}>
+   396→                {booking ? 'Oluşturuluyor...' : 'Randevuyu Onayla'}
+   397→              </Button>
+   398→            </div>
+   399→          </div>
+   400→        )}
+   401→
+   402→        {/* Step 5: Success */}
+   403→        {step === 5 && (
+   404→          <div className="text-center py-8">
+   405→            <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center mx-auto mb-4">
+   406→              <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+   407→            </div>
+   408→            <h3 className="font-semibold text-lg mb-1">Randevunuz Oluşturuldu!</h3>
+   409→            <p className="text-sm text-muted-foreground mb-4">
+   410→              {selectedService?.name} · {formatDate(selectedDate)} {selectedTime}
+   411→            </p>
+   412→            <a href={whatsappLink(customer.phone, `Randevunuz onaylandı: ${selectedService?.name}, ${formatDate(selectedDate)} ${selectedTime}`)} target="_blank" rel="noopener">
+   413→              <Button variant="outline" size="sm"><MessageCircle className="w-4 h-4 mr-1.5" /> WhatsApp Hatırlatma</Button>
+   414→            </a>
+   415→            <div className="mt-4">
+   416→              <Button variant="ghost" size="sm" onClick={() => { setStep(1); setSelectedService(null); setSelectedStaff(''); setSelectedTime(''); setCustomer({ name: '', phone: '', email: '', note: '' }) }}>
+   417→                Yeni Randevu
+   418→              </Button>
+   419→            </div>
+   420→          </div>
+   421→        )}
+   422→      </CardContent>
+   423→    </Card>
+   424→  )
+   425→}
+   426→
+   427→// Manual booking dialog (admin)
+   428→function ManualBookingDialog({ provider, open, onOpenChange, onSuccess }: {
+   429→  provider: Provider; open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => void
+   430→}) {
+   431→  const [form, setForm] = useState({
+   432→    serviceId: '', staffId: '', date: new Date().toISOString().slice(0, 10),
+   433→    time: '10:00', name: '', phone: '', email: '', note: '',
+   434→  })
+   435→  const [saving, setSaving] = useState(false)
+   436→
+   437→  const handleSave = async () => {
+   438→    setSaving(true)
+   439→    try {
+   440→      const dateTime = new Date(`${form.date}T${form.time}:00`)
+   441→      await apiPost(`/api/appointments/providers/${provider.id}/appointments`, {
+   442→        serviceId: form.serviceId || undefined,
+   443→        staffId: form.staffId || undefined,
+   444→        customerName: form.name,
+   445→        customerPhone: form.phone,
+   446→        customerEmail: form.email || undefined,
+   447→        customerNote: form.note || undefined,
+   448→        date: dateTime.toISOString(),
+   449→        source: 'phone',
+   450→      })
+   451→      toast.success('Randevu oluşturuldu')
+   452→      onSuccess()
+   453→      onOpenChange(false)
+   454→    } catch (e) {
+   455→      toast.error('Randevu oluşturulamadı', { description: e instanceof Error ? e.message : '' })
+   456→    } finally {
+   457→      setSaving(false)
+   458→    }
+   459→  }
+   460→
+   461→  return (
+   462→    <Dialog open={open} onOpenChange={onOpenChange}>
+   463→      <DialogContent className="max-w-md">
+   464→        <DialogHeader><DialogTitle>Manuel Randevu</DialogTitle></DialogHeader>
+   465→        <div className="space-y-3">
+   466→          <div><Label className="text-xs">Hizmet</Label>
+   467→            <Select value={form.serviceId || '__none__'} onValueChange={(v) => setForm({ ...form, serviceId: v === '__none__' ? '' : v })}>
+   468→              <SelectTrigger className="h-9"><SelectValue placeholder="Hizmet seç" /></SelectTrigger>
+   469→              <SelectContent>
+   470→                <SelectItem value="__none__">Hizmet seçilmedi</SelectItem>
+   471→                {provider.services.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.duration}dk)</SelectItem>)}
+   472→              </SelectContent>
+   473→            </Select>
+   474→          </div>
+   475→          <div><Label className="text-xs">Personel</Label>
+   476→            <Select value={form.staffId || '__none__'} onValueChange={(v) => setForm({ ...form, staffId: v === '__none__' ? '' : v })}>
+   477→              <SelectTrigger className="h-9"><SelectValue placeholder="Herhangi" /></SelectTrigger>
+   478→              <SelectContent>
+   479→                <SelectItem value="__none__">Herhangi biri</SelectItem>
+   480→                {provider.staff.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+   481→              </SelectContent>
+   482→            </Select>
+   483→          </div>
+   484→          <div className="grid grid-cols-2 gap-2">
+   485→            <div><Label className="text-xs">Tarih</Label><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
+   486→            <div><Label className="text-xs">Saat</Label><Input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} /></div>
+   487→          </div>
+   488→          <div><Label className="text-xs">Ad Soyad *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+   489→          <div><Label className="text-xs">Telefon *</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+90 5xx" /></div>
+   490→          <div><Label className="text-xs">Not</Label><Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="h-16" /></div>
+   491→        </div>
+   492→        <DialogFooter>
+   493→          <Button variant="outline" onClick={() => onOpenChange(false)}>İptal</Button>
+   494→          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSave} disabled={saving || !form.name || !form.phone}>{saving ? 'Kaydediliyor...' : 'Randevu Oluştur'}</Button>
+   495→        </DialogFooter>
+   496→      </DialogContent>
+   497→    </Dialog>
+   498→  )
+   499→}
+   500→
+   501→// Provider create dialog
+   502→function ProviderCreateDialog({ tenantId, onCreated }: { tenantId: string; onCreated: () => void }) {
+   503→  const [open, setOpen] = useState(false)
+   504→  const [form, setForm] = useState({ name: '', type: 'kuafor', city: '', phone: '' })
+   505→  const [saving, setSaving] = useState(false)
+   506→
+   507→  const handleSave = async () => {
+   508→    setSaving(true)
+   509→    try {
+   510→      await apiPost('/api/appointments/providers', form)
+   511→      toast.success('İşletme oluşturuldu')
+   512→      onCreated()
+   513→      setOpen(false)
+   514→    } catch { toast.error('Oluşturulamadı') } finally { setSaving(false) }
+   515→  }
+   516→
+   517→  return (
+   518→    <>
+   519→      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setOpen(true)}>
+   520→        <Plus className="w-4 h-4 mr-1.5" /> İşletme Ekle
+   521→      </Button>
+   522→      <Dialog open={open} onOpenChange={setOpen}>
+   523→        <DialogContent className="max-w-md">
+   524→          <DialogHeader><DialogTitle>Yeni İşletme</DialogTitle></DialogHeader>
+   525→          <div className="space-y-3">
+   526→            <div><Label className="text-xs">İşletme Adı *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+   527→            <div><Label className="text-xs">Tür</Label>
+   528→              <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+   529→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+   530→                <SelectContent>{PROVIDER_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.icon} {t.label}</SelectItem>)}</SelectContent>
+   531→              </Select>
+   532→            </div>
+   533→            <div><Label className="text-xs">Şehir</Label><Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
+   534→            <div><Label className="text-xs">Telefon</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+   535→          </div>
+   536→          <DialogFooter>
+   537→            <Button variant="outline" onClick={() => setOpen(false)}>İptal</Button>
+   538→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSave} disabled={saving || !form.name}>{saving ? 'Kaydediliyor...' : 'Oluştur'}</Button>
+   539→          </DialogFooter>
+   540→        </DialogContent>
+   541→      </Dialog>
+   542→    </>
+   543→  )
+   544→}
+   545→

@@ -1,0 +1,1340 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useCallback, Fragment } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import {
+     7→  apiGet, apiPost, apiPatch, apiDelete, qk, ApiError,
+     8→} from '@/lib/api-client'
+     9→import { useAppStore } from '@/store/app-store'
+    10→import { cn } from '@/lib/utils'
+    11→import { initials } from '@/lib/format'
+    12→import {
+    13→  ROLE_PERMISSIONS, ROLE_LABELS, ALL_PERMISSIONS,
+    14→  getRolePermissions, hasPermission, canDelegatePermission, getVisibleUserIds,
+    15→} from '@/lib/rbac'
+    16→import type { Role, PermissionKey, UserListItem, SessionUser } from '@/types'
+    17→
+    18→import {
+    19→  Card, CardContent, CardHeader, CardTitle, CardDescription,
+    20→} from '@/components/ui/card'
+    21→import { Button } from '@/components/ui/button'
+    22→import { Input } from '@/components/ui/input'
+    23→import { Label } from '@/components/ui/label'
+    24→import { Badge } from '@/components/ui/badge'
+    25→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    26→import {
+    27→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    28→} from '@/components/ui/table'
+    29→import {
+    30→  Dialog, DialogContent, DialogDescription, DialogFooter,
+    31→  DialogHeader, DialogTitle,
+    32→} from '@/components/ui/dialog'
+    33→import {
+    34→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    35→} from '@/components/ui/select'
+    36→import { Checkbox } from '@/components/ui/checkbox'
+    37→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    38→import { ScrollArea } from '@/components/ui/scroll-area'
+    39→import {
+    40→  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+    41→} from '@/components/ui/tooltip'
+    42→import {
+    43→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    44→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    45→} from '@/components/ui/alert-dialog'
+    46→import { Skeleton } from '@/components/ui/skeleton'
+    47→import {
+    48→  UserPlus, ShieldCheck, Search, Pencil, KeyRound,
+    49→  Ban, ChevronRight, ChevronDown, Users, UserCheck, Crown, GitBranch,
+    50→  Check, Minus, Info, AlertCircle, Shield, ListTree,
+    51→} from 'lucide-react'
+    52→import { PermissionTree } from './permission-tree'
+    53→
+    54→// ─── Rol renkleri (indigo/blue yok) ───────────────────────────────
+    55→const ROLE_BADGE_CLASS: Record<Role, string> = {
+    56→  superadmin: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/50',
+    57→  admin: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50',
+    58→  manager: 'bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900/50',
+    59→  rep: 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-900/50',
+    60→  readonly: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700',
+    61→  stock: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/50',
+    62→}
+    63→
+    64→const ROLE_AVATAR_GRADIENT: Record<Role, string> = {
+    65→  superadmin: 'from-amber-500 to-orange-600',
+    66→  admin: 'from-emerald-500 to-teal-600',
+    67→  manager: 'from-violet-500 to-purple-600',
+    68→  rep: 'from-teal-500 to-cyan-600',
+    69→  readonly: 'from-slate-500 to-slate-600',
+    70→  stock: 'from-rose-500 to-pink-600',
+    71→}
+    72→
+    73→// ─── Tipler ───────────────────────────────────────────────────────
+    74→interface UsersResponse {
+    75→  items: UserListItem[]
+    76→  total: number
+    77→}
+    78→
+    79→type UserFormData = {
+    80→  name: string
+    81→  email: string
+    82→  role: Role
+    83→  title: string
+    84→  phone: string
+    85→  managerId: string
+    86→  status: string
+    87→}
+    88→
+    89→const EMPTY_FORM: UserFormData = {
+    90→  name: '', email: '', role: 'rep', title: '', phone: '', managerId: '', status: 'active',
+    91→}
+    92→
+    93→// Formda seçilebilen roller (superadmin hariç)
+    94→const SELECTABLE_ROLES: Role[] = ['admin', 'manager', 'rep', 'readonly', 'stock']
+    95→
+    96→// ─── Yardımcılar ──────────────────────────────────────────────────
+    97→function StatusBadge({ status }: { status: string }) {
+    98→  if (status === 'active') {
+    99→    return (
+   100→      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50">
+   101→        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5" /> Aktif
+   102→      </Badge>
+   103→    )
+   104→  }
+   105→  return (
+   106→    <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-100 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700">
+   107→      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5" /> Pasif
+   108→    </Badge>
+   109→  )
+   110→}
+   111→
+   112→function RoleBadge({ role }: { role: Role }) {
+   113→  return (
+   114→    <Badge variant="outline" className={cn('font-medium', ROLE_BADGE_CLASS[role])}>
+   115→      {ROLE_LABELS[role]}
+   116→    </Badge>
+   117→  )
+   118→}
+   119→
+   120→function UserAvatar({ user, size = 'default' }: { user: { name: string; avatarUrl?: string | null }; size?: 'sm' | 'default' }) {
+   121→  const sz = size === 'sm' ? 'w-7 h-7 text-[11px]' : 'w-9 h-9 text-xs'
+   122→  // Role bilinmediği için gradyan yerine nötr
+   123→  return (
+   124→    <Avatar className={sz}>
+   125→      {user.avatarUrl ? <AvatarImage src={user.avatarUrl} alt={user.name} /> : null}
+   126→      <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white font-semibold">
+   127→        {initials(user.name)}
+   128→      </AvatarFallback>
+   129→    </Avatar>
+   130→  )
+   131→}
+   132→
+   133→// ─── Kullanıcı listesi skeleton ───────────────────────────────────
+   134→function UsersTableSkeleton() {
+   135→  return (
+   136→    <Card>
+   137→      <CardContent className="p-0">
+   138→        <div className="p-4 border-b">
+   139→          <Skeleton className="h-9 w-64" />
+   140→        </div>
+   141→        <div className="p-4 space-y-3">
+   142→          {[...Array(6)].map((_, i) => (
+   143→            <Skeleton key={i} className="h-12 w-full" />
+   144→          ))}
+   145→        </div>
+   146→      </CardContent>
+   147→    </Card>
+   148→  )
+   149→}
+   150→
+   151→// ─── İstatistik kartları ──────────────────────────────────────────
+   152→function StatsRow({ users }: { users: UserListItem[] }) {
+   153→  const total = users.length
+   154→  const active = users.filter((u) => u.status === 'active').length
+   155→  const managers = users.filter((u) => u.role === 'manager' || u.role === 'admin' || u.role === 'superadmin').length
+   156→  const reps = users.filter((u) => u.role === 'rep').length
+   157→
+   158→  const stats = [
+   159→    { label: 'Toplam Kullanıcı', value: total, icon: Users, color: 'from-emerald-500 to-teal-600', sub: `${active} aktif` },
+   160→    { label: 'Aktif', value: active, icon: UserCheck, color: 'from-teal-500 to-cyan-600', sub: `${total - active} pasif` },
+   161→    { label: 'Yönetici', value: managers, icon: Crown, color: 'from-violet-500 to-purple-600', sub: 'müdür + admin' },
+   162→    { label: 'Temsilci', value: reps, icon: GitBranch, color: 'from-amber-500 to-orange-600', sub: 'satış temsilcisi' },
+   163→  ]
+   164→  return (
+   165→    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+   166→      {stats.map((s) => (
+   167→        <Card key={s.label} className="overflow-hidden">
+   168→          <CardContent className="p-5">
+   169→            <div className="flex items-start justify-between mb-3">
+   170→              <div className={cn('w-10 h-10 rounded-lg bg-gradient-to-br flex items-center justify-center shadow-sm', s.color)}>
+   171→                <s.icon className="w-5 h-5 text-white" />
+   172→              </div>
+   173→            </div>
+   174→            <div className="text-2xl font-bold tracking-tight">{s.value}</div>
+   175→            <div className="text-sm text-muted-foreground mt-0.5">{s.label}</div>
+   176→            <div className="text-xs text-muted-foreground/80 mt-1.5">{s.sub}</div>
+   177→          </CardContent>
+   178→        </Card>
+   179→      ))}
+   180→    </div>
+   181→  )
+   182→}
+   183→
+   184→// ─── Add/Edit Dialog ──────────────────────────────────────────────
+   185→function UserFormDialog({
+   186→  open, onOpenChange, editing, users, actor,
+   187→}: {
+   188→  open: boolean
+   189→  onOpenChange: (v: boolean) => void
+   190→  editing: UserListItem | null
+   191→  users: UserListItem[]
+   192→  actor: SessionUser
+   193→}) {
+   194→  const qc = useQueryClient()
+   195→  const [form, setForm] = useState<UserFormData>(() =>
+   196→    editing
+   197→      ? {
+   198→          name: editing.name,
+   199→          email: editing.email,
+   200→          role: editing.role,
+   201→          title: editing.title ?? '',
+   202→          phone: editing.phone ?? '',
+   203→          managerId: editing.managerId ?? '',
+   204→          status: editing.status,
+   205→        }
+   206→      : EMPTY_FORM,
+   207→  )
+   208→  const [submitting, setSubmitting] = useState(false)
+   209→  const [showRoleNotice, setShowRoleNotice] = useState(false)
+   210→
+   211→  const createMut = useMutation({
+   212→    mutationFn: (body: UserFormData) => apiPost<UserListItem>('/api/users', body),
+   213→    onSuccess: () => {
+   214→      toast.success('Kullanıcı davet edildi', { description: `${form.name} sisteme eklendi.` })
+   215→      qc.invalidateQueries({ queryKey: qk.users })
+   216→      onOpenChange(false)
+   217→    },
+   218→    onError: (e: ApiError) => toast.error('Hata', { description: e.message }),
+   219→    onSettled: () => setSubmitting(false),
+   220→  })
+   221→
+   222→  const updateMut = useMutation({
+   223→    mutationFn: (body: Partial<UserFormData>) => apiPatch<UserListItem>(`/api/users/${editing?.id}`, body),
+   224→    onSuccess: () => {
+   225→      toast.success('Kullanıcı güncellendi', { description: `${form.name} bilgileri kaydedildi.` })
+   226→      qc.invalidateQueries({ queryKey: qk.users })
+   227→      onOpenChange(false)
+   228→    },
+   229→    onError: (e: ApiError) => toast.error('Hata', { description: e.message }),
+   230→    onSettled: () => setSubmitting(false),
+   231→  })
+   232→
+   233→  const handleSubmit = () => {
+   234→    if (!form.name.trim() || !form.email.trim()) {
+   235→      toast.error('Eksik bilgi', { description: 'Ad ve e-posta zorunludur.' })
+   236→      return
+   237→    }
+   238→    setSubmitting(true)
+   239→    const payload: UserFormData = {
+   240→      ...form,
+   241→      managerId: form.managerId === 'none' ? '' : form.managerId,
+   242→    }
+   243→    if (editing) {
+   244→      updateMut.mutate(payload)
+   245→    } else {
+   246→      createMut.mutate(payload)
+   247→    }
+   248→  }
+   249→
+   250→  // Manager select — editing kullanıcısını dışla, actor dahil tüm tenant kullanıcıları
+   251→  const managerOptions = users.filter((u) => u.id !== editing?.id)
+   252→
+   253→  // Rol değişince bildirim
+   254→  const handleRoleChange = (role: Role) => {
+   255→    setForm((f) => ({ ...f, role }))
+   256→    setShowRoleNotice(true)
+   257→  }
+   258→
+   259→  const roleDefaultPerms = getRolePermissions(form.role)
+   260→
+   261→  return (
+   262→    <Dialog open={open} onOpenChange={onOpenChange}>
+   263→      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+   264→        <DialogHeader>
+   265→          <DialogTitle className="flex items-center gap-2">
+   266→            {editing ? <Pencil className="w-4 h-4 text-emerald-600" /> : <UserPlus className="w-4 h-4 text-emerald-600" />}
+   267→            {editing ? 'Kullanıcı Düzenle' : 'Kullanıcı Davet Et'}
+   268→          </DialogTitle>
+   269→          <DialogDescription>
+   270→            {editing
+   271→              ? `${editing.name} kullanıcısının bilgilerini ve rolünü güncelleyin.`
+   272→              : 'Yeni bir kullanıcı ekleyin. Rolüne göre varsayılan yetkiler otomatik atanır.'}
+   273→          </DialogDescription>
+   274→        </DialogHeader>
+   275→
+   276→        <div className="grid sm:grid-cols-2 gap-4 py-2">
+   277→          <div className="space-y-1.5">
+   278→            <Label htmlFor="u-name">Ad Soyad *</Label>
+   279→            <Input id="u-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Örn. Ahmet Yılmaz" />
+   280→          </div>
+   281→          <div className="space-y-1.5">
+   282→            <Label htmlFor="u-email">E-posta *</Label>
+   283→            <Input id="u-email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="ahmet@sirket.com" />
+   284→          </div>
+   285→          <div className="space-y-1.5">
+   286→            <Label htmlFor="u-role">Rol</Label>
+   287→            <Select value={form.role} onValueChange={(v) => handleRoleChange(v as Role)}>
+   288→              <SelectTrigger id="u-role" className="w-full">
+   289→                <SelectValue />
+   290→              </SelectTrigger>
+   291→              <SelectContent>
+   292→                {SELECTABLE_ROLES.map((r) => (
+   293→                  <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+   294→                ))}
+   295→              </SelectContent>
+   296→            </Select>
+   297→          </div>
+   298→          <div className="space-y-1.5">
+   299→            <Label htmlFor="u-title">Ünvan</Label>
+   300→            <Input id="u-title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Satış Müdürü" />
+   301→          </div>
+   302→          <div className="space-y-1.5">
+   303→            <Label htmlFor="u-phone">Telefon</Label>
+   304→            <Input id="u-phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+90 5xx xxx xx xx" />
+   305→          </div>
+   306→          <div className="space-y-1.5">
+   307→            <Label htmlFor="u-manager">Yönetici</Label>
+   308→            <Select value={form.managerId || 'none'} onValueChange={(v) => setForm((f) => ({ ...f, managerId: v === 'none' ? '' : v }))}>
+   309→              <SelectTrigger id="u-manager" className="w-full">
+   310→                <SelectValue placeholder="Yönetici seçin" />
+   311→              </SelectTrigger>
+   312→              <SelectContent>
+   313→                <SelectItem value="none">— Yönetici yok —</SelectItem>
+   314→                {managerOptions.map((m) => (
+   315→                  <SelectItem key={m.id} value={m.id}>
+   316→                    {m.name} · {ROLE_LABELS[m.role]}
+   317→                  </SelectItem>
+   318→                ))}
+   319→              </SelectContent>
+   320→            </Select>
+   321→          </div>
+   322→          <div className="space-y-1.5">
+   323→            <Label htmlFor="u-status">Durum</Label>
+   324→            <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+   325→              <SelectTrigger id="u-status" className="w-full">
+   326→                <SelectValue />
+   327→              </SelectTrigger>
+   328→              <SelectContent>
+   329→                <SelectItem value="active">Aktif</SelectItem>
+   330→                <SelectItem value="passive">Pasif</SelectItem>
+   331→              </SelectContent>
+   332→            </Select>
+   333→          </div>
+   334→        </div>
+   335→
+   336→        {/* Rol değişimi bildirimi */}
+   337→        {showRoleNotice && (
+   338→          <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 dark:bg-emerald-950/20 dark:border-emerald-900/40 p-3 flex gap-2.5">
+   339→            <Info className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+   340→            <div className="text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+   341→              <p className="font-medium">
+   342→                {ROLE_LABELS[form.role]} rolü için varsayılan yetkiler:
+   343→              </p>
+   344→              <div className="flex flex-wrap gap-1">
+   345→                {roleDefaultPerms.length > 0 ? roleDefaultPerms.slice(0, 6).map((p) => (
+   346→                  <span key={p} className="px-1.5 py-0.5 rounded bg-white dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 font-mono text-[10px]">
+   347→                    {p}
+   348→                  </span>
+   349→                )) : <span className="italic">Yetki yok</span>}
+   350→                {roleDefaultPerms.length > 6 && (
+   351→                  <span className="text-emerald-700 dark:text-emerald-400">+{roleDefaultPerms.length - 6} daha</span>
+   352→                )}
+   353→              </div>
+   354→              <p className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80 pt-0.5">
+   355→                Yetkileri özelleştirmek için &ldquo;Yetki Matrisi&rdquo; → kullanıcı seç → düzenle.
+   356→              </p>
+   357→            </div>
+   358→          </div>
+   359→        )}
+   360→
+   361→        {/* Cycle önleme uyarısı */}
+   362→        <div className="rounded-lg border border-amber-200 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-900/40 p-2.5 flex gap-2">
+   363→          <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+   364→          <p className="text-[11px] text-amber-800 dark:text-amber-300">
+   365→            Yönetici ataması döngü oluşturamaz (kullanıcı, kendi astının astı olamaz). Sistem otomatik engeller.
+   366→          </p>
+   367→        </div>
+   368→
+   369→        <DialogFooter className="pt-2">
+   370→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+   371→            İptal
+   372→          </Button>
+   373→          <Button
+   374→            onClick={handleSubmit}
+   375→            disabled={submitting}
+   376→            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   377→          >
+   378→            {submitting ? 'Kaydediliyor…' : editing ? 'Değişiklikleri Kaydet' : 'Kullanıcı Oluştur'}
+   379→          </Button>
+   380→        </DialogFooter>
+   381→      </DialogContent>
+   382→    </Dialog>
+   383→  )
+   384→}
+   385→
+   386→// ─── Yetki Matrisi (read-only) ────────────────────────────────────
+   387→function PermissionMatrixReadOnly() {
+   388→  const roles: Role[] = ['admin', 'manager', 'rep', 'readonly', 'stock']
+   389→  const groups = useMemo(() => {
+   390→    const map = new Map<string, typeof ALL_PERMISSIONS>()
+   391→    for (const p of ALL_PERMISSIONS) {
+   392→      if (!map.has(p.group)) map.set(p.group, [])
+   393→      map.get(p.group)!.push(p)
+   394→    }
+   395→    return Array.from(map.entries())
+   396→  }, [])
+   397→
+   398→  return (
+   399→    <div className="rounded-lg border overflow-hidden">
+   400→      <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+   401→        <table className="w-full text-sm">
+   402→          <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
+   403→            <tr className="border-b">
+   404→              <th className="text-left font-medium p-3 min-w-[260px]">Yetki</th>
+   405→              {roles.map((r) => (
+   406→                <th key={r} className="text-center font-medium p-2 min-w-[110px]">
+   407→                  <div className="flex flex-col items-center gap-1">
+   408→                    <span className="text-xs">{ROLE_LABELS[r]}</span>
+   409→                  </div>
+   410→                </th>
+   411→              ))}
+   412→            </tr>
+   413→          </thead>
+   414→          <tbody>
+   415→            {groups.map(([group, perms]) => (
+   416→              <Fragment key={`g-${group}`}>
+   417→                <tr className="bg-muted/30">
+   418→                  <td colSpan={roles.length + 1} className="p-2.5 font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+   419→                    {group}
+   420→                  </td>
+   421→                </tr>
+   422→                {perms.map((p) => (
+   423→                  <tr key={p.key} className="border-b last:border-0 hover:bg-muted/40 transition-colors">
+   424→                    <td className="p-2.5">
+   425→                      <div className="font-medium text-[13px]">{p.label}</div>
+   426→                      <div className="text-[10px] text-muted-foreground font-mono">{p.key}</div>
+   427→                    </td>
+   428→                    {roles.map((r) => {
+   429→                      const has = ROLE_PERMISSIONS[r].includes(p.key)
+   430→                      return (
+   431→                        <td key={r} className="p-2 text-center">
+   432→                          {has ? (
+   433→                            <Tooltip>
+   434→                              <TooltipTrigger asChild>
+   435→                                <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+   436→                                  <Check className="w-3.5 h-3.5" />
+   437→                                </span>
+   438→                              </TooltipTrigger>
+   439→                              <TooltipContent>Bu rol bu yetkiye sahip</TooltipContent>
+   440→                            </Tooltip>
+   441→                          ) : (
+   442→                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-slate-50 text-slate-300 dark:bg-slate-800/40 dark:text-slate-600">
+   443→                              <Minus className="w-3.5 h-3.5" />
+   444→                            </span>
+   445→                          )}
+   446→                        </td>
+   447→                      )
+   448→                    })}
+   449→                  </tr>
+   450→                ))}
+   451→              </Fragment>
+   452→            ))}
+   453→          </tbody>
+   454→        </table>
+   455→      </div>
+   456→    </div>
+   457→  )
+   458→}
+   459→
+   460→// ─── Kullanıcı bazlı yetki editörü ────────────────────────────────
+   461→function UserPermissionEditor({
+   462→  users, actor,
+   463→}: {
+   464→  users: UserListItem[]
+   465→  actor: SessionUser
+   466→}) {
+   467→  const qc = useQueryClient()
+   468→  const [selectedId, setSelectedId] = useState<string>('')
+   469→  const [draftPerms, setDraftPerms] = useState<PermissionKey[]>([])
+   470→  const [saving, setSaving] = useState(false)
+   471→
+   472→  const selected = users.find((u) => u.id === selectedId) ?? null
+   473→
+   474→  // Actor'ın astları (getVisibleUserIds ile, self hariç)
+   475→  const subordinates = useMemo(() => {
+   476→    const visible = getVisibleUserIds(
+   477→      users.map((u) => ({ id: u.id, managerId: u.managerId })),
+   478→      actor.id,
+   479→    )
+   480→    return visible.filter((id) => id !== actor.id)
+   481→  }, [users, actor])
+   482→
+   483→  // Seçim değişince draft'ı hazırla
+   484→  const handleSelect = (id: string) => {
+   485→    setSelectedId(id)
+   486→    const u = users.find((x) => x.id === id)
+   487→    setDraftPerms(u?.permissions ?? [])
+   488→  }
+   489→
+   490→  // Belirli bir yetki değiştirilebilir mi? (canDelegatePermission)
+   491→  const canEdit = useCallback(
+   492→    (perm: PermissionKey): boolean => {
+   493→      if (!selected) return false
+   494→      return canDelegatePermission(actor, selected.id, perm, subordinates)
+   495→    },
+   496→    [actor, selected, subordinates],
+   497→  )
+   498→
+   499→  const togglePerm = (perm: PermissionKey) => {
+   500→    if (!canEdit(perm)) return
+   501→    setDraftPerms((prev) =>
+   502→      prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm],
+   503→    )
+   504→  }
+   505→
+   506→  const saveMut = useMutation({
+   507→    mutationFn: (perms: PermissionKey[]) =>
+   508→      apiPatch<UserListItem>(`/api/users/${selectedId}`, { permissions: perms }),
+   509→    onSuccess: () => {
+   510→      toast.success('Yetkiler güncellendi', {
+   511→        description: `${selected?.name} için yetkiler kaydedildi.`,
+   512→      })
+   513→      qc.invalidateQueries({ queryKey: qk.users })
+   514→    },
+   515→    onError: (e: ApiError) => toast.error('Hata', { description: e.message }),
+   516→    onSettled: () => setSaving(false),
+   517→  })
+   518→
+   519→  const handleSave = () => {
+   520→    setSaving(true)
+   521→    saveMut.mutate(draftPerms)
+   522→  }
+   523→
+   524→  const groups = useMemo(() => {
+   525→    const map = new Map<string, typeof ALL_PERMISSIONS>()
+   526→    for (const p of ALL_PERMISSIONS) {
+   527→      if (!map.has(p.group)) map.set(p.group, [])
+   528→      map.get(p.group)!.push(p)
+   529→    }
+   530→    return Array.from(map.entries())
+   531→  }, [])
+   532→
+   533→  // Aktörün kendi yetkileri (delegate edebileceği)
+   534→  const actorPerms = actor.permissions
+   535→
+   536→  return (
+   537→    <div className="space-y-4">
+   538→      {/* Açıklama */}
+   539→      <div className="rounded-lg border border-violet-200 bg-violet-50/50 dark:bg-violet-950/20 dark:border-violet-900/40 p-3 flex gap-2.5">
+   540→        <Shield className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+   541→        <p className="text-xs text-violet-900 dark:text-violet-300">
+   542→          <span className="font-medium">Yetki devri:</span> Bir kullanıcı sadece kendisinde bulunan yetkileri ve sadece kendi astlarına verebilir.
+   543→          Astlar hiyerarşide sizin altınızdaki kullanıcılar olarak tanımlanır.
+   544→        </p>
+   545→      </div>
+   546→
+   547→      <div className="grid sm:grid-cols-[260px_1fr] gap-4">
+   548→        {/* Kullanıcı seçimi */}
+   549→        <div className="space-y-2">
+   550→          <Label className="text-xs font-medium">Kullanıcı Seç</Label>
+   551→          <Select value={selectedId || 'none'} onValueChange={handleSelect}>
+   552→            <SelectTrigger className="w-full">
+   553→              <SelectValue placeholder="Kullanıcı seçin" />
+   554→            </SelectTrigger>
+   555→            <SelectContent>
+   556→              <SelectItem value="none">— Seçiniz —</SelectItem>
+   557→              {users
+   558→                .filter((u) => subordinates.includes(u.id))
+   559→                .map((u) => (
+   560→                  <SelectItem key={u.id} value={u.id}>
+   561→                    {u.name} · {ROLE_LABELS[u.role]}
+   562→                  </SelectItem>
+   563→                ))}
+   564→            </SelectContent>
+   565→          </Select>
+   566→          {selectedId && selectedId !== 'none' && (
+   567→            <p className="text-[11px] text-muted-foreground">
+   568→              Aktör yetkileri: <span className="font-mono">{actorPerms.length}</span> ·
+   569→              Astlar: <span className="font-mono">{subordinates.length}</span>
+   570→            </p>
+   571→          )}
+   572→          {!selectedId || selectedId === 'none' ? (
+   573→            <p className="text-[11px] text-muted-foreground/80 italic mt-2">
+   574→              Devredilebilir kullanıcı (ast) seçin.
+   575→            </p>
+   576→          ) : null}
+   577→        </div>
+   578→
+   579→        {/* Yetki listesi */}
+   580→        <div className="rounded-lg border">
+   581→          {!selected ? (
+   582→            <div className="p-8 text-center text-sm text-muted-foreground">
+   583→              <Shield className="w-8 h-8 mx-auto mb-2 opacity-30" />
+   584→              Düzenlemek için bir ast kullanıcı seçin.
+   585→            </div>
+   586→          ) : (
+   587→            <ScrollArea className="h-[320px]">
+   588→              <div className="p-3 space-y-3">
+   589→                {groups.map(([group, perms]) => (
+   590→                  <div key={group}>
+   591→                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
+   592→                      {group}
+   593→                    </div>
+   594→                    <div className="space-y-0.5">
+   595→                      {perms.map((p) => {
+   596→                        const checked = draftPerms.includes(p.key)
+   597→                        const actorHas = actorPerms.includes(p.key)
+   598→                        const editable = canEdit(p.key)
+   599→                        return (
+   600→                          <Tooltip key={p.key}>
+   601→                            <TooltipTrigger asChild>
+   602→                              <div
+   603→                                className={cn(
+   604→                                  'flex items-center gap-2.5 px-2.5 py-2 rounded-md transition-colors',
+   605→                                  editable ? 'hover:bg-muted cursor-pointer' : 'opacity-60 cursor-not-allowed',
+   606→                                )}
+   607→                                onClick={() => togglePerm(p.key)}
+   608→                              >
+   609→                                <Checkbox checked={checked} disabled={!editable} />
+   610→                                <div className="flex-1 min-w-0">
+   611→                                  <div className="text-[13px] font-medium">{p.label}</div>
+   612→                                  <div className="text-[10px] text-muted-foreground font-mono">{p.key}</div>
+   613→                                </div>
+   614→                                {!actorHas && (
+   615→                                  <Badge variant="outline" className="text-[9px] h-4 px-1 bg-slate-50 text-slate-500 border-slate-200">
+   616→                                    yetkiniz yok
+   617→                                  </Badge>
+   618→                                )}
+   619→                              </div>
+   620→                            </TooltipTrigger>
+   621→                            {!editable && (
+   622→                              <TooltipContent>
+   623→                                {actorHas
+   624→                                  ? 'Bu kullanıcı astınız değil — yetki veremezsiniz.'
+   625→                                  : 'Bu yetki sizde yok — devredemezsiniz.'}
+   626→                              </TooltipContent>
+   627→                            )}
+   628→                          </Tooltip>
+   629→                        )
+   630→                      })}
+   631→                    </div>
+   632→                  </div>
+   633→                ))}
+   634→              </div>
+   635→            </ScrollArea>
+   636→          )}
+   637→        </div>
+   638→      </div>
+   639→
+   640→      {selected && (
+   641→        <div className="flex items-center justify-between gap-2 pt-1">
+   642→          <div className="text-xs text-muted-foreground">
+   643→            Toplam <span className="font-semibold text-foreground">{draftPerms.length}</span> yetki seçili.
+   644→          </div>
+   645→          <Button
+   646→            onClick={handleSave}
+   647→            disabled={saving}
+   648→            size="sm"
+   649→            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+   650→          >
+   651→            {saving ? 'Kaydediliyor…' : 'Yetkileri Kaydet'}
+   652→          </Button>
+   653→        </div>
+   654→      )}
+   655→    </div>
+   656→  )
+   657→}
+   658→
+   659→// ─── Kullanıcı bazlı yetki ağacı editörü (tree view) ─────────────
+   660→function UserPermissionTreeEditor({
+   661→  users, actor,
+   662→}: {
+   663→  users: UserListItem[]
+   664→  actor: SessionUser
+   665→}) {
+   666→  const [selectedId, setSelectedId] = useState<string>('')
+   667→
+   668→  const selected = users.find((u) => u.id === selectedId) ?? null
+   669→
+   670→  // Actor'ın astları (getVisibleUserIds ile, self hariç)
+   671→  const subordinates = useMemo(() => {
+   672→    const visible = getVisibleUserIds(
+   673→      users.map((u) => ({ id: u.id, managerId: u.managerId })),
+   674→      actor.id,
+   675→    )
+   676→    return visible.filter((id) => id !== actor.id)
+   677→  }, [users, actor])
+   678→
+   679→  return (
+   680→    <div className="space-y-4">
+   681→      {/* Açıklama */}
+   682→      <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/40 p-3 flex gap-2.5">
+   683→        <ListTree className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+   684→        <p className="text-xs text-emerald-900 dark:text-emerald-300">
+   685→          <span className="font-medium">Ağaç görünümü:</span> Yetkileri gruplar halinde görsel olarak düzenle.
+   686→          Grupları genişlet/küçült, tek tek veya toplu olarak yetki ver. Daha kolay kullanım için tasarlanmıştır.
+   687→        </p>
+   688→      </div>
+   689→
+   690→      <div className="grid sm:grid-cols-[260px_1fr] gap-4">
+   691→        {/* Kullanıcı seçimi */}
+   692→        <div className="space-y-2">
+   693→          <Label className="text-xs font-medium">Kullanıcı Seç</Label>
+   694→          <Select value={selectedId || 'none'} onValueChange={setSelectedId}>
+   695→            <SelectTrigger className="w-full">
+   696→              <SelectValue placeholder="Kullanıcı seçin" />
+   697→            </SelectTrigger>
+   698→            <SelectContent>
+   699→              <SelectItem value="none">— Seçiniz —</SelectItem>
+   700→              {users
+   701→                .filter((u) => subordinates.includes(u.id))
+   702→                .map((u) => (
+   703→                  <SelectItem key={u.id} value={u.id}>
+   704→                    {u.name} · {ROLE_LABELS[u.role]}
+   705→                  </SelectItem>
+   706→                ))}
+   707→            </SelectContent>
+   708→          </Select>
+   709→          {selectedId && selectedId !== 'none' && selected && (
+   710→            <div className="p-2.5 rounded-lg bg-muted/40 border text-xs space-y-1">
+   711→              <div className="flex items-center justify-between">
+   712→                <span className="text-muted-foreground">Kullanıcı</span>
+   713→                <span className="font-medium">{selected.name}</span>
+   714→              </div>
+   715→              <div className="flex items-center justify-between">
+   716→                <span className="text-muted-foreground">Rol</span>
+   717→                <span className="font-medium">{ROLE_LABELS[selected.role]}</span>
+   718→              </div>
+   719→              <div className="flex items-center justify-between">
+   720→                <span className="text-muted-foreground">Mevcut yetki</span>
+   721→                <span className="font-mono font-medium">{selected.permissions.length}</span>
+   722→              </div>
+   723→            </div>
+   724→          )}
+   725→          {!selectedId || selectedId === 'none' ? (
+   726→            <p className="text-[11px] text-muted-foreground/80 italic mt-2">
+   727→              Yetki ağacını düzenlemek için bir ast kullanıcı seçin.
+   728→            </p>
+   729→          ) : null}
+   730→        </div>
+   731→
+   732→        {/* Ağaç */}
+   733→        <div className="rounded-lg border">
+   734→          {!selected ? (
+   735→            <div className="p-8 text-center text-sm text-muted-foreground">
+   736→              <ListTree className="w-8 h-8 mx-auto mb-2 opacity-30" />
+   737→              Ağaç görünümü için bir ast kullanıcı seçin.
+   738→            </div>
+   739→          ) : (
+   740→            <div className="p-4">
+   741→              <PermissionTree
+   742→                targetUser={selected}
+   743→                actor={actor}
+   744→                subordinates={subordinates}
+   745→              />
+   746→            </div>
+   747→          )}
+   748→        </div>
+   749→      </div>
+   750→    </div>
+   751→  )
+   752→}
+   753→
+   754→// ─── Yetki Matrisi Dialog ─────────────────────────────────────────
+   755→function PermissionMatrixDialog({
+   756→  open, onOpenChange, users, actor,
+   757→}: {
+   758→  open: boolean
+   759→  onOpenChange: (v: boolean) => void
+   760→  users: UserListItem[]
+   761→  actor: SessionUser
+   762→}) {
+   763→  return (
+   764→    <Dialog open={open} onOpenChange={onOpenChange}>
+   765→      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
+   766→        <DialogHeader>
+   767→          <DialogTitle className="flex items-center gap-2">
+   768→            <KeyRound className="w-4 h-4 text-emerald-600" />
+   769→            Yetki Matrisi
+   770→          </DialogTitle>
+   771→          <DialogDescription>
+   772→            Rol bazlı yetki dağılımı, kullanıcı bazlı yetki devri ve görsel ağaç görünümü.
+   773→          </DialogDescription>
+   774→        </DialogHeader>
+   775→
+   776→        <Tabs defaultValue="matrix" className="w-full">
+   777→          <TabsList className="grid grid-cols-3 w-full max-w-lg">
+   778→            <TabsTrigger value="matrix">
+   779→              <Shield className="w-3.5 h-3.5" /> Rol Matrisi
+   780→            </TabsTrigger>
+   781→            <TabsTrigger value="delegate">
+   782→              <KeyRound className="w-3.5 h-3.5" /> Yetki Devri
+   783→            </TabsTrigger>
+   784→            <TabsTrigger value="tree">
+   785→              <ListTree className="w-3.5 h-3.5" /> Ağaç Görünümü
+   786→            </TabsTrigger>
+   787→          </TabsList>
+   788→
+   789→          <TabsContent value="matrix" className="mt-4">
+   790→            <div className="space-y-2">
+   791→              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   792→                <Info className="w-3.5 h-3.5" />
+   793→                <span>Her rolün varsayılan yetkileri. Yeşil ✓ = sahip, gri — = yok. (Salt okunur)</span>
+   794→              </div>
+   795→              <PermissionMatrixReadOnly />
+   796→            </div>
+   797→          </TabsContent>
+   798→
+   799→          <TabsContent value="delegate" className="mt-4">
+   800→            <UserPermissionEditor users={users} actor={actor} />
+   801→          </TabsContent>
+   802→
+   803→          <TabsContent value="tree" className="mt-4">
+   804→            <UserPermissionTreeEditor users={users} actor={actor} />
+   805→          </TabsContent>
+   806→        </Tabs>
+   807→
+   808→        <DialogFooter className="pt-2">
+   809→          <Button variant="outline" onClick={() => onOpenChange(false)}>Kapat</Button>
+   810→        </DialogFooter>
+   811→      </DialogContent>
+   812→    </Dialog>
+   813→  )
+   814→}
+   815→
+   816→// ─── Pasifleştirme onay diyaloğı ──────────────────────────────────
+   817→function DeactivateDialog({
+   818→  user, open, onOpenChange,
+   819→}: {
+   820→  user: UserListItem | null
+   821→  open: boolean
+   822→  onOpenChange: (v: boolean) => void
+   823→}) {
+   824→  const qc = useQueryClient()
+   825→  const deleteMut = useMutation({
+   826→    mutationFn: () => apiDelete<{ success: boolean }>(`/api/users/${user?.id}`),
+   827→    onSuccess: () => {
+   828→      toast.success('Kullanıcı pasifleştirildi', {
+   829→        description: `${user?.name} artık aktif değil.`,
+   830→      })
+   831→      qc.invalidateQueries({ queryKey: qk.users })
+   832→      onOpenChange(false)
+   833→    },
+   834→    onError: (e: ApiError) => toast.error('Hata', { description: e.message }),
+   835→  })
+   836→
+   837→  if (!user) return null
+   838→  return (
+   839→    <AlertDialog open={open} onOpenChange={onOpenChange}>
+   840→      <AlertDialogContent>
+   841→        <AlertDialogHeader>
+   842→          <AlertDialogTitle>Kullanıcıyı pasifleştir?</AlertDialogTitle>
+   843→          <AlertDialogDescription>
+   844→            <span className="font-medium text-foreground">{user.name}</span> ({user.email}) pasifleştirilecek.
+   845→            Kullanıcı giriş yapamaz ancak geçmiş verileri korunacak. Bu işlem geri alınabilir.
+   846→          </AlertDialogDescription>
+   847→        </AlertDialogHeader>
+   848→        <AlertDialogFooter>
+   849→          <AlertDialogCancel>İptal</AlertDialogCancel>
+   850→          <AlertDialogAction
+   851→            onClick={() => deleteMut.mutate()}
+   852→            disabled={deleteMut.isPending}
+   853→            className="bg-amber-600 hover:bg-amber-700 text-white"
+   854→          >
+   855→            {deleteMut.isPending ? 'Pasifleştiriliyor…' : 'Pasifleştir'}
+   856→          </AlertDialogAction>
+   857→        </AlertDialogFooter>
+   858→      </AlertDialogContent>
+   859→    </AlertDialog>
+   860→  )
+   861→}
+   862→
+   863→// ─── Kullanıcı tablosu ────────────────────────────────────────────
+   864→function UsersTable({
+   865→  users, onEdit, onPermissions, onDeactivate, actor,
+   866→}: {
+   867→  users: UserListItem[]
+   868→  onEdit: (u: UserListItem) => void
+   869→  onPermissions: (u: UserListItem) => void
+   870→  onDeactivate: (u: UserListItem) => void
+   871→  actor: SessionUser
+   872→}) {
+   873→  return (
+   874→    <Card>
+   875→      <CardContent className="p-0">
+   876→        <Table>
+   877→          <TableHeader>
+   878→            <TableRow className="bg-muted/40">
+   879→              <TableHead className="min-w-[220px]">Kullanıcı</TableHead>
+   880→              <TableHead>Rol</TableHead>
+   881→              <TableHead>Ünvan</TableHead>
+   882→              <TableHead>Yönetici</TableHead>
+   883→              <TableHead>Durum</TableHead>
+   884→              <TableHead className="text-center">Müşteri</TableHead>
+   885→              <TableHead className="text-center">Fırsat</TableHead>
+   886→              <TableHead className="text-center">Ast</TableHead>
+   887→              <TableHead className="text-right">İşlemler</TableHead>
+   888→            </TableRow>
+   889→          </TableHeader>
+   890→          <TableBody>
+   891→            {users.length === 0 ? (
+   892→              <TableRow>
+   893→                <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-12">
+   894→                  <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
+   895→                  Kullanıcı bulunamadı.
+   896→                </TableCell>
+   897→              </TableRow>
+   898→            ) : (
+   899→              users.map((u) => (
+   900→                <TableRow
+   901→                  key={u.id}
+   902→                  className="cursor-pointer"
+   903→                  onClick={() => onEdit(u)}
+   904→                >
+   905→                  <TableCell>
+   906→                    <div className="flex items-center gap-3">
+   907→                      <Avatar className="w-9 h-9">
+   908→                        {u.avatarUrl ? <AvatarImage src={u.avatarUrl} alt={u.name} /> : null}
+   909→                        <AvatarFallback className={cn('bg-gradient-to-br text-white font-semibold text-xs', ROLE_AVATAR_GRADIENT[u.role])}>
+   910→                          {initials(u.name)}
+   911→                        </AvatarFallback>
+   912→                      </Avatar>
+   913→                      <div className="min-w-0">
+   914→                        <div className="font-medium text-sm truncate flex items-center gap-1.5">
+   915→                          {u.name}
+   916→                          {u.id === actor.id && (
+   917→                            <Badge variant="outline" className="text-[9px] h-4 px-1 bg-emerald-50 text-emerald-700 border-emerald-200">
+   918→                              siz
+   919→                            </Badge>
+   920→                          )}
+   921→                        </div>
+   922→                        <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+   923→                      </div>
+   924→                    </div>
+   925→                  </TableCell>
+   926→                  <TableCell><RoleBadge role={u.role} /></TableCell>
+   927→                  <TableCell>
+   928→                    <span className="text-sm text-muted-foreground">{u.title ?? '—'}</span>
+   929→                  </TableCell>
+   930→                  <TableCell>
+   931→                    <span className="text-sm text-muted-foreground">
+   932→                      {u.manager?.name ?? <span className="italic">—</span>}
+   933→                    </span>
+   934→                  </TableCell>
+   935→                  <TableCell><StatusBadge status={u.status} /></TableCell>
+   936→                  <TableCell className="text-center">
+   937→                    <span className="text-sm font-medium tabular-nums">{u._count?.ownedCustomers ?? 0}</span>
+   938→                  </TableCell>
+   939→                  <TableCell className="text-center">
+   940→                    <span className="text-sm font-medium tabular-nums">{u._count?.ownedDeals ?? 0}</span>
+   941→                  </TableCell>
+   942→                  <TableCell className="text-center">
+   943→                    <span className="text-sm font-medium tabular-nums">{u._count?.subordinates ?? 0}</span>
+   944→                  </TableCell>
+   945→                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+   946→                    <div className="flex items-center justify-end gap-1">
+   947→                      <Tooltip>
+   948→                        <TooltipTrigger asChild>
+   949→                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(u)}>
+   950→                            <Pencil className="w-3.5 h-3.5" />
+   951→                          </Button>
+   952→                        </TooltipTrigger>
+   953→                        <TooltipContent>Düzenle</TooltipContent>
+   954→                      </Tooltip>
+   955→                      <Tooltip>
+   956→                        <TooltipTrigger asChild>
+   957→                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onPermissions(u)}>
+   958→                            <KeyRound className="w-3.5 h-3.5" />
+   959→                          </Button>
+   960→                        </TooltipTrigger>
+   961→                        <TooltipContent>Yetkiler</TooltipContent>
+   962→                      </Tooltip>
+   963→                      {u.status === 'active' && u.id !== actor.id && (
+   964→                        <Tooltip>
+   965→                          <TooltipTrigger asChild>
+   966→                            <Button
+   967→                              variant="ghost"
+   968→                              size="icon"
+   969→                              className="h-8 w-8 hover:bg-amber-50 hover:text-amber-600"
+   970→                              onClick={() => onDeactivate(u)}
+   971→                            >
+   972→                              <Ban className="w-3.5 h-3.5" />
+   973→                            </Button>
+   974→                          </TooltipTrigger>
+   975→                          <TooltipContent>Pasifleştir</TooltipContent>
+   976→                        </Tooltip>
+   977→                      )}
+   978→                    </div>
+   979→                  </TableCell>
+   980→                </TableRow>
+   981→              ))
+   982→            )}
+   983→          </TableBody>
+   984→        </Table>
+   985→      </CardContent>
+   986→    </Card>
+   987→  )
+   988→}
+   989→
+   990→// ─── Hiyerarşi ağacı ──────────────────────────────────────────────
+   991→interface TreeNode extends UserListItem {
+   992→  children: TreeNode[]
+   993→}
+   994→
+   995→function buildTree(users: UserListItem[]): TreeNode[] {
+   996→  const map = new Map<string, TreeNode>()
+   997→  users.forEach((u) => map.set(u.id, { ...u, children: [] }))
+   998→  const roots: TreeNode[] = []
+   999→  users.forEach((u) => {
+  1000→    const node = map.get(u.id)!
+  1001→    if (u.managerId && map.has(u.managerId)) {
+  1002→      map.get(u.managerId)!.children.push(node)
+  1003→    } else {
+  1004→      roots.push(node)
+  1005→    }
+  1006→  })
+  1007→  return roots
+  1008→}
+  1009→
+  1010→function HierarchyNode({
+  1011→  node, depth, actor,
+  1012→}: {
+  1013→  node: TreeNode
+  1014→  depth: number
+  1015→  actor: SessionUser
+  1016→}) {
+  1017→  const [open, setOpen] = useState(depth < 2)
+  1018→  const hasChildren = node.children.length > 0
+  1019→
+  1020→  return (
+  1021→    <div>
+  1022→      <div
+  1023→        className="flex items-center gap-2.5 py-2 px-2 rounded-md hover:bg-muted/50 transition-colors group"
+  1024→        style={{ paddingLeft: `${depth * 24 + 8}px` }}
+  1025→      >
+  1026→        {hasChildren ? (
+  1027→          <button
+  1028→            onClick={() => setOpen((o) => !o)}
+  1029→            className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
+  1030→          >
+  1031→            {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+  1032→          </button>
+  1033→        ) : (
+  1034→          <span className="w-5 h-5 flex items-center justify-center shrink-0">
+  1035→            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />
+  1036→          </span>
+  1037→        )}
+  1038→
+  1039→        <Avatar className="w-8 h-8">
+  1040→          {node.avatarUrl ? <AvatarImage src={node.avatarUrl} alt={node.name} /> : null}
+  1041→          <AvatarFallback className={cn('bg-gradient-to-br text-white font-semibold text-xs', ROLE_AVATAR_GRADIENT[node.role])}>
+  1042→            {initials(node.name)}
+  1043→          </AvatarFallback>
+  1044→        </Avatar>
+  1045→
+  1046→        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+  1047→          <span className="font-medium text-sm truncate">
+  1048→            {node.name}
+  1049→            {node.id === actor.id && (
+  1050→              <span className="ml-1.5 text-[10px] text-emerald-600 font-normal">(siz)</span>
+  1051→            )}
+  1052→          </span>
+  1053→          <RoleBadge role={node.role} />
+  1054→          {node.title && (
+  1055→            <span className="text-xs text-muted-foreground hidden sm:inline">· {node.title}</span>
+  1056→          )}
+  1057→          {node._count?.subordinates ? (
+  1058→            <Badge variant="outline" className="text-[10px] h-4 px-1 bg-muted/40">
+  1059→              {node._count.subordinates} ast
+  1060→            </Badge>
+  1061→          ) : null}
+  1062→        </div>
+  1063→      </div>
+  1064→
+  1065→      {/* Connector line */}
+  1066→      {hasChildren && open && (
+  1067→        <div className="relative">
+  1068→          <div
+  1069→            className="absolute top-0 bottom-0 w-px bg-border"
+  1070→            style={{ left: `${depth * 24 + 18}px` }}
+  1071→          />
+  1072→          <div>
+  1073→            {node.children.map((child) => (
+  1074→              <HierarchyNode key={child.id} node={child} depth={depth + 1} actor={actor} />
+  1075→            ))}
+  1076→          </div>
+  1077→        </div>
+  1078→      )}
+  1079→    </div>
+  1080→  )
+  1081→}
+  1082→
+  1083→function HierarchyTree({ users, actor }: { users: UserListItem[]; actor: SessionUser }) {
+  1084→  const tree = useMemo(() => buildTree(users), [users])
+  1085→
+  1086→  if (tree.length === 0) {
+  1087→    return (
+  1088→      <Card>
+  1089→        <CardContent className="p-12 text-center text-sm text-muted-foreground">
+  1090→          <GitBranch className="w-8 h-8 mx-auto mb-2 opacity-30" />
+  1091→          Hiyerarşi verisi yok.
+  1092→        </CardContent>
+  1093→      </Card>
+  1094→    )
+  1095→  }
+  1096→
+  1097→  return (
+  1098→    <Card>
+  1099→      <CardHeader className="pb-3">
+  1100→        <div className="flex items-center justify-between">
+  1101→          <div>
+  1102→            <CardTitle className="text-base flex items-center gap-2">
+  1103→              <GitBranch className="w-4 h-4 text-violet-600" />
+  1104→              Organizasyon Hiyerarşisi
+  1105→            </CardTitle>
+  1106→            <CardDescription className="text-xs mt-0.5">
+  1107→              Yönetici → ast ilişkileri. {users.length} kullanıcı, {tree.length} kök düğüm.
+  1108→            </CardDescription>
+  1109→          </div>
+  1110→        </div>
+  1111→      </CardHeader>
+  1112→      <CardContent>
+  1113→        <ScrollArea className="h-[560px] pr-3">
+  1114→          <div className="space-y-0.5">
+  1115→            {tree.map((node) => (
+  1116→              <HierarchyNode key={node.id} node={node} depth={0} actor={actor} />
+  1117→            ))}
+  1118→          </div>
+  1119→        </ScrollArea>
+  1120→      </CardContent>
+  1121→    </Card>
+  1122→  )
+  1123→}
+  1124→
+  1125→// ─── Ana görünüm ──────────────────────────────────────────────────
+  1126→export function UsersView() {
+  1127→  const { user } = useAppStore()
+  1128→  const [search, setSearch] = useState('')
+  1129→  const [roleFilter, setRoleFilter] = useState<string>('all')
+  1130→  const [statusFilter, setStatusFilter] = useState<string>('all')
+  1131→  const [tab, setTab] = useState<string>('list')
+  1132→
+  1133→  const [formOpen, setFormOpen] = useState(false)
+  1134→  const [editing, setEditing] = useState<UserListItem | null>(null)
+  1135→  const [formSession, setFormSession] = useState(0)
+  1136→  const [matrixOpen, setMatrixOpen] = useState(false)
+  1137→  const [deactivateUser, setDeactivateUser] = useState<UserListItem | null>(null)
+  1138→  const [deactivateOpen, setDeactivateOpen] = useState(false)
+  1139→
+  1140→  const { data, isLoading, isError, error } = useQuery({
+  1141→    queryKey: qk.users,
+  1142→    queryFn: () => apiGet<UsersResponse>('/api/users'),
+  1143→    enabled: !!user,
+  1144→  })
+  1145→
+  1146→  const users = useMemo(() => data?.items ?? [], [data])
+  1147→
+  1148→  const filtered = useMemo(() => {
+  1149→    let list = users
+  1150→    if (search.trim()) {
+  1151→      const q = search.toLowerCase().trim()
+  1152→      list = list.filter(
+  1153→        (u) =>
+  1154→          u.name.toLowerCase().includes(q) ||
+  1155→          u.email.toLowerCase().includes(q),
+  1156→      )
+  1157→    }
+  1158→    if (roleFilter !== 'all') list = list.filter((u) => u.role === roleFilter)
+  1159→    if (statusFilter !== 'all') list = list.filter((u) => u.status === statusFilter)
+  1160→    return list
+  1161→  }, [users, search, roleFilter, statusFilter])
+  1162→
+  1163→  const openCreate = () => {
+  1164→    setEditing(null)
+  1165→    setFormSession((s) => s + 1)
+  1166→    setFormOpen(true)
+  1167→  }
+  1168→  const openEdit = (u: UserListItem) => {
+  1169→    setEditing(u)
+  1170→    setFormSession((s) => s + 1)
+  1171→    setFormOpen(true)
+  1172→  }
+  1173→  const openPermissions = (_u: UserListItem) => {
+  1174→    // Yetkiler matrisine yönlendir (matris içinde kullanıcı seçilebilir)
+  1175→    setMatrixOpen(true)
+  1176→  }
+  1177→  const openDeactivate = (u: UserListItem) => {
+  1178→    setDeactivateUser(u)
+  1179→    setDeactivateOpen(true)
+  1180→  }
+  1181→
+  1182→  if (!user) {
+  1183→    return (
+  1184→      <div className="p-8 text-center text-sm text-muted-foreground">
+  1185→        Oturum açmanız gerekir.
+  1186→      </div>
+  1187→    )
+  1188→  }
+  1189→
+  1190→  if (isError) {
+  1191→    return (
+  1192→      <div className="p-8 text-center">
+  1193→        <AlertCircle className="w-8 h-8 mx-auto mb-3 text-red-500" />
+  1194→        <p className="text-sm font-medium">Kullanıcılar yüklenemedi</p>
+  1195→        <p className="text-xs text-muted-foreground mt-1">
+  1196→          {(error as ApiError)?.message ?? 'Bilinmeyen hata'}
+  1197→        </p>
+  1198→      </div>
+  1199→    )
+  1200→  }
+  1201→
+  1202→  const canManage = hasPermission(user, 'users.manage')
+  1203→
+  1204→  return (
+  1205→    <TooltipProvider delayDuration={200}>
+  1206→      <div className="space-y-6 animate-fade-in">
+  1207→        {/* Header */}
+  1208→        <div className="flex items-start justify-between flex-wrap gap-3">
+  1209→          <div>
+  1210→            <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+  1211→              <ShieldCheck className="w-6 h-6 text-emerald-600" />
+  1212→              Kullanıcı &amp; Rol Yönetimi
+  1213→            </h2>
+  1214→            <p className="text-sm text-muted-foreground mt-0.5">
+  1215→              Kullanıcıları, rolleri ve yetkileri yönetin. Organizasyon hiyerarşisini görüntüleyin.
+  1216→            </p>
+  1217→          </div>
+  1218→          <div className="flex gap-2">
+  1219→            <Button variant="outline" size="sm" onClick={() => setMatrixOpen(true)}>
+  1220→              <KeyRound className="w-4 h-4 mr-1.5" /> Yetki Matrisi
+  1221→            </Button>
+  1222→            {canManage && (
+  1223→              <Button
+  1224→                size="sm"
+  1225→                onClick={openCreate}
+  1226→                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+  1227→              >
+  1228→                <UserPlus className="w-4 h-4 mr-1.5" /> Kullanıcı Davet Et
+  1229→              </Button>
+  1230→            )}
+  1231→          </div>
+  1232→        </div>
+  1233→
+  1234→        {/* Stats */}
+  1235→        {!isLoading && <StatsRow users={users} />}
+  1236→
+  1237→        {/* Tabs: List / Hierarchy */}
+  1238→        <Tabs value={tab} onValueChange={setTab}>
+  1239→          <TabsList>
+  1240→            <TabsTrigger value="list">
+  1241→              <Users className="w-3.5 h-3.5" /> Kullanıcılar
+  1242→            </TabsTrigger>
+  1243→            <TabsTrigger value="hierarchy">
+  1244→              <GitBranch className="w-3.5 h-3.5" /> Hiyerarşi
+  1245→            </TabsTrigger>
+  1246→          </TabsList>
+  1247→
+  1248→          <TabsContent value="list" className="mt-4 space-y-4">
+  1249→            {/* Filtreler */}
+  1250→            <div className="flex flex-wrap gap-2 items-center">
+  1251→              <div className="relative flex-1 min-w-[220px] max-w-md">
+  1252→                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+  1253→                <Input
+  1254→                  placeholder="İsim veya e-posta ara…"
+  1255→                  value={search}
+  1256→                  onChange={(e) => setSearch(e.target.value)}
+  1257→                  className="pl-9"
+  1258→                />
+  1259→              </div>
+  1260→              <Select value={roleFilter} onValueChange={setRoleFilter}>
+  1261→                <SelectTrigger className="w-[160px]">
+  1262→                  <SelectValue placeholder="Rol" />
+  1263→                </SelectTrigger>
+  1264→                <SelectContent>
+  1265→                  <SelectItem value="all">Tüm roller</SelectItem>
+  1266→                  {(['admin', 'manager', 'rep', 'readonly', 'stock'] as Role[]).map((r) => (
+  1267→                    <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+  1268→                  ))}
+  1269→                </SelectContent>
+  1270→              </Select>
+  1271→              <Select value={statusFilter} onValueChange={setStatusFilter}>
+  1272→                <SelectTrigger className="w-[140px]">
+  1273→                  <SelectValue placeholder="Durum" />
+  1274→                </SelectTrigger>
+  1275→                <SelectContent>
+  1276→                  <SelectItem value="all">Tüm durumlar</SelectItem>
+  1277→                  <SelectItem value="active">Aktif</SelectItem>
+  1278→                  <SelectItem value="passive">Pasif</SelectItem>
+  1279→                </SelectContent>
+  1280→              </Select>
+  1281→              <div className="text-xs text-muted-foreground ml-auto hidden sm:block">
+  1282→                {filtered.length} / {users.length} kullanıcı
+  1283→              </div>
+  1284→            </div>
+  1285→
+  1286→            {isLoading ? (
+  1287→              <UsersTableSkeleton />
+  1288→            ) : (
+  1289→              <UsersTable
+  1290→                users={filtered}
+  1291→                onEdit={openEdit}
+  1292→                onPermissions={openPermissions}
+  1293→                onDeactivate={openDeactivate}
+  1294→                actor={user}
+  1295→              />
+  1296→            )}
+  1297→          </TabsContent>
+  1298→
+  1299→          <TabsContent value="hierarchy" className="mt-4">
+  1300→            {isLoading ? (
+  1301→              <Card>
+  1302→                <CardContent className="p-6 space-y-3">
+  1303→                  {[...Array(8)].map((_, i) => (
+  1304→                    <Skeleton key={i} className="h-10 w-full" />
+  1305→                  ))}
+  1306→                </CardContent>
+  1307→              </Card>
+  1308→            ) : (
+  1309→              <HierarchyTree users={users} actor={user} />
+  1310→            )}
+  1311→          </TabsContent>
+  1312→        </Tabs>
+  1313→
+  1314→        {/* Dialogs */}
+  1315→        {canManage && (
+  1316→          <UserFormDialog
+  1317→            key={`${formSession}-${editing ? `edit-${editing.id}` : 'create'}`}
+  1318→            open={formOpen}
+  1319→            onOpenChange={setFormOpen}
+  1320→            editing={editing}
+  1321→            users={users}
+  1322→            actor={user}
+  1323→          />
+  1324→        )}
+  1325→        <PermissionMatrixDialog
+  1326→          open={matrixOpen}
+  1327→          onOpenChange={setMatrixOpen}
+  1328→          users={users}
+  1329→          actor={user}
+  1330→        />
+  1331→        <DeactivateDialog
+  1332→          user={deactivateUser}
+  1333→          open={deactivateOpen}
+  1334→          onOpenChange={setDeactivateOpen}
+  1335→        />
+  1336→      </div>
+  1337→    </TooltipProvider>
+  1338→  )
+  1339→}
+  1340→

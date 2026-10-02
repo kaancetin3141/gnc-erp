@@ -1,0 +1,875 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useMemo } from 'react'
+     4→     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→     5→import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-client'
+     6→     6→import { Card, CardContent } from '@/components/ui/card'
+     7→     7→import { Button } from '@/components/ui/button'
+     8→     8→import { Input } from '@/components/ui/input'
+     9→     9→import { Label } from '@/components/ui/label'
+    10→    10→import { Textarea } from '@/components/ui/textarea'
+    11→    11→import { Badge } from '@/components/ui/badge'
+    12→    12→import { Skeleton } from '@/components/ui/skeleton'
+    13→    13→import {
+    14→    14→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    15→    15→} from '@/components/ui/select'
+    16→    16→import {
+    17→    17→  Dialog, DialogContent, DialogHeader, DialogTitle,
+    18→    18→  DialogDescription, DialogFooter,
+    19→    19→} from '@/components/ui/dialog'
+    20→    20→import {
+    21→    21→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    22→    22→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    23→    23→} from '@/components/ui/alert-dialog'
+    24→    24→import {
+    25→    25→  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    26→    26→  DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel,
+    27→    27→} from '@/components/ui/dropdown-menu'
+    28→    28→import { toast } from 'sonner'
+    29→    29→import {
+    30→    30→  getStatusMeta, APPOINTMENT_STATUSES, type AppointmentStatus,
+    31→    31→  type WorkingHours, type DaySchedule, dayKeyFromDate, minutesToTime,
+    32→    32→  timeToMinutes,
+    33→    33→} from '@/lib/appointment-utils'
+    34→    34→import { formatCurrency, whatsappLink, formatPhone } from '@/lib/format'
+    35→    35→import { cn } from '@/lib/utils'
+    36→    36→import {
+    37→    37→  ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus,
+    38→    38→  Phone, MessageCircle, CheckCircle2, XCircle,
+    39→    39→  UserX, Check, Clock, Trash2, Pencil, CalendarDays,
+    40→    40→} from 'lucide-react'
+    41→    41→
+    42→    42→// ============================================================
+    43→    43→// Tipler
+    44→    44→// ============================================================
+    45→    45→
+    46→    46→interface Staff {
+    47→    47→  id: string
+    48→    48→  name: string
+    49→    49→  title: string | null
+    50→    50→  photo: string | null
+    51→    51→}
+    52→    52→
+    53→    53→interface Service {
+    54→    54→  id: string
+    55→    55→  name: string
+    56→    56→  duration: number
+    57→    57→  price: number
+    58→    58→  currency: string
+    59→    59→}
+    60→    60→
+    61→    61→interface Appointment {
+    62→    62→  id: string
+    63→    63→  staffId: string | null
+    64→    64→  serviceId: string | null
+    65→    65→  customerName: string
+    66→    66→  customerPhone: string
+    67→    67→  customerEmail: string | null
+    68→    68→  customerNote: string | null
+    69→    69→  date: string
+    70→    70→  endTime: string | null
+    71→    71→  status: string
+    72→    72→  price: number
+    73→    73→  notes: string | null
+    74→    74→  source: string
+    75→    75→  staff?: Staff | null
+    76→    76→  service?: Service | null
+    77→    77→}
+    78→    78→
+    79→    79→type ApptsResponse = Appointment[]
+    80→    80→interface StaffResponse { items: Staff[] }
+    81→    81→interface ServiceResponse { items: Service[] }
+    82→    82→interface ProviderResponse {
+    83→    83→  workingHours: string
+    84→    84→  autoApprove?: boolean
+    85→    85→}
+    86→    86→
+    87→    87→// ============================================================
+    88→    88→// Calendar (Day/Week view)
+    89→    89→// ============================================================
+    90→    90→
+    91→    91→interface CalendarProps {
+    92→    92→  providerId: string
+    93→    93→}
+    94→    94→
+    95→    95→export function AppointmentCalendar({ providerId }: CalendarProps) {
+    96→    96→  const qc = useQueryClient()
+    97→    97→  const [view, setView] = useState<'day' | 'week'>('day')
+    98→    98→  const [currentDate, setCurrentDate] = useState(() => {
+    99→    99→    const d = new Date()
+   100→   100→    d.setHours(0, 0, 0, 0)
+   101→   101→    return d
+   102→   102→  })
+   103→   103→  const [staffFilter, setStaffFilter] = useState<string>('all')
+   104→   104→
+   105→   105→  // Detail dialog
+   106→   106→  const [detailAppt, setDetailAppt] = useState<Appointment | null>(null)
+   107→   107→
+   108→   108→  // Provider (çalışma saatleri)
+   109→   109→  const { data: providerData } = useQuery({
+   110→   110→    queryKey: ['appointment-provider', providerId],
+   111→   111→    queryFn: () => apiGet<ProviderResponse>(`/api/appointments/providers/${providerId}`),
+   112→   112→    enabled: !!providerId,
+   113→   113→  })
+   114→   114→
+   115→   115→  const workingHours: WorkingHours = useMemo(() => {
+   116→   116→    if (!providerData?.workingHours) return {}
+   117→   117→    try {
+   118→   118→      return JSON.parse(providerData.workingHours) as WorkingHours
+   119→   119→    } catch {
+   120→   120→      return {}
+   121→   121→    }
+   122→   122→  }, [providerData])
+   123→   123→
+   124→   124→  const { data: staffData } = useQuery({
+   125→   125→    queryKey: ['appointment-staff', providerId],
+   126→   126→    queryFn: () => apiGet<StaffResponse>(`/api/appointments/providers/${providerId}/staff`),
+   127→   127→    enabled: !!providerId,
+   128→   128→  })
+   129→   129→  const staffList = staffData?.items ?? []
+   130→   130→
+   131→   131→  const { data: serviceData } = useQuery({
+   132→   132→    queryKey: ['appointment-services', providerId],
+   133→   133→    queryFn: () => apiGet<ServiceResponse>(`/api/appointments/providers/${providerId}/services`),
+   134→   134→    enabled: !!providerId,
+   135→   135→  })
+   136→   136→  const services = serviceData?.items ?? []
+   137→   137→
+   138→   138→  const dateRange = useMemo(() => {
+   139→   139→    const start = new Date(currentDate)
+   140→   140→    start.setHours(0, 0, 0, 0)
+   141→   141→    if (view === 'week') {
+   142→   142→      const day = (start.getDay() + 6) % 7
+   143→   143→      start.setDate(start.getDate() - day)
+   144→   144→    }
+   145→   145→    const days: Date[] = []
+   146→   146→    const numDays = view === 'week' ? 7 : 1
+   147→   147→    for (let i = 0; i < numDays; i++) {
+   148→   148→      const d = new Date(start)
+   149→   149→      d.setDate(start.getDate() + i)
+   150→   150→      days.push(d)
+   151→   151→    }
+   152→   152→    return days
+   153→   153→  }, [currentDate, view])
+   154→   154→
+   155→   155→  const rangeStart = dateRange[0]
+   156→   156→  const rangeEnd = new Date(dateRange[dateRange.length - 1].getTime() + 24 * 60 * 60_000)
+   157→   157→
+   158→   158→  const { data: apptData, isLoading } = useQuery({
+   159→   159→    queryKey: ['appointment-appointments', providerId, rangeStart.toISOString(), rangeEnd.toISOString(), staffFilter],
+   160→   160→    queryFn: () => {
+   161→   161→      const params = new URLSearchParams({
+   162→   162→        startDate: rangeStart.toISOString(),
+   163→   163→        endDate: rangeEnd.toISOString(),
+   164→   164→      })
+   165→   165→      if (staffFilter !== 'all') params.set('staffId', staffFilter)
+   166→   166→      return apiGet<ApptsResponse>(
+   167→   167→        `/api/appointments/providers/${providerId}/appointments?${params.toString()}`,
+   168→   168→      )
+   169→   169→    },
+   170→   170→    enabled: !!providerId,
+   171→   171→  })
+   172→   172→  const appointments = useMemo(() => (Array.isArray(apptData) ? apptData : (apptData as unknown as { items?: Appointment[] })?.items ?? []), [apptData])
+   173→   173→
+   174→   174→  const { visStart, visEnd } = useMemo(() => {
+   175→   175→    let minMin = 24 * 60
+   176→   176→    let maxMin = 0
+   177→   177→    for (const day of dateRange) {
+   178→   178→      const dk = dayKeyFromDate(day)
+   179→   179→      const sched: DaySchedule | undefined = workingHours[dk]
+   180→   180→      if (!sched || sched.closed || !sched.start || !sched.end) continue
+   181→   181→      minMin = Math.min(minMin, timeToMinutes(sched.start))
+   182→   182→      maxMin = Math.max(maxMin, timeToMinutes(sched.end))
+   183→   183→    }
+   184→   184→    if (minMin === 24 * 60) minMin = 9 * 60
+   185→   185→    if (maxMin === 0) maxMin = 19 * 60
+   186→   186→    return { visStart: minMin, visEnd: maxMin }
+   187→   187→  }, [dateRange, workingHours])
+   188→   188→
+   189→   189→  const hourSlots = useMemo(() => {
+   190→   190→    const slots: { min: number; label: string }[] = []
+   191→   191→    for (let m = visStart; m < visEnd; m += 30) {
+   192→   192→      slots.push({ min: m, label: minutesToTime(m) })
+   193→   193→    }
+   194→   194→    return slots
+   195→   195→  }, [visStart, visEnd])
+   196→   196→
+   197→   197→  const apptsByDay = useMemo(() => {
+   198→   198→    const map = new Map<string, Appointment[]>()
+   199→   199→    for (const appt of appointments) {
+   200→   200→      const d = new Date(appt.date)
+   201→   201→      const key = d.toDateString()
+   202→   202→      if (!map.has(key)) map.set(key, [])
+   203→   203→      map.get(key)!.push(appt)
+   204→   204→    }
+   205→   205→    return map
+   206→   206→  }, [appointments])
+   207→   207→
+   208→   208→  const [dialogOpen, setDialogOpen] = useState(false)
+   209→   209→  const [editAppt, setEditAppt] = useState<Appointment | null>(null)
+   210→   210→  const [form, setForm] = useState({
+   211→   211→    staffId: 'any',
+   212→   212→    serviceId: '',
+   213→   213→    customerName: '',
+   214→   214→    customerPhone: '',
+   215→   215→    customerEmail: '',
+   216→   216→    customerNote: '',
+   217→   217→    date: '',
+   218→   218→    time: '',
+   219→   219→    status: 'beklemede' as AppointmentStatus,
+   220→   220→  })
+   221→   221→  const [saving, setSaving] = useState(false)
+   222→   222→  const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null)
+   223→   223→
+   224→   224→  function prevPeriod() {
+   225→   225→    const d = new Date(currentDate)
+   226→   226→    d.setDate(d.getDate() - (view === 'week' ? 7 : 1))
+   227→   227→    setCurrentDate(d)
+   228→   228→  }
+   229→   229→  function nextPeriod() {
+   230→   230→    const d = new Date(currentDate)
+   231→   231→    d.setDate(d.getDate() + (view === 'week' ? 7 : 1))
+   232→   232→    setCurrentDate(d)
+   233→   233→  }
+   234→   234→  function goToday() {
+   235→   235→    const d = new Date()
+   236→   236→    d.setHours(0, 0, 0, 0)
+   237→   237→    setCurrentDate(d)
+   238→   238→  }
+   239→   239→
+   240→   240→  function openCreate(date?: Date, hour?: number, minute?: number) {
+   241→   241→    setEditAppt(null)
+   242→   242→    const targetDate = date ?? new Date()
+   243→   243→    targetDate.setHours(hour ?? 10, minute ?? 0, 0, 0)
+   244→   244→    setForm({
+   245→   245→      staffId: staffFilter !== 'all' ? staffFilter : 'any',
+   246→   246→      serviceId: services[0]?.id ?? '',
+   247→   247→      customerName: '',
+   248→   248→      customerPhone: '',
+   249→   249→      customerEmail: '',
+   250→   250→      customerNote: '',
+   251→   251→      date: targetDate.toISOString().slice(0, 10),
+   252→   252→      time: `${String(targetDate.getHours()).padStart(2, '0')}:${String(targetDate.getMinutes()).padStart(2, '0')}`,
+   253→   253→      status: 'beklemede',
+   254→   254→    })
+   255→   255→    setDialogOpen(true)
+   256→   256→  }
+   257→   257→
+   258→   258→  function openEdit(appt: Appointment) {
+   259→   259→    setDetailAppt(null)
+   260→   260→    setEditAppt(appt)
+   261→   261→    const d = new Date(appt.date)
+   262→   262→    setForm({
+   263→   263→      staffId: appt.staffId ?? 'any',
+   264→   264→      serviceId: appt.serviceId ?? '',
+   265→   265→      customerName: appt.customerName,
+   266→   266→      customerPhone: appt.customerPhone,
+   267→   267→      customerEmail: appt.customerEmail ?? '',
+   268→   268→      customerNote: appt.customerNote ?? '',
+   269→   269→      date: d.toISOString().slice(0, 10),
+   270→   270→      time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+   271→   271→      status: appt.status as AppointmentStatus,
+   272→   272→    })
+   273→   273→    setDialogOpen(true)
+   274→   274→  }
+   275→   275→
+   276→   276→  async function handleSave() {
+   277→   277→    if (!form.customerName.trim()) {
+   278→   278→      toast.error('Müşteri adı gerekli')
+   279→   279→      return
+   280→   280→    }
+   281→   281→    if (!form.customerPhone.trim()) {
+   282→   282→      toast.error('Müşteri telefonu gerekli')
+   283→   283→      return
+   284→   284→    }
+   285→   285→    if (!form.serviceId) {
+   286→   286→      toast.error('Hizmet seçimi gerekli')
+   287→   287→      return
+   288→   288→    }
+   289→   289→    if (!form.date || !form.time) {
+   290→   290→      toast.error('Tarih ve saat gerekli')
+   291→   291→      return
+   292→   292→    }
+   293→   293→    setSaving(true)
+   294→   294→    try {
+   295→   295→      const [y, m, d] = form.date.split('-').map(Number)
+   296→   296→      const [hh, mm] = form.time.split(':').map(Number)
+   297→   297→      const start = new Date(y, m - 1, d, hh, mm, 0, 0)
+   298→   298→      const payload = {
+   299→   299→        staffId: form.staffId === 'any' ? undefined : form.staffId,
+   300→   300→        serviceId: form.serviceId,
+   301→   301→        customerName: form.customerName,
+   302→   302→        customerPhone: form.customerPhone,
+   303→   303→        customerEmail: form.customerEmail || undefined,
+   304→   304→        customerNote: form.customerNote || undefined,
+   305→   305→        date: start.toISOString(),
+   306→   306→        status: form.status,
+   307→   307→      }
+   308→   308→      if (editAppt) {
+   309→   309→        await apiPatch(
+   310→   310→          `/api/appointments/providers/${providerId}/appointments/${editAppt.id}`,
+   311→   311→          { ...payload, staffId: form.staffId },
+   312→   312→        )
+   313→   313→        toast.success('Randevu güncellendi')
+   314→   314→      } else {
+   315→   315→        await apiPost(
+   316→   316→          `/api/appointments/providers/${providerId}/appointments`,
+   317→   317→          payload,
+   318→   318→        )
+   319→   319→        toast.success('Randevu oluşturuldu')
+   320→   320→      }
+   321→   321→      qc.invalidateQueries({ queryKey: ['appointment-appointments', providerId] })
+   322→   322→      setDialogOpen(false)
+   323→   323→    } catch (e) {
+   324→   324→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+   325→   325→    } finally {
+   326→   326→      setSaving(false)
+   327→   327→    }
+   328→   328→  }
+   329→   329→
+   330→   330→  async function handleStatusChange(appt: Appointment, status: AppointmentStatus) {
+   331→   331→    try {
+   332→   332→      await apiPatch(
+   333→   333→        `/api/appointments/providers/${providerId}/appointments/${appt.id}`,
+   334→   334→        { status },
+   335→   335→      )
+   336→   336→      qc.invalidateQueries({ queryKey: ['appointment-appointments', providerId] })
+   337→   337→      setDetailAppt(null)
+   338→   338→      toast.success(`Durum: ${getStatusMeta(status).label}`)
+   339→   339→    } catch (e) {
+   340→   340→      toast.error(e instanceof Error ? e.message : 'Güncellenemedi')
+   341→   341→    }
+   342→   342→  }
+   343→   343→
+   344→   344→  async function handleDelete() {
+   345→   345→    if (!deleteTarget) return
+   346→   346→    try {
+   347→   347→      await apiDelete(
+   348→   348→        `/api/appointments/providers/${providerId}/appointments/${deleteTarget.id}`,
+   349→   349→      )
+   350→   350→      qc.invalidateQueries({ queryKey: ['appointment-appointments', providerId] })
+   351→   351→      toast.success('Randevu iptal edildi')
+   352→   352→      setDeleteTarget(null)
+   353→   353→    } catch (e) {
+   354→   354→      toast.error(e instanceof Error ? e.message : 'İptal edilemedi')
+   355→   355→    }
+   356→   356→  }
+   357→   357→
+   358→   358→  if (isLoading) {
+   359→   359→    return (
+   360→   360→      <Card>
+   361→   361→        <Skeleton className="h-96 w-full" />
+   362→   362→      </Card>
+   363→   363→    )
+   364→   364→  }
+   365→   365→
+   366→   366→  return (
+   367→   367→    <div className="space-y-3">
+   368→   368→      {/* Toolbar */}
+   369→   369→      <Card>
+   370→   370→        <CardContent className="p-3">
+   371→   371→          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+   372→   372→            <div className="flex items-center gap-1.5 shrink-0">
+   373→   373→              <Button size="icon" variant="outline" className="h-9 w-9" onClick={prevPeriod}>
+   374→   374→                <ChevronLeft className="w-4 h-4" />
+   375→   375→              </Button>
+   376→   376→              <Button size="sm" variant="outline" onClick={goToday}>
+   377→   377→                Bugün
+   378→   378→              </Button>
+   379→   379→              <Button size="icon" variant="outline" className="h-9 w-9" onClick={nextPeriod}>
+   380→   380→                <ChevronRight className="w-4 h-4" />
+   381→   381→              </Button>
+   382→   382→            </div>
+   383→   383→            <div className="flex items-center gap-2 flex-1 min-w-0">
+   384→   384→              <CalendarIcon className="w-4 h-4 text-emerald-600 shrink-0" />
+   385→   385→              <span className="font-semibold text-sm truncate">
+   386→   386→                {view === 'day'
+   387→   387→                  ? currentDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
+   388→   388→                  : `${rangeStart.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} - ${new Date(rangeEnd.getTime() - 86400000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+   389→   389→              </span>
+   390→   390→            </div>
+   391→   391→            <div className="flex items-center gap-2 shrink-0">
+   392→   392→              <Select value={staffFilter} onValueChange={setStaffFilter}>
+   393→   393→                <SelectTrigger className="h-9 w-40 text-xs">
+   394→   394→                  <SelectValue placeholder="Tüm personel" />
+   395→   395→                </SelectTrigger>
+   396→   396→                <SelectContent>
+   397→   397→                  <SelectItem value="all">Tüm Personel</SelectItem>
+   398→   398→                  {staffList.map((s) => (
+   399→   399→                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+   400→   400→                  ))}
+   401→   401→                </SelectContent>
+   402→   402→              </Select>
+   403→   403→              <div className="flex border rounded-md overflow-hidden">
+   404→   404→                <Button
+   405→   405→                  size="sm"
+   406→   406→                  variant={view === 'day' ? 'default' : 'ghost'}
+   407→   407→                  className={cn('rounded-none h-9', view === 'day' && 'bg-emerald-600 hover:bg-emerald-700')}
+   408→   408→                  onClick={() => setView('day')}
+   409→   409→                >
+   410→   410→                  Gün
+   411→   411→                </Button>
+   412→   412→                <Button
+   413→   413→                  size="sm"
+   414→   414→                  variant={view === 'week' ? 'default' : 'ghost'}
+   415→   415→                  className={cn('rounded-none h-9', view === 'week' && 'bg-emerald-600 hover:bg-emerald-700')}
+   416→   416→                  onClick={() => setView('week')}
+   417→   417→                >
+   418→   418→                  Hafta
+   419→   419→                </Button>
+   420→   420→              </div>
+   421→   421→              <Button size="sm" onClick={() => openCreate()} className="bg-emerald-600 hover:bg-emerald-700">
+   422→   422→                <Plus className="w-4 h-4 mr-1" />
+   423→   423→                <span className="hidden sm:inline">Randevu</span>
+   424→   424→              </Button>
+   425→   425→            </div>
+   426→   426→          </div>
+   427→   427→        </CardContent>
+   428→   428→      </Card>
+   429→   429→
+   430→   430→      {/* Calendar Grid */}
+   431→   431→      <Card>
+   432→   432→        <CardContent className="p-0 overflow-x-auto">
+   433→   433→          <div className={cn('grid min-w-[640px]', view === 'week' ? 'grid-cols-[60px_repeat(7,1fr)]' : 'grid-cols-[60px_1fr]')}>
+   434→   434→            <div className="border-b border-r bg-muted/30 p-2 text-[10px] text-muted-foreground text-right">
+   435→   435→              S
+   436→   436→            </div>
+   437→   437→            {dateRange.map((d) => {
+   438→   438→              const isToday = d.toDateString() === new Date().toDateString()
+   439→   439→              const dk = dayKeyFromDate(d)
+   440→   440→              const sched = workingHours[dk]
+   441→   441→              const isClosed = !sched || sched.closed
+   442→   442→              return (
+   443→   443→                <div
+   444→   444→                  key={d.toISOString()}
+   445→   445→                  className={cn(
+   446→   446→                    'border-b border-r p-2 text-center',
+   447→   447→                    isToday && 'bg-emerald-50 dark:bg-emerald-950/20',
+   448→   448→                    isClosed && 'bg-muted/20',
+   449→   449→                  )}
+   450→   450→                >
+   451→   451→                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+   452→   452→                    {d.toLocaleDateString('tr-TR', { weekday: 'short' })}
+   453→   453→                  </div>
+   454→   454→                  <div className={cn('text-sm font-semibold', isToday && 'text-emerald-600')}>
+   455→   455→                    {d.getDate()}
+   456→   456→                  </div>
+   457→   457→                  {isClosed && (
+   458→   458→                    <div className="text-[9px] text-muted-foreground">kapalı</div>
+   459→   459→                  )}
+   460→   460→                </div>
+   461→   461→              )
+   462→   462→            })}
+   463→   463→
+   464→   464→            {hourSlots.map((slot) => (
+   465→   465→              <SlotRow
+   466→   466→                key={slot.min}
+   467→   467→                slot={slot}
+   468→   468→                dateRange={dateRange}
+   469→   469→                apptsByDay={apptsByDay}
+   470→   470→                workingHours={workingHours}
+   471→   471→                onSlotClick={(date) => openCreate(date, slot.min / 60, slot.min % 60)}
+   472→   472→                onApptClick={(appt) => setDetailAppt(appt)}
+   473→   473→              />
+   474→   474→            ))}
+   475→   475→          </div>
+   476→   476→        </CardContent>
+   477→   477→      </Card>
+   478→   478→
+   479→   479→      {/* Legend */}
+   480→   480→      <div className="flex items-center gap-3 flex-wrap text-[10px] text-muted-foreground">
+   481→   481→        <span>Durum:</span>
+   482→   482→        {APPOINTMENT_STATUSES.slice(0, 5).map((s) => (
+   483→   483→          <span key={s.value} className="flex items-center gap-1">
+   484→   484→            <span className={cn('w-2.5 h-2.5 rounded-sm', s.bg)} />
+   485→   485→            {s.label}
+   486→   486→          </span>
+   487→   487→        ))}
+   488→   488→      </div>
+   489→   489→
+   490→   490→      {/* Detail Dialog */}
+   491→   491→      <Dialog open={!!detailAppt} onOpenChange={(o) => !o && setDetailAppt(null)}>
+   492→   492→        <DialogContent className="sm:max-w-md">
+   493→   493→          {detailAppt && (() => {
+   494→   494→            const meta = getStatusMeta(detailAppt.status)
+   495→   495→            const d = new Date(detailAppt.date)
+   496→   496→            const end = detailAppt.endTime ? new Date(detailAppt.endTime) : null
+   497→   497→            const waLink = whatsappLink(
+   498→   498→              detailAppt.customerPhone,
+   499→   499→              `Merhaba ${detailAppt.customerName}, ${d.toLocaleDateString('tr-TR')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} tarihli randevunuz hakkında hatırlatma.`,
+   500→   500→            )
+   501→   501→            return (
+   502→   502→              <>
+   503→   503→                <DialogHeader>
+   504→   504→                  <DialogTitle className="flex items-center gap-2">
+   505→   505→                    <CalendarDays className="w-4 h-4 text-emerald-600" />
+   506→   506→                    Randevu Detayı
+   507→   507→                  </DialogTitle>
+   508→   508→                  <DialogDescription>
+   509→   509→                    {d.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+   510→   510→                    {' · '}
+   511→   511→                    {String(d.getHours()).padStart(2, '0')}:{String(d.getMinutes()).padStart(2, '0')}
+   512→   512→                    {end && ` - ${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`}
+   513→   513→                  </DialogDescription>
+   514→   514→                </DialogHeader>
+   515→   515→                <div className="space-y-3">
+   516→   516→                  <div className={cn('rounded-lg p-3 border', meta.bg, meta.border)}>
+   517→   517→                    <div className="flex items-center justify-between">
+   518→   518→                      <div className="font-semibold text-base">{detailAppt.customerName}</div>
+   519→   519→                      <Badge className={cn(meta.bg, meta.color, 'border-0')}>{meta.label}</Badge>
+   520→   520→                    </div>
+   521→   521→                  </div>
+   522→   522→                  <div className="grid grid-cols-2 gap-3 text-sm">
+   523→   523→                    <div>
+   524→   524→                      <div className="text-xs text-muted-foreground">Hizmet</div>
+   525→   525→                      <div className="font-medium">{detailAppt.service?.name ?? '—'}</div>
+   526→   526→                      {detailAppt.service && (
+   527→   527→                        <div className="text-xs text-muted-foreground">
+   528→   528→                          {detailAppt.service.duration} dk · {formatCurrency(detailAppt.service.price, detailAppt.service.currency)}
+   529→   529→                        </div>
+   530→   530→                      )}
+   531→   531→                    </div>
+   532→   532→                    <div>
+   533→   533→                      <div className="text-xs text-muted-foreground">Personel</div>
+   534→   534→                      <div className="font-medium">{detailAppt.staff?.name ?? 'Herhangi biri'}</div>
+   535→   535→                      {detailAppt.staff?.title && (
+   536→   536→                        <div className="text-xs text-muted-foreground">{detailAppt.staff.title}</div>
+   537→   537→                      )}
+   538→   538→                    </div>
+   539→   539→                    <div>
+   540→   540→                      <div className="text-xs text-muted-foreground">Telefon</div>
+   541→   541→                      <a href={`tel:${detailAppt.customerPhone}`} className="font-medium text-emerald-700 dark:text-emerald-300 hover:underline">
+   542→   542→                        {formatPhone(detailAppt.customerPhone)}
+   543→   543→                      </a>
+   544→   544→                    </div>
+   545→   545→                    <div>
+   546→   546→                      <div className="text-xs text-muted-foreground">E-posta</div>
+   547→   547→                      <div className="font-medium truncate">{detailAppt.customerEmail || '—'}</div>
+   548→   548→                    </div>
+   549→   549→                    <div className="col-span-2">
+   550→   550→                      <div className="text-xs text-muted-foreground">Tutar</div>
+   551→   551→                      <div className="font-semibold text-lg">{formatCurrency(detailAppt.price)}</div>
+   552→   552→                    </div>
+   553→   553→                    {detailAppt.customerNote && (
+   554→   554→                      <div className="col-span-2">
+   555→   555→                        <div className="text-xs text-muted-foreground">Müşteri Notu</div>
+   556→   556→                        <div className="text-sm bg-muted/30 p-2 rounded">{detailAppt.customerNote}</div>
+   557→   557→                      </div>
+   558→   558→                    )}
+   559→   559→                    {detailAppt.notes && (
+   560→   560→                      <div className="col-span-2">
+   561→   561→                        <div className="text-xs text-muted-foreground">İç Notlar</div>
+   562→   562→                        <div className="text-sm bg-muted/30 p-2 rounded">{detailAppt.notes}</div>
+   563→   563→                      </div>
+   564→   564→                    )}
+   565→   565→                  </div>
+   566→   566→                </div>
+   567→   567→                <DialogFooter className="flex-col gap-2 sm:flex-row">
+   568→   568→                  <div className="flex flex-wrap gap-1.5 w-full">
+   569→   569→                    <Button size="sm" variant="outline" asChild>
+   570→   570→                      <a href={waLink} target="_blank" rel="noopener noreferrer">
+   571→   571→                        <MessageCircle className="w-3.5 h-3.5 mr-1" />
+   572→   572→                        WhatsApp
+   573→   573→                      </a>
+   574→   574→                    </Button>
+   575→   575→                    <Button size="sm" variant="outline" asChild>
+   576→   576→                      <a href={`tel:${detailAppt.customerPhone}`}>
+   577→   577→                        <Phone className="w-3.5 h-3.5 mr-1" />
+   578→   578→                        Ara
+   579→   579→                      </a>
+   580→   580→                    </Button>
+   581→   581→                    <Button size="sm" variant="outline" onClick={() => openEdit(detailAppt)}>
+   582→   582→                      <Pencil className="w-3.5 h-3.5 mr-1" />
+   583→   583→                      Düzenle
+   584→   584→                    </Button>
+   585→   585→                  </div>
+   586→   586→                  <DropdownMenu>
+   587→   587→                    <DropdownMenuTrigger asChild>
+   588→   588→                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto">
+   589→   589→                        <Check className="w-3.5 h-3.5 mr-1" />
+   590→   590→                        Durum Değiştir
+   591→   591→                      </Button>
+   592→   592→                    </DropdownMenuTrigger>
+   593→   593→                    <DropdownMenuContent align="end" className="w-48">
+   594→   594→                      <DropdownMenuLabel>Durumu değiştir</DropdownMenuLabel>
+   595→   595→                      <DropdownMenuSeparator />
+   596→   596→                      <DropdownMenuItem onClick={() => handleStatusChange(detailAppt, 'onaylandi')}>
+   597→   597→                        <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-600" /> Onayla
+   598→   598→                      </DropdownMenuItem>
+   599→   599→                      <DropdownMenuItem onClick={() => handleStatusChange(detailAppt, 'tamamlandi')}>
+   600→   600→                        <Check className="w-3.5 h-3.5 mr-2 text-teal-600" /> Tamamlandı
+   601→   601→                      </DropdownMenuItem>
+   602→   602→                      <DropdownMenuItem onClick={() => handleStatusChange(detailAppt, 'beklemede')}>
+   603→   603→                        <Clock className="w-3.5 h-3.5 mr-2 text-amber-600" /> Beklemede
+   604→   604→                      </DropdownMenuItem>
+   605→   605→                      <DropdownMenuItem onClick={() => handleStatusChange(detailAppt, 'gelmedi')}>
+   606→   606→                        <UserX className="w-3.5 h-3.5 mr-2 text-rose-600" /> Gelmedi
+   607→   607→                      </DropdownMenuItem>
+   608→   608→                      <DropdownMenuSeparator />
+   609→   609→                      <DropdownMenuItem
+   610→   610→                        onClick={() => handleStatusChange(detailAppt, 'iptal')}
+   611→   611→                        className="text-red-600"
+   612→   612→                      >
+   613→   613→                        <XCircle className="w-3.5 h-3.5 mr-2" /> İptal Et
+   614→   614→                      </DropdownMenuItem>
+   615→   615→                    </DropdownMenuContent>
+   616→   616→                  </DropdownMenu>
+   617→   617→                </DialogFooter>
+   618→   618→              </>
+   619→   619→            )
+   620→   620→          })()}
+   621→   621→        </DialogContent>
+   622→   622→      </Dialog>
+   623→   623→
+   624→   624→      {/* Form Dialog */}
+   625→   625→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   626→   626→        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+   627→   627→          <DialogHeader>
+   628→   628→            <DialogTitle>{editAppt ? 'Randevu Düzenle' : 'Yeni Randevu'}</DialogTitle>
+   629→   629→            <DialogDescription>
+   630→   630→              {editAppt
+   631→   631→                ? 'Randevu bilgilerini güncelleyin.'
+   632→   632→                : providerData?.autoApprove
+   633→   633→                  ? 'Yeni randevu oluşturun — otomatik onay açık, anında onaylanır.'
+   634→   634→                  : 'Yeni randevu oluşturun — otomatik onay kapalı, randevu "Beklemede" oluşur.'}
+   635→   635→            </DialogDescription>
+   636→   636→          </DialogHeader>
+   637→   637→          <div className="space-y-3">
+   638→   638→            <div className="grid grid-cols-2 gap-3">
+   639→   639→              <div>
+   640→   640→                <Label htmlFor="a-date" className="text-xs">Tarih</Label>
+   641→   641→                <Input
+   642→   642→                  id="a-date"
+   643→   643→                  type="date"
+   644→   644→                  value={form.date}
+   645→   645→                  onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+   646→   646→                  className="mt-1 h-9 text-sm"
+   647→   647→                />
+   648→   648→              </div>
+   649→   649→              <div>
+   650→   650→                <Label htmlFor="a-time" className="text-xs">Saat</Label>
+   651→   651→                <Input
+   652→   652→                  id="a-time"
+   653→   653→                  type="time"
+   654→   654→                  value={form.time}
+   655→   655→                  onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
+   656→   656→                  className="mt-1 h-9 text-sm"
+   657→   657→                />
+   658→   658→              </div>
+   659→   659→            </div>
+   660→   660→            <div>
+   661→   661→              <Label htmlFor="a-service" className="text-xs">Hizmet *</Label>
+   662→   662→              <Select value={form.serviceId} onValueChange={(v) => setForm((f) => ({ ...f, serviceId: v }))}>
+   663→   663→                <SelectTrigger id="a-service" className="mt-1 h-9 text-sm">
+   664→   664→                  <SelectValue placeholder="Hizmet seçin" />
+   665→   665→                </SelectTrigger>
+   666→   666→                <SelectContent>
+   667→   667→                  {services.map((s) => (
+   668→   668→                    <SelectItem key={s.id} value={s.id}>
+   669→   669→                      {s.name} — {s.duration}dk · {formatCurrency(s.price, s.currency)}
+   670→   670→                    </SelectItem>
+   671→   671→                  ))}
+   672→   672→                </SelectContent>
+   673→   673→              </Select>
+   674→   674→            </div>
+   675→   675→            <div>
+   676→   676→              <Label htmlFor="a-staff" className="text-xs">Personel</Label>
+   677→   677→              <Select value={form.staffId} onValueChange={(v) => setForm((f) => ({ ...f, staffId: v }))}>
+   678→   678→                <SelectTrigger id="a-staff" className="mt-1 h-9 text-sm">
+   679→   679→                  <SelectValue placeholder="Personel seçin" />
+   680→   680→                </SelectTrigger>
+   681→   681→                <SelectContent>
+   682→   682→                  <SelectItem value="any">Herhangi biri</SelectItem>
+   683→   683→                  {staffList.map((s) => (
+   684→   684→                    <SelectItem key={s.id} value={s.id}>
+   685→   685→                      {s.name}{s.title ? ` · ${s.title}` : ''}
+   686→   686→                    </SelectItem>
+   687→   687→                  ))}
+   688→   688→                </SelectContent>
+   689→   689→              </Select>
+   690→   690→            </div>
+   691→   691→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   692→   692→              <div>
+   693→   693→                <Label htmlFor="a-name" className="text-xs">Müşteri Adı *</Label>
+   694→   694→                <Input
+   695→   695→                  id="a-name"
+   696→   696→                  value={form.customerName}
+   697→   697→                  onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))}
+   698→   698→                  placeholder="Ad Soyad"
+   699→   699→                  className="mt-1 h-9 text-sm"
+   700→   700→                />
+   701→   701→              </div>
+   702→   702→              <div>
+   703→   703→                <Label htmlFor="a-phone" className="text-xs">Telefon *</Label>
+   704→   704→                <Input
+   705→   705→                  id="a-phone"
+   706→   706→                  value={form.customerPhone}
+   707→   707→                  onChange={(e) => setForm((f) => ({ ...f, customerPhone: e.target.value }))}
+   708→   708→                  placeholder="+90 5xx..."
+   709→   709→                  className="mt-1 h-9 text-sm"
+   710→   710→                />
+   711→   711→              </div>
+   712→   712→            </div>
+   713→   713→            <div>
+   714→   714→              <Label htmlFor="a-email" className="text-xs">E-posta (opsiyonel)</Label>
+   715→   715→              <Input
+   716→   716→                id="a-email"
+   717→   717→                type="email"
+   718→   718→                value={form.customerEmail}
+   719→   719→                onChange={(e) => setForm((f) => ({ ...f, customerEmail: e.target.value }))}
+   720→   720→                placeholder="email@..."
+   721→   721→                className="mt-1 h-9 text-sm"
+   722→   722→              />
+   723→   723→            </div>
+   724→   724→            <div>
+   725→   725→              <Label htmlFor="a-note" className="text-xs">Müşteri Notu</Label>
+   726→   726→              <Textarea
+   727→   727→                id="a-note"
+   728→   728→                value={form.customerNote}
+   729→   729→                onChange={(e) => setForm((f) => ({ ...f, customerNote: e.target.value }))}
+   730→   730→                placeholder="Özel istekler..."
+   731→   731→                className="mt-1 resize-none text-sm"
+   732→   732→                rows={2}
+   733→   733→              />
+   734→   734→            </div>
+   735→   735→            {editAppt && (
+   736→   736→              <div>
+   737→   737→                <Label htmlFor="a-status" className="text-xs">Durum</Label>
+   738→   738→                <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v as AppointmentStatus }))}>
+   739→   739→                  <SelectTrigger id="a-status" className="mt-1 h-9 text-sm">
+   740→   740→                    <SelectValue />
+   741→   741→                  </SelectTrigger>
+   742→   742→                  <SelectContent>
+   743→   743→                    {APPOINTMENT_STATUSES.map((s) => (
+   744→   744→                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+   745→   745→                    ))}
+   746→   746→                  </SelectContent>
+   747→   747→                </Select>
+   748→   748→              </div>
+   749→   749→            )}
+   750→   750→          </div>
+   751→   751→          <DialogFooter className="gap-2">
+   752→   752→            {editAppt && (
+   753→   753→              <Button
+   754→   754→                variant="outline"
+   755→   755→                className="text-red-600 hover:text-red-700 mr-auto"
+   756→   756→                onClick={() => { setDeleteTarget(editAppt); setDialogOpen(false) }}
+   757→   757→              >
+   758→   758→                <Trash2 className="w-4 h-4 mr-1" />
+   759→   759→                İptal Et
+   760→   760→              </Button>
+   761→   761→            )}
+   762→   762→            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
+   763→   763→              Kapat
+   764→   764→            </Button>
+   765→   765→            <Button onClick={handleSave} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700">
+   766→   766→              {saving ? 'Kaydediliyor...' : editAppt ? 'Güncelle' : 'Oluştur'}
+   767→   767→            </Button>
+   768→   768→          </DialogFooter>
+   769→   769→        </DialogContent>
+   770→   770→      </Dialog>
+   771→   771→
+   772→   772→      {/* Delete Confirm */}
+   773→   773→      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+   774→   774→        <AlertDialogContent>
+   775→   775→          <AlertDialogHeader>
+   776→   776→            <AlertDialogTitle>Randevuyu iptal et</AlertDialogTitle>
+   777→   777→            <AlertDialogDescription>
+   778→   778→              <strong>{deleteTarget?.customerName}</strong> adına ait randevuyu iptal etmek istediğinize emin misiniz?
+   779→   779→              (Randevu silinmez, durumu "iptal" olarak işaretlenir.)
+   780→   780→            </AlertDialogDescription>
+   781→   781→          </AlertDialogHeader>
+   782→   782→          <AlertDialogFooter>
+   783→   783→            <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+   784→   784→            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
+   785→   785→              İptal Et
+   786→   786→            </AlertDialogAction>
+   787→   787→          </AlertDialogFooter>
+   788→   788→        </AlertDialogContent>
+   789→   789→      </AlertDialog>
+   790→   790→    </div>
+   791→   791→  )
+   792→   792→}
+   793→   793→
+   794→   794→// ============================================================
+   795→   795→// Slot row — bir zaman dilimi için tüm günleri render eder
+   796→   796→// ============================================================
+   797→   797→
+   798→   798→function SlotRow({
+   799→   799→  slot,
+   800→   800→  dateRange,
+   801→   801→  apptsByDay,
+   802→   802→  workingHours,
+   803→   803→  onSlotClick,
+   804→   804→  onApptClick,
+   805→   805→}: {
+   806→   806→  slot: { min: number; label: string }
+   807→   807→  dateRange: Date[]
+   808→   808→  apptsByDay: Map<string, Appointment[]>
+   809→   809→  workingHours: WorkingHours
+   810→   810→  onSlotClick: (date: Date) => void
+   811→   811→  onApptClick: (appt: Appointment) => void
+   812→   812→}) {
+   813→   813→  const isHourLine = slot.min % 60 === 0
+   814→   814→  return (
+   815→   815→    <>
+   816→   816→      <div
+   817→   817→        className={cn(
+   818→   818→          'border-r border-b bg-muted/20 p-1 text-[10px] text-muted-foreground text-right align-top',
+   819→   819→          isHourLine ? 'border-b-border' : 'border-b-muted/40',
+   820→   820→        )}
+   821→   821→      >
+   822→   822→        {isHourLine ? slot.label : ''}
+   823→   823→      </div>
+   824→   824→      {dateRange.map((d) => {
+   825→   825→        const dk = dayKeyFromDate(d)
+   826→   826→        const sched = workingHours[dk]
+   827→   827→        const isClosed = !sched || sched.closed || !sched.start || !sched.end
+   828→   828→        const inHours = !isClosed &&
+   829→   829→          slot.min >= timeToMinutes(sched!.start!) &&
+   830→   830→          slot.min < timeToMinutes(sched!.end!)
+   831→   831→
+   832→   832→        const dayAppts = apptsByDay.get(d.toDateString()) ?? []
+   833→   833→        const slotAppts = dayAppts.filter((a) => {
+   834→   834→          const ad = new Date(a.date)
+   835→   835→          const aMin = ad.getHours() * 60 + ad.getMinutes()
+   836→   836→          return aMin >= slot.min && aMin < slot.min + 30
+   837→   837→        })
+   838→   838→
+   839→   839→        return (
+   840→   840→          <div
+   841→   841→            key={`${d.toISOString()}-${slot.min}`}
+   842→   842→            className={cn(
+   843→   843→              'border-r border-b relative h-7 group',
+   844→   844→              isHourLine ? 'border-b-border' : 'border-b-muted/40',
+   845→   845→              inHours ? 'bg-card hover:bg-emerald-50/30 dark:hover:bg-emerald-950/10 cursor-pointer' : 'bg-muted/10',
+   846→   846→            )}
+   847→   847→            onClick={() => inHours && onSlotClick(new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(slot.min / 60), slot.min % 60))}
+   848→   848→          >
+   849→   849→            {slotAppts.map((appt) => {
+   850→   850→              const meta = getStatusMeta(appt.status)
+   851→   851→              const isCancelled = appt.status === 'iptal' || appt.status === 'reddedildi'
+   852→   852→              return (
+   853→   853→                <button
+   854→   854→                  key={appt.id}
+   855→   855→                  type="button"
+   856→   856→                  onClick={(e) => { e.stopPropagation(); onApptClick(appt) }}
+   857→   857→                  className={cn(
+   858→   858→                    'absolute inset-x-0.5 top-0.5 px-1.5 py-0.5 rounded text-[10px] text-left truncate transition-shadow hover:shadow-md z-10',
+   859→   859→                    meta.bg, meta.color,
+   860→   860→                    isCancelled && 'opacity-50 line-through',
+   861→   861→                  )}
+   862→   862→                  title={`${appt.customerName} · ${appt.service?.name ?? ''} · ${appt.staff?.name ?? 'Herhangi biri'}`}
+   863→   863→                >
+   864→   864→                  <span className="font-semibold">{appt.customerName}</span>
+   865→   865→                  {appt.service && <span className="opacity-80"> · {appt.service.name}</span>}
+   866→   866→                </button>
+   867→   867→              )
+   868→   868→            })}
+   869→   869→          </div>
+   870→   870→        )
+   871→   871→      })}
+   872→   872→    </>
+   873→   873→  )
+   874→   874→}
+   875→   875→
