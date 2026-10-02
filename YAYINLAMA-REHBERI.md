@@ -1220,6 +1220,49 @@ Security Group inbound'da SADECE şunlar olmalı:
 Fazladan eklediğiniz kuralı silmek için: AWS > EC2 > Security Group > Inbound rules >
 kuralı seç > **Delete inbound rules**.
 
+### 16. AYRI REPO'dan oyun/proje deploy etme: `gnc-oyun`
+
+Meyve Patlat gibi ayrı bir GitHub repo'sunda olan oyununuzu VDS'e, **geri kalan
+her şeye dokunmadan** kurmak/güncellemek için:
+
+```bash
+# İLK KURULUM (repo adresi + port + isim):
+sudo gnc-oyun https://github.com/kaancetin3141/meyve-patlat.git 3001 meyvepatlat
+
+# SONRAKİ GÜNCELLEMELER (repo'da yeni commit varken):
+sudo gnc-oyun meyvepatlat
+
+# Kurulmuşları listele:
+sudo gnc-oyun liste
+```
+
+> Private repoda token'li adres kullanın:
+> `https://KULLANICI:TOKEN@github.com/kullanici/repo.git`
+
+**İzolasyon garantisi:** kod `/var/www/oyunlar/<isim>` klasörüne klonlanır, kendi
+pm2 süreci (`<isim>`) olarak çalışır; `gnc-erp` reposu, CRM, ana site ve nginx
+konfigürasyonu HİÇ değişmez. Oyun güncellenirken CRM etkilenmez, tersi de böyle.
+
+**Otomatik tip tespiti:**
+| Repo içeriği | Ne olur |
+|---|---|
+| `package.json` + `"start"` script | Node uygulaması olarak pm2'de (PORT=<port>) |
+| `package.json` + `"build"` script | build alır, `dist`/`build`/`out` klasörünü servis eder |
+| `index.html` | statik oyun olarak servis edilir |
+
+Script sonda sağlık kontrolü yapar: uygulama ayakta mı, `https://<isim>.<domain>`
+kaç dönüyor (200 canlı · 502 uygulama yok · 000 SG/SSL sorunu).
+
+#### 16.1 Neden bilinmeyen bir alt alan adı ANA SİTEYİ veya 404 gösteriyor?
+
+Hostinger'daki `*` (yıldız) kaydı sayesinde TÜM alt alan adları (oyun2.xyz.gncinc.online
+dahil) bu sunucuya gelir. nginx'e `oyun2.gncinc.online` için bir server block
+yazılmadıysa nginx **varsayılan** siteyi (ana site) veya boş bir block varsa 404
+döndürür. Ayrıca oyun2 için SSL sertifikası olmadığından `https://oyun2...`
+tarayıcıda hata verir. **Bu bir hata değildir** — o adresin arkasında henüz bir
+proje kurulmadığının göstergesidir. Proje kurulunca (`sudo gnc-proje oyun2 3002` +
+deploy) adres canlanır.
+
 ---
 
 *Bu rehber GNC CRM v1.0 (Next.js 16 + Prisma 6 + SQLite) için hazırlanmıştır. Sorularınız için

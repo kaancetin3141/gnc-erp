@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  GNC — TEK KOMUT KURULUM (v2.2 — + izin self-heal + guncelle-gnc v3 + kaldir komutu)
+#  GNC — TEK KOMUT KURULUM (v2.3 — + gnc-oyun: ayrı repo'dan oyun deploy)
 #  Ne yapar: sistem güncelleme + swap + Node 20 + pm2 + nginx +
 #  GitHub'dan kod + build + 7/24 çalıştırma + demo verisi +
 #  ANA SİTE (gncinc.online portfolyo) + ALT ALAN ADLARI:
@@ -241,6 +241,13 @@ if [ -f "$APP_DIR/deploy/yeni-proje.sh" ]; then
   info "Yeni proje komutu kuruldu: gnc-proje"
 fi
 
+# ---- gnc-oyun: ayrı repo'dan oyun/proje deploy (gnc-erp'den bağımsız) ----
+if [ -f "$APP_DIR/deploy/oyun-deploy.sh" ]; then
+  $SUDO cp "$APP_DIR/deploy/oyun-deploy.sh" /usr/local/bin/gnc-oyun
+  $SUDO chmod +x /usr/local/bin/gnc-oyun
+  info "Oyun deploy komutu kuruldu: gnc-oyun"
+fi
+
 # ---- uygulama ayağa kalkana kadar bekle + demo verisini yükle ----
 info "Uygulamanın açılması bekleniyor..."
 APP_OK=""
@@ -296,5 +303,6 @@ echo -e "  Faydalı komutlar:"
 echo -e "   Güncelleme : ${B}guncelle-gnc.sh${N}   (kod + ana site birlikte güncellenir)"
 echo -e "   Yeni proje : ${B}sudo gnc-proje <altalanadi> <port>${N}   (nginx + SSL otomatik)"
 echo -e "   Kaldırma   : ${B}sudo gnc-proje <altalanadi> kaldir${N}   (yayından çekme)"
+echo -e "   Oyun deploy: ${B}sudo gnc-oyun <repo-adresi> [port] [isim]${N}   (ayrı GitHub repo, izole)"
 echo -e "   Durum      : ${B}pm2 status${N}   Loglar: ${B}pm2 logs gnc-crm${N}"
 echo -e "${G}============================================================${N}"

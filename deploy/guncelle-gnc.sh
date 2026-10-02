@@ -37,8 +37,17 @@ echo "4/7) build...";          NODE_OPTIONS=--max-old-space-size=1536 npm run bu
 echo "5/7) pm2 restart..."
 pm2 restart gnc-crm 2>/dev/null || sudo pm2 restart gnc-crm 2>/dev/null \
   || echo "   ! pm2'de gnc-crm bulunamadı — kurulum.sh'ı çalıştırın"
-echo "6/7) ana site güncelle..."
+echo "6/7) ana site + araçlar güncelle..."
 if [ -d ana-site ]; then cp -r ana-site/. "$ANA_DIR/" 2>/dev/null || sudo cp -r ana-site/. "$ANA_DIR/"; fi
+# sunucu araçlarını repodan tazele (gnc-proje, gnc-oyun)
+for t in "yeni-proje.sh gnc-proje" "oyun-deploy.sh gnc-oyun"; do
+  set -- $t
+  if [ -f "deploy/$1" ]; then
+    sudo cp "deploy/$1" "/usr/local/bin/$2" 2>/dev/null || cp "deploy/$1" "/usr/local/bin/$2"
+    sudo chmod +x "/usr/local/bin/$2" 2>/dev/null || chmod +x "/usr/local/bin/$2"
+    echo "   araç güncel: $2"
+  fi
+done
 
 echo "7/7) Sağlık kontrolü..."
 if curl -s -o /dev/null -m 5 "http://127.0.0.1:$APP_PORT"; then

@@ -566,6 +566,13 @@ function ServerSetupDialog({
             Yayından kaldırmak için sunucuda: <span className="font-mono">sudo gnc-proje {sub} kaldir</span>
           </span>
         </div>
+
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Terminal className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            Ayrı GitHub repo&apos;sunu (örn. oyun) bu adrese deploy: <span className="font-mono">sudo gnc-oyun &lt;repo-adresi&gt; {project.port || 3001} {sub}</span>
+          </span>
+        </div>
       </DialogContent>
     </Dialog>
   )
