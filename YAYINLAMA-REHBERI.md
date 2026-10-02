@@ -830,6 +830,12 @@ bash kurulum.sh
 # blok önce kurulum.sh dosyasını yazar, sonra çalıştırır.
 ```
 
+> 🔒 **Repo PRIVATE ise:** Yöntem 1 çalışmaz (curl yetkisiz). Yapıştırma (Yöntem 2) yolunda
+> script 4/9 adımında `Username`/`Password` sorarsa: **Username:** GitHub kullanıcı adınız
+> (kaancetin3141), **Password:** PAT token'ınız. Bir kez daha sorumaması için SSH'e girer
+> girmez şunu da çalıştırın: `git config --global credential.helper store`
+> (Ya da scripti token'lı adresle çalıştırın: `bash kurulum.sh gncinc.online "https://kaancetin3141:TOKEN@github.com/kaancetin3141/gnc-erp.git"`)
+
 Script bitince ekranda sunucunuzun IP'si ve kalan 2 küçük adım (DNS + SSL) yazacaktır.
 
 ### Adım 1 — Alan adını sunucuya bağlayın (DNS) — ÖNCE BUNU YAPIN
