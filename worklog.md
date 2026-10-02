@@ -7913,3 +7913,22 @@ Stage Summary:
 - Bundan sonra her gelistirme turunda bu sandbox'tan push mumkun (remote token'li config'li)
 - Kullanicinin AWS akisi guncellendi: SSH sonrasi 'git config --global credential.helper store' + script 4/9'da kaancetin3141/token girecek (veya token'li URL arg)
 - Not: token chat'te paylasildi; kullanici istediginde revoke edip yenisini verebilir (o zaman remote + rehber komutu guncellenir)
+
+---
+Task ID: 39
+Agent: Z.ai Code (Ana tur - ana site + subdomain mimarisi + kurulum v2)
+Task: Sunucuda "Repository not found" hatasi (eski script Neuse0 URL'ine bakiyordu) + kullanici istegi: ana portfolyo sitesi (gncinc.online) + projeler bolumu + her projeye alt alan adi
+
+Work Log:
+- Gecmis dogrulandi: push eksikti -> bekleyen commit push edildi (main senkron); token hesabi kaancetin3141, repo kaancetin3141/gnc-erp private CANLI
+- Hata kok nedeni: sunucudaki ESKI kurulum.sh Neuse0/gnc-erp.git URL'ini kullaniyordu (repo yok) + GIT_TERMINAL_PROMPT yokken sifre soruyordu
+- ana-site/index.html YAZILDI (tek dosya statik portfolyo, ~690 satir): koyu emerald tema, sticky nav, hero (gradient baslik + stat'lar), PROJELER bolumu (3 kart: GNC ERP & CRM [Canlida -> crm.gncinc.online], Meyve Patlat [Yakinda -> meyvepatlat.gncinc.online], Siradaki Proje [Planlandi]), Hizmetler (4 kart), Iletisim (info@gncinc.online placeholder + GitHub), footer; browser-mockup URL bar'li kartlar, IntersectionObserver reveal animasyonlari, tam responsive (mobil nav sadelesme), SEO meta + SVG favicon; agent-browser ile hero/projeler/footer/mobil 5 ekran goruntusuyle dogrulandi (yil JS'i 2026 yaziyor = calisiyor)
+- deploy/kurulum.sh v2.0'a yukseltildi (bash -n OK): (a) GIT_TERMINAL_PROMPT=0 -> sifre ASLA sormaz, (b) adim 4: git remote set-url origin ile eski yanlis remote otomatik duzeltilir + package.json yoksa die, (c) YENI adim 10/10: ana-site -> /var/www/gncinc-ana kopyalama + nginx 3 server block (gncinc.online+www=statik ana site, crm.=proxy:3000, meyvepatlat.=proxy:3001), (d) guncelle-gnc.sh 6 adim oldu (ana siteyi de gunceller), (e) final ozet: site adresleri + DNS tablosu (@, www CNAME, * wildcard A) + tum adresler icin tek certbot komutu; nginx sablonu sed ile lokal render testi yapildi (gncinc.online/crm./meyvepatlat. dogru)
+- YAYINLAMA-REHBERI.md: Bolum 11 hizli yol v2.0 olarak yeniden yazildi (token'li curl + token'li 2. parametre ZORUNLU notu + "Repository not found" cozum kutusu) + YENI Bolum 13 eklendi (mimari sema, DNS 3 kayit tablosu wildcard vurgulu, tek certbot komutu, ana site icerik duzenleme, sunucuda elle kontrol komutlari)
+- Lint temiz, dev.log hatasiz; commit 5e17f96 push edildi ve ls-remote ile dogrulandi
+
+Stage Summary:
+- Yeni mimari: gncinc.online=portfolyo (statik, RAM harcamaz) + crm.gncinc.online=CRM(3000) + meyvepatlat.gncinc.online=oyun(3001) + wildcard DNS ile gelecek projeler otomatik adresli
+- Kullanicinin sunucuda yapmasi gereken TEK sey: yeni tokenli komutla scripti yeniden kosmak (sudo rm -rf /var/www/gnc-erp onerilir) + Hostinger DNS'e 3 kayit (@, www, *) + certbot 4 domainli
+- Repodaki script artik remote'u kendisi duzeltir; guncelleme sonrasi ana site da otomatik guncellenir
+- App-side bekleyen isler degismedi (Task 28-30 sonrasi oneriler ayni)
