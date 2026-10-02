@@ -8037,3 +8037,21 @@ Stage Summary:
 - meyvepatlat 502 bekleniyor: gnc-oyun ile 3001'e uygulama konunca https://meyvepatlat.gncinc.online canlanacak (nginx+SSL hazir)
 - Oyun repo adresi kullaniciya sorulmali/verilmeli — komut hazir bekliyor
 - App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
+
+---
+Task ID: 42.4
+Agent: Z.ai Code (Ana tur - fruit-storm repo analizi + gnc-oyun v1.1 + uctan uca build provasi)
+Task: Kullanici oyun reposu adresini verdi: https://github.com/kaancetin3141/fruit-storm.git (private) — meyvepatlat subdomain'ine (port 3001) deploy edilecek
+
+Work Log:
+- fruit-storm reposu TOKEN ile klonlandi (/tmp/fruit-storm-test) ve analiz edildi: Next.js 16.1 + output:standalone + Prisma 6 SQLite (Player modeli — skor bulutu) + start scripti BUN kullaniyor ama gnc-oyun standalone server.js'i dogrudan node ile baslatir (bun gereksiz). mini-services BOS (websocket gerekmiyor). Not: layout title hala "Z.ai Code Scaffold" — kozmetik, kullaniciya ipucu verildi
+- gnc-oyun v1.0'la bu repo deploy edilebilirdi ama Prisma EKSIK kalirdi (skorlar 500) → v1.1 (commit 50339fb): (1) prisma/schema.prisma gorurse otomatik .env (file:<app>/db/custom.db, chmod 600) + npx prisma generate + db push --accept-data-loss (repo'nun kendi db:push konvansiyonu — sandida flag'siz calismiyor!), (2) pm2 baslatirken .env kaynaklanir (set -a) → DATABASE_URL surece gecer, (3) RUN_USER tespiti (ubuntu daemon varsa pm2x sudo -u ubuntu) + db/.next sahiplik duzeltmesi, (4) guvenli guncelleme: git fetch --depth 1 + reset --hard origin/<branch> (shallow pull tuzagina cozum), (5) build'de NODE_OPTIONS=1536, (6) state dosyasi chmod 600 (token icerir)
+- UCTAN UCA PROVA sandbox'ta: bun install (827 paket OK) → prisma generate OK → db push --accept-data-loss OK (ilk deneme flag'siz "data loss" hatasi verdi — BUG yakalandi ve duzeltildi) → next build BASARILI (8.1s, 4 sayfa) → build scriptinin cp adimlari → standalone server 3301'de baslatildi → GET / 200 + GET /api 200 → sunucu kapatildi
+- Rehber Bolum 16 tablosuna Prisma satiri eklendi; bash -n OK; commit 50339fb push + ls-remote dogrulandi
+- Kullaniciya FINAL komut hazir: bash guncelle-gnc.sh && sudo gnc-oyun "https://kaancetin3141:TOKEN@github.com/kaancetin3141/fruit-storm.git" 3001 meyvepatlat
+
+Stage Summary:
+- fruit-storm = Next.js 16 + Prisma uygulaması; gnc-oyun v1.1 artik bu tipi TAM OTOMATIK deploy ediyor (klon + npm install + .env + prisma + build + pm2 + saglik). Sandbox provada butun zincir calisti — sunucuda surpriz beklenmiyor
+- Deploy sonrasi https://meyvepatlat.gncinc.online 502'den 200'e donecek; guncelleme akisi: fruit-storm'a commit → sudo gnc-oyun meyvepatlat
+- On VPS sure tahmini: npm install 3-6 dk + build 2-5 dk (2GB swap var) — toplam ~10-15 dk
+- App-side bekleyen isler degismedi (Kuaför raporu, Veresiye PDF, kazandi->fatura zinciri)
