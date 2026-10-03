@@ -7731,3 +7731,31 @@ Stage Summary:
 - Oturum modeli artık salt-Session-tablosu; eski localStorage oturumları olan kullanıcılar bir kez yeniden giriş yapmalı (beklenen davranış)
 - VPS notu: SEED_SECRET ve PDF_SHARE_SECRET env olarak eklenirse dosya/legacy fallback devre dışı kalır (önerilir); Resident.passwordHash alanı db:push ile geldi
 - Sonraki tur önerileri: Session tablosu için expiresAt temizlik cron'u, 2FA/admin için IP whitelist, audit log görünümlü "Güvenlik" sekmesi, sakin şifre sıfırlama linki (HMAC token), CSP başlıkları
+---
+Task ID: real-functions-20261003
+Agent: Super Z (ana ajan)
+Task: "Araştırma ve geliştirmeye devam et, bütün fonksiyonları gerçekten çalışıyor durumuna getir" — mock/demo envanteri + gerçekleştirme
+
+Work Log:
+- ENVANTER: tüm src'de mock/simülasyon taraması + UI'ın çağırdığı 72 API yolunun diskle eşleştirilmesi → SADECE 1 gerçek eksik bulundu; geri kalan "yok" sanılan yollar dinamik route ([id]) veya DIŞ API (Overpass /api/interpreter, Reddit /api/submit, /api/v1/me) çıktı
+- DOĞRULANDI — ZATEN GERÇEK (canlı test edildi):
+  · Hava durumu: Open-Meteo gerçek — İstanbul 20°C ⛅ Parçalı Bulutlu (source: open-meteo)
+  · Döviz: open.er-api.com gerçek — USD/TRY 49.13 (source: er-api; frankfurter ECB yedek)
+  · Haberler: TRT RSS gerçek — güncel manşet akıyor (source: rss)
+  · Harita: OSM/Nominatim/Overpass küresel (önceki turda gerçekleştirilmiş)
+  · AI (6 endpoint): crm-ai.ts z-ai-web-dev-sdk GERÇEK LLM kullanıyor; /api/ai/assistant canlı test 1.2s'de DB bağlamlı Türkçe yanıt. auto-assign/prioritize algoritmik (deterministik) — meşru gerçek
+  · E-posta: mailer.ts nodemailer GERÇEK; SMTP ayarları TenantSetting'ten; Türkçe teşhisli hata mesajları
+  · PDF: pdf-lib canlı üretim; paylaşım HMAC token'lı
+  · WhatsApp: wa.me derin link (anahtarsız gerçek) + merkezî kuyruk takibi
+  · Sosyal medya: platform başına GERÇEK API istemcileri (twitter/facebook/instagram/linkedin/telegram/reddit/bluesky) — token verildiğinde gerçek API'ye yayınlar
+- 🐛 BULGU 1 (FONKSİYONEL): /api/settings/smtp/test route'u HİÇ YOKTU ama Ayarlar > SMTP > "Test Gönder" butonu ona bağlıydı → 404. FİX: yeni route oluşturuldu — transporter.verify() (bağlantı+kimlik teşhisi) + gerçek test e-postası + audit log. Canlı test: yapılandırılmamış→400 temiz hata; sahte host→400 "SMTP sunucusuna ulaşılamadı"; kaydet/test/temizle akışı tamam
+- 🐛 BULGU 2 (ALTYAPI): chat-service SÖNMÜŞTÜ (sandbox yeniden başlaması) → UI "Bağlanıyor…" kilitli. cron-automation da ölmüştü. FİX: iki servis yeniden başlatıldı + scripts/ensure-services.sh bekçi scripti (idempotent, öleni bulup başlatır) + yeni cron Job 433093 (fixed_rate 30dk) bekçiyi çalıştırır
+- 🐛 BULGU 3 (KÖK NEDEN — SOCKET): use-chat-socket.ts io() çağrısında path: '/' YOKTU → socket.io istemcisi varsayılan '/socket.io/' yoluyla bağlanıyor, oysa chat-service path '/' ile kurulmuş (Caddy kuralı). Yani sohbet "gerçek zamanlı" DEĞİL, HTTP polling'e düşüktü. FİX: path: '/' eklendi. Doğrulama (Caddy :81 üzerinden gerçek kullanıcı yolu): polling handshake 0{sid} ✓ + websocket upgrade 101 ✓ + UI rozeti "Anlık" (online) ✓ + "Anlık bağlantı testi 🎉" mesajı anlık teslim ✓
+- E2E (agent-browser, :81 gerçek yol): giriş → Mesajlar → "Anlık" rozeti → mesaj gönder-teslim ✓; console error 0; eslint 0 hata; dev.log temiz
+
+Stage Summary:
+- Tüm modüller gerçek servis/backend'e bağlı; "görünüşte çalışıp arka planda ölü" 3 gizli arıza bulundu ve giderildi (SMTP test 404'ü, ölü mini servisler, yanlış socket path'i)
+- Socket fix'iyle mesajlaşma artık GERÇEK zamanlı (socket.io üzerinden); "Bağlanıyor…" kalıntısı kalktı
+- Yeni cron: Job 433093 mini-servis bekçisi (30 dk) — chat-service/artırem/cron-automation artık kendi kendini iyileştirir
+- VPS notu: mini-services klasöründe 3 servisin pm2/startup'a eklenmesi + ensure-services.sh'ın cron'a bağlanması önerilir
+- Sonraki tur önerileri: AI prioritize/auto-assign'a LLM gerekçelendirme katmanı, SMTP şablon düzenleyici, sosyal medya OAuth kurulum sihirbazı, chat'te dosya eki (gerçek upload), bildirim sesi/masaüstü bildirimi

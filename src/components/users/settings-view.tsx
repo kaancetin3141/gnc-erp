@@ -581,32 +581,29 @@ function KvkkTab() {
   )
 }
 
-// ─── Mock denetim kayıtları ───────────────────────────────────────
-interface MockAuditEntry {
+// ─── Gerçek denetim kayıtları (/api/audit) ──────────────────────
+interface AuditLogItem {
   id: string
-  actor: string
   action: string
   entity: string
-  entityId: string
-  timestamp: string
+  entityId: string | null
+  before: unknown
+  after: unknown
+  createdAt: string
+  actor: { id: string; name: string; email: string } | null
 }
-
-const MOCK_AUDIT: MockAuditEntry[] = [
-  { id: '1', actor: 'Demo Admin', action: 'create', entity: 'customer', entityId: 'cust_001', timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString() },
-  { id: '2', actor: 'Demo Admin', action: 'update', entity: 'deal', entityId: 'deal_004', timestamp: new Date(Date.now() - 1000 * 60 * 28).toISOString() },
-  { id: '3', actor: 'Ahmet Y.', action: 'update', entity: 'task', entityId: 'task_012', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString() },
-  { id: '4', actor: 'Demo Admin', action: 'create', entity: 'user', entityId: 'usr_007', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString() },
-  { id: '5', actor: 'Mehmet K.', action: 'delete', entity: 'note', entityId: 'note_099', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString() },
-  { id: '6', actor: 'Ahmet Y.', action: 'update', entity: 'lead', entityId: 'lead_023', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString() },
-  { id: '7', actor: 'Demo Admin', action: 'import', entity: 'lead', entityId: 'maps_002', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString() },
-  { id: '8', actor: 'Mehmet K.', action: 'update', entity: 'customer', entityId: 'cust_014', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString() },
-]
+interface AuditResponse {
+  items: AuditLogItem[]
+  nextCursor: string | null
+}
 
 const ACTION_COLORS: Record<string, string> = {
   create: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300',
   update: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300',
   delete: 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300',
   import: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300',
+  login: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300',
+  logout: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-950/40 dark:text-slate-300',
 }
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -616,23 +613,78 @@ const ENTITY_LABELS: Record<string, string> = {
   user: 'Kullanıcı',
   note: 'Not',
   lead: 'Lead',
+  session: 'Oturum',
+  invoice: 'Fatura',
+  quote: 'Teklif',
+  order: 'Sipariş',
+  product: 'Ürün',
+  attachment: 'Dosya',
+  resident: 'Sakin',
+  document_share_link: 'Paylaşım Linki',
+  user_password_reset: 'Şifre Sıfırlama',
 }
+
+const PAGE_SIZE = 50
 
 function AuditTab() {
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('all')
+  const [items, setItems] = useState<AuditLogItem[]>([])
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadPage = async (cursor: string | null, action: string) => {
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE) })
+    if (cursor) params.set('cursor', cursor)
+    if (action !== 'all') params.set('action', action)
+    const data = await apiGet<AuditResponse>(`/api/audit?${params.toString()}`)
+    setItems((prev) => (cursor ? [...prev, ...data.items] : data.items))
+    setNextCursor(data.nextCursor)
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    loadPage(null, actionFilter)
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Denetim kayıtları yüklenemedi')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [actionFilter])
+
+  const loadMore = async () => {
+    if (!nextCursor) return
+    setLoadingMore(true)
+    try {
+      await loadPage(nextCursor, actionFilter)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Kayıtlar yüklenemedi')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const filtered = useMemo(() => {
-    let list = MOCK_AUDIT
+    let list = items
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(
-        (e) => e.actor.toLowerCase().includes(q) || e.entityId.toLowerCase().includes(q),
+        (e) =>
+          (e.actor?.name ?? 'sistem').toLowerCase().includes(q) ||
+          (e.entityId ?? '').toLowerCase().includes(q) ||
+          e.entity.toLowerCase().includes(q),
       )
     }
-    if (actionFilter !== 'all') list = list.filter((e) => e.action === actionFilter)
     return list
-  }, [search, actionFilter])
+  }, [items, search])
 
   return (
     <Card>
@@ -644,7 +696,7 @@ function AuditTab() {
               Denetim Kayıtları
             </CardTitle>
             <CardDescription className="mt-0.5">
-              Sistemde yapılan tüm değişikliklerin kaydı (audit log).
+              Sistemde yapılan tüm değişikliklerin canlı kaydı (audit log) — girişler, oluşturma/güncelleme/silme işlemleri.
             </CardDescription>
           </div>
         </div>
@@ -652,13 +704,13 @@ function AuditTab() {
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2 items-center">
           <Input
-            placeholder="Aktör veya ID ara…"
+            placeholder="Aktör, varlık veya ID ara…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-xs"
           />
           <Select value={actionFilter} onValueChange={setActionFilter}>
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="İşlem" />
             </SelectTrigger>
             <SelectContent>
@@ -667,12 +719,21 @@ function AuditTab() {
               <SelectItem value="update">Güncelle</SelectItem>
               <SelectItem value="delete">Sil</SelectItem>
               <SelectItem value="import">İçe Aktar</SelectItem>
+              <SelectItem value="login">Giriş</SelectItem>
+              <SelectItem value="logout">Çıkış</SelectItem>
             </SelectContent>
           </Select>
           <Badge variant="outline" className="ml-auto text-[11px]">
             {filtered.length} kayıt
           </Badge>
         </div>
+
+        {error && (
+          <div className="flex items-start gap-2 p-2.5 rounded-md bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900">
+            <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>
+          </div>
+        )}
 
         <div className="rounded-lg border">
           <Table>
@@ -686,37 +747,52 @@ function AuditTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {loading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <TableRow key={`sk-${i}`}>
+                    <TableCell colSpan={5} className="py-3">
+                      <div className="h-4 rounded bg-muted animate-pulse" style={{ width: `${60 + ((i * 13) % 30)}%` }} />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-12">
                     <ScrollText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    Denetim kaydı yakında.
+                    {search || actionFilter !== 'all'
+                      ? 'Filtreye uyan denetim kaydı yok.'
+                      : 'Henüz denetim kaydı yok — işlem yaptıkça burada listelenir.'}
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((e) => (
-                  <TableRow key={e.id}>
+                filtered.map((log) => (
+                  <TableRow key={log.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-500 to-slate-600 flex items-center justify-center text-white text-[10px] font-semibold">
-                          {e.actor.split(' ').map((s) => s[0]).join('').slice(0, 2)}
+                          {(log.actor?.name ?? 'S')
+                            .split(' ')
+                            .map((s) => s[0])
+                            .join('')
+                            .slice(0, 2)
+                            .toUpperCase()}
                         </div>
-                        <span className="text-sm font-medium">{e.actor}</span>
+                        <span className="text-sm font-medium">{log.actor?.name ?? 'Sistem'}</span>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={cn('text-[10px]', ACTION_COLORS[e.action] ?? '')}>
-                        {e.action}
+                      <Badge variant="outline" className={cn('text-[10px]', ACTION_COLORS[log.action] ?? '')}>
+                        {log.action}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm">{ENTITY_LABELS[e.entity] ?? e.entity}</span>
+                      <span className="text-sm">{ENTITY_LABELS[log.entity] ?? log.entity}</span>
                     </TableCell>
                     <TableCell>
-                      <code className="text-[11px] text-muted-foreground">{e.entityId}</code>
+                      <code className="text-[11px] text-muted-foreground">{log.entityId ?? '—'}</code>
                     </TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">
-                      {formatDateTime(e.timestamp)}
+                      {formatDateTime(log.createdAt)}
                     </TableCell>
                   </TableRow>
                 ))
@@ -725,10 +801,18 @@ function AuditTab() {
           </Table>
         </div>
 
+        {nextCursor && !loading && (
+          <div className="flex justify-center">
+            <Button variant="outline" size="sm" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? 'Yükleniyor…' : `Daha fazla yükle (+${PAGE_SIZE})`}
+            </Button>
+          </div>
+        )}
+
         <div className="flex items-start gap-2 p-2.5 rounded-md bg-muted/40">
           <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
           <p className="text-[11px] text-muted-foreground">
-            Denetim kayıtları mock verilerdir. Backend entegrasyonu hazırlandığında gerçek kayıtlar gösterilecektir.
+            Kayıtlar gerçek zamanlı olarak veritabanından okunur (cursor sayfalama). Yalnızca audit.view yetkisi olanlar görebilir.
           </p>
         </div>
       </CardContent>
@@ -739,6 +823,7 @@ function AuditTab() {
 // ─── Ana SettingsView ─────────────────────────────────────────────
 export function SettingsView() {
   const { user } = useAppStore()
+  const canAudit = !!user?.permissions?.includes('audit.view')
 
   if (!user) {
     return (
@@ -783,9 +868,11 @@ export function SettingsView() {
           <TabsTrigger value="kvkk">
             <Shield className="w-3.5 h-3.5" /> KVKK &amp; Veri
           </TabsTrigger>
-          <TabsTrigger value="audit">
-            <ScrollText className="w-3.5 h-3.5" /> Denetim Kayıtları
-          </TabsTrigger>
+          {canAudit && (
+            <TabsTrigger value="audit">
+              <ScrollText className="w-3.5 h-3.5" /> Denetim Kayıtları
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="company" className="mt-6">
@@ -809,9 +896,11 @@ export function SettingsView() {
         <TabsContent value="kvkk" className="mt-6">
           <KvkkTab />
         </TabsContent>
-        <TabsContent value="audit" className="mt-6">
-          <AuditTab />
-        </TabsContent>
+        {canAudit && (
+          <TabsContent value="audit" className="mt-6">
+            <AuditTab />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

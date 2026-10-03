@@ -46,6 +46,10 @@ function getSharedSocket(token: string): Socket {
   sharedSocketToken = token
   sharedSocket = io('/?XTransformPort=3003', {
     transports: ['websocket', 'polling'],
+    // KRİTİK: chat-service socket.io path '/' ile kurulur (Caddy kuralı).
+    // path verilmezse istemci varsayılan '/socket.io/' ile yanlış yola
+    // bağlanır ve UI sonsuza dek "Bağlanıyor…" kalır.
+    path: '/',
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
