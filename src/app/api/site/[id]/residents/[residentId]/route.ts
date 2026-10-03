@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
-import crypto from 'crypto'
+import bcrypt from 'bcryptjs'
 
 async function checkResidentForUser(residentId: string, tenantId: string) {
   const r = await db.resident.findUnique({
@@ -11,10 +11,6 @@ async function checkResidentForUser(residentId: string, tenantId: string) {
   })
   if (!r || r.tenantId !== tenantId) return null
   return r
-}
-
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex')
 }
 
 // ============================================================
@@ -85,7 +81,7 @@ export async function PATCH(
       ...(email !== undefined ? { email: email?.trim() || null } : {}),
       ...(phone !== undefined ? { phone: phone?.trim() || null } : {}),
       ...(password !== undefined && password && password.trim()
-        ? { password: hashPassword(password) }
+        ? { passwordHash: bcrypt.hashSync(password, 10), password: null }
         : {}),
       ...(type === 'kiraci' ? { type: 'kiraci', isOwner: false } : {}),
       ...(type === 'mal_sahibi' ? { type: 'mal_sahibi', isOwner: true } : {}),
@@ -101,8 +97,8 @@ export async function PATCH(
     entity: 'resident', entityId: residentId, before: resident, after: updated,
   })
 
-  const { password: _pw, ...safe } = updated
-  return ok({ ...safe, hasPassword: !!updated.password })
+  const { password: _pw, passwordHash: _pwh, ...safe } = updated
+  return ok({ ...safe, hasPassword: !!updated.passwordHash || !!updated.password })
 }
 
 // ============================================================

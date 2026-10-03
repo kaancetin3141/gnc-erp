@@ -7707,3 +7707,27 @@ Stage Summary:
 - Google verisi için VPS'te .env'e GOOGLE_MAPS_API_KEY eklenmesi yeterli (aylık ücretsiz çağrı paketi olan Text Search Essentials); eklenmezse OSM ile küresel arama devam eder
 - VPS deploy notu: yeni endpoint /api/messages/doc-lookup otomatik gelir; chat-service zaten kurulu
 - Sonraki tur önerileri: mesaj ek chip'inde belge detayına derin bağlantı (tıkla → ERP detay diyaloğu), harita sonuçlarında ülke bayrağı/filtresi, yazdırma önizlemesinde @page kenar boşluğu ayarı, demo giriş butonunu env ile gizleme opsiyonu
+---
+Task ID: pentest-20261003
+Agent: Super Z (ana ajan)
+Task: "Programı geliştirmeye devam et, sızma testi yap" — tam kapsamlı güvenlik denetimi + açık kapatma
+
+Work Log:
+- YÜZEY TARAMASI: 168 API route tarandı; auth çağrısı olmayan 17 route bulundu (public/*, resident-*, seed, cron, api kökü); $queryRaw/$executeRaw = 0 (Prisma parametrelİ, SQLi riski yok); dangerouslySetInnerHTML yalnız layout statik CSS + chart lib (XSS riski yok); dosya yazma yalnız staff-services (path traversal yüzeyi yok)
+- 🔴 BULGU V1 (KRİTİK, DOĞRULANDI): auth.ts resolveSession legacy fallback — "token = user id" ile OTURUMSUZ tam kimlik taklidi mümkündü; curl testinde rep ID ile /api/customers 200, admin ID ile /api/users 200 (tüm kullanıcı listesi + hash'ler). FİX: legacy yol tamamen kaldırıldı; token yalnız Session tablosundan çözülür. Re-test: 401/401 ✓
+- 🔴 BULGU V2 (KRİTİK, DOĞRULANDI): POST /api/seed kimlik doğrulamasız ve runSeed() 40+ tabloyu deleteMany() ile SİLİYORDU → tek anonim istekle tüm DB (33 müşteri/23 kullanıcı/5 fatura) uçurulabiliyordu. FİX: DB boşsa açık (ilk kurulum akışı korunur), doluysa x-seed-secret header zorunlu. Re-test: 403 + veri sağlam ✓
+- 🟠 BULGU V3 (YÜKSEK, DOĞRULANDI): /api/users GET `...u` spread ile bcrypt passwordHash sızdırıyordu (rep kendi hash'ini görüyordu; admin taklidinde herkesinkini). FİX: users + admin/users + POST yanıtında passwordHash: undefined + hasPassword: boolean; audit log'dan da hash çıkarıldı. Re-test: 0 hash ✓
+- 🟠 BULGU V4 (YÜKSEK): resident-auth DÜZ METİN şifre karşılaştırması (where:{phone,password}) + rate limit yok + admin route sha256 kaydedip giriş düz metin arıyordu → şifreli sakinler GİREMEYİYORDU (fonksiyonel bug). FİX: Resident.passwordHash (bcrypt) alanı eklendi (db:push), giriş progressive migration (bcrypt→sha256→plaintext→başarılıysa bcrypt'e geçir), telefon bazlı rate limit (10/15dk), site residents create/patch bcrypt'e geçirildi. E2E: sakin oluştur (bcrypt) → giriş 200 → yanlış şifre 401 → 429 flood ✓
+- 🟡 BULGU V5 (ORTA): share-token.ts sabit fallback HMAC secret ('gnc-pdf-share-2026-secret') — kodu okuyan herkes geçerli paylaşım linki üretebilirdi. FİX: kurulum başına rastgele secret db/.pdf-share-secret (mode 0600) + env override + legacy imza geçiş döneminde kabul. İLK DENEYDEKİ KENDİ BUG'IM: readFileSync ENOENT doğrudan catch'e atlıyor, dosya hiç oluşmuyordu → nested try ile düzeltildi. Doğrulama: sunucu token'ı legacy ile İMZALANMIYOR (false), public PDF 200 (24.9KB), sahte token 403 ✓
+- 🟡 BULGU V6 (ORTA): session token URL query (?session=) ile de kabul ediliyordu → access log/Referer sızıntısı. FİX: yalnız header + httpOnly cookie; client zaten header kullanıyor, kırılım yok. Re-test: ?session= ile 401 ✓
+- 🟡 BULGU V7 (DÜŞÜK): login rate limit yalnız email bazlı → kurban hesabı tek IP ile kilitlenebilir (DoS). FİX: email+IP kombinasyonu anahtarı
+- SAĞLAM ÇIKANLAR: cross-tenant IDOR (cafe admin → anadolu müşterisi 403) ✓, customers/[id] tenant kontrolü ✓, password-reset rol+ast kontrolü ✓, public/docs HMAC+rate limit ✓, cron/reminders x-cron-secret fail-closed ✓, login bcrypt+generic hata ✓
+- E2E (agent-browser): login ekranı demo butonları ✓ → Demo Girişi → "Merhaba, Demir 👋" ✓ → Mesajlar: Ahmet Çelik sohbeti, "Güvenlik testi mesajı ✓" gönderildi ve sohbet+listede göründü (chat-service Session tablosu token doğrulaması yeni şemayla uyumlu) ✓ → console error 0 → logout sonrası login ekranı ✓
+- eslint 0 hata; dev.log temiz (yalnız beklenen 200/401/403)
+- TEST VERİSİ TEMİZLİĞİ: "Pen Test Sakin" (+905559998877) silindi
+
+Stage Summary:
+- 7 güvenlik açığı bulundu, 7'si kapatıldı, hepsi yeniden test edildi: 2 kritik (oturum atlatma + DB silme), 2 yüksek (hash sızması + düz metin şifre), 3 orta/düşük
+- Oturum modeli artık salt-Session-tablosu; eski localStorage oturumları olan kullanıcılar bir kez yeniden giriş yapmalı (beklenen davranış)
+- VPS notu: SEED_SECRET ve PDF_SHARE_SECRET env olarak eklenirse dosya/legacy fallback devre dışı kalır (önerilir); Resident.passwordHash alanı db:push ile geldi
+- Sonraki tur önerileri: Session tablosu için expiresAt temizlik cron'u, 2FA/admin için IP whitelist, audit log görünümlü "Güvenlik" sekmesi, sakin şifre sıfırlama linki (HMAC token), CSP başlıkları

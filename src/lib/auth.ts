@@ -1,5 +1,6 @@
 // Session yönetimi — GERÇEK auth: bcrypt şifre + rastgele session token + Session tablosu
-// Geçici uyumluluk: eski demo oturumlar (token = user id) hâlâ çözümlenir.
+// GÜVENLİK: token YALNIZCA Session tablosundan çözümlenir. "token = user id" legacy
+// yolu KALDIRILDI (sızma testi: user-id token ile tam kimlik taklidi mümkündü).
 
 import { cookies } from 'next/headers'
 import { randomBytes } from 'crypto'
@@ -65,11 +66,12 @@ export async function getServerSession(): Promise<SessionUser | null> {
 }
 
 // Header'dan session al (client API çağrıları için)
+// GÜVENLİK: URL query parametresi (?session=) KALDIRILDI — token URL'de
+// erişim log'larına ve Referer başlığına sızabilir. Yalnızca header + httpOnly cookie.
 export async function getServerSessionFromRequest(req: Request): Promise<SessionUser | null> {
   try {
     const sessionToken =
       req.headers.get(SESSION_HEADER) ||
-      new URL(req.url).searchParams.get('session') ||
       req.headers.get('cookie')?.match(new RegExp(`${SESSION_COOKIE}=([^;]+)`))?.[1]
     if (!sessionToken) return null
     return await resolveSession(sessionToken)
@@ -78,11 +80,10 @@ export async function getServerSessionFromRequest(req: Request): Promise<Session
   }
 }
 
-// Session token'ını kullanıcıya çözümle:
-// 1) Session tablosu (gerçek oturum — rastgele token)
-// 2) Geçici uyumluluk: eski demo oturumlar — token = user id
+// Session token'ını kullanıcıya çözümle — YALNIZCA Session tablosu.
+// GÜVENLİK (sızma testi bulgusu): "token = user id" legacy yolu kaldırıldı —
+// user-id bilen herkes kimlik taklidi yapabiliyordu (admin dahil).
 async function resolveSession(token: string): Promise<SessionUser | null> {
-  // 1) Gerçek Session tablosu
   try {
     const session = await db.session.findUnique({
       where: { token },
@@ -96,18 +97,7 @@ async function resolveSession(token: string): Promise<SessionUser | null> {
       return buildSessionUser(session.user)
     }
   } catch {
-    // Session tablosu henüz yoksa (eski şema) — legacy'e düş
-  }
-
-  // 2) Geçici uyumluluk: eski demo oturum — token = user id
-  try {
-    const legacyUser = await db.user.findUnique({
-      where: { id: token },
-      include: { tenant: true },
-    })
-    if (legacyUser) return buildSessionUser(legacyUser)
-  } catch {
-    // token user id formatında değil — geç
+    // Session tablosu erişilemedi — oturum yok sayılır
   }
   return null
 }

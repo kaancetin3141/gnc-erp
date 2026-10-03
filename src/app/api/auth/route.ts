@@ -9,10 +9,16 @@ import bcrypt from 'bcryptjs'
 
 const SESSION_COOKIE = 'gnc_session'
 
-// ─── Basit brute-force koruması (memory, email bazlı) ────────
+// ─── Basit brute-force koruması (memory, email+IP bazlı) ──────
 const loginAttempts = new Map<string, { count: number; resetAt: number }>()
 const MAX_ATTEMPTS = 10
 const WINDOW_MS = 15 * 60 * 1000
+
+function clientIp(req: NextRequest): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || req.headers.get('x-real-ip')
+    || 'unknown'
+}
 
 function checkRateLimit(key: string): boolean {
   const now = Date.now()
@@ -45,7 +51,10 @@ export async function POST(req: NextRequest) {
     return err('E-posta ve şifre gerekli', 400)
   }
 
-  if (!checkRateLimit(email)) {
+  // GÜVENLİK: rate limit email+IP kombinasyonu — saldırgan tek hesabı
+  // dağıtık deneyemez, kurbanın hesabı tek IP ile kilitlenemez
+  const rlKey = `${email}|${clientIp(req)}`
+  if (!checkRateLimit(rlKey)) {
     return err('Çok fazla başarısız deneme. 15 dakika sonra tekrar deneyin.', 429)
   }
 
@@ -68,7 +77,7 @@ export async function POST(req: NextRequest) {
     return err('E-posta veya şifre hatalı', 401)
   }
 
-  clearRateLimit(email)
+  clearRateLimit(rlKey)
 
   const rolePerms = getRolePermissions(user.role as 'admin' | 'manager' | 'rep' | 'superadmin' | 'readonly' | 'stock')
   const userPerms = JSON.parse(user.permissions || '[]') as string[]

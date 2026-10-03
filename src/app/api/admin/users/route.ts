@@ -57,6 +57,9 @@ export async function GET(req: NextRequest) {
     items: users.map((u) => ({
       ...u,
       permissions: safeJsonParse<PermissionKey[]>(u.permissions, []),
+      // GÜVENLİK: şifre hash'i ASLA yanıtta döndürülmez (sızma testi bulgusu)
+      passwordHash: undefined,
+      hasPassword: Boolean(u.passwordHash),
     })),
     total: users.length,
   })

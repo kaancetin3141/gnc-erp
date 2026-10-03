@@ -68,6 +68,9 @@ export async function GET(req: NextRequest) {
     items: users.map((u) => ({
       ...u,
       permissions: safeJsonParse<PermissionKey[]>(u.permissions, []),
+      // GÜVENLİK: şifre hash'i ASLA yanıtta döndürülmez (sızma testi bulgusu)
+      passwordHash: undefined,
+      hasPassword: Boolean(u.passwordHash),
     })),
     total: users.length,
   })
@@ -148,11 +151,13 @@ export async function POST(req: NextRequest) {
     action: 'create',
     entity: 'user',
     entityId: newUser.id,
-    after: { ...newUser, permissions: permsToStore },
+    after: { ...newUser, permissions: permsToStore, passwordHash: undefined },
   })
 
   return ok({
     ...newUser,
     permissions: safeJsonParse<PermissionKey[]>(newUser.permissions, []),
+    passwordHash: undefined,
+    hasPassword: Boolean(newUser.passwordHash),
   }, 201)
 }

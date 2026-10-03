@@ -1315,7 +1315,8 @@ model Resident {
   name        String
   email       String?
   phone       String?  // WhatsApp için
-  password    String?  // site sakini girişi için (basit hash)
+  password    String?  // LEGACY: eski düz metin/sha256 şifre (migrasyon sonrası null)
+  passwordHash String? // bcrypt hash — sakin girişi (Gerçek auth)
   type        String   @default("mal_sahibi") // mal_sahibi | kiraci
   isOwner     Boolean  @default(true)
   isActive    Boolean  @default(true)
