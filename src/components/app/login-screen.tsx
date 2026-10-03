@@ -8,8 +8,21 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Building2, Shield, Database, MapPin, Mail, Lock, Eye, EyeOff, LogIn, Sparkles, AlertTriangle } from 'lucide-react'
+import { Building2, Shield, Database, MapPin, Mail, Lock, Eye, EyeOff, LogIn, Sparkles, AlertTriangle, Zap, ChevronDown } from 'lucide-react'
 import type { SessionUser } from '@/types'
+
+// Tek tıkla denenebilecek demo hesapları (şifre: 1234)
+const DEMO_ACCOUNTS = [
+  { email: 'demo@anadolu.com', name: 'Demir Yıldız', role: 'Yönetici (Admin)', badge: 'emerald' },
+  { email: 'ayse.kaya@anadolu.com', name: 'Ayşe Kaya', role: 'Satış Müdürü', badge: 'sky' },
+  { email: 'zeynep.arslan@outlook.com', name: 'Zeynep Arslan', role: 'Satış Temsilcisi', badge: 'amber' },
+] as const
+
+const BADGE_STYLES: Record<string, string> = {
+  emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
+  sky: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400',
+  amber: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+}
 
 export function LoginScreen() {
   const setSession = useAppStore((s) => s.setSession)
@@ -22,6 +35,8 @@ export function LoginScreen() {
   const [seeding, setSeeding] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mustChange, setMustChange] = useState(false)
+  const [demoLoading, setDemoLoading] = useState<string | null>(null)
+  const [showDemoAccounts, setShowDemoAccounts] = useState(false)
 
   useEffect(() => {
     checkSeed()
@@ -53,21 +68,36 @@ export function LoginScreen() {
     }
   }
 
+  async function doLogin(loginEmail: string, loginPassword: string) {
+    const res = await apiPost<{ sessionId: string; user: SessionUser; mustChangePassword: boolean }>(
+      '/api/auth',
+      { email: loginEmail, password: loginPassword },
+    )
+    setSession(res.user, res.sessionId)
+    setMustChange(!!res.mustChangePassword)
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     if (!email.trim() || !password) return
     try {
       setLoading(true)
       setError(null)
-      const res = await apiPost<{ sessionId: string; user: SessionUser; mustChangePassword: boolean }>(
-        '/api/auth',
-        { email: email.trim(), password },
-      )
-      setSession(res.user, res.sessionId)
-      setMustChange(!!res.mustChangePassword)
+      await doLogin(email.trim(), password)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Giriş başarısız')
       setLoading(false)
+    }
+  }
+
+  async function handleDemoLogin(demoEmail: string) {
+    try {
+      setDemoLoading(demoEmail)
+      setError(null)
+      await doLogin(demoEmail, '1234')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Demo giriş başarısız')
+      setDemoLoading(null)
     }
   }
 
@@ -233,6 +263,78 @@ export function LoginScreen() {
                   </span>
                 )}
               </Button>
+
+              {/* Demo girişi — giriş yap butonunun altında */}
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-slate-200 dark:border-slate-700" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="bg-white dark:bg-slate-900 px-3 text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    veya
+                  </span>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                disabled={loading || needsSeed || !!demoLoading}
+                onClick={() => handleDemoLogin(DEMO_ACCOUNTS[0].email)}
+                className="w-full h-11 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-400 text-emerald-700 dark:text-emerald-400"
+              >
+                {demoLoading === DEMO_ACCOUNTS[0].email ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-emerald-300 border-t-emerald-600 rounded-full animate-spin" />
+                    Demo olarak giriliyor...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Zap className="w-4 h-4" />
+                    Demo Girişi — Yönetici olarak gir
+                  </span>
+                )}
+              </Button>
+
+              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40">
+                <button
+                  type="button"
+                  onClick={() => setShowDemoAccounts((v) => !v)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-left"
+                  aria-expanded={showDemoAccounts}
+                >
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    <span className="font-medium text-slate-600 dark:text-slate-300">Demo hesapları</span>
+                    {' '}— şifre hepsinde <code className="px-1 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700 font-mono text-[10px]">1234</code>
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showDemoAccounts ? 'rotate-180' : ''}`} />
+                </button>
+                {showDemoAccounts && (
+                  <div className="px-2 pb-2 space-y-1">
+                    {DEMO_ACCOUNTS.map((acc) => (
+                      <button
+                        key={acc.email}
+                        type="button"
+                        disabled={loading || needsSeed || !!demoLoading}
+                        onClick={() => handleDemoLogin(acc.email)}
+                        className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-md hover:bg-white dark:hover:bg-slate-700/50 transition-colors disabled:opacity-50 text-left"
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${BADGE_STYLES[acc.badge]}`}>
+                            {acc.role}
+                          </span>
+                          <span className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">{acc.name}</span>
+                        </span>
+                        {demoLoading === acc.email ? (
+                          <span className="w-3.5 h-3.5 shrink-0 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                        ) : (
+                          <Zap className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="text-[11px] text-slate-400 dark:text-slate-500 text-center leading-relaxed">
                 Oturumunuz 30 gün boyunca güvenli şekilde saklanır.<br />

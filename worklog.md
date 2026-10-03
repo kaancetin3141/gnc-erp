@@ -7669,3 +7669,20 @@ Stage Summary:
 - KULLANICI AKSİYONU GEREKEN: SMTP için Ayarlar > SMTP'ye Gmail uygulama şifresi girmek (5 dk) — ardından faturalar PDF ekiyle gerçekten gönderilir; tüm kullanıcıların varsayılan şifresi 1234 — ilk girişte Şifre Değiştir önerilir
 - VPS deploy notu: mini-services/chat-service'i VPS'te de çalıştırmak gerekiyor (port 3003, caddy XTransformPort kurallı) — sonraki turda deploy scripti genişletilmeli
 - Sonraki tur önerileri: chat attachment chip'inden belge detayına derin bağlantı, Overpass kategori genişletme + search kayıt geçmişine provider alanı, SMTP doğrulama e-postası ilk girişte, Session tablosu için süre dolmuş temizlik cron'u, login'e "şifremi unuttum" (admin sıfırlama akışı UI köprüsü)
+---
+Task ID: demo-login-20261003
+Agent: Super Z (ana ajan)
+Task: "Kullanıcılar nerede giriş yapar? Giriş yap butonunun altına bir demo girişi ekle — admin hesabına giremiyorum"
+
+Work Log:
+- ŞİKÂYET KÖK NEDENİ: yeni email+şifre girişinde kullanıcı admin e-postasını bilmiyordu; DB doğrulandı — 23 kullanıcının hepsinde HASH-VAR, admin hesabı demo@anadolu.com şifresi bcrypt ile '1234' olarak doğrulandı (login API'si sorunsuz)
+- login-screen.tsx: "Giriş Yap" butonunun ALTINA (a) "veya" ayracı, (b) emerald outline "⚡ Demo Girişi — Yönetici olarak gir" butonu (tek tık → demo@anadolu.com + 1234 ile doğrudan oturum), (c) açılır "Demo hesapları" paneli — Yönetici Demir Yıldız / Satış Müdürü Ayşe Kaya / Satış Temsilcisi Zeynep Arslan, her satır tek tıkla giriş, rol renk rozetleri + şifre 1234 ipucu
+- doLogin() yardımcı fonksiyonuna çıkarıldı (handleLogin + handleDemoLogin ortak); demoLoading state'i hesap başına spinner, needsSeed/loading'de butonlar disabled; hata mesajı mevcut error bandında
+- E2E (agent-browser): "Demo Girişi" tıkla → "Merhaba, Demir 👋" admin dashboard ✓; Çıkış Yap → login'e dön ✓; "Demo hesapları" aç → "Satış Müdürü Ayşe Kaya" tıkla → "Merhaba, Ayşe 👋" ✓; console error 0; curl POST /api/auth 200
+- eslint 0 hata; dev.log temiz (yalnızca 200'ler)
+
+Stage Summary:
+- Giriş ekranı artık 3 yollu: (1) elle email+şifre, (2) tek tık "Demo Girişi — Yönetici", (3) açılır listeden rol seçerek tek tık giriş
+- Admin bilgisi: demo@anadolu.com / 1234 (ikinci şirket: demo@egeticaret.com / 1234; diğer modüller: admin@sikkafe.com, admin@anadolumarket.com, admin@sikkuaför.com, admin@parksitesi.com — hepsi 1234)
+- Not: 1234 ile girişte "varsayılan şifre" uyarı bandı çıkması tasarlanan davranış (Şifre Değiştir önerilir)
+- Sonraki tur önerileri: demo giriş butonunu env bazlı gizleme opsiyonu (NEXT_PUBLIC_HIDE_DEMO=1), "şifremi unuttum" akışı, giriş ekranına şirket seçici (CRM/ERP vs Kafe vs Market vs Kuaför vs Site tenant'ları)
