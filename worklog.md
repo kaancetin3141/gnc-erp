@@ -7778,3 +7778,21 @@ Stage Summary:
 - Ayarlar > Denetim Kayıtları artık gerçek zamanlı DB audit log'u (son bilinen mock UI kaldırıldı)
 - Uygulamanın TAMAMANIN fonksiyon envanteri çıkarıldı: tüm ana modüller gerçek veriyle çalışıyor; dış bağımlılık gerektirenler (SMTP kimlik bilgisi, sosyal medya token'ı, GOOGLE_MAPS_API_KEY) kullanıcı bilgisi girildiğinde otomatik gerçek moda geçen tasarım üzerinde
 - Sonraki tur önerileri: audit tab'a "CSV dışa aktar" butonu, sakin şifre sıfırlama akışı, Session expiresAt temizlik cron'u, sosyal medya simülasyon rozetinin hesap kartında görünmesi
+
+---
+Task ID: cron-433093-fix
+Agent: main (Super Z)
+Task: ensure-services.sh cron turu sırasında sürekli tekrarlayan "yeniden başlatıldı" döngüsünü teşhis ve onarım
+
+Work Log:
+- 3 turdur her kontrolde servislerin ölü olduğu görüldü (crash loop şüphesi)
+- /tmp/*.log incelendi: eski "Cannot find package 'node-cron'" hataları (node_modules o arada onarılmış, loglar stale)
+- Ps/ss analizi: duplicate süreç setleri bulundu (6 child / 3 servis) — çift zamanlayıcı = çift hatırlatma riski; hepsi kill edilip tek temiz set başlatıldı
+- Gerçek kök neden: CRON_SECRET hiçbir yerde tanımlı değildi; ana API fail-closed olduğundan /api/cron/reminders her istedi 403 döndürüyordu → hatırlatma zinciri hiç çalışmıyordu
+- Onarım: openssl rand -hex 32 ile secret üretildi; /home/z/my-project/.env ve mini-services/appointment-reminders/.env (mode 600) yazıldı; appointment-reminders restart
+- Doğrulama: POST /api/cron/reminders (yeni secret) → 200 {"ranAt":...,"reminderCount":0}; servis ilk tick'i "Yetkisiz" OLMADAN tamamladı; chat-service 3003 HTTP 200; cron-automation 3010/health OK; 15 sn sonra 3 süreç stabil
+
+Stage Summary:
+- Crash loop çözüldü: randevu hatırlatma zinciri (mini-service → x-cron-secret → ana API) ilk kez GERÇEK çalışır durumda
+- CRON_SECRET artık .env'de; VPS'e taşırken bu env anahtarını da kopyalamak gerekiyor
+- Duplicate süreç riski giderildi; ensure-services.sh bundan sonra "tümü çalışıyor" raporlamalı
