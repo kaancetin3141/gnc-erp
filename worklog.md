@@ -7796,3 +7796,21 @@ Stage Summary:
 - Crash loop çözüldü: randevu hatırlatma zinciri (mini-service → x-cron-secret → ana API) ilk kez GERÇEK çalışır durumda
 - CRON_SECRET artık .env'de; VPS'e taşırken bu env anahtarını da kopyalamak gerekiyor
 - Duplicate süreç riski giderildi; ensure-services.sh bundan sonra "tümü çalışıyor" raporlamalı
+
+---
+Task ID: cron-433093-fix2
+Agent: main (Super Z)
+Task: 01:10 ensure-services turu — crash loop'un gerçek kök nedeni: sandbox resume dosya sistemi geri sarması
+
+Work Log:
+- .env dosyalarının GERİ SARILDIĞI tespit edildi: CRON_SECRET append'i kayboldu (.env 50 bayt'a döndü), appointment-reminders/.env tamamen silindi; oysa script/worklog/backup dosyaları hayatta (PARSİYEL rollback)
+- Sonuç: hatırlatma servisi boot ediyor ama ana API 403 döndürüyordu ("CRON_SECRET boş" uyarısı logda)
+- Ayrıca `bun --hot` import hatasından sonra zombie kalabildiği için süreç-tabanlı kontrolün yetersiz olduğu görüldü
+- ensure-services.sh v3: PORT-tabanlı sağlık kontrolü (3003/3011/3010, /dev/tcp), 3 deneme x 20sn bekleme, ENV self-healing (scripts/.cron-env'den .env'leri otomatik onarır)
+- Yeni CRON_SECRET üretildi → scripts/.cron-env (600, kalıcı yedek) + ana .env + appointment .env
+- Doğrulama: boot logu temiz (uyarı yok), ilk tick başarılı, POST /api/cron/reminders → 200, 3 port AÇIK
+
+Stage Summary:
+- Crash loop'un iki katmanlı kök nedeni: (1) bun run dev'in node_modules yarışı, (2) sandbox'un parsiyel FS rollback'i — ikisi de guardian scriptinde otomatik çözülüyor
+- CRON_SECRET artık scripts/.cron-env'de kalıcı; FS geri sarsa bile sonraki turda otomatik onarılır
+- Not: VPS'e geçişte bu kararsız sandbox ortamı sorun olmayacak; ensure-services.sh + .cron-env kopyalanmalı
