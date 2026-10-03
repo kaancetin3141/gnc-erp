@@ -35,8 +35,8 @@ import {
 } from '@/components/ui/dialog'
 import {
   Send, ArrowLeft, MessageCircle, Search, Trash2, CheckCheck,
-  Paperclip, ArrowDown, Copy, FileText, Package, FileSpreadsheet,
-  ClipboardList, Loader2, type LucideIcon,
+  Paperclip, ArrowDown, FileText, Package, FileSpreadsheet,
+  ClipboardList, Loader2, ExternalLink, Download, type LucideIcon,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -127,6 +127,24 @@ const CONNECTION_META: Record<ChatSocketStatus, { label: string; dot: string; cl
     dot: 'bg-slate-400',
     cls: 'text-slate-600 border-border bg-muted/40 dark:text-slate-300',
   },
+}
+
+// Belge eki çözümleme — mesajdan canlı sorgulanır, DB'ye dosya yazılmaz
+interface DocLookupResult {
+  type: string
+  id: string
+  number: string
+  customerName: string
+  total: number
+  currency: string
+  canPreview: boolean
+  url: string | null
+}
+interface DocPreviewState {
+  loading: boolean
+  title: string
+  url: string | null
+  canPreview: boolean
 }
 
 // ─── Helper: format time HH:mm ───────────────────────────────────
@@ -248,9 +266,9 @@ export function ChatView() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="space-y-4 animate-fade-in">
+      <div className="flex h-full min-h-0 flex-col gap-4 animate-fade-in">
         {/* Header */}
-        <div className="flex items-start justify-between flex-wrap gap-3">
+        <div className="flex items-start justify-between flex-wrap gap-3 shrink-0">
           <div>
             <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
               <MessageCircle className="w-6 h-6 text-emerald-600" />
@@ -275,13 +293,13 @@ export function ChatView() {
           </Badge>
         </div>
 
-        <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[320px_1fr] h-[70vh] min-h-[520px]">
+        <Card className="overflow-hidden flex-1 min-h-[440px] flex flex-col">
+          <CardContent className="p-0 flex-1 min-h-0 flex flex-col">
+            <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[320px_1fr] flex-1 min-h-0">
               {/* Sol panel — kullanıcı listesi */}
               <div
                 className={cn(
-                  'border-r flex flex-col bg-muted/20',
+                  'border-r flex flex-col min-h-0 bg-muted/20',
                   mobileShowConversation && selectedUserId ? 'hidden md:flex' : 'flex',
                 )}
               >
@@ -381,7 +399,7 @@ export function ChatView() {
               {/* Sağ panel — sohbet */}
               <div
                 className={cn(
-                  'relative flex flex-col bg-background',
+                  'relative flex flex-col min-h-0 bg-background',
                   !mobileShowConversation && selectedUserId ? 'hidden md:flex' : 'flex',
                 )}
               >
@@ -575,6 +593,29 @@ function ConversationPanel({
   const [input, setInput] = useState('')
   const [docPickerOpen, setDocPickerOpen] = useState(false)
   const [docPickerType, setDocPickerType] = useState<ChatDocumentType>('Fatura')
+  const [docPreview, setDocPreview] = useState<DocPreviewState | null>(null)
+
+  // Mesaj eki chip'ine tıklandı → numaradan canlı çözümle → PDF önizleme aç
+  // (PDF sunucuda anlık üretilir; mesaj tabanına dosya yazılmaz)
+  const openDocPreview = async (att: { type: ChatDocumentType; number: string }) => {
+    setDocPreview({ loading: true, title: `${att.type} · ${att.number}`, url: null, canPreview: true })
+    try {
+      const r = await apiGet<DocLookupResult>(
+        `/api/messages/doc-lookup?type=${encodeURIComponent(att.type)}&number=${encodeURIComponent(att.number)}`,
+      )
+      setDocPreview({
+        loading: false,
+        title: `${r.type} · ${r.number} — ${r.customerName}`,
+        url: r.url,
+        canPreview: r.canPreview,
+      })
+    } catch (e) {
+      setDocPreview(null)
+      toast.error('Belge açılamadı', {
+        description: e instanceof ApiError ? e.message : 'Belge çözümlenemedi',
+      })
+    }
+  }
 
   // ── Akıllı kaydırma state'leri ──
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -727,13 +768,6 @@ function ConversationPanel({
     deleteMut.mutate(id)
   }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard?.writeText(text).then(
-      () => toast.success('Kopyalandı', { description: text }),
-      () => toast.error('Kopyalanamadı'),
-    )
-  }
-
   // ── Görüldü: gelen okunmamışları işaretle (PATCH = DB doğruluğu, socket = anında sinyal)
   const messagesRef = useRef(messages)
   useEffect(() => {
@@ -832,7 +866,7 @@ function ConversationPanel({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto custom-scroll p-4 space-y-4 bg-muted/10"
+        className="flex-1 min-h-0 overflow-y-auto custom-scroll p-4 space-y-4 bg-muted/10"
       >
         {loading ? (
           <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
@@ -889,21 +923,29 @@ function ConversationPanel({
                       )}
                     >
                       {att && AttIcon ? (
-                        // Belge eki chip'i — tıklayınca numara panoya kopyalanır
+                        // Belge eki — LINK gibi: tıklayınca gerçek PDF önizlemesi açılır
+                        // (dosya DB'ye yazılmaz; sunucuda anlık üretilir)
                         <button
                           type="button"
-                          onClick={() => copyToClipboard(att.number)}
-                          title="Numarayı panoya kopyala"
+                          onClick={() => openDocPreview(att)}
+                          title="PDF önizlemesini aç"
                           className={cn(
-                            'flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-colors w-fit',
+                            'group/chip flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors w-fit border',
                             mine
-                              ? 'bg-white/15 hover:bg-white/25 text-white'
-                              : 'bg-muted hover:bg-accent text-foreground',
+                              ? 'bg-white/15 hover:bg-white/25 text-white border-white/25'
+                              : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
                           )}
                         >
                           <AttIcon className="w-3.5 h-3.5 shrink-0" />
-                          <span>{att.type} · {att.number}</span>
-                          <Copy className="w-3 h-3 opacity-60 shrink-0" />
+                          <span className="underline decoration-dotted underline-offset-2">
+                            {att.type} · {att.number}
+                          </span>
+                          <span className="hidden sm:inline opacity-70">· PDF önizle</span>
+                          {docPreview?.loading && docPreview.title.includes(att.number) ? (
+                            <Loader2 className="w-3 h-3 shrink-0 animate-spin" />
+                          ) : (
+                            <ExternalLink className="w-3 h-3 opacity-60 shrink-0 group-hover/chip:opacity-100" />
+                          )}
                         </button>
                       ) : null}
                       <div className="whitespace-pre-wrap break-words leading-snug">
@@ -1022,6 +1064,67 @@ function ConversationPanel({
         initialType={docPickerType}
         onPick={handleSendDocument}
       />
+
+      {/* Belge PDF önizleme — gerçek sunucu PDF'i (DB'ye dosya yazılmaz) */}
+      <Dialog open={!!docPreview} onOpenChange={(v) => { if (!v) setDocPreview(null) }}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="truncate">{docPreview?.title}</span>
+            </DialogTitle>
+            <DialogDescription>
+              Sunucuda üretilen gerçek PDF — mesaja yalnızca numara referansı kaydedilir, dosya veri tabanına yazılmaz.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="relative h-[60vh] rounded-lg border bg-muted/30 overflow-hidden">
+            {docPreview?.loading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                Belge hazırlanıyor…
+              </div>
+            )}
+            {docPreview && !docPreview.loading && docPreview.url && (
+              <iframe
+                src={docPreview.url}
+                title="Belge PDF önizleme"
+                className="w-full h-full"
+              />
+            )}
+            {docPreview && !docPreview.loading && !docPreview.url && !docPreview.canPreview && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center">
+                <Package className="w-8 h-8 text-muted-foreground/50" />
+                <p className="text-sm font-medium">Sipariş için doğrudan PDF yok</p>
+                <p className="text-xs text-muted-foreground max-w-xs">
+                  Sipariş belgesi (fatura, irsaliye, çeki listesi) Belge Yönetimi sayfasından siparişe tıklayıp üretilebilir.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!docPreview?.url}
+              onClick={() => docPreview?.url && window.open(docPreview.url, '_blank', 'noopener')}
+            >
+              <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+              Yeni Sekmede Aç
+            </Button>
+            <Button
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={!docPreview?.url}
+              onClick={() => docPreview?.url && window.open(`${docPreview.url}?download=1`, '_blank', 'noopener')}
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              PDF İndir
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

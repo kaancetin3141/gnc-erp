@@ -4,7 +4,7 @@ import {
   getSession, requireAuth, requirePermission, ok, err,
 } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
-import { geocodePlace, searchBusinesses } from '@/lib/maps-osm'
+import { geocodePlace, searchBusinesses, searchBusinessesGoogle } from '@/lib/maps-osm'
 import { mockMapsSearch, CITY_COORDS } from '@/lib/maps-mock'
 import type { MapsResult } from '@/types'
 
@@ -58,31 +58,61 @@ export async function POST(req: NextRequest) {
   ])
   const existingArr = Array.from(existingPlaceIds)
 
-  // ---- GERÇEK OSM ARAMASI (Nominatim + Overpass), hata → mock fallback ----
+  // ---- GERÇEK ARAMA: Google (anahtar varsa) → OSM → mock fallback ----
   let results: MapsResult[]
-  let provider: 'osm' | 'fallback' = 'osm'
+  let provider: 'google' | 'osm' | 'fallback' = 'osm'
   let geocoded: { lat: number; lng: number; displayName: string } | null = null
+  let resolvedCountry: string | null = null
   let searchError: string | null = null
 
   try {
     // 1) Konum çözümleme: "sorgu, şehir" → bulunamazsa sadece şehir
+    //    (Nominatim KÜRESELDİR — Berlin, Paris, Dubai… hepsi çözülür)
     const geo =
       (await geocodePlace(`${query}, ${city}`)) ??
       (await geocodePlace(city))
     if (!geo) throw new Error('Konum çözümlenemedi (Nominatim boş döndü)')
 
-    // 2) Çevredeki gerçek işletmeler (Overpass)
-    const osmResults = await searchBusinesses({
-      query,
-      category: category || undefined,
-      lat: geo.lat,
-      lng: geo.lng,
-      radiusM,
-      existingPlaceIds: existingArr,
-    })
-
-    results = osmResults
     geocoded = { lat: geo.lat, lng: geo.lng, displayName: geo.displayName }
+    resolvedCountry = geo.countryCode?.toUpperCase() ?? null
+
+    // 2) Veri kaynağı: Google anahtarı varsa önce Google, hata olursa OSM
+    if (process.env.GOOGLE_MAPS_API_KEY) {
+      try {
+        results = await searchBusinessesGoogle({
+          query,
+          lat: geo.lat,
+          lng: geo.lng,
+          radiusM,
+          existingPlaceIds: existingArr,
+          categoryLabel: category || undefined,
+        })
+        provider = 'google'
+      } catch (gErr) {
+        console.error(`[maps/search] Google Places başarısız, OSM'e geçiliyor:`, gErr)
+        const osmResults = await searchBusinesses({
+          query,
+          category: category || undefined,
+          lat: geo.lat,
+          lng: geo.lng,
+          radiusM,
+          existingPlaceIds: existingArr,
+        })
+        results = osmResults
+        provider = 'osm'
+      }
+    } else {
+      const osmResults = await searchBusinesses({
+        query,
+        category: category || undefined,
+        lat: geo.lat,
+        lng: geo.lng,
+        radiusM,
+        existingPlaceIds: existingArr,
+      })
+      results = osmResults
+      provider = 'osm'
+    }
   } catch (e) {
     // FALLBACK: sandbox ağ engeli / servis erişilemez → mock veri
     searchError = e instanceof Error ? e.message : String(e)
@@ -103,14 +133,14 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // MapsSearch kaydı oluştur (schema değişmedi — mevcut alanlar)
+  // MapsSearch kaydı oluştur — ülke kodu geocoding'den türetilir (küresel arama)
   const search = await db.mapsSearch.create({
     data: {
       tenantId: user!.tenantId,
       userId: user!.id,
       query,
       city,
-      country: country || 'TR',
+      country: resolvedCountry || country || 'TR',
       radius: radiusM,
       resultCount: results.length,
     },

@@ -34,6 +34,17 @@ const CITY_COORDS: Record<string, { lat: number; lng: number }> = {
   'Aydın': { lat: 37.8394, lng: 27.8456 },
   'Hatay': { lat: 36.4018, lng: 36.3498 },
   'Tekirdağ': { lat: 40.9833, lng: 27.5167 },
+  // Yurt dışı merkezleri — çevrimdışı fallback'te bile doğru noktaya düşsün
+  'Berlin': { lat: 52.5200, lng: 13.4050 },
+  'Paris': { lat: 48.8566, lng: 2.3522 },
+  'London': { lat: 51.5074, lng: -0.1278 },
+  'Amsterdam': { lat: 52.3676, lng: 4.9041 },
+  'Vienna': { lat: 48.2082, lng: 16.3738 },
+  'Milan': { lat: 45.4642, lng: 9.1900 },
+  'Madrid': { lat: 40.4168, lng: -3.7038 },
+  'Zurich': { lat: 47.3769, lng: 8.5417 },
+  'Dubai': { lat: 25.2048, lng: 55.2708 },
+  'New York': { lat: 40.7128, lng: -74.0060 },
 }
 
 // Büyük şehirler için mahalle isimleri — adres gerçekçiliği

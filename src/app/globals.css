@@ -301,6 +301,53 @@
     padding: 0;
     background: white !important;
   }
+
+  /* ── DİYALOG BASKISI DÜZELTMESİ ───────────────────────────────────
+     Eskiden belge (fatura/irsaliye/teklif PDF) diyalog içinde kalıyor,
+     arkadaki uygulama visibility:hidden ile yer kaplamaya devam ettiği
+     için yazdırma çıktısında boş sayfalardan sonra geliyordu.
+     Artık: diyalog portali akışın başına alınır, uygulama akıştan çıkar. */
+  body:has([data-slot='dialog-content'] .print-content) > *:not([data-slot='dialog-portal']) {
+    display: none !important;
+  }
+  /* Overlay + print-content İÇERMEYEN iç içe diyaloglar gizlenir */
+  body:has([data-slot='dialog-content'] .print-content) [data-slot='dialog-overlay'],
+  body:has([data-slot='dialog-content'] .print-content) [data-slot='dialog-content']:not(:has(.print-content)) {
+    display: none !important;
+  }
+  /* Belgeyi taşıyan diyalog zinciri statik akışa geçer — 1. sayfanın başından başlar */
+  body:has([data-slot='dialog-content'] .print-content) [data-slot='dialog-portal'],
+  body:has([data-slot='dialog-content'] .print-content) [data-slot='dialog-content']:has(.print-content) {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    translate: none !important;
+    scale: none !important;
+    animation: none !important;
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+  /* Belge artık akışta — sabit konumlandırmayı geri al (diyalog dışındaki
+     print-content'ler eski absolute davranışını korur) */
+  body:has([data-slot='dialog-content'] .print-content) [data-slot='dialog-content'] .print-content {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
   /* A4 page on print — exact dimensions, no shadow, no scroll constraints */
   .a4-page {
     width: 210mm;

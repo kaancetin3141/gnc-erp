@@ -141,7 +141,7 @@ function AuthenticatedApp() {
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
         <main className="flex-1 overflow-y-auto custom-scroll">
-          <div className={cn('p-4 lg:p-6 max-w-[1600px] mx-auto')}>
+          <div className={cn('p-4 lg:p-6 max-w-[1600px] mx-auto', view === 'chat' && 'h-full min-h-0 flex flex-col')}>
             {view === 'dashboard' && (
               <ProtectedView perm="dashboard.view" message="Dashboard görüntüleme yetkiniz yok.">
                 <DashboardView />

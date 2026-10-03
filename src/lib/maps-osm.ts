@@ -161,6 +161,8 @@ export interface GeocodeResult {
   displayName: string
   city: string | null
   district: string | null
+  /** ISO 3166-1 alpha-2 ülke kodu (tr, de, fr…) — yurt içi/dışı ayrımı için */
+  countryCode: string | null
 }
 
 interface NominatimItem {
@@ -229,6 +231,7 @@ export async function geocodePlace(query: string): Promise<GeocodeResult | null>
       displayName: item.display_name ?? item.name ?? q,
       city,
       district,
+      countryCode: addr.country_code ?? null,
     }
     setCached(geocodeCache, cacheKey, value)
     return value
@@ -564,5 +567,97 @@ export async function searchBusinesses(
   // mesafeye göre sırala (en yakın önce)
   results.sort((a, b) => a.distM - b.distM)
 
+  return results.slice(0, MAX_RESULTS).map(({ distM: _d, ...r }) => r)
+}
+
+// ----------------------------------------------------------------------------
+// Google Places API (New) — OPSİYONEL Google verisi
+// ----------------------------------------------------------------------------
+// GOOGLE_MAPS_API_KEY ortam değişkeni tanımlıysa aramalar Google Places
+// Text Search ile yapılır (puan/yorum/telefon dahil zengin veri).
+// Tanımlı değilse akış %100 ücretsiz OSM ile devam eder.
+// Anahtar almak: https://console.cloud.google.com → Maps Platform → API key
+// (aylık ücretsiz çağrı paketi vardır; Text Search Essentials)
+
+interface GooglePlace {
+  id: string
+  displayName?: { text?: string }
+  formattedAddress?: string
+  location?: { latitude: number; longitude: number }
+  rating?: number
+  userRatingCount?: number
+  internationalPhoneNumber?: string
+  websiteUri?: string
+}
+
+export interface GoogleSearchParams {
+  query: string
+  lat: number
+  lng: number
+  radiusM: number
+  existingPlaceIds?: string[]
+  categoryLabel?: string
+}
+
+export async function searchBusinessesGoogle(
+  params: GoogleSearchParams,
+): Promise<MapsResult[]> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY
+  if (!apiKey) throw new Error('GOOGLE_MAPS_API_KEY tanımlı değil')
+
+  const body = {
+    textQuery: params.query,
+    maxResultCount: 20,
+    locationBias: {
+      circle: {
+        center: { latitude: params.lat, longitude: params.lng },
+        radius: Math.min(50_000, Math.max(300, params.radiusM)),
+      },
+    },
+  }
+
+  const res = await fetchWithTimeout(
+    'https://places.googleapis.com/v1/places:searchText',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask':
+          'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.internationalPhoneNumber,places.websiteUri',
+      },
+      body: JSON.stringify(body),
+    },
+    8_000,
+  )
+  if (!res.ok) throw new Error(`Google Places HTTP ${res.status}`)
+
+  const data = (await res.json()) as { places?: GooglePlace[] }
+  const places = data.places ?? []
+
+  const existingSet = new Set(params.existingPlaceIds ?? [])
+  const results: (MapsResult & { distM: number })[] = []
+
+  for (const p of places) {
+    const name = p.displayName?.text?.trim()
+    if (!name || !p.location) continue
+    results.push({
+      placeId: `g-${p.id}`,
+      name,
+      category: params.categoryLabel ?? 'İşletme',
+      address: p.formattedAddress ?? '',
+      city: '',
+      phone: p.internationalPhoneNumber ?? null,
+      web: p.websiteUri ?? null,
+      rating: p.rating ?? null,
+      reviewCount: p.userRatingCount ?? null,
+      lat: p.location.latitude,
+      lng: p.location.longitude,
+      existsInCrm: existingSet.has(`g-${p.id}`),
+      distM: haversineM(params.lat, params.lng, p.location.latitude, p.location.longitude),
+    })
+  }
+
+  results.sort((a, b) => a.distM - b.distM)
   return results.slice(0, MAX_RESULTS).map(({ distM: _d, ...r }) => r)
 }

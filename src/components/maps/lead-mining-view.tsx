@@ -69,8 +69,8 @@ const OsmMap = dynamic(
 // Constants
 // ----------------------------------------------------------------------------
 
-// Yarıçap önayarları (metre) — Overpass POI taraması için 0.5–5 km
-const RADII_M = [500, 1000, 2000, 3000, 5000] as const
+// Yarıçap önayarları (metre) — Overpass POI taraması için 0.5–10 km (yurt dışı için geniş)
+const RADII_M = [500, 1000, 2000, 3000, 5000, 10000] as const
 const DEFAULT_RADIUS_M = 2000
 const DAILY_LIMIT = 50
 
@@ -100,10 +100,16 @@ interface SearchResponse {
   results: MapsResult[]
   searchId: string
   search: MapsSearch
-  provider?: 'osm' | 'fallback'
+  provider?: 'osm' | 'fallback' | 'google'
   geocoded?: { lat: number; lng: number; displayName: string } | null
   notice?: string
 }
+
+// Google Maps derin bağlantısı — API anahtarsız resmî URL (pin = koordinat)
+function googleMapsHref(lat: number, lng: number): string {
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+}
+
 interface ImportResponse {
   created: Lead[]
   skipped: number
@@ -503,7 +509,7 @@ export function LeadMiningView() {
   const [searchId, setSearchId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [hasSearched, setHasSearched] = useState(false)
-  const [provider, setProvider] = useState<'osm' | 'fallback' | null>(null)
+  const [provider, setProvider] = useState<'osm' | 'fallback' | 'google' | null>(null)
   const [geocoded, setGeocoded] = useState<{ lat: number; lng: number; displayName: string } | null>(null)
 
   // harita senkron durumu
@@ -570,7 +576,7 @@ export function LeadMiningView() {
       qc.invalidateQueries({ queryKey: qk.mapsSearches })
 
       if (data.provider === 'fallback') {
-        toast.warning('OpenStreetMap servisine ulaşılamadı — örnek veri gösteriliyor', {
+        toast.warning('Harita servisine ulaşılamadı — örnek veri gösteriliyor', {
           description: 'Gerçek veri için bağlantı sağlandığında tekrar deneyin.',
         })
       }
@@ -582,7 +588,7 @@ export function LeadMiningView() {
         toast.success(`${data.results.length} işletme bulundu`, {
           description:
             data.geocoded?.displayName
-              ? `${data.geocoded.displayName} çevresinde · OpenStreetMap`
+              ? `${data.geocoded.displayName} çevresinde · ${data.provider === 'google' ? 'Google Maps' : 'OpenStreetMap'}`
               : `${data.results.filter((r) => r.existsInCrm).length} tanesi zaten CRM'de.`,
         })
       }
@@ -611,8 +617,8 @@ export function LeadMiningView() {
   const rerunSearch = useCallback((s: MapsSearch) => {
     setQuery(s.query)
     setCity(s.city || 'İstanbul')
-    // eski kayıtlar km cinsindendi — metreye çevir ve 0.5-5 km aralığına kırp
-    const r = Math.min(5000, Math.max(500, s.radius ?? DEFAULT_RADIUS_M))
+    // eski kayıtlar km cinsindendi — metreye çevir ve 0.5-10 km aralığına kırp
+    const r = Math.min(10000, Math.max(500, s.radius ?? DEFAULT_RADIUS_M))
     setRadius(r)
     setSelectedCategory(null)
     if (limitReached) {
@@ -734,7 +740,7 @@ export function LeadMiningView() {
             Potansiyel Müşteri Madenciliği
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            OpenStreetMap üzerinden gerçek işletmeleri ara (kafe, klinik, market…), seç ve CRM'ne lead olarak aktar —
+            Yurt içi ve yurt dışı işletmeleri ara (kafe, klinik, market…), seç ve CRM'ne lead olarak aktar —
             <span className="inline-flex items-center gap-1 ml-1 text-emerald-600 font-medium">
               <ShieldCheck className="w-3.5 h-3.5" /> API anahtarsız, ücretsiz
             </span>
@@ -817,16 +823,22 @@ export function LeadMiningView() {
                     disabled={!canSearch || limitReached || searchMutation.isPending}
                   />
                 </div>
-                <Select value={city} onValueChange={setCity} disabled={!canSearch || searchMutation.isPending}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Şehir" />
-                  </SelectTrigger>
-                  <SelectContent>
+                <div className="sm:col-span-1">
+                  <Input
+                    list="gnc-city-options"
+                    placeholder="Şehir / bölge (örn: Berlin)"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    disabled={!canSearch || searchMutation.isPending}
+                    aria-label="Şehir veya bölge"
+                  />
+                  {/* Hızlı seçim: TR şehirleri — serbest metin olduğundan dünya genelinde yazılabilir */}
+                  <datalist id="gnc-city-options">
                     {CITIES.map((c) => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                      <option key={c} value={c} />
                     ))}
-                  </SelectContent>
-                </Select>
+                  </datalist>
+                </div>
                 <div className="flex items-center gap-3 px-3 rounded-md border border-input bg-transparent h-9">
                   <span className="text-xs text-muted-foreground shrink-0">Yarıçap</span>
                   <Slider
@@ -1021,6 +1033,19 @@ export function LeadMiningView() {
                                   {!r.phone && !r.web && (
                                     <span className="text-xs text-muted-foreground">—</span>
                                   )}
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <a
+                                        href={googleMapsHref(r.lat, r.lng)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        target="_blank" rel="noreferrer"
+                                        className="w-7 h-7 rounded-md border border-border flex items-center justify-center hover:bg-red-50 hover:border-red-200 hover:text-red-600 dark:hover:bg-red-950/40"
+                                      >
+                                        <MapPin className="w-3.5 h-3.5" />
+                                      </a>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Google Maps'te aç</TooltipContent>
+                                  </Tooltip>
                                 </div>
                               </TableCell>
                               <TableCell className="text-right">

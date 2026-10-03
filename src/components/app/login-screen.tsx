@@ -11,17 +11,35 @@ import { Label } from '@/components/ui/label'
 import { Building2, Shield, Database, MapPin, Mail, Lock, Eye, EyeOff, LogIn, Sparkles, AlertTriangle, Zap, ChevronDown } from 'lucide-react'
 import type { SessionUser } from '@/types'
 
-// Tek tıkla denenebilecek demo hesapları (şifre: 1234)
-const DEMO_ACCOUNTS = [
-  { email: 'demo@anadolu.com', name: 'Demir Yıldız', role: 'Yönetici (Admin)', badge: 'emerald' },
-  { email: 'ayse.kaya@anadolu.com', name: 'Ayşe Kaya', role: 'Satış Müdürü', badge: 'sky' },
-  { email: 'zeynep.arslan@outlook.com', name: 'Zeynep Arslan', role: 'Satış Temsilcisi', badge: 'amber' },
-] as const
+// Tek tıkla denenebilecek demo hesapları (şifre: 1234) — tüm modüller
+const DEMO_GROUPS: { label: string; accounts: { email: string; name: string; role: string; badge: string }[] }[] = [
+  {
+    label: 'CRM / ERP (Ana)',
+    accounts: [
+      { email: 'demo@anadolu.com', name: 'Demir Yıldız', role: 'Yönetici (Admin)', badge: 'emerald' },
+      { email: 'ayse.kaya@anadolu.com', name: 'Ayşe Kaya', role: 'Satış Müdürü', badge: 'sky' },
+      { email: 'zeynep.arslan@outlook.com', name: 'Zeynep Arslan', role: 'Satış Temsilcisi', badge: 'amber' },
+    ],
+  },
+  {
+    label: 'Diğer Modüller',
+    accounts: [
+      { email: 'admin@sikkafe.com', name: 'Sık Kafe', role: 'Kafe Yöneticisi', badge: 'orange' },
+      { email: 'admin@anadolumarket.com', name: 'Anadolu Market', role: 'Market Yöneticisi', badge: 'lime' },
+      { email: 'admin@sikkuaför.com', name: 'Sık Kuaför', role: 'Kuaför Yöneticisi', badge: 'rose' },
+      { email: 'admin@parksitesi.com', name: 'Park Sitesi', role: 'Site Yöneticisi', badge: 'violet' },
+    ],
+  },
+]
 
 const BADGE_STYLES: Record<string, string> = {
   emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
   sky: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400',
   amber: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+  orange: 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-400',
+  lime: 'bg-lime-100 text-lime-700 dark:bg-lime-500/15 dark:text-lime-400',
+  rose: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
+  violet: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400',
 }
 
 export function LoginScreen() {
@@ -280,10 +298,10 @@ export function LoginScreen() {
                 type="button"
                 variant="outline"
                 disabled={loading || needsSeed || !!demoLoading}
-                onClick={() => handleDemoLogin(DEMO_ACCOUNTS[0].email)}
+                onClick={() => handleDemoLogin(DEMO_GROUPS[0].accounts[0].email)}
                 className="w-full h-11 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-emerald-500/30 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-400 text-emerald-700 dark:text-emerald-400"
               >
-                {demoLoading === DEMO_ACCOUNTS[0].email ? (
+                {demoLoading === DEMO_GROUPS[0].accounts[0].email ? (
                   <span className="flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-emerald-300 border-t-emerald-600 rounded-full animate-spin" />
                     Demo olarak giriliyor...
@@ -310,27 +328,36 @@ export function LoginScreen() {
                   <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showDemoAccounts ? 'rotate-180' : ''}`} />
                 </button>
                 {showDemoAccounts && (
-                  <div className="px-2 pb-2 space-y-1">
-                    {DEMO_ACCOUNTS.map((acc) => (
-                      <button
-                        key={acc.email}
-                        type="button"
-                        disabled={loading || needsSeed || !!demoLoading}
-                        onClick={() => handleDemoLogin(acc.email)}
-                        className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-md hover:bg-white dark:hover:bg-slate-700/50 transition-colors disabled:opacity-50 text-left"
-                      >
-                        <span className="flex items-center gap-2 min-w-0">
-                          <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${BADGE_STYLES[acc.badge]}`}>
-                            {acc.role}
-                          </span>
-                          <span className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">{acc.name}</span>
-                        </span>
-                        {demoLoading === acc.email ? (
-                          <span className="w-3.5 h-3.5 shrink-0 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-                        ) : (
-                          <Zap className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
-                        )}
-                      </button>
+                  <div className="px-2 pb-2 space-y-2 max-h-72 overflow-y-auto custom-scroll">
+                    {DEMO_GROUPS.map((group) => (
+                      <div key={group.label}>
+                        <div className="px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                          {group.label}
+                        </div>
+                        <div className="space-y-0.5">
+                          {group.accounts.map((acc) => (
+                            <button
+                              key={acc.email}
+                              type="button"
+                              disabled={loading || needsSeed || !!demoLoading}
+                              onClick={() => handleDemoLogin(acc.email)}
+                              className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-md hover:bg-white dark:hover:bg-slate-700/50 transition-colors disabled:opacity-50 text-left"
+                            >
+                              <span className="flex items-center gap-2 min-w-0">
+                                <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${BADGE_STYLES[acc.badge]}`}>
+                                  {acc.role}
+                                </span>
+                                <span className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">{acc.name}</span>
+                              </span>
+                              {demoLoading === acc.email ? (
+                                <span className="w-3.5 h-3.5 shrink-0 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                              ) : (
+                                <Zap className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
