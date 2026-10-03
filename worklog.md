@@ -7759,3 +7759,22 @@ Stage Summary:
 - Yeni cron: Job 433093 mini-servis bekçisi (30 dk) — chat-service/artırem/cron-automation artık kendi kendini iyileştirir
 - VPS notu: mini-services klasöründe 3 servisin pm2/startup'a eklenmesi + ensure-services.sh'ın cron'a bağlanması önerilir
 - Sonraki tur önerileri: AI prioritize/auto-assign'a LLM gerekçelendirme katmanı, SMTP şablon düzenleyici, sosyal medya OAuth kurulum sihirbazı, chat'te dosya eki (gerçek upload), bildirim sesi/masaüstü bildirimi
+---
+Task ID: func-real-20261003
+Agent: Super Z (ana ajan)
+Task: "Araştırma ve geliştirmeye devam et, bütün fonksiyonları gerçekten çalışıyor durumuna getir" — kalan demo yüzeylerinin gerçek implementasyona çevrilmesi + tam fonksiyon envanteri
+
+Work Log:
+- KRON: ensure-services.sh (Job 433093) çalıştırıldı → "OK: tüm mini servisler çalışıyor"
+- DEMO/MOCK ENVANTERİ (tüm src tarandı): kalan demo yüzeyleri = (1) settings-view AuditTab MOCK_AUDIT hardcoded + "Denetim kaydı yakında", (2) market-pos "basit demo" yorumu (işlevsel — son barkodlardan hızlı satış), (3) error-boundary TODO (yalnızca not). "Yakında/coming soon" başka YOK
+- AUDIT TAB GERÇEKLEŞTİRİLDİ: MOCK_AUDIT kaldırıldı → apiGet('/api/audit?limit=50&cursor=&action=') gerçek entegrasyon; cursor sayfalama ("Daha fazla yükle"), işlem filtresi (create/update/delete/import/login/logout), aktör/varlık/ID arama, skeleton yükleme durumu, hata bandı, boş durum mesajları; ENTITY_LABELS genişletildi (session, invoice, quote, order, product, attachment, resident, document_share_link, user_password_reset); ACTION_COLORS'a login/logout eklendi; sekme audit.view yetkisine bağlandı (yetkisizde sekme hiç render olmaz — API zaten 403)
+- E2E (agent-browser): Ayarlar → Denetim Kayıtları → GERÇEK kayıtlar (Demir Yıldız | login x N) ✓; "Oluştur" filtresi → mesaj create (11:41) + Paylaşım Linki (11:39) gerçek DB kayıtları ✓; console error 0
+- FONKSİYON GERÇEKLİK ENVANTERİ (canlı doğrulamalı): widgets → open-meteo (İstanbul 20°C) + er-api (USD 49.13) + RSS (5 haber) = GERÇEK; AI asistan → z-ai-web-dev-sdk gerçek LLM çağrısı ("Bu ay kaç müşteri ziyareti yaptım?" → Türkçe, DB bağlamlı yanıt) = GERÇEK; mailer → nodemailer + TenantSetting SMTP (ayar girilince gerçek gönderim, yoksa mailto fallback tasarımı) = GERÇEK; sosyal medya → 7 platform gerçek API client (twitter/facebook/instagram/linkedin/telegram/reddit/bluesky, token verify dahil), token yoksa belgelenmiş simülasyon modu = GERÇEK+ŞEFFAF; harita → OSM küresel + opsiyonel Google Places = GERÇEK; auth → bcrypt + Session tablosu = GERÇEK; PDF üretim/paylaşım = GERÇEK
+- SAĞLIK KONTROLÜ: 13 çekirdek endpoint (customers/deals/tasks/invoices/quotes/orders/products/reports/dashboard/messages/users/search/settings/notifications) hepsi 200
+- NOT: agent-browser turunda next-server bir kez öldü (4GB RAM sınırı) → yeniden başlatıldı; /tmp/warm.sh gerektiğinde kullanılabilir
+- eslint 0 hata
+
+Stage Summary:
+- Ayarlar > Denetim Kayıtları artık gerçek zamanlı DB audit log'u (son bilinen mock UI kaldırıldı)
+- Uygulamanın TAMAMANIN fonksiyon envanteri çıkarıldı: tüm ana modüller gerçek veriyle çalışıyor; dış bağımlılık gerektirenler (SMTP kimlik bilgisi, sosyal medya token'ı, GOOGLE_MAPS_API_KEY) kullanıcı bilgisi girildiğinde otomatik gerçek moda geçen tasarım üzerinde
+- Sonraki tur önerileri: audit tab'a "CSV dışa aktar" butonu, sakin şifre sıfırlama akışı, Session expiresAt temizlik cron'u, sosyal medya simülasyon rozetinin hesap kartında görünmesi
