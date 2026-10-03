@@ -34,10 +34,11 @@ import {
 import {
   Building2, Coins, Bell, ShieldAlert, ScrollText, Save, Download,
   EyeOff, CheckCircle2, AlertTriangle, Globe, Calendar, Clock, Users,
-  FileText, Database, Lock, Info, Shield, MessageSquare,
+  FileText, Database, Lock, Info, Shield, MessageSquare, Mail,
 } from 'lucide-react'
 import { TemplatesView } from '@/components/settings/templates-view'
 import { InvoiceTemplateEditor } from '@/components/settings/invoice-template/invoice-template-editor'
+import { SmtpTab } from '@/components/settings/smtp-settings'
 
 // ─── Plan rozet renkleri ──────────────────────────────────────────
 const PLAN_BADGE: Record<string, { label: string; className: string }> = {
@@ -776,6 +777,9 @@ export function SettingsView() {
           <TabsTrigger value="invoice-template">
             <FileText className="w-3.5 h-3.5" /> Fatura Şablonu
           </TabsTrigger>
+          <TabsTrigger value="smtp">
+            <Mail className="w-3.5 h-3.5" /> SMTP
+          </TabsTrigger>
           <TabsTrigger value="kvkk">
             <Shield className="w-3.5 h-3.5" /> KVKK &amp; Veri
           </TabsTrigger>
@@ -798,6 +802,9 @@ export function SettingsView() {
         </TabsContent>
         <TabsContent value="invoice-template" className="mt-6">
           <InvoiceTemplateEditor />
+        </TabsContent>
+        <TabsContent value="smtp" className="mt-6">
+          <SmtpTab />
         </TabsContent>
         <TabsContent value="kvkk" className="mt-6">
           <KvkkTab />

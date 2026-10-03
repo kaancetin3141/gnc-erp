@@ -1,7 +1,21 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
+import {
+  getSession, requireAuth, ok, err, getVisibilityFilter,
+} from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { notifyChatService } from '@/lib/chat-realtime'
+
+// Belge eki için ortak DTO
+interface DocumentItem {
+  id: string
+  number: string
+  customerName: string
+  total: number
+  currency: string
+  type: 'Fatura' | 'Sipariş' | 'Proforma' | 'Teklif'
+  createdAt: string
+}
 
 export async function GET(req: NextRequest) {
   const user = await getSession(req)
@@ -14,7 +28,7 @@ export async function GET(req: NextRequest) {
   if (type === 'users') {
     const search = url.searchParams.get('search') || ''
     const tenantId = user!.tenantId
-    
+
     // Debug info ekle
     const where: Record<string, unknown> = {
       tenantId,
@@ -35,6 +49,84 @@ export async function GET(req: NextRequest) {
       take: 200,
     })
     return ok({ items: users, total: users.length })
+  }
+
+  // Belge eki — tenant'taki son 4 Fatura / 4 Sipariş / 4 Proforma / 4 Teklif
+  // (görünürlük: müşteri sahibi üzerinden — getVisibilityFilter ile)
+  if (type === 'documents') {
+    const visFilter = await getVisibilityFilter(user!)
+    const customerWhere: Record<string, unknown> = visFilter.ownerId
+      ? { ownerId: visFilter.ownerId }
+      : {}
+    const customerInclude = { select: { name: true } }
+
+    const [invoices, orders, proformas, quotes] = await Promise.all([
+      db.invoice.findMany({
+        where: { tenantId: user!.tenantId, customer: customerWhere },
+        include: { customer: customerInclude },
+        orderBy: { createdAt: 'desc' },
+        take: 4,
+      }),
+      db.order.findMany({
+        where: { tenantId: user!.tenantId, customer: customerWhere },
+        include: { customer: customerInclude },
+        orderBy: { createdAt: 'desc' },
+        take: 4,
+      }),
+      db.quote.findMany({
+        where: { tenantId: user!.tenantId, isProforma: true, customer: customerWhere },
+        include: { customer: customerInclude },
+        orderBy: { createdAt: 'desc' },
+        take: 4,
+      }),
+      db.quote.findMany({
+        where: { tenantId: user!.tenantId, isProforma: false, customer: customerWhere },
+        include: { customer: customerInclude },
+        orderBy: { createdAt: 'desc' },
+        take: 4,
+      }),
+    ])
+
+    const items: DocumentItem[] = [
+      ...invoices.map<DocumentItem>((d) => ({
+        id: d.id,
+        number: d.number,
+        customerName: d.customer.name,
+        total: d.total,
+        currency: d.currency,
+        type: 'Fatura',
+        createdAt: d.createdAt.toISOString(),
+      })),
+      ...orders.map<DocumentItem>((d) => ({
+        id: d.id,
+        number: d.number,
+        customerName: d.customer.name,
+        total: d.totalAmount,
+        currency: d.currency,
+        type: 'Sipariş',
+        createdAt: d.createdAt.toISOString(),
+      })),
+      ...proformas.map<DocumentItem>((d) => ({
+        id: d.id,
+        number: d.number,
+        customerName: d.customer.name,
+        total: d.total,
+        currency: d.currency,
+        type: 'Proforma',
+        createdAt: d.createdAt.toISOString(),
+      })),
+      ...quotes.map<DocumentItem>((d) => ({
+        id: d.id,
+        number: d.number,
+        customerName: d.customer.name,
+        total: d.total,
+        currency: d.currency,
+        type: 'Teklif',
+        createdAt: d.createdAt.toISOString(),
+      })),
+    ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+
+    return ok({ items, total: items.length })
   }
 
   const otherUserId = url.searchParams.get('userId')
@@ -87,14 +179,20 @@ export async function POST(req: NextRequest) {
     if (!receiver) return err('Alıcı bulunamadı', 404)
   }
 
+  // Ekli mesaj: frontend zenginleştirilmiş içerikle gelir (📎 ile başlar) —
+  // bu durumda çift ekleme yapma; eski çağıranlar için yedek olarak ekle.
+  const trimmed = content.trim()
+  const finalContent =
+    attachmentType && attachmentId && !trimmed.startsWith('📎')
+      ? `${trimmed}\n\n📎 Belge: ${attachmentName || attachmentType} #${attachmentId.slice(-6)}`
+      : trimmed
+
   const message = await db.message.create({
     data: {
       tenantId: user!.tenantId,
       senderId: user!.id,
       receiverId: receiver?.id ?? null,
-      content: (attachmentType && attachmentId)
-        ? `${content.trim()}\n\n📎 Belge: ${attachmentName || attachmentType} #${attachmentId.slice(-6)}`
-        : content.trim(),
+      content: finalContent,
     },
     include: {
       sender: { select: { id: true, name: true, avatarUrl: true, title: true, role: true } },
@@ -109,6 +207,15 @@ export async function POST(req: NextRequest) {
     entity: 'message',
     entityId: message.id,
     after: { receiverId: message.receiverId, contentPreview: message.content.slice(0, 80) },
+  })
+
+  // Gerçek zamanlı yayım — chat-service'e bildir (fire-and-forget).
+  // Alıcı odası + gönderen odası (kendi diğer sekmeleri) anında alır.
+  notifyChatService({
+    event: 'message',
+    receiverId: message.receiverId,
+    senderId: message.senderId,
+    message,
   })
 
   return ok(message, 201)

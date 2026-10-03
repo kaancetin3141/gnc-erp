@@ -4,7 +4,9 @@ import {
   getSession, requireAuth, requirePermission, ok, err,
 } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
-import { mockMapsSearch } from '@/lib/maps-mock'
+import { geocodePlace, searchBusinesses } from '@/lib/maps-osm'
+import { mockMapsSearch, CITY_COORDS } from '@/lib/maps-mock'
+import type { MapsResult } from '@/types'
 
 // GET — son harita aramaları (geçmiş)
 export async function GET(req: NextRequest) {
@@ -25,19 +27,21 @@ export async function GET(req: NextRequest) {
   return ok({ items: searches })
 }
 
-// POST — yeni harita araması
+// POST — yeni harita araması (GERÇEK OpenStreetMap verisi + çevrimdışı fallback)
 export async function POST(req: NextRequest) {
   const user = await getSession(req)
   const permErr = requirePermission(user, 'maps.search')
   if (permErr) return permErr
 
   const body = await req.json()
-  const { query, city, country, radius } = body
+  const { query, city, country, radius, category } = body
 
   if (!query) return err('Arama sorgusu gerekli', 400)
   if (!city) return err('Şehir gerekli', 400)
 
-  // Mevcut placeId'leri topla (lead + customer) — existInCrm işaretle
+  const radiusM = Math.min(100_000, Math.max(300, Number(radius) || 2000))
+
+  // Mevcut placeId'leri topla (lead + customer) — existsInCrm işaretle
   const [existingLeads, existingCustomers] = await Promise.all([
     db.lead.findMany({
       where: { tenantId: user!.tenantId, placeId: { not: null } },
@@ -52,17 +56,54 @@ export async function POST(req: NextRequest) {
     ...existingLeads.map((l) => l.placeId).filter(Boolean) as string[],
     ...existingCustomers.map((c) => c.placeId).filter(Boolean) as string[],
   ])
+  const existingArr = Array.from(existingPlaceIds)
 
-  // Mock arama
-  const results = mockMapsSearch({
-    query,
-    city,
-    country: country || 'TR',
-    radius: radius || 5000,
-    existingPlaceIds: Array.from(existingPlaceIds),
-  })
+  // ---- GERÇEK OSM ARAMASI (Nominatim + Overpass), hata → mock fallback ----
+  let results: MapsResult[]
+  let provider: 'osm' | 'fallback' = 'osm'
+  let geocoded: { lat: number; lng: number; displayName: string } | null = null
+  let searchError: string | null = null
 
-  // MapsSearch kaydı oluştur
+  try {
+    // 1) Konum çözümleme: "sorgu, şehir" → bulunamazsa sadece şehir
+    const geo =
+      (await geocodePlace(`${query}, ${city}`)) ??
+      (await geocodePlace(city))
+    if (!geo) throw new Error('Konum çözümlenemedi (Nominatim boş döndü)')
+
+    // 2) Çevredeki gerçek işletmeler (Overpass)
+    const osmResults = await searchBusinesses({
+      query,
+      category: category || undefined,
+      lat: geo.lat,
+      lng: geo.lng,
+      radiusM,
+      existingPlaceIds: existingArr,
+    })
+
+    results = osmResults
+    geocoded = { lat: geo.lat, lng: geo.lng, displayName: geo.displayName }
+  } catch (e) {
+    // FALLBACK: sandbox ağ engeli / servis erişilemez → mock veri
+    searchError = e instanceof Error ? e.message : String(e)
+    console.error('[maps/search] OSM araması başarısız, fallback kullanılıyor:', searchError)
+    provider = 'fallback'
+    const cityCoord = CITY_COORDS[city] ?? { lat: 39.0, lng: 35.0 }
+    geocoded = {
+      lat: cityCoord.lat,
+      lng: cityCoord.lng,
+      displayName: `${city} (yaklaşık merkez)`,
+    }
+    results = mockMapsSearch({
+      query,
+      city,
+      country: country || 'TR',
+      radius: radiusM,
+      existingPlaceIds: existingArr,
+    })
+  }
+
+  // MapsSearch kaydı oluştur (schema değişmedi — mevcut alanlar)
   const search = await db.mapsSearch.create({
     data: {
       tenantId: user!.tenantId,
@@ -70,7 +111,7 @@ export async function POST(req: NextRequest) {
       query,
       city,
       country: country || 'TR',
-      radius: radius || null,
+      radius: radiusM,
       resultCount: results.length,
     },
     include: { user: { select: { id: true, name: true } } },
@@ -82,8 +123,15 @@ export async function POST(req: NextRequest) {
     action: 'create',
     entity: 'maps_search',
     entityId: search.id,
-    after: { query, city, resultCount: results.length },
+    after: { query, city, resultCount: results.length, provider },
   })
 
-  return ok({ results, searchId: search.id, search })
+  return ok({
+    results,
+    searchId: search.id,
+    search,
+    provider,
+    geocoded,
+    ...(searchError ? { notice: 'OpenStreetMap servisine ulaşılamadı, örnek veri gösteriliyor' } : {}),
+  })
 }

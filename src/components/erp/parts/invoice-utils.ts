@@ -93,6 +93,55 @@ export function buildInvoiceWhatsAppMessage(input: {
   ].filter((l): l is string => l !== null).join('\n')
 }
 
+// ----- Fatura GÖNDERİM mesajı (SendDialog — fatura dokümanı iletilirken) -----
+// Ödeme hatırlatmasından (buildInvoiceWhatsAppMessage) farklıdır: fatura
+// bilgisini nötr dille iletir, opsiyonel paylaşım linkini metne ekler.
+export function buildInvoiceDocMessage(input: {
+  number: string
+  customerName: string
+  total: number
+  currency: string
+  dueDate?: string | null
+  shareUrl?: string | null
+}): string {
+  const { number, customerName, total, currency, dueDate, shareUrl } = input
+  const curSymbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : '₺'
+  const amountStr = `${total.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${curSymbol}`
+  const fmt = (d?: string | null) => {
+    if (!d) return null
+    const dt = new Date(d)
+    if (isNaN(dt.getTime())) return null
+    return dt.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
+  const dueStr = fmt(dueDate)
+
+  const lines: string[] = [
+    `Sayın ${customerName},`,
+    '',
+    `${number} numaralı faturamızı iletiyoruz.`,
+    '',
+    '🧾 Fatura Özeti:',
+    `• Genel Toplam: ${amountStr}`,
+    dueStr ? `• Vade Tarihi: ${dueStr}` : null,
+  ]
+
+  if (shareUrl) {
+    lines.push('')
+    lines.push(`📄 Faturayı online görüntülemek için: ${shareUrl}`)
+  }
+
+  lines.push('')
+  lines.push('Sorularınız için bize ulaşabilirsiniz.')
+  lines.push('')
+  lines.push('İyi çalışmalar.')
+
+  return lines.filter((l): l is string => l !== null).join('\n')
+}
+
+export function buildInvoiceDocMailSubject(number: string): string {
+  return `Fatura — ${number}`
+}
+
 // ----- Form yardımcıları (InvoiceFormDialog için) -----
 export interface InvoiceLineForm {
   key: string

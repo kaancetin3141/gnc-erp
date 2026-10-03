@@ -45,7 +45,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  UserPlus, ShieldCheck, Search, Pencil, KeyRound,
+  UserPlus, ShieldCheck, Search, Pencil, KeyRound, LockKeyhole,
   Ban, ChevronRight, ChevronDown, Users, UserCheck, Crown, GitBranch,
   Check, Minus, Info, AlertCircle, Shield, ListTree,
 } from 'lucide-react'
@@ -867,10 +867,11 @@ function DeactivateDialog({
 
 // ─── Kullanıcı tablosu ────────────────────────────────────────────
 function UsersTable({
-  users, onEdit, onPermissions, onDeactivate, actor,
+  users, onEdit, onPermissions, onDeactivate, onResetPassword, actor,
 }: {
   users: UserListItem[]
   onEdit: (u: UserListItem) => void
+  onResetPassword?: (u: UserListItem) => void
   onPermissions: (u: UserListItem) => void
   onDeactivate: (u: UserListItem) => void
   actor: SessionUser
@@ -965,6 +966,21 @@ function UsersTable({
                         </TooltipTrigger>
                         <TooltipContent>Yetkiler</TooltipContent>
                       </Tooltip>
+                      {onResetPassword && u.id !== actor.id && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 hover:bg-violet-50 hover:text-violet-600"
+                              onClick={() => onResetPassword(u)}
+                            >
+                              <LockKeyhole className="w-3.5 h-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Şifre Sıfırla</TooltipContent>
+                        </Tooltip>
+                      )}
                       {u.status === 'active' && u.id !== actor.id && (
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -1141,6 +1157,8 @@ export function UsersView() {
   const [matrixOpen, setMatrixOpen] = useState(false)
   const [deactivateUser, setDeactivateUser] = useState<UserListItem | null>(null)
   const [deactivateOpen, setDeactivateOpen] = useState(false)
+  const [resetUser, setResetUser] = useState<UserListItem | null>(null)
+  const [resetOpen, setResetOpen] = useState(false)
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.users,
@@ -1182,6 +1200,10 @@ export function UsersView() {
   const openDeactivate = (u: UserListItem) => {
     setDeactivateUser(u)
     setDeactivateOpen(true)
+  }
+  const openResetPassword = (u: UserListItem) => {
+    setResetUser(u)
+    setResetOpen(true)
   }
 
   if (!user) {
@@ -1296,6 +1318,7 @@ export function UsersView() {
                 onEdit={openEdit}
                 onPermissions={openPermissions}
                 onDeactivate={openDeactivate}
+                onResetPassword={canManage ? openResetPassword : undefined}
                 actor={user}
               />
             )}
@@ -1338,7 +1361,132 @@ export function UsersView() {
           open={deactivateOpen}
           onOpenChange={setDeactivateOpen}
         />
+        <PasswordResetDialog
+          target={resetUser}
+          open={resetOpen}
+          onOpenChange={setResetOpen}
+        />
       </div>
     </TooltipProvider>
+  )
+}
+
+// ─── Şifre Sıfırlama Diyaloğu (admin/manager) ────────────────────
+function PasswordResetDialog({
+  target, open, onOpenChange,
+}: {
+  target: UserListItem | null
+  open: boolean
+  onOpenChange: (v: boolean) => void
+}) {
+  const qc = useQueryClient()
+  const [newPassword, setNewPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [show, setShow] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const reset = () => {
+    setNewPassword('')
+    setConfirm('')
+    setShow(false)
+  }
+
+  const handleSubmit = async () => {
+    if (!target) return
+    if (newPassword.length < 4) {
+      toast.error('Şifre en az 4 karakter olmalı')
+      return
+    }
+    if (newPassword !== confirm) {
+      toast.error('Şifreler eşleşmiyor')
+      return
+    }
+    try {
+      setSaving(true)
+      const res = await apiPost<{ message: string }>('/api/users/password-reset', {
+        userId: target.id,
+        newPassword,
+      })
+      toast.success(res.message ?? 'Şifre sıfırlandı')
+      qc.invalidateQueries({ queryKey: qk.users })
+      reset()
+      onOpenChange(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Şifre sıfırlanamadı')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v) }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <LockKeyhole className="w-5 h-5 text-violet-600" />
+            Şifre Sıfırla
+          </DialogTitle>
+          <DialogDescription>
+            {target ? (
+              <>
+                <span className="font-medium text-foreground">{target.name}</span> için yeni bir şifre belirleyin.
+                Kişinin tüm aktif oturumları kapatılacak ve yeni şifreyle giriş yapması istenecek.
+              </>
+            ) : 'Kullanıcı seçilmedi.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-1">
+          <div className="space-y-1.5">
+            <Label htmlFor="rp-new" className="text-xs">Yeni Şifre</Label>
+            <div className="relative">
+              <Input
+                id="rp-new"
+                type={show ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShow((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                tabIndex={-1}
+                aria-label={show ? 'Şifreyi gizle' : 'Şifreyi göster'}
+              >
+                {show ? '🙈' : '👁'}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="rp-confirm" className="text-xs">Yeni Şifre (Tekrar)</Label>
+            <Input
+              id="rp-confirm"
+              type={show ? 'text' : 'password'}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="new-password"
+            />
+          </div>
+          {newPassword && confirm && newPassword !== confirm && (
+            <div className="text-xs text-red-600">Şifreler eşleşmiyor</div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { reset(); onOpenChange(false) }} disabled={saving}>
+            İptal
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={saving || !target || !newPassword || newPassword !== confirm}
+            className="bg-violet-600 hover:bg-violet-700 text-white"
+          >
+            {saving && <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1.5" />}
+            Şifreyi Sıfırla
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

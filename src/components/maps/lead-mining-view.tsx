@@ -1,14 +1,19 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   MapPin, Search, Download, Plus, Star, Phone, Globe, Check, X,
-  Loader2, Users, Eye, UserPlus, ZoomIn, ZoomOut, Layers, History,
+  Loader2, Users, Eye, UserPlus, Layers, History,
   Clock, ChevronRight, Building2, Filter, FileSpreadsheet, AlertCircle,
-  CheckCircle2, UserCircle, Sparkles, Navigation, MessageCircle,
+  CheckCircle2, UserCircle, Sparkles, MessageCircle,
+  Stethoscope, Scissors, UtensilsCrossed, Pill, Wrench, Dumbbell,
+  Scale, Calculator, ShoppingCart, BedDouble, PawPrint, GraduationCap, Home,
+  ShieldCheck, CloudOff, Coffee,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 
 import { apiGet, apiPost, apiPatch, qk } from '@/lib/api-client'
 import { CITIES, MAPS_CATEGORIES, LEAD_STATUSES, getLabel, getColor } from '@/lib/constants'
@@ -40,13 +45,52 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
+import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
+import type { CustomerPoint } from '@/components/maps/osm-map'
+
+// GERÇEK harita — Leaflet + OpenStreetMap (API anahtarsız). Yalnızca tarayıcıda yüklenir.
+const OsmMap = dynamic(
+  () => import('@/components/maps/osm-map').then((m) => m.OsmMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-[420px] sm:h-[480px] lg:h-[560px] rounded-xl border border-border bg-muted/40 flex items-center justify-center">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="text-sm">Harita yükleniyor…</span>
+        </div>
+      </div>
+    ),
+  },
+)
 
 // ----------------------------------------------------------------------------
 // Constants
 // ----------------------------------------------------------------------------
 
-const RADII = [5, 10, 25, 50] as const
+// Yarıçap önayarları (metre) — Overpass POI taraması için 0.5–5 km
+const RADII_M = [500, 1000, 2000, 3000, 5000] as const
+const DEFAULT_RADIUS_M = 2000
 const DAILY_LIMIT = 50
+
+// Kategori chip ikonları — MAPS_CATEGORIES.query sırasına göre
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  'diş kliniği': Stethoscope,
+  'kuaför': Scissors,
+  'restoran': UtensilsCrossed,
+  'eczane': Pill,
+  'otomotiv': Wrench,
+  'gym fitness': Dumbbell,
+  'avukat': Scale,
+  'muhasebe': Calculator,
+  'cafe': Coffee,
+  'market': ShoppingCart,
+  'otel': BedDouble,
+  'veteriner': PawPrint,
+  'eğitim': GraduationCap,
+  'emlak': Home,
+}
 
 // ----------------------------------------------------------------------------
 // API response shapes
@@ -56,6 +100,9 @@ interface SearchResponse {
   results: MapsResult[]
   searchId: string
   search: MapsSearch
+  provider?: 'osm' | 'fallback'
+  geocoded?: { lat: number; lng: number; displayName: string } | null
+  notice?: string
 }
 interface ImportResponse {
   created: Lead[]
@@ -71,6 +118,9 @@ interface LeadsResponse {
 }
 interface MapsSearchesResponse {
   items: MapsSearch[]
+}
+interface CustomerPointsResponse {
+  items: CustomerPoint[]
 }
 
 // ----------------------------------------------------------------------------
@@ -106,494 +156,6 @@ function webHref(web: string | null): string | null {
   return `https://${web}`
 }
 
-// ----------------------------------------------------------------------------
-// Map bounds + normalization + clustering
-// ----------------------------------------------------------------------------
-
-interface Bounds {
-  minLat: number
-  maxLat: number
-  minLng: number
-  maxLng: number
-}
-
-function computeBounds(results: MapsResult[]): Bounds | null {
-  if (results.length === 0) return null
-  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity
-  for (const r of results) {
-    minLat = Math.min(minLat, r.lat)
-    maxLat = Math.max(maxLat, r.lat)
-    minLng = Math.min(minLng, r.lng)
-    maxLng = Math.max(maxLng, r.lng)
-  }
-  const latRange = maxLat - minLat || 0.01
-  const lngRange = maxLng - minLng || 0.01
-  return {
-    minLat: minLat - latRange * 0.18,
-    maxLat: maxLat + latRange * 0.18,
-    minLng: minLng - lngRange * 0.18,
-    maxLng: maxLng + lngRange * 0.18,
-  }
-}
-
-function project(lat: number, lng: number, b: Bounds, zoom: number) {
-  const xRange = b.maxLng - b.minLng || 1
-  const yRange = b.maxLat - b.minLat || 1
-  let x = ((lng - b.minLng) / xRange) * 100
-  let y = ((b.maxLat - lat) / yRange) * 100 // invert Y
-  // zoom around center (50,50)
-  x = 50 + (x - 50) * zoom
-  y = 50 + (y - 50) * zoom
-  // clamp to viewport with padding
-  x = Math.max(4, Math.min(96, x))
-  y = Math.max(6, Math.min(94, y))
-  return { x, y }
-}
-
-interface MarkerItem {
-  type: 'cluster' | 'single'
-  x: number
-  y: number
-  count: number
-  results: MapsResult[]
-}
-
-function clusterMarkers(
-  positions: { x: number; y: number; result: MapsResult }[],
-  threshold: number,
-): MarkerItem[] {
-  const items: MarkerItem[] = []
-  const assigned = new Set<number>()
-  for (let i = 0; i < positions.length; i++) {
-    if (assigned.has(i)) continue
-    const group = [positions[i]]
-    assigned.add(i)
-    for (let j = i + 1; j < positions.length; j++) {
-      if (assigned.has(j)) continue
-      const dx = positions[i].x - positions[j].x
-      const dy = positions[i].y - positions[j].y
-      if (Math.sqrt(dx * dx + dy * dy) < threshold) {
-        group.push(positions[j])
-        assigned.add(j)
-      }
-    }
-    const cx = group.reduce((s, g) => s + g.x, 0) / group.length
-    const cy = group.reduce((s, g) => s + g.y, 0) / group.length
-    items.push({
-      type: group.length > 1 ? 'cluster' : 'single',
-      x: cx,
-      y: cy,
-      count: group.length,
-      results: group.map((g) => g.result),
-    })
-  }
-  return items
-}
-
-// ----------------------------------------------------------------------------
-// MapView — SVG + HTML markers, zoom, clusters, popover, legend
-// ----------------------------------------------------------------------------
-
-interface MapViewProps {
-  results: MapsResult[]
-  selectedIds: Set<string>
-  onToggleSelect: (placeId: string) => void
-  city: string | null
-  hasSearched: boolean
-}
-
-function MapView({
-  results, selectedIds, onToggleSelect, city, hasSearched,
-}: MapViewProps) {
-  const [zoom, setZoom] = useState(1)
-  const [activeMarker, setActiveMarker] = useState<MarkerItem | null>(null)
-  const [hovered, setHovered] = useState<string | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  // NOTE: zoom + activeMarker reset is handled by remount via `key` prop on
-  // the parent (key changes per search), so no effect needed here.
-  const bounds = useMemo(() => computeBounds(results), [results])
-
-  const items = useMemo(() => {
-    if (!bounds) return []
-    const positions = results.map((r) => ({
-      ...project(r.lat, r.lng, bounds, zoom),
-      result: r,
-    }))
-    // threshold shrinks as we zoom in
-    const threshold = Math.max(2.5, 8 / zoom)
-    return clusterMarkers(positions, threshold)
-  }, [results, bounds, zoom])
-
-  // deterministically generated street lines for visual richness
-  const streets = useMemo(() => {
-    const lines: { x1: number; y1: number; x2: number; y2: number; w: number; o: number }[] = []
-    let seed = 7
-    const rand = () => {
-      seed = (seed * 9301 + 49297) % 233280
-      return seed / 233280
-    }
-    for (let i = 0; i < 14; i++) {
-      const x1 = rand() * 100
-      const y1 = rand() * 100
-      const len = 20 + rand() * 50
-      const angle = rand() * Math.PI * 2
-      lines.push({
-        x1,
-        y1,
-        x2: x1 + Math.cos(angle) * len,
-        y2: y1 + Math.sin(angle) * len,
-        w: 0.4 + rand() * 1.4,
-        o: 0.04 + rand() * 0.08,
-      })
-    }
-    return lines
-  }, [])
-
-  const handleZoomIn = () => setZoom((z) => Math.min(3, +(z + 0.5).toFixed(1)))
-  const handleZoomOut = () => setZoom((z) => Math.max(1, +(z - 0.5).toFixed(1)))
-
-  const markerColor = (r: MapsResult): string => {
-    if (r.existsInCrm) return 'emerald'
-    if (selectedIds.has(r.placeId)) return 'sky'
-    return 'slate'
-  }
-
-  return (
-    <div
-      ref={containerRef}
-      className="relative w-full h-[420px] sm:h-[480px] lg:h-[560px] rounded-xl overflow-hidden border border-border bg-slate-100 dark:bg-slate-900 select-none"
-    >
-      {/* SVG background: gradient + grid + streets + water blobs */}
-      <svg
-        className="absolute inset-0 w-full h-full"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        aria-hidden
-      >
-        <defs>
-          <linearGradient id="mapBg" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="oklch(0.96 0.012 150)" />
-            <stop offset="55%" stopColor="oklch(0.94 0.018 170)" />
-            <stop offset="100%" stopColor="oklch(0.92 0.014 200)" />
-          </linearGradient>
-          <radialGradient id="park" cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0%" stopColor="oklch(0.88 0.05 145)" stopOpacity="0.55" />
-            <stop offset="100%" stopColor="oklch(0.88 0.05 145)" stopOpacity="0" />
-          </radialGradient>
-          <radialGradient id="water" cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0%" stopColor="oklch(0.82 0.04 220)" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="oklch(0.82 0.04 220)" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-        <rect width="100" height="100" fill="url(#mapBg)" />
-
-        {/* parks + water blobs */}
-        <ellipse cx="22" cy="30" rx="14" ry="10" fill="url(#park)" />
-        <ellipse cx="78" cy="72" rx="18" ry="12" fill="url(#park)" />
-        <ellipse cx="88" cy="22" rx="16" ry="10" fill="url(#water)" />
-        <ellipse cx="12" cy="82" rx="12" ry="8" fill="url(#water)" />
-
-        {/* grid lines */}
-        <g stroke="oklch(0.7 0.01 200)" strokeWidth="0.12" opacity="0.45">
-          {Array.from({ length: 11 }).map((_, i) => (
-            <line key={`v${i}`} x1={i * 10} y1="0" x2={i * 10} y2="100" />
-          ))}
-          {Array.from({ length: 11 }).map((_, i) => (
-            <line key={`h${i}`} x1="0" y1={i * 10} x2="100" y2={i * 10} />
-          ))}
-        </g>
-
-        {/* streets */}
-        <g stroke="oklch(0.55 0.005 200)" fill="none" strokeLinecap="round">
-          {streets.map((s, i) => (
-            <line
-              key={i}
-              x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
-              strokeWidth={s.w}
-              opacity={s.o}
-            />
-          ))}
-        </g>
-
-        {/* main avenues */}
-        <g stroke="oklch(0.5 0.005 200)" strokeWidth="0.7" opacity="0.18" fill="none" strokeLinecap="round">
-          <path d="M 0 55 Q 30 50 50 52 T 100 48" />
-          <path d="M 45 0 Q 48 30 52 50 T 58 100" />
-          <path d="M 10 10 Q 40 40 60 60 T 95 90" />
-        </g>
-      </svg>
-
-      {/* city label */}
-      <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/85 dark:bg-slate-800/85 backdrop-blur-sm border border-border shadow-sm">
-        <Navigation className="w-3.5 h-3.5 text-emerald-600" />
-        <span className="text-xs font-semibold">{city || 'Türkiye'}</span>
-        <span className="text-[10px] text-muted-foreground">· {results.length} sonuç</span>
-      </div>
-
-      {/* zoom controls */}
-      <div className="absolute top-3 right-3 flex flex-col gap-1 rounded-lg bg-white/85 dark:bg-slate-800/85 backdrop-blur-sm border border-border shadow-sm p-1">
-        <Button
-          variant="ghost" size="icon" className="h-7 w-7"
-          onClick={handleZoomIn} disabled={zoom >= 3}
-          aria-label="Yakınlaştır"
-        >
-          <ZoomIn className="w-4 h-4" />
-        </Button>
-        <Separator className="my-0.5" />
-        <Button
-          variant="ghost" size="icon" className="h-7 w-7"
-          onClick={handleZoomOut} disabled={zoom <= 1}
-          aria-label="Uzaklaştır"
-        >
-          <ZoomOut className="w-4 h-4" />
-        </Button>
-      </div>
-
-      {/* markers layer (HTML for native events + popover) */}
-      <div className="absolute inset-0">
-        {items.map((item, idx) => {
-          if (item.type === 'cluster') {
-            // dominant color of cluster
-            const allCrm = item.results.every((r) => r.existsInCrm)
-            const allSelected = item.results.every((r) => selectedIds.has(r.placeId))
-            const ringClass = allCrm
-              ? 'bg-emerald-500/90 border-emerald-600 text-white'
-              : allSelected
-                ? 'bg-sky-500/90 border-sky-600 text-white'
-                : 'bg-slate-600/90 border-slate-700 text-white'
-            return (
-              <button
-                key={`c${idx}`}
-                type="button"
-                className={cn(
-                  'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg',
-                  'flex items-center justify-center text-[11px] font-bold backdrop-blur-sm',
-                  'hover:scale-110 transition-transform z-10',
-                  'min-w-[28px] min-h-[28px] px-1',
-                  ringClass,
-                )}
-                style={{ left: `${item.x}%`, top: `${item.y}%` }}
-                onClick={() => {
-                  setActiveMarker(item)
-                  if (zoom < 3) handleZoomIn()
-                }}
-                aria-label={`${item.count} işletme küme`}
-              >
-                {item.count}
-              </button>
-            )
-          }
-          const r = item.results[0]
-          const color = markerColor(r)
-          const isHovered = hovered === r.placeId
-          const isActive = activeMarker?.results[0]?.placeId === r.placeId
-          const colorClasses: Record<string, string> = {
-            emerald: 'text-emerald-600 fill-emerald-500 drop-shadow-emerald',
-            sky: 'text-sky-600 fill-sky-500 drop-shadow-sky',
-            slate: 'text-slate-500 fill-slate-400',
-          }
-          return (
-            <button
-              key={r.placeId}
-              type="button"
-              className={cn(
-                'absolute -translate-x-1/2 -translate-y-full transition-transform',
-                'hover:scale-125 hover:z-20 focus:z-20 focus:outline-none',
-                (isHovered || isActive) && 'scale-125 z-20',
-              )}
-              style={{ left: `${item.x}%`, top: `${item.y}%` }}
-              onMouseEnter={() => setHovered(r.placeId)}
-              onMouseLeave={() => setHovered(null)}
-              onClick={() => setActiveMarker(item)}
-              aria-label={r.name}
-            >
-              <svg width="26" height="34" viewBox="0 0 26 34" className="overflow-visible">
-                <path
-                  d="M13 0C5.8 0 0 5.8 0 13c0 9.5 13 21 13 21s13-11.5 13-21C26 5.8 20.2 0 13 0z"
-                  className={colorClasses[color]}
-                  stroke="white"
-                  strokeWidth="1.6"
-                />
-                <circle cx="13" cy="13" r="4.5" fill="white" />
-              </svg>
-              {(selectedIds.has(r.placeId) || r.existsInCrm) && (
-                <span
-                  className={cn(
-                    'absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white shadow',
-                    r.existsInCrm ? 'bg-emerald-500' : 'bg-sky-500',
-                  )}
-                />
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* active marker popover */}
-      {activeMarker && (
-        <div
-          className="absolute z-30"
-          style={{
-            left: `${Math.min(72, Math.max(28, activeMarker.x))}%`,
-            top: `${Math.max(20, activeMarker.y - 8)}%`,
-            transform: 'translate(-50%, -100%)',
-          }}
-        >
-          <div className="relative rounded-lg border border-border bg-popover text-popover-foreground shadow-xl p-3 w-60 animate-fade-in">
-            <button
-              type="button"
-              className="absolute top-1.5 right-1.5 text-muted-foreground hover:text-foreground"
-              onClick={() => setActiveMarker(null)}
-              aria-label="Kapat"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-            {activeMarker.type === 'cluster' ? (
-              <div>
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <Layers className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {activeMarker.count} işletme
-                  </span>
-                </div>
-                <div className="space-y-1 max-h-32 overflow-y-auto custom-scroll pr-1">
-                  {activeMarker.results.slice(0, 6).map((r) => (
-                    <button
-                      key={r.placeId}
-                      type="button"
-                      className="w-full text-left text-xs hover:bg-muted rounded px-1.5 py-1 flex items-center gap-1.5"
-                      onClick={() => {
-                        onToggleSelect(r.placeId)
-                      }}
-                    >
-                      <span
-                        className={cn(
-                          'w-2 h-2 rounded-full shrink-0',
-                          r.existsInCrm ? 'bg-emerald-500' : selectedIds.has(r.placeId) ? 'bg-sky-500' : 'bg-slate-400',
-                        )}
-                      />
-                      <span className="truncate">{r.name}</span>
-                    </button>
-                  ))}
-                  {activeMarker.results.length > 6 && (
-                    <div className="text-[10px] text-muted-foreground px-1.5 pt-0.5">
-                      +{activeMarker.results.length - 6} daha...
-                    </div>
-                  )}
-                </div>
-                {zoom < 3 && (
-                  <Button
-                    size="sm" variant="outline" className="w-full mt-2 h-7 text-xs"
-                    onClick={handleZoomIn}
-                  >
-                    <ZoomIn className="w-3 h-3 mr-1" /> Yakınlaştır
-                  </Button>
-                )}
-              </div>
-            ) : (
-              (() => {
-                const r = activeMarker.results[0]
-                return (
-                  <div>
-                    <div className="flex items-start gap-2 mb-1.5 pr-4">
-                      <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold leading-tight truncate">{r.name}</div>
-                        <div className="text-[11px] text-muted-foreground">{r.category}</div>
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{r.address}</p>
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <StarRating rating={r.rating} reviewCount={r.reviewCount} />
-                      {r.existsInCrm ? (
-                        <Badge className="text-[10px] h-5 bg-emerald-100 text-emerald-700 border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3 mr-0.5" /> CRM'de var
-                        </Badge>
-                      ) : selectedIds.has(r.placeId) ? (
-                        <Badge className="text-[10px] h-5 bg-sky-100 text-sky-700 border-sky-200">
-                          <Check className="w-3 h-3 mr-0.5" /> Seçili
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-[10px] h-5">Yeni</Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {r.phone && (
-                        <Button asChild size="sm" variant="outline" className="h-7 flex-1 text-xs">
-                          <a href={telLink(r.phone)} target="_blank" rel="noreferrer">
-                            <Phone className="w-3 h-3 mr-1" /> Ara
-                          </a>
-                        </Button>
-                      )}
-                      {!r.existsInCrm && (
-                        <Button
-                          size="sm" variant={selectedIds.has(r.placeId) ? 'secondary' : 'default'}
-                          className="h-7 flex-1 text-xs"
-                          onClick={() => onToggleSelect(r.placeId)}
-                        >
-                          {selectedIds.has(r.placeId) ? (
-                            <><Check className="w-3 h-3 mr-1" /> Seçili</>
-                          ) : (
-                            <><Plus className="w-3 h-3 mr-1" /> Seç</>
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })()
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* legend */}
-      <div className="absolute bottom-3 left-3 flex items-center gap-3 px-3 py-2 rounded-lg bg-white/85 dark:bg-slate-800/85 backdrop-blur-sm border border-border shadow-sm">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-          <span className="text-[10px] font-medium">Mevcut</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
-          <span className="text-[10px] font-medium">Seçili</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
-          <span className="text-[10px] font-medium">Yeni</span>
-        </div>
-      </div>
-
-      {/* empty state */}
-      {!hasSearched && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center max-w-xs px-4">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm border border-border flex items-center justify-center mb-3 shadow-sm">
-              <MapPin className="w-7 h-7 text-muted-foreground/60" />
-            </div>
-            <p className="text-sm font-medium text-muted-foreground">
-              Arama yapınca sonuçlar burada görünecek
-            </p>
-            <p className="text-xs text-muted-foreground/70 mt-1">
-              Soldaki formu doldurup "Ara" butonuna tıklayın
-            </p>
-          </div>
-        </div>
-      )}
-
-      {hasSearched && results.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center">
-            <p className="text-sm font-medium text-muted-foreground">Sonuç bulunamadı</p>
-            <p className="text-xs text-muted-foreground/70 mt-1">Farklı bir sorgu deneyin</p>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ----------------------------------------------------------------------------
 // Import dialog
 // ----------------------------------------------------------------------------
 
@@ -933,13 +495,20 @@ export function LeadMiningView() {
   // search form state
   const [query, setQuery] = useState('')
   const [city, setCity] = useState<string>('İstanbul')
-  const [radius, setRadius] = useState<number>(10)
+  const [radius, setRadius] = useState<number>(DEFAULT_RADIUS_M) // metre
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
   // results state
   const [results, setResults] = useState<MapsResult[]>([])
   const [searchId, setSearchId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [hasSearched, setHasSearched] = useState(false)
+  const [provider, setProvider] = useState<'osm' | 'fallback' | null>(null)
+  const [geocoded, setGeocoded] = useState<{ lat: number; lng: number; displayName: string } | null>(null)
+
+  // harita senkron durumu
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [showCustomers, setShowCustomers] = useState(false)
 
   // dialog state
   const [importOpen, setImportOpen] = useState(false)
@@ -973,23 +542,50 @@ export function LeadMiningView() {
 
   const limitReached = todayCount >= DAILY_LIMIT
 
+  // ---- müşteri katmanı (konumlu CRM müşterileri) ----
+  const customersQuery = useQuery({
+    queryKey: ['maps-customer-points'],
+    queryFn: () => apiGet<CustomerPointsResponse>('/api/maps/customers-points'),
+    enabled: showCustomers,
+    staleTime: 60_000,
+  })
+  const customerPoints = useMemo(() => customersQuery.data?.items ?? [], [customersQuery.data])
+
   // ---- search mutation ----
   const searchMutation = useMutation({
-    mutationFn: (vars: { query: string; city: string; radius: number }) =>
+    mutationFn: (vars: { query: string; city: string; radius: number; category?: string | null }) =>
       apiPost<SearchResponse>('/api/maps/search', {
         query: vars.query,
         city: vars.city,
-        radius: vars.radius * 1000, // km → m
+        radius: vars.radius, // metre
+        category: vars.category || undefined,
       }),
     onSuccess: (data) => {
       setResults(data.results)
       setSearchId(data.searchId)
       setSelectedIds(new Set())
       setHasSearched(true)
+      setProvider(data.provider ?? null)
+      setGeocoded(data.geocoded ?? null)
       qc.invalidateQueries({ queryKey: qk.mapsSearches })
-      toast.success(`${data.results.length} işletme bulundu`, {
-        description: `${data.results.filter((r) => r.existsInCrm).length} tanesi zaten CRM'de.`,
-      })
+
+      if (data.provider === 'fallback') {
+        toast.warning('OpenStreetMap servisine ulaşılamadı — örnek veri gösteriliyor', {
+          description: 'Gerçek veri için bağlantı sağlandığında tekrar deneyin.',
+        })
+      }
+      if (data.results.length === 0) {
+        toast.info(`Bu bölgede "${query || selectedCategory || 'aramanız'}" için kayıt bulunamadı`, {
+          description: 'Yarıçapı büyütebilir veya farklı bir sorgu deneyebilirsiniz.',
+        })
+      } else {
+        toast.success(`${data.results.length} işletme bulundu`, {
+          description:
+            data.geocoded?.displayName
+              ? `${data.geocoded.displayName} çevresinde · OpenStreetMap`
+              : `${data.results.filter((r) => r.existsInCrm).length} tanesi zaten CRM'de.`,
+        })
+      }
     },
     onError: (e: Error) => toast.error('Arama başarısız', { description: e.message }),
   })
@@ -1009,13 +605,16 @@ export function LeadMiningView() {
       })
       return
     }
-    searchMutation.mutate({ query: query.trim(), city, radius })
-  }, [query, city, radius, limitReached, searchMutation])
+    searchMutation.mutate({ query: query.trim(), city, radius, category: selectedCategory })
+  }, [query, city, radius, selectedCategory, limitReached, searchMutation])
 
   const rerunSearch = useCallback((s: MapsSearch) => {
     setQuery(s.query)
     setCity(s.city || 'İstanbul')
-    setRadius(s.radius ? Math.round(s.radius / 1000) : 10)
+    // eski kayıtlar km cinsindendi — metreye çevir ve 0.5-5 km aralığına kırp
+    const r = Math.min(5000, Math.max(500, s.radius ?? DEFAULT_RADIUS_M))
+    setRadius(r)
+    setSelectedCategory(null)
     if (limitReached) {
       toast.error('Günlük arama limitine ulaşıldı')
       return
@@ -1023,7 +622,7 @@ export function LeadMiningView() {
     searchMutation.mutate({
       query: s.query,
       city: s.city || 'İstanbul',
-      radius: s.radius ? Math.round(s.radius / 1000) : 10,
+      radius: r,
     })
   }, [limitReached, searchMutation])
 
@@ -1135,7 +734,10 @@ export function LeadMiningView() {
             Potansiyel Müşteri Madenciliği
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Google Maps üzerindeki işletmeleri ara, seç ve CRM'ne lead olarak aktar.
+            OpenStreetMap üzerinden gerçek işletmeleri ara (kafe, klinik, market…), seç ve CRM'ne lead olarak aktar —
+            <span className="inline-flex items-center gap-1 ml-1 text-emerald-600 font-medium">
+              <ShieldCheck className="w-3.5 h-3.5" /> API anahtarsız, ücretsiz
+            </span>
           </p>
         </div>
       </div>
@@ -1167,31 +769,39 @@ export function LeadMiningView() {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    Maps API maliyet koruması için günlük {DAILY_LIMIT} arama ile sınırlıdır.
+                    Servis kullanım politikası koruması için günlük {DAILY_LIMIT} arama ile sınırlıdır.
                   </TooltipContent>
                 </Tooltip>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* category quick-select chips */}
+              {/* category quick-select chips — ikonlu */}
               <div className="flex flex-wrap gap-1.5">
-                {MAPS_CATEGORIES.map((c) => (
-                  <button
-                    key={c.query}
-                    type="button"
-                    onClick={() => setQuery(c.query)}
-                    className={cn(
-                      'text-xs px-2.5 py-1 rounded-full border transition-colors',
-                      'hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700',
-                      'dark:hover:bg-emerald-950/30 dark:hover:border-emerald-800',
-                      query === c.query
-                        ? 'bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800'
-                        : 'bg-muted/40 border-border text-muted-foreground',
-                    )}
-                  >
-                    {c.category}
-                  </button>
-                ))}
+                {MAPS_CATEGORIES.map((c) => {
+                  const Icon = CATEGORY_ICONS[c.query]
+                  const active = query === c.query && selectedCategory === c.category
+                  return (
+                    <button
+                      key={c.query}
+                      type="button"
+                      onClick={() => {
+                        setQuery(c.query)
+                        setSelectedCategory(c.category)
+                      }}
+                      className={cn(
+                        'text-xs px-2.5 py-1 rounded-full border transition-colors inline-flex items-center gap-1',
+                        'hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700',
+                        'dark:hover:bg-emerald-950/30 dark:hover:border-emerald-800',
+                        active
+                          ? 'bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800'
+                          : 'bg-muted/40 border-border text-muted-foreground',
+                      )}
+                    >
+                      {Icon && <Icon className="w-3 h-3" />}
+                      {c.category}
+                    </button>
+                  )
+                })}
               </div>
 
               <div className="grid sm:grid-cols-3 gap-2">
@@ -1199,7 +809,10 @@ export function LeadMiningView() {
                   <Input
                     placeholder="Arama sorgusu (örn: diş kliniği)"
                     value={query}
-                    onChange={(e) => setQuery(e.target.value)}
+                    onChange={(e) => {
+                      setQuery(e.target.value)
+                      setSelectedCategory(null) // serbest metin → sunucu kategoriyi tahmin eder
+                    }}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleSearch() }}
                     disabled={!canSearch || limitReached || searchMutation.isPending}
                   />
@@ -1214,20 +827,22 @@ export function LeadMiningView() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select
-                  value={String(radius)}
-                  onValueChange={(v) => setRadius(Number(v))}
-                  disabled={!canSearch || searchMutation.isPending}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Yarıçap" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RADII.map((r) => (
-                      <SelectItem key={r} value={String(r)}>{r} km</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-3 px-3 rounded-md border border-input bg-transparent h-9">
+                  <span className="text-xs text-muted-foreground shrink-0">Yarıçap</span>
+                  <Slider
+                    value={[RADII_M.indexOf(radius as (typeof RADII_M)[number]) >= 0 ? RADII_M.indexOf(radius as (typeof RADII_M)[number]) : 2]}
+                    min={0}
+                    max={RADII_M.length - 1}
+                    step={1}
+                    onValueChange={(v) => setRadius(RADII_M[v[0]])}
+                    disabled={!canSearch || searchMutation.isPending}
+                    aria-label="Arama yarıçapı"
+                    className="flex-1"
+                  />
+                  <span className="text-xs font-semibold tabular-nums shrink-0 w-12 text-right">
+                    {radius >= 1000 ? `${(radius / 1000).toLocaleString('tr-TR')} km` : `${radius} m`}
+                  </span>
+                </div>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -1338,8 +953,10 @@ export function LeadMiningView() {
                             <TableRow
                               key={r.placeId}
                               data-state={selected ? 'selected' : undefined}
-                              className="cursor-pointer"
+                              className={cn('cursor-pointer', hoveredId === r.placeId && 'bg-muted/60')}
                               onClick={() => toggleSelect(r.placeId)}
+                              onMouseEnter={() => setHoveredId(r.placeId)}
+                              onMouseLeave={() => setHoveredId((cur) => (cur === r.placeId ? null : cur))}
                             >
                               <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
                                 <Checkbox
@@ -1509,24 +1126,65 @@ export function LeadMiningView() {
           <div className="lg:sticky lg:top-4 space-y-3">
             <Card className="overflow-hidden">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-1.5">
-                  <MapPin className="w-4 h-4 text-emerald-600" />
-                  Harita Görünümü
-                </CardTitle>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <CardTitle className="text-base flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4 text-emerald-600" />
+                    Harita Görünümü
+                  </CardTitle>
+                  {/* Veri kaynağı rozeti — Gerçek OSM / Çevrimdışı örnek */}
+                  {provider === 'osm' && (
+                    <Badge className="text-[10px] h-5 bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
+                      <ShieldCheck className="w-3 h-3" /> Gerçek OSM
+                    </Badge>
+                  )}
+                  {provider === 'fallback' && (
+                    <Badge className="text-[10px] h-5 bg-amber-100 text-amber-700 border-amber-200 gap-1">
+                      <CloudOff className="w-3 h-3" /> Çevrimdışı örnek
+                    </Badge>
+                  )}
+                </div>
                 <CardDescription className="text-xs">
                   {hasSearched
                     ? `${results.length} işletme haritada gösteriliyor`
-                    : 'Arama sonuçları haritada görünecek'}
+                    : 'Arama sonuçları gerçek OSM haritasında görünecek'}
                 </CardDescription>
+                {/* Müşteri Katmanı aç/kapa */}
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 mt-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Layers className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium leading-tight">Müşteri Katmanı</div>
+                      <div className="text-[10px] text-muted-foreground leading-tight truncate">
+                        {showCustomers
+                          ? customerPoints.length > 0
+                            ? `${customerPoints.length} CRM müşterisi haritada`
+                            : customersQuery.isLoading
+                              ? 'Yükleniyor…'
+                              : 'Konumlu müşteri yok'
+                          : 'CRM müşterilerini haritada göster'}
+                      </div>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={showCustomers}
+                    onCheckedChange={setShowCustomers}
+                    aria-label="Müşteri katmanını aç/kapat"
+                  />
+                </div>
               </CardHeader>
               <CardContent className="p-4 pt-0">
-                <MapView
-                  key={searchId ?? 'initial'}
+                <OsmMap
                   results={results}
                   selectedIds={selectedIds}
+                  hoveredId={hoveredId}
                   onToggleSelect={toggleSelect}
+                  focus={geocoded}
+                  customers={customerPoints}
+                  showCustomers={showCustomers}
                   city={city}
+                  resultCount={results.length}
                   hasSearched={hasSearched}
+                  searching={searchMutation.isPending}
                 />
               </CardContent>
             </Card>
@@ -1544,7 +1202,7 @@ export function LeadMiningView() {
                 Maps Leadleri
               </CardTitle>
               <CardDescription className="text-xs mt-0.5">
-                Google Maps'ten içe aktarılan potansiyel müşteriler
+                OpenStreetMap'ten içe aktarılan potansiyel müşteriler
               </CardDescription>
             </div>
             <div className="flex items-center gap-1.5">

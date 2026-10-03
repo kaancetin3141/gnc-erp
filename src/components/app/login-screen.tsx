@@ -6,57 +6,36 @@ import { apiPost } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Building2, ChevronRight, Sparkles, Database, Shield, MapPin } from 'lucide-react'
-import { initials } from '@/lib/format'
-import { ROLE_LABELS } from '@/lib/rbac'
-import type { SessionUser, Role } from '@/types'
-
-interface DemoUser {
-  id: string
-  email: string
-  name: string
-  role: Role
-  title: string | null
-  tenantId: string
-  tenantName: string
-  avatarUrl: string | null
-  employeeCode: string | null
-}
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Building2, Shield, Database, MapPin, Mail, Lock, Eye, EyeOff, LogIn, Sparkles, AlertTriangle } from 'lucide-react'
+import type { SessionUser } from '@/types'
 
 export function LoginScreen() {
   const setSession = useAppStore((s) => s.setSession)
-  const [users, setUsers] = useState<DemoUser[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loginId, setLoginId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [checkingSeed, setCheckingSeed] = useState(true)
   const [needsSeed, setNeedsSeed] = useState(false)
   const [seeding, setSeeding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [mustChange, setMustChange] = useState(false)
 
   useEffect(() => {
-    loadUsers()
+    checkSeed()
   }, [])
 
-  async function loadUsers() {
+  async function checkSeed() {
     try {
-      setLoading(true)
       const res = await fetch('/api/auth')
       const data = await res.json()
-      if (!Array.isArray(data)) {
-        // API hata döndürdü — kullanıcıya göster
-        if (data?.error) {
-          setError(data.error)
-        } else {
-          setNeedsSeed(true)
-        }
-      } else if (data.length === 0) {
-        setNeedsSeed(true)
-      } else {
-        setUsers(data)
-      }
+      setNeedsSeed(!data?.seeded)
     } catch {
-      setError('Kullanıcılar yüklenemedi')
+      // sessiz — login denemesi yine de yapılabilir
     } finally {
-      setLoading(false)
+      setCheckingSeed(false)
     }
   }
 
@@ -65,7 +44,7 @@ export function LoginScreen() {
       setSeeding(true)
       setError(null)
       await apiPost('/api/seed')
-      await loadUsers()
+      await checkSeed()
       setNeedsSeed(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Seed başarısız')
@@ -74,26 +53,27 @@ export function LoginScreen() {
     }
   }
 
-  async function handleLogin(userId: string) {
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email.trim() || !password) return
     try {
-      setLoginId(userId)
+      setLoading(true)
       setError(null)
-      const res = await apiPost<{ sessionId: string; user: SessionUser }>('/api/auth', { userId })
+      const res = await apiPost<{ sessionId: string; user: SessionUser; mustChangePassword: boolean }>(
+        '/api/auth',
+        { email: email.trim(), password },
+      )
       setSession(res.user, res.sessionId)
+      setMustChange(!!res.mustChangePassword)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Giriş başarısız')
-      setLoginId(null)
+      setLoading(false)
     }
   }
 
-  const tenantGroups = users.reduce<Record<string, DemoUser[]>>((acc, u) => {
-    if (!acc[u.tenantName]) acc[u.tenantName] = []
-    acc[u.tenantName].push(u)
-    return acc
-  }, {})
-
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      {/* Sol marka paneli */}
       <div className="lg:w-1/2 lg:min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-8 lg:p-12 flex flex-col justify-between relative overflow-hidden">
         <div className="absolute inset-0 opacity-10" style={{
           backgroundImage: 'radial-gradient(circle at 20% 30%, white 1px, transparent 1px), radial-gradient(circle at 70% 60%, white 1px, transparent 1px)',
@@ -117,14 +97,14 @@ export function LoginScreen() {
             </span>
           </h1>
           <p className="text-slate-300 text-lg mb-10 max-w-md">
-            Müşteri portföyü, Google Maps potansiyel müşteri madenciliği, pipeline ve raporlar — hepsi tek platformda.
+            Müşteri portföyü, harita tabanlı potansiyel müşteri madenciliği, pipeline ve raporlar — hepsi tek platformda.
           </p>
 
           <div className="space-y-3 max-w-md">
             {[
               { icon: Building2, text: 'Müşteri 360° — tüm iletişim tek sayfada' },
               { icon: MapPin, text: 'Harita tabanlı potansiyel müşteri bulma' },
-              { icon: Shield, text: 'Rol bazlı yetki + çok kiracılı izolasyon' },
+              { icon: Shield, text: 'Rol bazlı yetki + güvenli oturum yönetimi' },
               { icon: Database, text: 'Pipeline, görevler, raporlar, dışa aktarma' },
             ].map((f, i) => (
               <div key={i} className="flex items-center gap-3 text-slate-200">
@@ -142,22 +122,31 @@ export function LoginScreen() {
         </div>
       </div>
 
+      {/* Sağ giriş formu */}
       <div className="lg:w-1/2 flex-1 flex items-center justify-center p-6 lg:p-12">
         <div className="w-full max-w-md">
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">Demo Girişi</h2>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">Giriş Yap</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Test için bir kullanıcı seçin. Her rolün farklı yetkileri vardır.
+              Hesabınıza e-posta ve şifrenizle giriş yapın.
             </p>
           </div>
 
           {error && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               {error}
             </div>
           )}
 
-          {needsSeed && (
+          {mustChange && (
+            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+              🔐 Varsayılan şifre kullanıyorsunuz — güvenliğiniz için sağ üst menüden
+              <span className="font-semibold"> Şifre Değiştir</span>&apos;i kullanın.
+            </div>
+          )}
+
+          {needsSeed && !checkingSeed && (
             <Card className="p-6 mb-6 border-amber-200 bg-amber-50">
               <div className="flex items-start gap-3">
                 <Sparkles className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -174,54 +163,82 @@ export function LoginScreen() {
             </Card>
           )}
 
-          {loading && (
+          {checkingSeed ? (
             <div className="space-y-3">
-              {[...Array(4)].map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-10 w-full" />
             </div>
-          )}
-
-          {!loading && !needsSeed && (
-            <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-1 custom-scroll">
-              {Object.entries(tenantGroups).map(([tenantName, tenantUsers]) => (
-                <div key={tenantName}>
-                  <div className="flex items-center gap-2 mb-3 px-1">
-                    <Building2 className="w-4 h-4 text-slate-400" />
-                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{tenantName}</span>
-                    <span className="text-xs text-slate-400">({tenantUsers.length} kullanıcı)</span>
-                  </div>
-                  <div className="space-y-2">
-                    {tenantUsers.map((u) => (
-                      <button
-                        key={u.id}
-                        onClick={() => handleLogin(u.id)}
-                        disabled={loginId !== null}
-                        className="w-full group flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-all text-left disabled:opacity-50"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 dark:from-slate-700 dark:to-slate-600 flex items-center justify-center text-sm font-semibold text-slate-700 dark:text-slate-200 shrink-0">
-                          {initials(u.name)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-slate-900 dark:text-white text-sm truncate">{u.name}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                            {ROLE_LABELS[u.role]} {u.title ? `· ${u.title}` : ''}
-                          </div>
-                          {u.employeeCode && (
-                            <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">{u.employeeCode}</div>
-                          )}
-                        </div>
-                        {loginId === u.id ? (
-                          <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-500 transition-colors shrink-0" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
+          ) : (
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="login-email" className="text-xs">E-posta</Label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    id="login-email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="ornek@gncinc.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="pl-9 h-11"
+                    disabled={loading}
+                    required
+                  />
                 </div>
-              ))}
-            </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="login-password" className="text-xs">Şifre</Label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="pl-9 pr-10 h-11"
+                    disabled={loading}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                    tabIndex={-1}
+                    aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                disabled={loading || !email.trim() || !password || needsSeed}
+                className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+              >
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Giriş yapılıyor...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <LogIn className="w-4 h-4" />
+                    Giriş Yap
+                  </span>
+                )}
+              </Button>
+
+              <div className="text-[11px] text-slate-400 dark:text-slate-500 text-center leading-relaxed">
+                Oturumunuz 30 gün boyunca güvenli şekilde saklanır.<br />
+                Şifrenizi unuttuysanız yöneticiniz sıfırlayabilir.
+              </div>
+            </form>
           )}
         </div>
       </div>

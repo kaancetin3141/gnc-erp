@@ -29,7 +29,7 @@ import {
   Receipt, Pencil, Trash2, RefreshCw, User, Calendar,
   Clock, CheckCircle2, AlertTriangle, TrendingUp, FileText,
   Printer, Plus, CircleCheckBig, Undo2, MessageCircle, CalendarClock,
-  HandCoins, Loader2,
+  HandCoins, Loader2, Send, Download,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { sendWhatsAppTracked } from '@/lib/whatsapp-hub'
@@ -43,6 +43,7 @@ import {
   INVOICE_STATUSES, getInvoiceStatusMeta,
   buildInvoiceWhatsAppMessage, overdueDays,
 } from './invoice-utils'
+import { SendDialog } from './send-dialog'
 
 // ============================================================
 // Fatura Detay Dialog
@@ -61,6 +62,7 @@ export function InvoiceDetailDialog({
   const [deleting, setDeleting] = useState(false)
   const [changing, setChanging] = useState(false)
   const [pdfOpen, setPdfOpen] = useState(false)
+  const [sendOpen, setSendOpen] = useState(false)
   const [quickBusy, setQuickBusy] = useState<string | null>(null)
 
   // Detay sorgu
@@ -244,11 +246,36 @@ export function InvoiceDetailDialog({
               <div className="flex items-center gap-1 shrink-0">
                 <Tooltip>
                   <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50"
+                      onClick={() => setSendOpen(true)}
+                    >
+                      <Send className="w-3.5 h-3.5 mr-1" /> Gönder
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>WhatsApp / e-posta / paylaşım linki ile gönder</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Button variant="outline" size="sm" onClick={() => setPdfOpen(true)}>
                       <FileText className="w-3.5 h-3.5 mr-1" /> PDF Görüntüle
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Fatura PDF önizleme</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { window.location.href = `/api/invoices/${invoice.id}/pdf?download=1` }}
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>PDF İndir (sunucuda üretilen gerçek dosya)</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -604,6 +631,23 @@ export function InvoiceDetailDialog({
       {pdfOpen && (
         <InvoicePdfDialog invoice={invoice} detail={detail} onClose={() => setPdfOpen(false)} />
       )}
+
+      {/* Gönderme diyalogu — WhatsApp / e-posta (SMTP) / paylaşım linki */}
+      <SendDialog
+        invoiceId={invoice.id}
+        open={sendOpen}
+        onOpenChange={(v) => {
+          setSendOpen(v)
+          if (!v) {
+            qc.invalidateQueries({ queryKey: ['invoice', invoice.id] })
+            qc.invalidateQueries({ queryKey: ['invoices'] })
+          }
+        }}
+        onPrint={() => {
+          setSendOpen(false)
+          setPdfOpen(true)
+        }}
+      />
 
       {/* Silme onayı */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

@@ -1,6 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import { useAppStore } from '@/store/app-store'
+import { apiDelete } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -8,10 +10,11 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu'
 import { useTheme } from 'next-themes'
-import { Sun, Moon, LogOut, Search, Menu, ChevronDown, Building2, Command } from 'lucide-react'
+import { Sun, Moon, LogOut, Search, Menu, ChevronDown, Building2, Command, KeyRound } from 'lucide-react'
 import { initials } from '@/lib/format'
 import { ROLE_LABELS } from '@/lib/rbac'
 import { NotificationCenter } from './notification-center'
+import { PasswordChangeDialog } from './password-change-dialog'
 
 const VIEW_TITLES: Record<string, string> = {
   dashboard: 'Genel Bakış',
@@ -45,6 +48,7 @@ const VIEW_TITLES: Record<string, string> = {
 export function Topbar() {
   const { user, view, logout, toggleSidebar, setCommandOpen } = useAppStore()
   const { theme, setTheme } = useTheme()
+  const [pwOpen, setPwOpen] = useState(false)
 
   if (!user) return null
 
@@ -141,12 +145,25 @@ export function Topbar() {
             <span>Tema: {theme === 'dark' ? 'Koyu' : 'Açık'}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem className="cursor-pointer text-red-600 focus:text-red-600" onClick={logout}>
+          <DropdownMenuItem className="cursor-pointer" onClick={() => setPwOpen(true)}>
+            <KeyRound className="w-4 h-4 mr-2" />
+            <span>Şifre Değiştir</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="cursor-pointer text-red-600 focus:text-red-600"
+            onClick={() => {
+              // Sunucudaki oturumu da iptal et (arka planda)
+              apiDelete('/api/auth').catch(() => null)
+              logout()
+            }}
+          >
             <LogOut className="w-4 h-4 mr-2" />
             <span>Çıkış Yap</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <PasswordChangeDialog open={pwOpen} onOpenChange={setPwOpen} />
     </header>
   )
 }

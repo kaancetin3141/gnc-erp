@@ -74,6 +74,7 @@ model User {
   email        String   @unique
   employeeCode String?  @unique // eşsiz personel kodu: "GNC-001", "KAFE-001"
   name         String
+  passwordHash String?  // bcrypt hash — gerçek şifreli giriş (null ise eski demo kullanıcı)
   role         String   @default("rep") // superadmin | admin | manager | rep | readonly | stock
   permissions  String   @default("[]") // JSON array of permission keys
   managerId    String?
@@ -97,6 +98,21 @@ model User {
   sentMessages    Message[]   @relation("MessageSender")
   receivedMessages Message[]  @relation("MessageReceiver")
   socialPosts      SocialPost[]
+  sessions        Session[]
+}
+
+// Gerçek oturum tablosu — rastgele token, kullanıcı ID'si doğrudan token olarak kullanılmaz
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // Şirket içi mesajlaşma (1-1 ve broadcast)

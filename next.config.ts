@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // pdfkit runtime'da fs ile AFM/font verisi okur — bundle'lanmamalı
+  serverExternalPackages: ['pdfkit'],
   typescript: {
     ignoreBuildErrors: true,
   },

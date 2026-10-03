@@ -1,12 +1,19 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef } from 'react'
+// Mesajlar — şirket içi gerçek zamanlı sohbet
+// - Gerçek zamanlı: socket.io (mini-services/chat-service, port 3003 → useChatSocket)
+//   Mesaj gönderimi REST POST /api/messages (kaynak doğruluk) + servis yayınlar.
+// - Scroll: kimlik bazlı akıllı kaydırma — kullanıcı yukarıdayken otomatik
+//   kaydırma yapılmaz, "↓ Yeni mesaj" pill butonu gösterilir.
+
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from '@/lib/api-client'
 import { useAppStore } from '@/store/app-store'
+import { useChatSocket, type ChatSocketStatus } from '@/lib/use-chat-socket'
 import { cn } from '@/lib/utils'
-import { initials } from '@/lib/format'
+import { initials, formatCurrency, formatDate } from '@/lib/format'
 import type { Role } from '@/types'
 import {
   Card, CardContent,
@@ -24,8 +31,12 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Send, ArrowLeft, MessageCircle, Search, Trash2, CheckCheck,
-  Paperclip,
+  Paperclip, ArrowDown, Copy, FileText, Package, FileSpreadsheet,
+  ClipboardList, Loader2, type LucideIcon,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -66,6 +77,23 @@ interface UsersResponse {
   total: number
 }
 
+type ChatDocumentType = 'Fatura' | 'Sipariş' | 'Proforma' | 'Teklif'
+
+interface ChatDocument {
+  id: string
+  number: string
+  customerName: string
+  total: number
+  currency: string
+  type: ChatDocumentType
+  createdAt: string
+}
+
+interface DocumentsResponse {
+  items: ChatDocument[]
+  total: number
+}
+
 const ROLE_AVATAR_GRADIENT: Record<Role, string> = {
   superadmin: 'from-amber-500 to-orange-600',
   admin: 'from-emerald-500 to-teal-600',
@@ -73,6 +101,32 @@ const ROLE_AVATAR_GRADIENT: Record<Role, string> = {
   rep: 'from-teal-500 to-cyan-600',
   readonly: 'from-slate-500 to-slate-600',
   stock: 'from-rose-500 to-pink-600',
+}
+
+const DOC_TYPE_ICON: Record<ChatDocumentType, LucideIcon> = {
+  Fatura: FileText,
+  Sipariş: Package,
+  Proforma: FileSpreadsheet,
+  Teklif: ClipboardList,
+}
+
+// Bağlantı durumu → rozet metni/renkleri
+const CONNECTION_META: Record<ChatSocketStatus, { label: string; dot: string; cls: string }> = {
+  online: {
+    label: 'Anlık',
+    dot: 'bg-emerald-500',
+    cls: 'text-emerald-700 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 dark:border-emerald-900 dark:text-emerald-300',
+  },
+  connecting: {
+    label: 'Bağlanıyor…',
+    dot: 'bg-amber-500',
+    cls: 'text-amber-700 border-amber-200 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-900 dark:text-amber-300',
+  },
+  offline: {
+    label: 'Yenileniyor',
+    dot: 'bg-slate-400',
+    cls: 'text-slate-600 border-border bg-muted/40 dark:text-slate-300',
+  },
 }
 
 // ─── Helper: format time HH:mm ───────────────────────────────────
@@ -92,11 +146,12 @@ function fmtDateLabel(dateStr: string): string {
   return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })
 }
 
-// ─── Mock online status (deterministic by user id) ───────────────
-function isOnline(userId: string): boolean {
-  // Online: id hash'in %3'ü 0 ise (yaklaşık 1/3)
-  const hash = userId.split('').reduce((s, c) => s + c.charCodeAt(0), 0)
-  return hash % 3 === 0
+// ─── Helper: mesaj içeriğinden belge eki çıkar ───────────────────
+// Format: "📎 Fatura FAT-2026-001 — Müşteri Adı — 1.234,56 TRY"
+function parseAttachment(content: string): { type: ChatDocumentType; number: string; rest: string } | null {
+  const match = /^📎\s*(Fatura|Sipariş|Proforma|Teklif)\s+([A-Za-z0-9çğıöşüÇĞİÖŞÜ._-]+)\s*—\s*([\s\S]*)$/.exec(content)
+  if (!match) return null
+  return { type: match[1] as ChatDocumentType, number: match[2], rest: match[3].trim() }
 }
 
 // ─── Main view ───────────────────────────────────────────────────
@@ -106,6 +161,9 @@ export function ChatView() {
   const [mobileShowConversation, setMobileShowConversation] = useState(false)
   const [search, setSearch] = useState('')
 
+  // Gerçek zamanlı bağlantı (socket.io) — presence + typing + read receipt
+  const { status: socketStatus, onlineUserIds, typingUserIds, sendTyping, sendReadReceipt } = useChatSocket()
+
   // Aynı şirketteki kullanıcıları çek (mesajlaşma için)
   const { data: usersData, isLoading: usersLoading } = useQuery({
     queryKey: ['chat-users'],
@@ -114,19 +172,20 @@ export function ChatView() {
   })
 
   // Tüm mesajları çek (currentUser ile ilgili) — sol panel preview + unread için
+  // (gerçek zamanlı akış socket'tan gelir; polling yedek: 30sn)
   const { data: allMessagesData } = useQuery({
     queryKey: ['all-messages'],
     queryFn: () => apiGet<MessagesResponse>('/api/messages?limit=200'),
     enabled: !!user,
-    refetchInterval: 3_000, // 3 saniye — daha hızlı yenileme
+    refetchInterval: 30_000,
   })
 
-  // Seçili kullanıcı ile 1-1 sohbet mesajları
+  // Seçili kullanıcı ile 1-1 sohbet mesajları (polling yedek: 30sn)
   const { data: conversationData, isLoading: conversationLoading } = useQuery({
     queryKey: ['conversation', selectedUserId],
     queryFn: () => apiGet<MessagesResponse>(`/api/messages?userId=${selectedUserId}&limit=200`),
     enabled: !!user && !!selectedUserId,
-    refetchInterval: 2_000, // 2 saniye — sohbette daha hızlı
+    refetchInterval: 30_000,
   })
 
   const allMessages = useMemo(() => allMessagesData?.items ?? [], [allMessagesData])
@@ -185,6 +244,8 @@ export function ChatView() {
     )
   }
 
+  const conn = CONNECTION_META[socketStatus]
+
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-4 animate-fade-in">
@@ -193,12 +254,25 @@ export function ChatView() {
           <div>
             <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
               <MessageCircle className="w-6 h-6 text-emerald-600" />
-              Mesajlar
+              <span className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 bg-clip-text text-transparent">
+                Mesajlar
+              </span>
             </h2>
             <p className="text-sm text-muted-foreground mt-0.5">
               Şirket içi anlık mesajlaşma — {colleagues.length} meslektaşınla iletişim kur.
             </p>
           </div>
+          {/* Bağlantı göstergesi */}
+          <Badge variant="outline" className={cn('gap-1.5 font-normal', conn.cls)}>
+            <span
+              className={cn(
+                'w-1.5 h-1.5 rounded-full',
+                conn.dot,
+                socketStatus === 'online' && 'animate-pulse',
+              )}
+            />
+            {conn.label}
+          </Badge>
         </div>
 
         <Card className="overflow-hidden">
@@ -246,7 +320,7 @@ export function ChatView() {
                         const meta = userMeta.get(u.id)
                         const unread = meta?.unread ?? 0
                         const isSelected = selectedUserId === u.id
-                        const online = isOnline(u.id)
+                        const online = onlineUserIds.has(u.id) // gerçek presence
                         return (
                           <button
                             key={u.id}
@@ -290,7 +364,7 @@ export function ChatView() {
                                     : u.title ?? '—'}
                                 </span>
                                 {unread > 0 && (
-                                  <Badge className="shrink-0 h-4 px-1.5 text-[10px] bg-emerald-600 text-white hover:bg-emerald-600">
+                                  <Badge className="unread-pulse shrink-0 h-4 px-1.5 text-[10px] bg-emerald-600 text-white hover:bg-emerald-600">
                                     {unread}
                                   </Badge>
                                 )}
@@ -307,7 +381,7 @@ export function ChatView() {
               {/* Sağ panel — sohbet */}
               <div
                 className={cn(
-                  'flex flex-col bg-background',
+                  'relative flex flex-col bg-background',
                   !mobileShowConversation && selectedUserId ? 'hidden md:flex' : 'flex',
                 )}
               >
@@ -317,6 +391,10 @@ export function ChatView() {
                     messages={conversationData?.items ?? []}
                     loading={conversationLoading}
                     currentUserId={user.id}
+                    onlineUserIds={onlineUserIds}
+                    isTyping={typingUserIds.has(selectedUserId)}
+                    sendTyping={sendTyping}
+                    sendReadReceipt={sendReadReceipt}
                     onBack={handleBack}
                   />
                 ) : (
@@ -346,34 +424,258 @@ function EmptyConversation() {
   )
 }
 
+// ─── Belge seçici diyaloğu (gerçek kayıtlar, aramalı) ────────────
+function DocumentPickerDialog({
+  open,
+  onOpenChange,
+  initialType,
+  onPick,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  initialType: ChatDocumentType
+  onPick: (doc: ChatDocument) => void
+}) {
+  const [typeFilter, setTypeFilter] = useState<ChatDocumentType | 'Tümü'>(initialType)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    if (open) {
+      setTypeFilter(initialType)
+      setSearch('')
+    }
+  }, [open, initialType])
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['chat-documents'],
+    queryFn: () => apiGet<DocumentsResponse>('/api/messages?type=documents'),
+    enabled: open,
+    staleTime: 30_000,
+  })
+
+  const filtered = useMemo(() => {
+    let list = data?.items ?? []
+    if (typeFilter !== 'Tümü') list = list.filter((d) => d.type === typeFilter)
+    if (search.trim()) {
+      const q = search.toLowerCase().trim()
+      list = list.filter(
+        (d) =>
+          d.number.toLowerCase().includes(q) ||
+          d.customerName.toLowerCase().includes(q),
+      )
+    }
+    return list
+  }, [data, typeFilter, search])
+
+  const types: (ChatDocumentType | 'Tümü')[] = ['Tümü', 'Fatura', 'Sipariş', 'Proforma', 'Teklif']
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Belge Gönder</DialogTitle>
+          <DialogDescription>
+            Gerçek bir belge seç — numarası mesaja ek olarak gider.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-wrap gap-1.5">
+          {types.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTypeFilter(t)}
+              className={cn(
+                'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                typeFilter === t
+                  ? 'border-emerald-600 bg-emerald-600 text-white'
+                  : 'border-border text-muted-foreground hover:bg-muted',
+              )}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Numara veya müşteri ara…"
+            className="pl-9 h-9 text-sm"
+          />
+        </div>
+
+        <div className="max-h-80 overflow-y-auto custom-scroll space-y-1.5 -mx-1 px-1">
+          {isLoading ? (
+            <div className="py-8 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Belgeler yükleniyor…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">
+              Bu kriterde belge bulunamadı.
+            </div>
+          ) : (
+            filtered.map((doc) => {
+              const Icon = DOC_TYPE_ICON[doc.type] ?? FileText
+              return (
+                <button
+                  key={`${doc.type}-${doc.id}`}
+                  type="button"
+                  onClick={() => onPick(doc)}
+                  className="w-full flex items-center gap-3 rounded-lg border p-2.5 text-left hover:bg-muted/60 transition-colors"
+                >
+                  <span className="w-8 h-8 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center shrink-0">
+                    <Icon className="w-4 h-4" />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-medium truncate">{doc.number}</span>
+                    <span className="block text-xs text-muted-foreground truncate">
+                      {doc.customerName} · {formatDate(doc.createdAt)}
+                    </span>
+                  </span>
+                  <span className="text-xs font-semibold tabular-nums shrink-0">
+                    {formatCurrency(doc.total, doc.currency)}
+                  </span>
+                </button>
+              )
+            })
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Conversation panel ──────────────────────────────────────────
 function ConversationPanel({
   otherUser,
   messages,
   loading,
   currentUserId,
+  onlineUserIds,
+  isTyping,
+  sendTyping,
+  sendReadReceipt,
   onBack,
 }: {
   otherUser: UsersResponse['items'][0] | null
   messages: ChatMessage[]
   loading: boolean
   currentUserId: string
+  onlineUserIds: ReadonlySet<string>
+  isTyping: boolean
+  sendTyping: (toUserId: string) => void
+  sendReadReceipt: (senderId: string) => void
   onBack: () => void
 }) {
   const qc = useQueryClient()
   const [input, setInput] = useState('')
+  const [docPickerOpen, setDocPickerOpen] = useState(false)
+  const [docPickerType, setDocPickerType] = useState<ChatDocumentType>('Fatura')
+
+  // ── Akıllı kaydırma state'leri ──
   const scrollRef = useRef<HTMLDivElement>(null)
+  const atBottomRef = useRef(true) // kullanıcı altta mı? (alttan <120px)
+  const forceScrollRef = useRef(false) // kendi mesajını gönderdi → her zaman en alta
+  const [showJumpPill, setShowJumpPill] = useState(false)
+  const [newBelowCount, setNewBelowCount] = useState(0)
+
+  // En alta kaydır — çift requestAnimationFrame ile (DOM paint'ten sonra)
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = scrollRef.current
+        if (!el) return
+        el.scrollTo({ top: el.scrollHeight, behavior })
+        atBottomRef.current = true
+        setShowJumpPill(false)
+        setNewBelowCount(0)
+      })
+    })
+  }, [])
+
+  // Kullanıcı kaydırınca pozisyonu izle (alttan >120px → otomatik kaydırma durur)
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    const atBottom = distance < 120
+    atBottomRef.current = atBottom
+    if (atBottom) {
+      setShowJumpPill(false)
+      setNewBelowCount(0)
+    } else {
+      setShowJumpPill(true)
+    }
+  }, [])
+
+  // Konuşma değişince (otherUser.id) anında en alta + göstergeleri sıfırla
+  useEffect(() => {
+    atBottomRef.current = true
+    setShowJumpPill(false)
+    setNewBelowCount(0)
+    scrollToBottom('auto')
+  }, [otherUser?.id, scrollToBottom])
+
+  // Mesaj listesi değiştiğinde (array identity + son mesaj id) kaydır:
+  //  - kendi gönderdiğimiz mesaj → HER ZAMAN en alta
+  //  - zaten alttaysak → sessizce takip et
+  //  - yukarıda okuyorsak → KAYDIRMA, "yeni mesaj" sayacını artır
+  const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : ''
+  useEffect(() => {
+    if (messages.length === 0) return
+    if (forceScrollRef.current) {
+      forceScrollRef.current = false
+      scrollToBottom('smooth')
+      return
+    }
+    const last = messages[messages.length - 1]
+    if (atBottomRef.current) {
+      scrollToBottom('auto')
+    } else if (last.senderId !== currentUserId) {
+      setNewBelowCount((c) => c + 1)
+    }
+  }, [messages, lastMessageId, currentUserId, scrollToBottom])
 
   const sendMut = useMutation({
-    mutationFn: (body: { receiverId: string; content: string }) =>
-      apiPost<ChatMessage>('/api/messages', body),
-    onSuccess: () => {
+    mutationFn: (body: {
+      receiverId: string
+      content: string
+      attachmentType?: string
+      attachmentId?: string
+      attachmentName?: string
+    }) => apiPost<ChatMessage>('/api/messages', body),
+    onSuccess: (msg) => {
       setInput('')
+      // Optimistic enjeksiyon (socket event'i id ile tekilleştirir)
+      if (otherUser?.id) {
+        const conv = qc.getQueryData<MessagesResponse>(['conversation', otherUser.id])
+        if (conv && !conv.items.some((m) => m.id === msg.id)) {
+          qc.setQueryData<MessagesResponse>(['conversation', otherUser.id], {
+            ...conv,
+            items: [...conv.items, msg],
+            total: conv.total + 1,
+          })
+        }
+        const all = qc.getQueryData<MessagesResponse>(['all-messages'])
+        if (all && !all.items.some((m) => m.id === msg.id)) {
+          qc.setQueryData<MessagesResponse>(['all-messages'], {
+            ...all,
+            items: [...all.items, msg],
+            total: all.total + 1,
+          })
+        }
+      }
       qc.invalidateQueries({ queryKey: ['all-messages'] })
-      qc.invalidateQueries({ queryKey: ['conversation', otherUser?.id] })
       qc.invalidateQueries({ queryKey: ['unread-messages'] })
     },
-    onError: (e: ApiError) => toast.error('Mesaj gönderilemedi', { description: e.message }),
+    onError: (e: ApiError) => {
+      forceScrollRef.current = false
+      toast.error('Mesaj gönderilemedi', { description: e.message })
+    },
   })
 
   const deleteMut = useMutation({
@@ -390,20 +692,28 @@ function ConversationPanel({
 
   const handleSend = () => {
     if (!input.trim() || !otherUser) return
+    // Mesaj gönderince HER ZAMAN en alta (kullanıcı yukarıdayken bile)
+    forceScrollRef.current = true
+    scrollToBottom('smooth')
     sendMut.mutate({ receiverId: otherUser.id, content: input.trim() })
   }
 
-  // Belge gönder (fatura/sipariş/proforma/çeki listesi)
-  const handleSendAttachment = (type: string, id: string, name: string) => {
+  // Gerçek belge gönder (fatura/sipariş/proforma/teklif — gerçek kayıtlar)
+  const handleSendDocument = (doc: ChatDocument) => {
     if (!otherUser) return
+    forceScrollRef.current = true
+    scrollToBottom('smooth')
     sendMut.mutate({
       receiverId: otherUser.id,
-      content: `${type} gönderildi: ${name}`,
-      attachmentType: type,
-      attachmentId: id,
-      attachmentName: name,
+      content: `📎 ${doc.type} ${doc.number} — ${doc.customerName} — ${formatCurrency(doc.total, doc.currency)}`,
+      attachmentType: doc.type,
+      attachmentId: doc.id,
+      attachmentName: doc.number,
     })
-    toast.success(`${type} gönderildi`, { description: name })
+    toast.success(`${doc.type} gönderildi`, {
+      description: `${doc.number} · ${doc.customerName}`,
+    })
+    setDocPickerOpen(false)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -417,33 +727,40 @@ function ConversationPanel({
     deleteMut.mutate(id)
   }
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [messages.length])
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard?.writeText(text).then(
+      () => toast.success('Kopyalandı', { description: text }),
+      () => toast.error('Kopyalanamadı'),
+    )
+  }
 
-  // Mark received messages as read on view
-  const unreadReceived = messages.filter(
-    (m) => m.receiverId === currentUserId && !m.isRead,
-  )
+  // ── Görüldü: gelen okunmamışları işaretle (PATCH = DB doğruluğu, socket = anında sinyal)
+  const messagesRef = useRef(messages)
   useEffect(() => {
-    if (unreadReceived.length === 0) return
+    messagesRef.current = messages
+  }, [messages])
+  const unreadCount = useMemo(
+    () => messages.reduce((n, m) => n + (m.receiverId === currentUserId && !m.isRead ? 1 : 0), 0),
+    [messages, currentUserId],
+  )
+  const otherId = otherUser?.id ?? null
+  useEffect(() => {
+    if (unreadCount === 0 || !otherId) return
     const mark = async () => {
+      sendReadReceipt(otherId) // anında görüldü sinyali (socket)
+      const targets = messagesRef.current.filter(
+        (m) => m.receiverId === currentUserId && !m.isRead,
+      )
       await Promise.all(
-        unreadReceived.map((m) =>
-          apiPatch(`/api/messages/${m.id}`, {}).catch(() => null),
-        ),
+        targets.map((m) => apiPatch(`/api/messages/${m.id}`, {}).catch(() => null)),
       )
       qc.invalidateQueries({ queryKey: ['all-messages'] })
-      qc.invalidateQueries({ queryKey: ['conversation', otherUser?.id] })
+      qc.invalidateQueries({ queryKey: ['conversation', otherId] })
       qc.invalidateQueries({ queryKey: ['unread-messages'] })
     }
     const t = setTimeout(mark, 400)
     return () => clearTimeout(t)
-     
-  }, [unreadReceived.length, otherUser?.id])
+  }, [unreadCount, otherId, currentUserId, qc, sendReadReceipt])
 
   if (!otherUser) {
     return <EmptyConversation />
@@ -461,7 +778,7 @@ function ConversationPanel({
     groups[groups.length - 1].messages.push(m)
   }
 
-  const online = isOnline(otherUser.id)
+  const online = onlineUserIds.has(otherUser.id)
 
   return (
     <>
@@ -501,9 +818,20 @@ function ConversationPanel({
         </div>
       </div>
 
+      {/* Yazıyor göstergesi */}
+      {isTyping && (
+        <div className="flex items-center gap-1 px-4 py-1.5 border-b bg-emerald-50/60 dark:bg-emerald-950/20 text-[11px] text-emerald-700 dark:text-emerald-300">
+          <span className="typing-dot" />
+          <span className="typing-dot [animation-delay:150ms]" />
+          <span className="typing-dot [animation-delay:300ms]" />
+          <span className="ml-1">{otherUser.name} yazıyor…</span>
+        </div>
+      )}
+
       {/* Messages */}
       <div
         ref={scrollRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto custom-scroll p-4 space-y-4 bg-muted/10"
       >
         {loading ? (
@@ -529,6 +857,8 @@ function ConversationPanel({
               </div>
               {g.messages.map((m) => {
                 const mine = m.senderId === currentUserId
+                const att = parseAttachment(m.content)
+                const AttIcon = att ? DOC_TYPE_ICON[att.type] : null
                 return (
                   <div
                     key={m.id}
@@ -552,14 +882,32 @@ function ConversationPanel({
                     )}
                     <div
                       className={cn(
-                        'max-w-[75%] rounded-2xl px-3.5 py-2 text-sm relative',
+                        'max-w-[75%] rounded-2xl px-3.5 py-2 text-sm relative space-y-1.5',
                         mine
                           ? 'bg-emerald-600 text-white rounded-br-sm'
                           : 'bg-background border rounded-bl-sm',
                       )}
                     >
+                      {att && AttIcon ? (
+                        // Belge eki chip'i — tıklayınca numara panoya kopyalanır
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(att.number)}
+                          title="Numarayı panoya kopyala"
+                          className={cn(
+                            'flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-colors w-fit',
+                            mine
+                              ? 'bg-white/15 hover:bg-white/25 text-white'
+                              : 'bg-muted hover:bg-accent text-foreground',
+                          )}
+                        >
+                          <AttIcon className="w-3.5 h-3.5 shrink-0" />
+                          <span>{att.type} · {att.number}</span>
+                          <Copy className="w-3 h-3 opacity-60 shrink-0" />
+                        </button>
+                      ) : null}
                       <div className="whitespace-pre-wrap break-words leading-snug">
-                        {m.content}
+                        {att ? att.rest : m.content}
                       </div>
                       <div
                         className={cn(
@@ -599,6 +947,23 @@ function ConversationPanel({
         )}
       </div>
 
+      {/* "↓ Yeni mesaj" pill — kullanıcı yukarı okurken görünür */}
+      {showJumpPill && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom('smooth')}
+          className="absolute bottom-24 right-5 z-10 flex items-center gap-1.5 rounded-full bg-emerald-600 px-3.5 py-2 text-xs font-medium text-white shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 transition-colors animate-fade-in"
+        >
+          <ArrowDown className="w-3.5 h-3.5" />
+          {newBelowCount > 0 ? 'Yeni mesaj' : 'En alta git'}
+          {newBelowCount > 0 && (
+            <span className="unread-pulse flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[10px] font-bold text-emerald-700">
+              {newBelowCount}
+            </span>
+          )}
+        </button>
+      )}
+
       {/* Input */}
       <div className="p-3 border-t bg-background">
         <div className="flex items-center gap-2">
@@ -611,23 +976,26 @@ function ConversationPanel({
             <DropdownMenuContent align="start">
               <DropdownMenuLabel>Belge Gönder</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => otherUser && handleSendAttachment('Fatura', 'son', otherUser.name)}>
+              <DropdownMenuItem onClick={() => { setDocPickerType('Fatura'); setDocPickerOpen(true) }}>
                 🧾 Fatura
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => otherUser && handleSendAttachment('Sipariş', 'son', otherUser.name)}>
+              <DropdownMenuItem onClick={() => { setDocPickerType('Sipariş'); setDocPickerOpen(true) }}>
                 📦 Sipariş
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => otherUser && handleSendAttachment('Proforma', 'son', otherUser.name)}>
+              <DropdownMenuItem onClick={() => { setDocPickerType('Proforma'); setDocPickerOpen(true) }}>
                 📄 Proforma
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => otherUser && handleSendAttachment('Çeki Listesi', 'son', otherUser.name)}>
-                📋 Çeki Listesi
+              <DropdownMenuItem onClick={() => { setDocPickerType('Teklif'); setDocPickerOpen(true) }}>
+                📋 Teklif
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value)
+              if (otherUser) sendTyping(otherUser.id)
+            }}
             onKeyDown={handleKeyDown}
             placeholder={`${otherUser.name} kişisine mesaj yaz…`}
             disabled={sendMut.isPending}
@@ -646,6 +1014,14 @@ function ConversationPanel({
           Enter ile gönder · Shift+Enter ile yeni satır
         </div>
       </div>
+
+      {/* Gerçek belge seçici */}
+      <DocumentPickerDialog
+        open={docPickerOpen}
+        onOpenChange={setDocPickerOpen}
+        initialType={docPickerType}
+        onPick={handleSendDocument}
+      />
     </>
   )
 }

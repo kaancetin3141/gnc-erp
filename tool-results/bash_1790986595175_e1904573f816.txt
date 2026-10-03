@@ -1,0 +1,300 @@
+Work Log:
+- QA (değerlendirme): tüm servisler sağlıklı; agent-browser ile admin girişinde Dashboard, Teklifler (proforma notu), Faturalar (6 KPI + "167.900 ₺" bölünmeden), Belge Yönetimi (şirket→sipariş hiyerarşisi), WhatsApp Merkezi regresyonu temiz → 1 küçük bug bulundu, yeni özellik turuna geçildi
+- BUG FIX (QA bulgusu): WhatsApp Merkezi'nde topbar başlığı "GNC CRM" fallback olarak kalıyordu — topbar.tsx VIEW_TITLES map'ine 'whatsapp-hub': 'WhatsApp Merkezi' eklendi; e2e doğrulandı (header artık "WhatsApp Merkezi" gösteriyor)
+- FEATURE A: WHATSAPP MERKEZİ EXCEL İHRAÇI — header'a "Dışa Aktar" butonu (aktif filtrelenmiş liste: durum/tür/arama); exportRowsToExcel ile 11 kolon (Durum, Tür, Müşteri, Telefon, Belge No, Tutar, Başlık, Mesaj, Gönderen, Oluşturulma, Gönderim); boş liste koruması; e2e doğrulandı ("3 kayıt Excel olarak indirildi" toast)
+- FEATURE B: MÜŞTERİ 360 TRACKED WHATSAPP — yeni yeniden kullanılabilir bileşen src/components/whatsapp/quick-composer-dialog.tsx (telefon + mesaj editable, karakter sayacı, sendWhatsAppTracked ile Merkez kaydı); Müşteri 360 header'daki raw wa.me "WhatsApp" butonu bu besteciye çevrildi (waText önyüklü geliyor); "Şablonlu WhatsApp" (template-picker-dialog) da tracked'a geçti (opsiyonel customerId prop'u; müşteri bağlamı varsa Merkez kaydı, yoksa eski davranış); e2e: Uludağ A.Ş. → composer önyüklü (+90 548 264 29 12 + "Merhaba Uludağ A.Ş.,") → gönderim → Merkez'de "Serbest Mesaj — Uludağ A.Ş." kaydı oluştu
+- FEATURE C: AİDAT HATIRLATMALARI MERKEZ KAYDI — send-reminders API'si her hatırlatma için WhatsAppMessage kaydı oluşturuyor (contextType=aidat_hatirlatma, contextNo="Aidat AA/YYYY", tutar+para birimi, blok/daire başlığı, createdByName); yanıt waMessageId taşıyor; site-view toplu hatırlatma her linki açıp açılan kaydı gonderildi işaretliyor (popup engellenirse kuyrukta kalır + toast sayısını raporlar); satır bazlı wa.me linki de aynı akışa çevrildi (artık tracked); İYİLEŞTİRME: toplu hatırlatma filtresi 'odenmedi' + 'gecikti' durumlarını da kapsıyor (geciken aidat en çok hatırlatmayı hak eder); geçersiz telefonlar client-side atlanıyor (link='#' koruması + bilgi toast'ı); e2e (Park Sitesi Yöneticisi): 4 kayıt oluştu (2 odenmedi + 2 gecikti, Aidat 8/2026 + 9/2026, A/B Blok), mesaj metni doğru ("Park Sitesi 9/2026 aidatınızın (750 ₺) son ödeme tarihi 05.09.2026"), kiracı izolasyonu doğrulandı (site hub'ı yalnız kendi kayıtlarını görüyor)
+- FEATURE D: BİLDİRİM KUYRUK UYARISI — /api/notifications'a 'whatsapp_queued' tipi: kuyrukta mesaj sayısı + en eski kayıt (müşteri/belge no + bekleme süresi; ≥24 saatte severity warning); notification-center'da MessageSquareText ikonu + "WhatsApp Kuyruğu" etiketi + tıklanınca whatsapp-hub görünümüne geçiş; e2e: "3 gönderilmemiş WhatsApp mesajı" bildirimi göründü
+- DOĞRULAMA (durum makinesi): agent-browser popup sonrası PATCH yarım kaldığı için (Tour 10'da bilinen sınırlama) PATCH API doğrudan test edildi → 200; UI canlı güncellendi (Kuyrukta 3→2, Gönderildi 1→2, Bugün 1→2)
+- MOBIL (390px doğrulama): WhatsApp Merkezi — header butonları (Dışa Aktar/Yenile/Yeni Mesaj) tek satır, 2 kolon istatistik, filtre chip'leri sarma, docWidth 390 taşma yok
+- OPS (KRİTİK): tur içinde next-server 2 kez OOM öldürüldü (dmesg: "Killed process next-server, anon-rss:2.1GB"; sunucu 4GB); Bash aracı arka plan süreçlerini reap ettiği için normal nohup/setsid yetmedi — ÇÖZÜM: auto-restart.sh watchdog'unu ÇİFT-FORK ile başlatmak: bash -c '(nohup bash auto-restart.sh </dev/null >/dev/null 2>&1 &)' → süreç init'e altın, araç çağrıları arasında hayatta kalıyor; lint sonrası da server sağlıklı kaldı (200)
+- OPS: lint 0 error 0 warning; değişen dosyalarda tip hatası yok
+
+Stage Summary:
+- Tur 11 tamamlandı: 1 bug fix (topbar başlığı), 4 yeni özellik (Merkez Excel ihracı, Müşteri 360 tracked besteci + şablonlu WhatsApp tracked, aidat hatırlatmalarının Merkez kaydı + gecikti kapsaması, bildirim kuyruk uyarısı), mobil doğrulama; lint 0/0
+- WhatsApp takip zinciri artık UÇTAN UCA: fatura hatırlatma, teklif/proforma gönderim, randevu onayı, şablonlu WhatsApp, serbest mesaj, müşteri 360 bestecisi VE aidat hatırlatmaları — hepsi Merkez'e kaydediliyor; popup engellenen her gönderim kuyruktan tek tıkla gönderilebiliyor; kuyrukta bekleyenler bildirim zilinde görünüyor ve tıklayınca Merkeze götürüyor
+- Kiracı izolasyonu Merkez'de doğrulandı: CRM kiracısı (4 kayıt) ve Site kiracısı (4 aidat kaydı) birbirini görmüyor
+- Risk: sunucu belleği dar (4GB) — next-server 2GB'a tırmanabiliyor ve OOM öldürülebiliyor; uzun QA + lint/tsc kombinasyonundan kaçının; sunucu ölürse çift-fork watchdog komutunu kullanın (yukarıda)
+- Risk: agent-browser popup açılınca ana sayfanın fetch promise'leri yarıda kesiliyor — gerçek tarayıcıda sorun değil; testlerde PATCH'i UI akışından veya API'den doğrulayın
+- Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (kuyruk + channel + kayıt altyapısı tamam — tek eksik provider credentials), Mesaj Merkezi'ne tür bazlı toplu işlemler (tüm kuyrukta'ları tek tıkla aç), aidat hatırlatmalarına site bazlı şablon düzenleme, randevu onay bildirimlerinin tracked'a kablolaması (randevu_onay bağlam tipi hazır ama şu an düz wa.me), dashboard'a WhatsApp gönderim istatistik widget'ı
+---
+Task ID: 12
+Agent: Z.ai Code (WebDevReview Cron Turu 12)
+Task: Kullanıcı talepleri: (1) Belgelere ihracat belgeleri ekleme, (2) Sosyal medya inceleme + eksikleri giderme, (3) "hesap bağlantısını koparıp tekrar hesap açınca bu hesap bağlı diyor" bug'ının düzeltilmesi, (4) VPS donanım gereksinimleri dokümanı
+
+Work Log:
+- BUG FIX (kullanıcı raporu): Sosyal medya hesabı yeniden bağlama — DELETE /api/social/accounts/[id] soft-delete yapıyordu (isActive=false, kayıt DB'de kalıyordu) ama POST /api/social/accounts'taki unique kontrolü (tenantId_platform_handle) pasif kaydı da bulup 409 "Bu hesap zaten bağlı" dönüyordu. FIX: POST artık pasif kayıt bulursa YENİDEN BAĞLIYOR (update: isActive=true, connectedAt=now, disconnectedAt=null, token'lar tazeleniyor); aktif kayıtta 409 korunuyor. agent-browser e2e doğrulama: Twitter mock hesap bağlandı → bağlantısı kesildi → AYNI handle ile tekrar bağlandı ("Hesap bağlandı" toast'ı, eskiden hata veriyordu)
+- FEATURE: İHRACAT BELGELERİ (Belge Yönetimi'ne 3. sekme) — dış ticaret evrak seti:
+  - Prisma: yeni ExportDoc modeli (tenantId, orderId, customerId, type: atr|eur1|mense|gumruk|konsimento|sigorta, number, status: taslak|hazir|imzalandi|gonderildi|iptal, transportMode, incoterms, destinationCountry, portOfLoading/Discharge, vesselName, containerNo, vehiclePlate, carrierName, insuranceCompany, policyAmount/Currency, notes) + Tenant/Customer/Order ilişkileri; db:push tamamlandı, 3 indeks + unique(tenantId, number)
+  - API: POST /api/orders/[id]/generate-document 6 ihracat türünü destekliyor (idempotent — sipariş+tür başına tek belge; numara formatı ATR-2026-001/EUR1/MSH/GBE/KNS/SIG; hedef ülke müşteri ülkesinden, akıllı varsayılanlar); GET/PATCH/DELETE /api/export-docs/[id] (detay + mal kalemleri fatura/üretim listesinden + PATCH ile ticari alan düzenleme + DELETE sadece erp.manage); yetki: erp.manage VEYA invoices.view (depocu ihracat belgesi göremez — ticari evrak)
+  - GET /api/orders yanıtına exportDocs eklendi (id, type, number, status) — depo serializer'ına DAHİL EDİLMEDİ (fiyat gizliliği korunuyor)
+  - YENİ SEKME: documents-view'a "İhracat" tab'ı (yalnız canSeeExport için; depocuda görünmez) → yeni bileşen export-docs-tab.tsx: 6 tür istatistik kartı (x / N sipariş), teal bilgi şeridi (hangi ülkeye hangi belge), Şirket→Sipariş hiyerarşisi (Sipariş Belgeleri sekmesiyle aynı desen), her sipariş için 6 belge butonu (tür bazlı renk paleti + üretilmişse FileCheck rozeti + tooltip'te belge numarası), arama, loading/empty durumları
+  - PDF: ExportDocDocPage (doc-pages.tsx) — A4 şablon sayfası; PdfHeader/PdfFooter + useInvoiceTemplate ile KULLANICININ FATURA ŞABLONU UYGULANIYOR (şirket adı/adres/VKN); tür bazlı özel bloklar (konşimento: gemi/konteyner/limanlar; sigorta: şirket/poliçe tutarı/emerald vurgu; beyanname: çıkış/varış gümrüğü; ATR/EUR.1/Menşe: taşıma+hedef); mal kalemleri tablosu (değer+an ağırlık koşullu kolonlar), toplamlar, imza bloğu; ExportDocPdfDialog — önizleme + "Bilgiler" düzenleme paneli (taşıma şekli, Incoterms 10 seçenek, hedef ülke, taşıyıcı, limanlar, plaka, gemi/konteyner konşimento, sigorta şirketi, notlar — canlı önizleme güncellemesi) + durum akışı (taslak→hazir→imzalandi→gonderildi + İptal;PATCH ile)
+- SOCIAL MEDIA İYİLEŞTİRMELERİ (inceleme sonrası eksik giderme):
+  - GET /api/social/accounts yanıtına tokenExpiresAt eklendi + SocialAccountItem tipine
+  - platforms.ts: platformProfileUrl() helper (11 platformun gerçek profil linki: x.com/instagram.com/linkedin.com/t.me/wa.me vb.) + tokenExpiryStatus() (none|expired|soon|ok)
+  - AccountsView: hesap kartı gradient header'ına "Profili Aç" link butonu (ExternalLink, black/25 overlay); gerçek hesaplarda token bitiş uyarısı — süresi dolmuş (kırmızı: "Token süresi doldu — yeniden bağlayın") ve 7 gün içinde bitiyor (amber: "Token N gün içinde bitiyor")
+- DOCS: DEPLOY.md'ye "VPS Donanım Gereksinimleri (VDS'e kurulum)" bölümü — 4 ölçek tablosu (Demo 2GB / KOBİ 4GB önerilen minimum / Büyüyen 8GB / Kurumsal 16GB; vCPU-RAM-NVMe-trafik-maliyet), RAM kritik uyarısı (4GB'ta next-server 2GB'a tırmanıyor — gerçek ölçüm), OS/yazılım gereksinimleri (Ubuntu 22.04+, Bun/Node 20+, Caddy, 80/443), SQLite yedekleme notu, swap önerisi, kurulum adımları özeti
+- DOĞRULAMA (agent-browser e2e): İhracat sekmesi açıldı (3 sipariş listelendi) → SIP-2026-003 ATR butonu → ATR-2026-001 otomatik üretildi + PDF diyaloğu açıldı (şablon başlığı "Anadolu Satış A.Ş.", ihracatçı/ithalatçı blokları, FOB/Karayolu/DE bilgileri, 8.400 ₷ değer tablosu) → "Bilgiler" ile Varış "Hamburg Limanı" + Plaka "16 GNC 2026" güncellendi (canlı önizleme onaylandı) → "İmzalandı" durum geçişi → diyalog kapanıp ATR istatistiği 1/3 oldu → ATR tekrar tıklanınca AYNI belge açıldı (idempotent, yeni kopya yok); Sosyal Medya → Hesaplar → mock Twitter bağla → kes → yeniden bağla e2e; mobil 390px taşmasız (docWidth 390), stat kartlar 2 kolon; console hatası yok
+- OPS: Yeni Prisma modeli sonrası stale Prisma Client patolojisi: db:push + generate sonrası çalışan dev server eski client'ı kullandı → /api/orders 500 "Unknown field exportDocs" + BOŞ gövde. pkill + double-fork auto-restart.sh restart ile çözüldü. Yeni model eklerken restart şart (worklog Tur 10/11'deki bulguyla aynı sınıf)
+- lint 0 error 0 warning
+
+Stage Summary:
+- Tur 12 tamamlandı: 1 kritik kullanıcı bug fix'i (sosyal hesap yeniden bağlama), ihracat belge modülü (6 belge türü + otomatik üretim + şablonlu A4 PDF + düzenlenebilir ticari alanlar + durum akışı + RBAC), sosyal medya token/profil iyileştirmeleri, VPS donanım dokümanı
+- Belge Yönetimi artık 9 belge türünü yönetiyor: Fatura, İrsaliye, Çeki Listesi + ATR, EUR.1, Menşe Şahadetnamesi, İhracat Beyannamesi, Konşimento, Sigorta Poliçesi — hepsi siparişten otomatik üretiliyor, hepsi kullanıcı şablonuyla çıkıyor
+- VPS cevabı kullanıcıya verildi: 10-50 kullanıcı için 2vCPU/4GB RAM/40GB NVMe (minimum), büyüyen işletmede 4vCPU/8GB; RAM production'da kritik
+- Risk: ihracat belge sayıları orders API'sinden geliyor — 200 limit üzerindeki siparişlerde istatistik eksik olabilir (mevcut demo hacminde sorunsuz); ExportDoc silme sadece erp.manage'te (bilinçli)
+- Sonraki tur önerileri: ihracat belgelerine şirket bazlı toplu yazdırma (CompanyDocsPrintDialog benzeri 6-belge paketi), belge PDF'ine QR doğrulama kodu, EUR.1/ATR'de dolaşım belgesi resmi form düzeni (satır/kolon ızgarası), sosyal medyada gerçek OAuth (şu an mock + manuel token), inbox'a otomatik yanıt şablonları
+
+---
+Task ID: FIX-POST-PUBLISH
+Agent: Main (Gönderi Yayınlama Bug Teşhis + Fix)
+Task: Kullanıcı raporu "gönderi yayınlamıyor sebebi nedir" — teşhis ve fix.
+
+## Teşhis (Kök Neden)
+- DB: `socialPost cmuj1g3mo0013m7z221u8jn77` status='basarisiz', target hatası **"credits depleted"**
+- Hesap `twitter/ctnkqn` **manual_token** (gerçek access token, 91 kr) ile bağlı
+- Yayınlama gerçek X (Twitter) API v2 `POST /2/tweets` çağrısı yapıyor → token'ın API plan kredisi tükendi → platform isteği reddetti
+- **UX bug'ları hatayı gizliyordu:**
+  1. feed-view publish onSuccess her zaman yeşil "Yayınlandı 0/1" toast'u gösteriyordu (HTTP 200 = success sanılıyordu)
+  2. Target'taki `errorMessage` ("credits depleted") UI'da hiçbir yerde render edilmiyordu
+  3. Filtre çiplerinde "Başarısız" durumu yoktu; nedeni görmek/yeniden denemek imkânsızdı
+  4. compose-dialog da publishNow'da her zaman "Yayınlandı!" başarılı toast'u basıyordu
+
+## Tamamlanan Modifikasyonlar
+1. **`src/lib/social/api-clients/index.ts`** — `friendlyApiError()` eklendi: ham platform hatalarını Türkçe + çözüm önerili mesaja çevirir (credits depleted, token expired/invalid, yetki eksik, duplicate, rate limit, IG görsel zorunlu, ağ). Dispatcher'da tüm başarısız sonuçlara uygulanıyor.
+2. **`/api/social/posts/[id]/publish`** — `forceMock` body paramı: true ise gerçek API yerine simülasyon; yanıt `failures[]`, `finalStatus`, `forceMock` döndürüyor.
+3. **`/api/social/posts` POST** — publishNow'da `publishResults[]` (platform/handle/success/error) döndürüyor; status alanı gerçek final status.
+4. **`feed-view.tsx`** — toast'lar sonua göre: tam başarı/başarısız; kısmi → warning + per-hata satırları; tam başarısızlık → error + sebepler (10-15sn duration). Başarısız kartta kırmızı hata kutusu ("Yayın hatası — sebep:") + "Tekrar Dene" + "Simülasyon" butonları. "Başarısız" filtre çipi. Yayınlanan post'ta "görüntüle" dış linki.
+5. **`compose-dialog.tsx`** — publishNow sonucuna göre doğru toast; platform seçicilerde **"Gerçek"** (yeşil ⚡) / **"Sim."** (flask) rozetleri; simülasyon uyarı notu.
+
+## Doğrulama (agent-browser e2e)
+- ✅ curl: gerçek token publish → `{"success":false, error:"API kredisi tükendi — ..."}` (çevrilmiş)
+- ✅ curl: forceMock → `{"success":true, finalStatus:"yayinlandi"}`
+- ✅ UI: compose → X Gerçek rozetli → publish → kırmızı "Yayınlanamadı" toast + kartta hata kutusu + Tekrar Dene/Simülasyon butonları
+- ✅ UI: Simülasyon butonu → "Simülasyon olarak yayınlandı 1/1" → kart Yayınlandı + metrikler + dış link
+- ✅ Silme + Başarısız filtre (boş durum) + mobil 390px responsive
+- ✅ eslint 0 hata, dev.log temiz, console error yok
+
+## Çözülmemiş / Sonraki
+- Kullanıcının X token'ı için: plan yükseltme veya yeni token gerekli (app tarafı değişemez) — ya da Simülasyon modu kullanılır
+- youtube/tiktok/whatsapp/pinterest gerçek API client'ları hâlâ TODO
+- Publish başarısızlıklarında e-posta/bildirim tetikleme eklenebilir
+
+---
+Task ID: FIX-CREDITS-DEPLETED-DIAGNOSIS
+Agent: Main (X API "credits depleted" derin teşhis + Bağlantı Testi özelliği)
+Task: Kullanıcı raporu: "credits depleted hatası veriyor ama X developer panelde bir kullanım gözükmüyor"
+
+## Teşhis (canlı API probu ile kanıtlandı)
+- `GET /2/users/me` → **HTTP 200** — token GEÇERLİ kullanıcı token'ı (@ctnkqn / ctnakn doğrulandı)
+- `GET /2/users/:id/tweets` → **HTTP 402 Payment Required**:
+  `{"detail":"credits depleted","title":"Payment Required","type":"https://api.x.com/2/problems/credits-depleted"}`
+- **SONUÇ**: "credits depleted" = HTTP 402 = X API KREDİ BAKİYESİ BİTTİ (ödeme sorunu). Kullanım kotası DEĞİL!
+  Bu yüzden panelin "Usage" grafiğinde kullanım görünmüyor — sorun bakiyede. Token da sağlam; kimlik doğruluyor.
+
+## Tamamlanan Modifikasyonlar
+1. **YENİ API** `GET /api/social/accounts/[id]/diagnose` — gerçek "me" endpoint probe'u + ham hata gövdesi yakalar;
+   classify(): ok / app_only_token / invalid_token / usage_cap(402-ödeme vs 429-kota) / insufficient_permission / network_error / unknown.
+   Twitter'da 2 aşamalı: users/me (kimlik) + users/:id/tweets (kredi kontrolü — users/me kreditsiz çalıştığı için tek başına yetmez).
+   Facebook + Telegram probe'ları da eklendi; diğerleri "henüz eklenmedi" döner.
+2. **accounts-view.tsx** — gerçek hesaplara 🩺 "Test Et" butonu + `DiagnoseDialog`: renk kodlu sonuç kartı (yeşil/kırmızı/amber),
+   "Ne yapmalısınız?" öneri listesi, doğrulanmış hesap/takipçi bilgisi, katlanabilir ham API yanıtı bloğu, "Tekrar Test Et".
+3. **friendlyApiError + diagnose metinleri** — credits mesajı 402/ödeme gerçeğine göre yeniden yazıldı
+   (Billing/API Credits bölümüne bakın, Free plan aylık kredisi sınırlı, tüm app'ler ortak bakiye, Simülasyon alternatifi).
+
+## Doğrulama (agent-browser e2e)
+- ✅ curl diagnose: kind=usage_cap(402), headline "API kredisi bitti (HTTP 402 — Ödeme Gerekli)", verifiedHandle=ctnkqn
+- ✅ UI: Hesaplar → Test Et → amber sonuç kartı + öneriler + ham detay (HTTP 402 / Payment Required / credits-depleted) görünüyor
+- ✅ eslint 0 hata; dev.log temiz (diagnose 200)
+
+## Kullanıcıya Çözüm Önerisi
+1. developer.x.com → **Billing / API Credits** bölümü (Usage değil!) — bakiye/plan durumu orada
+2. Free planın aylık ücretsiz kredisi sınırlı; biterse ay başında yenilenir veya Basic plana geçilir
+3. Uygulamada beklemek istemezse: gönderi kartında "Simülasyon" butonu ile API'siz yayın
+
+---
+Task ID: 13
+Agent: Z.ai Code (Ana tur — "uygulamayı geliştir")
+Task: Kullanıcı talebi "uygulamayı geliştir" — QA sonrası 2 yeni özellik: Dashboard Sosyal Medya widget'ı + tüm belge PDF'lerine QR doğrulama kodu
+
+Work Log:
+- QA: agent-browser ile Genel Bakış + Sosyal Medya + Belge Yönetimi dolaşıldı; önceki turların fix'leri (hata kutusu, Test Et, Takvim, İhracat sekmesi) çalışıyor; yeni bug yok
+- ÖZELLİK 1 — Dashboard Sosyal Medya Widget'ı (src/components/dashboard/widgets/social-widget.tsx YENİ):
+  - /api/social/posts?limit=100 + /api/social/accounts'tan kendi verisini çeker (2 dk refetch)
+  - 4 istatistik hücresi: Bu ay yayın (emerald) / Zamanlandı (amber) / Başarısız (varsa kırmızı) / 30g erişim (teal, targets.reach toplamı)
+  - Gerçek API hesabı yoksa amber uyarı şeridi ("simülasyon modunda — gerçek API anahtarı ekleyin")
+  - Son 3 gönderi listesi: durum noktası + platform emoji rozetleri (PLATFORMS.accent ile renkli) + göreli zaman; tıklayınca Sosyal Medya modülüne gider
+  - "Sosyal Medya Yönetimi'ni Aç" butonu (setView('social')) + hover'da ok animasyonu
+  - widgets-section düzeni: Haberler 3→2 kolon, 2. satır = Haberler(2) + Sosyal(1) + Streak(1)
+- ÖZELLİK 2 — Belge Doğrulama QR (react-qr-code@2.2.0 eklendi):
+  - pdf-template.tsx: docVerifyCode() (djb2→base36, 7 kr kontrol kodu), buildDocVerifyPayload() (TÜR/NO/FİRMA/CARI/TUTAR/TARİH/KOD satırları), DocVerifyQr bileşeni (68px QR + kontrol kodu + "Belge Doğrulama" etiketi)
+  - PdfFooter'a opsiyonel `qr` prop'u: varken footer flex'e dönüyor — sol tarafta şirket/banka bilgisi (2 kolon), sağda QR bloğu; yoksa eski grid düzeni (geriye dönük uyumlu)
+  - 8 PDF yüzeyine bağlandı: doc-pages.tsx (Fatura, İrsaliye, Çeki Listesi, İhracat — toplu yazdırma sayfaları) + invoice-detail-dialog, quote-pdf-dialog (Teklif/PROFORMA), packing-list-pdf-dialog, irsaliye-pdf-dialog (tek belge önizlemeleri)
+  - Tutar: fatura/teklif/proforma/ihracat'ta para tutarı; irsaliye/çeki'de Brüt/Net ağırlık (fiyatsız belgeler için)
+- Doğrulama (agent-browser): FAT-2026-004 fatura PDF'inde QR + GWE3ASJ kontrol kodu göründü; ATR-2026-001 ihracat belgesinde QR + GFCTO9M göründü; Dashboard widget'ı desktop'ta (1 hesap, 1 Başarısız kırmızı, sekma postu + X ikonu) ve mobil 390px'te (4 kolon sığdı, taşma yok) doğrulandı; lint 0 hata
+- NOT: İlk testte QR görünmüyordu — sayfa yeniden yüklenince düzeldi (stale client chunk); PDF bileşeni değişince tarayıcıyı yeniden açmak gerekiyor
+- `POST /api/cron/reminders 403` log'da var — cron token uyuşmazlığı, kullanıcının gördüğü bir etkisi yok (önceki turlardan bilinen)
+
+Stage Summary:
+- Dashboard artık sosyal medya performansını da tek bakışta gösteriyor (hesap sayısı, aylık yayın, zamanlanmış, başarısız, 30g erişim, son gönderiler) — başarısız gönderi varsa kırmızı görselle uyarır
+- Tüm ticari belgeler (fatura, irsaliye, çeki listesi, teklif, proforma, 6 ihracat belgesi) artık doğrulama QR'lı çıkıyor — barkod okutulunca belge künyesi + tutar/ağırlık + kontrol kodu görünür; sahtecilik karşılaştırması için yazıcıda fiziksel doğrulama sağlar
+- Dosyalar: +social-widget.tsx, widgets-section.tsx (düzen), pdf-template.tsx (QR altyapısı + PdfFooter qr prop), doc-pages.tsx, invoice-detail-dialog.tsx, quote-pdf-dialog.tsx, packing-list-pdf-dialog.tsx, irsaliye-pdf-dialog.tsx, package.json (+react-qr-code)
+- Sonraki tur önerileri: QR içeriğine imzalı JWT ekleyerek /verify sayfasıyla gerçek online doğrulama (tek route kısıtı — sayfa içi state ile), ihracat belgelerine şirket bazlı 6-belge paketi toplu yazdırma, Mesaj Merkezi'ne tür bazlı toplu işlemler, sosyal medyada gerçek OAuth
+
+---
+Task ID: 14
+Agent: Z.ai Code (Ana tur — 5 talepli tur)
+Task: Kullanıcı talepleri: (1) Potansiyel müşteri bölümü gerçekten çalışsın, (2) soldaki AI butonu kaldırılsın, (3) Belge Yönetimi'nde teklif+proforma görünsün, (4) otomatik onay anahtarı Randevu Ekle'nin yanına, (5) diğer işletmelerin programları geliştirilsin
+
+Work Log:
+- QA (agent-browser): Potansiyel Müşteri sayfası canlı test edildi — arama/aktarım/dönüşüm API'leri çalışıyor ama 3 veri kalitesi bug'ı bulundu
+- BUG 1 (maps-mock.ts): constants'ta `namePrefix`, mock'ta `namePrefixes` okunuyordu → TÜM sonuçlar "İşletme X" adlı üretimiyordu. İkisi de desteklendi + gerçekçi isim üretimi (marka/kişi/prefix karışımı)
+- BUG 2: `Math.random()` determinizmi bozuyordu → aynı aramada farklı isimler → placeId değişiyordu → TEKRARLI ARAMA MÜKERRER LEAD ÜRETİYORDU. Tamamen seed-based rand'a çevrildi
+- BUG 3: serbest metin "berber" sorgusu kategoriye eşleşmiyordu → CATEGORY_ALIASES sözlüğü eklendi (berber→kuaför, dental→diş, smmm→muhasebe vb.)
+- GELİŞTİRME: mahalle'li gerçekçi adresler (büyük şehirlerde), %85 telefon doluluğu (CRM için kritik), puana göre sıralama, 6 YENİ kategori (Kafe, Market, Otel, Veteriner, Eğitim, Emlak)
+- LeadDetailDialog salt-okunurdu → GERÇEK WORKFLOW: durum değiştirme butonları (yeni/iletişimde/nitelikli/kaybedildi), not ekleme+listeleme, Ara/WhatsApp hızlı iletişim butonları
+- Lead filtre çipleri artık SAYI gösteriyor: "Tümü 56 · Yeni 54 · Dönüştü 2 ..." (ayrı all-count query + useMemo)
+- AI BUTONU KALDIRILDI: AiAssistantWidget (fixed sağ-alt, hiçbir işlevi yoktu, install-prompt butonlarını KAPATIYORDU ve tıklamaları engelliyordu) — layout.tsx + dashboard-view.tsx'den çıkarıldı, dosya silindi. UI'da tıklama engeli de ortadan kalktı
+- BELGE YÖNETİMİ + TEKLİF & PROFORMA SEKMESİ: 4. sekme (erp.manage yetkisiyle). İstatistik kartları (Teklif/Proforma/Onaylanan/Şirket + toplam tutarlar), tür filtre çipleri, şirkete göre gruplu tablo (belge no/tür/tarih/geçerlilik+süre geçti uyarısı/durum/tutar), satır başına PDF önizleme (QuotePdfDialog — şablonlu). Mobilde sekme listesi 2x2 wrap, desktop'ta grid-cols-4
+- RANDEVU BAŞLIĞINA OTOMATİK ONAY ANAHTARI: "Randevu Ekle" yanında emerald/amber durum pill'i + Switch. PATCH /api/appointments/providers/[id] autoApprove, 4 query key invalidate, toast bilgilendirme. DB kalıcı — browser e2e: kapat→"Onay gerekli", aç→"Otomatik onay". Provider arayüzüne autoApprove eklendi
+- SECTOR DEMO SEED (scripts/seed-sector-demo.ts — idempotent): Cafe tenant'ı 0 kayıtlıydı → 1 kafe + 8 masa (kuş bakışı konumlu) + 4 kategori + 15 menü + 6 ödenmiş sipariş+ödeme. Market tenant'ı 0 kayıtlıydı → 1 market + 5 raf + 15 ürün + 15 EAN-13 barkod + shelf item + açık vardiya + 10 fiş (nakit/kart karışık). Artık "Henüz market yok/kafe yok" ekranı yok
+- e2e DOĞRULAMA (agent-browser): Market POS altın yol — ürün sepete → kart ödemesi → FIS-011 fiş dialog; Kafe sipariş akışı — Masa 1 seç → Serpme+Mantı → "Siparişi Gönder" → #S-0007 570₺ Aktif Siparişler'de; Cafe dashboard "418₺ ciro" gösteriyor; Market modülü 5 raf/15 barkod/10 satış özetiyle açılıyor; Site Yönetimi 2 blok/12 aidat/3 şikayet verisiyle çalışıyor
+- MOBİL: 390px'te Belge Yönetimi tab listesi ilk denemede üst üste biniyordu → flex-wrap/scroll responsive fix, 2x2 grid doğrulandı (screenshot)
+- eslint 0 hata; dev.log temiz
+
+Stage Summary:
+- Potansiyel Müşteri artık uçtan uca gerçekten çalışıyor: gerçekçi sonuçlar → seç → lead olarak aktar → durum ilerlet → not ekle → Ara/WhatsApp → müşteriye dönüştür. Mükerrer lead sorunu kökten çözüldü
+- Float AI butonu tamamen kaldırıldı — tıklama engeli ve install-prompt çakışması da bitti
+- Belge Yönetimi şimdi tüm satış evrakını tek ekranda topluyor: sipariş belgeleri + TEKLİF/PROFORMA + irsaliye + ihracat
+- Otomatik onay anahtarı artık tek tıkla, Randevu Ekle'nin yanında
+- Kafe/Market/Site demo tenant'ları canlı veriyle dolu — "diğer işletmelerin programları" artık boş değil, POS/sipariş akışları e2e test edildi
+- Sonraki tur önerileri: lead'e aktivite kaydı (arama/toplantı geçmişi), Belge Yönetimi CSV'sine teklif/proforma satırları, cafe raporlarına günlük Z-özeti, market raporlarına en-çok-satanlar grafiği, real OAuth (social)
+
+---
+Task ID: 15
+Agent: Z.ai Code (Ana tur — randevu modülü bug + program geliştirme)
+Task: Kullanıcı talepleri: (1) "otomatik onay kapalı olsa da randevu onaylı görünüyor" BUG, (2) "personel ve hizmet ekleme butonları yok", (3) "programı geliştir"
+
+Work Log:
+- KÖK NEDEN (BUG 1): POST /api/appointments/providers/[id]/appointments status'u SABİT 'onaylandi' yazıyordu — provider.autoApprove hiç kontrol edilmiyordu. Public book route doğruydu ama dashboard içi tüm akışlar (Randevu Ekle, Müşteri Görünümü, Takvim) auth'lu route'u kullanıyordu → autoApprove kapalıyken bile randevu "Onaylandı" görünüyordu
+- FİX 1: POST route artık provider'ı çekiyor (autoApprove + tenant kontrolü eklendi) ve status = autoApprove ? 'onaylandi' : 'beklemede' hesaplıyor
+- KÖK NEDEN (BUG 2): Personel/Hizmetler sekmeleri SADECE OKUNUR listedi; tam dolu StaffManager/ServiceManager (ekle/düzenle/sil/hizmet atama/aktif toggle) bileşenleri HİÇ import edilmemiş öksüz durumdaydı
+- FİX 2: Personel sekmesi → <StaffManager>, Hizmetler sekmesi → <ServiceManager> bağlandı; API yanıt şekli uyumsuzluğu giderildi (route raw array dönüyordu, bileşenler {items} bekliyordu — iki taraflı uyumlu yapıldı)
+- ÖKSÜZ BUG'LAR zinciri: AppointmentCalendar (870 satır) de import edilmemişti + startDate/endDate parametreleri route'da yoktu + {items} şekli uyuşmuyordu → her zaman boş görünürdü. Route'a range query desteği + takvime raw-array uyumu eklendi; PATCH route'u yalnız status/notes destekliyordu, takvimin tam düzenleme payload'ı sessizce yutuluyordu → PATCH artık date (endTime yeniden hesaplı), staffId ('any'→null), serviceId (fiyat günceller), müşteri alanlarını destekliyor
+- GÜVENLİK: appointments GET/POST/PATCH/DELETE + staff GET/POST + services GET/POST route'larına tenant sahiplik kontrolü eklendi (önceden herhangi auth'lu kullanıcı başka tenant'ın randevusunu değiştirebilirdi)
+- staff/services GET artık pasif kayıtları da döner (yönetici pasifleştirdiğini kaybetmesin) + staff yanıtında staffServices→services düzleştirme
+- PROGRAM GELİŞTİRMELERİ (Randevular sekmesi): 4 gün özeti kartı (Bugün/Bekleyen/Onaylı+Beklenen ciro), durum filtre çipleri sayılarla (Tümü·Beklemede·Onaylı·Tamamlanan·İptal/Gelmedi), autoApprove kapalıyken amber "X randevu onayınızı bekliyor" bandı + "Tümünü Onayla" toplu onay
+- YENİ SEKME: Takvim (gün/hafta görünümü, personel filtresi, slota tıkla→randevu oluştur, randevuya tıkla→detay+Durum Değiştir dropdown, Bugün/ileri-geri navigasyon, durum lejantı)
+- Manuel Randevu diyalogu: autoApprove kapalıyken amber uyarı ("randevu 'Beklemede' oluşur"); Takvim oluşturma diyalogu açıklaması da duruma göre değişiyor
+- Müşteri Görünümü (PublicBooking): başarı ekranı artık API'nin döndürdüğü status'e göre — beklemede ise amber "Randevu Talebiniz Alındı! İşletme onayladığında kesinleşecek", onaylıysa yeşil; WhatsApp mesajı da duruma göre
+- Tab değişiminde provider query invalidate (personel/hizmet değişikliği Müşteri Görünümü'ne anında yansır)
+
+## Doğrulama (agent-browser e2e — Kuaför Yöneticisi olarak)
+- ✅ curl: autoApprove OFF→POST→'beklemede'; ON→POST→'onaylandi'
+- ✅ curl: startDate/endDate range query (takvim için) çalışıyor; PATCH date→endTime yeniden hesaplandı
+- ✅ UI: "Randevu Ekle" → amber "Otomatik onay kapalı" uyarısı → oluştur → kart "Beklemede" + amber band + "Tümünü Onayla" + Bekleyen 1 / Beklenen 650₺
+- ✅ UI: Personel sekmesi "Yeni Personel" → hizmet seçmeli form → "Personel eklendi" (3→4)
+- ✅ UI: Hizmetler sekmesi "Yeni Hizmet" → ad/süre/fiyat → "Hizmet eklendi" (6→7)
+- ✅ UI: Takvim sekmesi — gün/hafta grid, randevu bloğu 10:00'da, detay dialog → Durum Değiştir → Onayla → "Durum: Onaylandı"
+- ✅ Mobil 390px: header pill+switch+buton dikey stack, 2x2 stats, çip wrap — screenshot doğrulandı
+- ✅ eslint 0 hata; dev.log temiz; test kayıtları DB'den temizlendi
+
+Stage Summary:
+- Otomatik onay anahtarı artık GERÇEKTEN çalışıyor: kapalıyken hiçbir oluşturma yolu randevuyu otomatik onaylamıyor (manuel, müşteri görünümü, takvim — üçü de server-side garanti altında)
+- Personel ve Hizmet yönetimi tam yetkili: ekle/düzenle/sil/aktif-pasif/hizmet atama — istenen "personel ve hizmet ekleme butonları" artık yerinde
+- Program modülü büyüdü: yeni Takvim sekmesi (gün/hafta), gün özeti kartları, durum filtreleri, onay kuyruğu bandı, toplu onay
+- Sonraki tur önerileri: onay reddi akışı ('reddedildi' + müşteriye sebep bildirimi), randevu saatinden önce otomatik WhatsApp hatırlatma (cron zaten reminder tetikliyor — appointment'a bağlanabilir), Takvim'e sürükle-bırak ile saat değiştirme, müşteri geçmiş randevu geçmişi paneli
+
+---
+Task ID: 16
+Agent: Z.ai Code (Ana tur — "programı geliştir")
+Task: Kullanıcı talebi "programı geliştir" — Randevu/Takvim modülüne 6 büyük program özelliği eklendi
+
+Work Log:
+- QA: agent-browser ile Takvim modülü dolaşıldı; Task 15'in bıraktığı temel sağlam
+- KEŞFEDİLEN ÖNCÜL BUG: Takvim bileşeninde staff/services API'leri ham dizi dönmesine rağmen {items} bekleniyordu → Personel filtre dropdown'ı ve formdaki hizmet listesi BOŞ geliyordu (Task 15'te StaffManager düzeltilmiş ama takvim unutulmuştu). Array.isArray çift-şekil uyumu eklendi
+- ÖZELLİK 1 — PERSONEL GÖRÜNÜMÜ (3. görünüm modu Gün|Personel|Hafta): personel başına kolon (renkli avatar baş harfleri, unvan, randevu sayacı, kişiye özel doluluk barı); atanmamış randevular için "Atanmamış" kolonu otomatik; boş kolona tıklayınca Randevu Ekle formu o personelle ön-dolu açılır
+- ÖZELLİK 2 — SÜRÜKLE-BIRAK TAŞIMA: randevu bloğu draggable; document-seviyesi NATİVE dragover/drop dinleyicileri (React 19 drop'u root'ta capture fazında dinlediği ve sentetik/untrusted event'lerde tetiklenmediği için — hata ayıklamada bulunmuş kök neden); hücrelere data-day-iso/data-slot-min/data-staff-id verildi; taşımada sunucu endTime'ı hizmet süresine göre yeniden hesaplıyor; başarı toast'ı "X → 28 Eyl Pzt 11:30"
+- ÖZELLİK 3 — "ŞİMDİ" GÖSTERCİSİ + DOLULUK: bugünün sütununda canlı kırmızı zaman çizgisi (her dakika tick); gün görünümü araç çubuğunda %X dolu progress barı; hafta görünümü başlıklarında mini doluluk barı + randevu sayacı; hafta başlığına tıklayınca o güne gün görünümüne geçiş
+- ÖZELLİK 4 — ÇAKIŞMA TESPİTİ (üç katman): (a) form'da canlı amber uyarı kutusu — aynı personel + örtüşen saat listelenir, buton "Çakışmaya Rağmen Kaydet" olur ve force=true ile kaydeder; (b) takvimde üst üste binen randevularda ⚠ + rose ring; (c) POST/PATCH API'da çakışma kontrolü — taşımada 409 "Çakışma: {müşteri} (saat) randevusu ile örtüşüyor" (force ile atlanabilir)
+- ÖZELLİK 5 — RED AKIŞI: yeni RejectDialog — sebep zorunlu textarea + hızlı çipler ("Personel izinli" vb.) + "WhatsApp ile bildir" anahtarı; kayıtta status=reddedildi + notes'a "Reddedilme sebebi: ..." eklenir; WhatsApp mesajı otomatik kurulur (sebep + özür + yönlendirme). Detay diyaloğuna ve Randevular listesindeki beklemede satırlarına Reddet butonu eklendi
+- ÖZELLİK 6 — MÜŞTERİ RANDEVU GEÇMİŞİ: yeni CustomerHistoryDialog — telefonla arama (API phone parametresi; DB'deki boşluklu formatları normalize ederek JS'te eşleme), 4 istatistik kartı (Toplam/Tamamlanan/İptal-Gelmedi/Harcama), "Sıradaki randevu" vurgusu, son 30 kayıt listesi. Detay diyaloğunda "Geçmiş" butonu + listede müşteri adına tıklayınca açılır
+- API değişiklikleri: GET ?phone= (geçmiş araması), POST ?force, PATCH force + tarih değişiminde çakışma kontrolü (id != self, aynı staff, status beklemede/onaylandi)
+- e2e (agent-browser): Personel görünümü 3 kolon render ✓; kolona tıkla → form personel ön-dolu ✓; randevu oluştur → beklemede + doluluk %6 güncel ✓; sürükle-bırak 10:00→11:30 DB'de doğrulandı + endTime 12:00 ✓; çakışan kayıt force ile ✓; ⚠ ringler ✓; dolu slota sürükleme 409 toast ✓; Reddet akışı DB (reddedildi + not) + WhatsApp mesaj URL'si (sebep dahil) ✓; Müşteri Geçmişi diyaloğu istatistiklerle ✓; Hafta görünümü mini barlar ✓
+- BULUNAN+SONRA DÜZELTİLEN handleDrop bug'ı: hedef hücrenin saatini yok sayıp randevunun eski saatini koruyordu → aynı gün içinde taşımada nd==old çıkıp sessizce dönüyordu; nd=target olarak düzeltildi
+- Test verileri temizlendi (Test Yılmaz, Çakışan Deneme silindi); eslint 0 hata; dev.log temiz
+
+Stage Summary:
+- Program/Takvim modülü artık profesyonel çizelge düzeyinde: 3 görünüm (Gün/Personel/Hafta), sürükle-bırak saat değiştirme, canlı zaman çizgisi, doluluk metrikleri, üç katmanlı çakışma koruması, sebep bildirimli red akışı ve müşteri geçmişi paneli
+- Öne çıkan teknik kazanım: HTML5 DnD'nin React 19 capture-phase drop uyumsuzluğuna karşı document-seviyesi native dinleyici deseni — hem gerçek tarayıcıda hem otomasyonda güvenilir
+- Sonraki tur önerileri: personel bazlı izin/uygun olmama günleri (staff time-off), takvimde seçili hafta için günlük Z-özeti raporu, randevu onay/red e-postası (şablonla), sürükle-bırak'a dokunmatik desteği (pointer events fallback), müşteri geçmişine not ekleme
+---
+Task ID: 17
+Agent: Z.ai Code (Ana tur — "randevu sistemi için müşterilerin bilgisini tutan bir şey")
+Task: Kullanıcı talebi: (1) randevu sistemi için kalıcı müşteri kayıt defteri, (2) müşteri bilgileri + geçmiş randevu özeti görünsün, (3) programın her olayını geliştir
+
+Work Log:
+- VERİTABANI: `AppointmentCustomer` modeli eklendi (providerId, name, phone, phoneDigits[normalize edilmiş eşleştirme anahtarı], email, address, notes, tags[JSON], birthday, isBlocked, @@unique([providerId, phoneDigits])); Appointment'a `customerId` FK (SetNull) + index; db:push + `scripts/backfill-appointment-customers.ts` ile mevcut 17 randevudan 14 müşteri kaydı geriye dönük oluşturuldu
+- API 1: `GET/POST /api/appointments/providers/[id]/customers` — liste (isim/e-posta/telefon-rakam araması, 300 kayıt), müşteri başına randevu istatistiği (total/completed/cancelled/spent/lastVisit/nextVisit — tek sorgu + JS hesap), özet kartı (toplam/randevu yapan/bu ay yeni/engelli); POST'ta telefon normalizasyonu + duplicate 409 ("Bu telefon numarası zaten kayıtlı: X")
+- API 2: `GET/PATCH/DELETE /api/appointments/providers/[id]/customers/[customerId]` — detay (profil + tüm randevu geçmişi staff/service include), güncelleme (telefon değişiminde digit benzersizlik kontrolü), silme; TÜM route'larda tenant sahiplik guard'ı
+- API 3 (GLUE): `src/lib/appointment-customer-server.ts` — `upsertCustomerForAppointment()`: randevu oluşturulduğunda telefonla müşteri eşleştirir/oluşturur, customerId'yi randevuya bağlar; auth'lu POST + PUBLIC book route'una eklendi (public'te engelli müşteri genel mesajla reddedilir); appointments GET'e `customer: {id, isBlocked}` include
+- ENGELLİ MÜŞTERİ KORUMASI: isBlocked=true olan müşteriye hiçbir yol (manuel, takvim, public, force dahil) randevu açamaz — 403 "Bu müşteri kayıt defterinde engellendi" (force bayrağı çakışma bypass'ı içindir, engel bypass'ı DEĞİL — testte yakalanan kusur düzeltildi)
+- UI 1: `customer-manager.tsx` — MÜŞTERİLER sekmesi: 4 özet kartı, arama + sıralama (son ziyaret/çok randevulu/en çok harcayan/A-Z), müşteri kartları (renkli avatar, sadakat rozeti: 10+ randevu=VIP Müşteri⭐, 5+=Sabit Müşteri📈, engelli rozeti, 3'lü mini istatistik, son/sıradaki randevu), kartta tek tık "Randevu" butonu (manual booking'e ön-dolu açılır)
+- UI 2: CustomerDetailDialog — profil (telefon/WhatsApp/Düzenle butonları, e-posta, adres, doğum günü, etiketler, kalıcı not), 6 KARTLI GEÇMİŞ ÖZETİ (Toplam/Tamamlanan/İptal-Gelmedi/Toplam Harcama/Son Ziyaret/Sıradaki Randevu — sıradaki vurgulu), tam randevu geçmişi listesi (durum rozetleriyle); CustomerEditDialog (tüm alanlar + engelli switch + Kaydı Sil) ve CustomerCreateDialog
+- UI 3: `customer-autocomplete.tsx` — debounce'lu (250ms) kayıt defteri araması; yazarken dropdown (avatar+telefon+"X randevu" rozeti), seçince yeşil seçili-müşteri kartı (istatistikli, temizleme butonu), 7+ haneli yeni numarada "müşteri profili otomatik oluşur" ipucu, kayıtlı numara yazılırsa "yukarıdan seçin" uyarısı; MANUAL RANDEVU + TAKVİM oluşturma formuna gömüldü
+- UI 4 (PROGRAMIN HER OLAYINI GELİŞTİR): randevu satırında "kayıtlı" çip'i + müşteri adına tıklayınca kayıt defteri kartı (customerId yoksa telefonla geçmiş fallback); Onaylandı satırına "Gelmedi olarak işaretle" (UserX) hızlı aksiyonu; Tamamlandı satırına "Tekrar Planla" (RotateCcw — aynı müşteri+hizmet+personel, +7 gün tarihle ön-dolu); takvim detay diyaloğunda "Geçmiş" butonu → "Müşteri Kartı" olarak yinelendi (customerId varsa kayıt defteri, yoksa telefon araması)
+- DOĞRULAMA (agent-browser e2e — Kuaför Yöneticisi): Müşteriler sekmesi 4 kart + 14 müşteri ✓; kart→detay diyaloğu (6 özet + geçmiş) ✓; düzenle→etiket/not kaydı DB'de doğrulandı ✓; arama "Test"→14→5 ✓; Manuel Randevu'da "Ahmet" yazınca dropdown → seç → istatistikli kart → randevu oluşturuldu → satırda "kayıtlı" çip'i + customerId DB'de bağlı ✓; engelli müşteriye randevu 403 (force dahil) ✓; yeni telefonla randevu → otomatik müşteri kaydı ✓; "Gelmedi" aksiyonu + toast ✓ (seed veri geri alındı); takvim bloğu → Müşteri Kartı (2 randevu geçmişi) ✓; Müşteriler sekmesi kart "Randevu" butonu → ön-dolu dialog ✓; Yeni Müşteri formu → "Zeynep Kaya" kaydı (etiket+not) ✓; mobil 390px: 2x2 kartlar, yatay sekme scroll, kart düzeni screenshot ile ✓
+- BULUNAN+DÜZELTİLEN Console Error: CustomerDetailDialog yükleme durumunda DialogTitle yoktu (Radix erişilebilirlik) → sr-only DialogTitle/Description eklendi; taze oturumda issues rozeti kayboldu, kart açılışında hata tekrar etmedi
+- eslint 0 hata; dev.log temiz (yalnızca 200/201); test kayıtları (Ayşe/Mehmet) DB'den silindi, Zeynep Kaya demo müşteri olarak bırakıldı
+
+Stage Summary:
+- Randevu sistemi artık GERÇEK müşteri kayıt defterine sahip: her randevu telefon üzerinden müşteri profiline bağlanıyor, profil tercihler/etiketler/notlar/geçmiş özetiyle saklanıyor — "müşterilerin bilgisini tutan bir şey" isteği uçtan uca karşılandı
+- Müşteri kartı tek bakışta geçmiş randevu özetini veriyor (toplam/tamamlanan/iptal/harcama/son ziyaret/sıradaki) ve listeden detaya 1 tıkla ulaşıyor
+- Her randevu olayı zenginleşti: kayıtlı rozeti, müşteri kartı köprüsü, Gelmedi işaretleme, Tekrar Planla, engelli koruması ve tüm formlarda kayıt defteri otomatik tamamlama
+- Sonraki tur önerileri: müşteri kartına "bu müşterinin toplam randevu grafı" (aylık çubuk), doğum günü hatırlatıcısı (birthday alanı dolu olanlara yaklaşanlar bandı), kayıt defterinden toplu WhatsApp kampanya seçimi, müşteri siliminde geçmiş randevuları tekrar bağlama (merge akışı), personel bazlı engelli günler (staff time-off)
+---
+Task ID: 18
+Agent: Z.ai Code (Ana tur — "programı geliştirmeye devam et, plan yürüt, devreye sok")
+Task: Program/Takvim modülüne devam planı: (1) personel izin günleri (time-off), (2) doğum günü hatırlatma bandı, (3) gün/hafta özeti diyaloğu, (4) müşteri kartına 6 aylık randevu grafiği + bulunan kritik typo bug'ının düzeltilmesi
+
+Work Log:
+- KRİTİK BUG DÜZELTME: customer-manager.tsx L282'de `}, istory])` — tanımsız değişken (useMemo bağımlılığı bozuk, CustomerDetailDialog render'ı kırılıyordu) → `}, istory])` olarak düzeltildi. NOT: ilk sed düzeltmesi sonra geri dönmüştü (paralel süreç dosyayı eski içerikle yazmış olabileceği şüphesi) — python ile tekrar düzeltildi ve byte-level doğrulandı
+- VERİTABANI: `StaffTimeOff` modeli (providerId, staffId, date, isFullDay, startTime, endTime "HH:MM", reason; @@index([providerId,date]) + ([staffId,date])) + Staff.timeOffs + ServiceProvider.timeOffs ilişkileri; db:push tamamlandı
+- PAYLAŞILAN KÜTÜPHANE: `src/lib/appointment-timeoff.ts` — timeOffWindowMs (tam gün = 00:00–24:00, kısmi = saat aralığı ms penceresi), timeOffCoversRange, describeTimeOff ("Tam gün" / "09:00–13:00"), timeOffLabel (+sebep), findTimeOffConflict — hem server hem client kullanıyor
+- API 1: `GET/POST /api/appointments/providers/[id]/time-off` — liste (staffId/startDate/endDate filtreli, staff include), oluşturma (personel-tenant doğrulama, kısmi saat doğrulama start<end, aynı gün üst üste izin 409, İZİN ARALIĞINDA AKTİF RANDEVU VARSA 409 + müşteri adlarıyla liste "Önce randevuları taşıyın")
+- API 2: `DELETE .../time-off/[timeOffId]` — tenant sahiplik guard'lı
+- İZİN ENGEL KATMANLARI (hepsi hard-block): (a) auth'lu POST appointments → "Personel bu saatte izinli (Tam gün · Yıllık izin) — başka bir personel seçin veya izin kaydını kaldırın" 409; (b) PATCH appointments tarih değişiminde effStaffId izin penceresi kontrolü → "randevu izinli personele taşınamaz"; (c) public book: belirli personel → "Seçtiğiniz personel bu saatte müsait değil", 'any' seçiminde izinli personel aday listesinden çıkarılır; (d) public availability + private availability: izinli personel slot üretmez (slot bazlı timeOffCoversRange)
+- UI 1: `staff-timeoff-dialog.tsx` — izin listesi (yaklaşanlar amber vurgulu kart, geçmişler katlanabilir soluk, tek tek silme), yeni izin formu (tarih, Tam gün Switch, kısmi saat seçimi, sebep), toast bildirimleri
+- UI 2: `staff-manager.tsx` — her personel kartına "İzin Ver" butonu (amber outline) + yaklaşan izin sayısı rozeti ("N izin" chip, 60 gün penceresi); StaffTimeOffDialog bağlandı
+- UI 3: `appointment-calendar.tsx` entegrasyonları — time-off range query (görünen aralık ±1 gün), timeOffsByStaffDay/timeOffCountByDay memoları; PERSONEL GÖRÜNÜMÜ: izinli kolon başlığı amber zemin + "🌴 İzinli · tam gün" rozeti (sebep title'da), izin slot hücreleri 45° amber şeritli desen + "🌴 izin" çipi, doluluk barı izinliyken gizlenir; GÜN/HAFTA BAŞLIĞI: "🌴 N izinli" mini rozet; LEGEND'a "🌴 personel izni" eklendi
+- UI 4: RANDEVU FORMU İZİN UYARISI — seçili personel seçilen tarih+saat+hizmet süresinde izinliyse kırmızı uyarı kutusu ("Personel izinli — randevu oluşturulamaz: • Ahmet Usta — Tam gün · Yıllık izin") + kaydet butonu "Personel İzinli" olarak disabled (server 409 ile çifte garanti)
+- UI 5: DOĞUM GÜNÜ BANDI — API `GET .../birthdays?days=7` (birthday "MM-DD" → sıradaki yıl dönümü hesabı, daysUntil/isToday, engelli müşteri hariç); takvim başlığının altında pembe gradient bant: 🎂 chip'ler (isim, "29 Eyl · 2 gün", bugünse "bugün!" vurgulu), her chip'te WhatsApp kutlama linki (ön-dolu mesaj), 6+ kişide "+N kişi daha"
+- UI 6: `week-summary-dialog.tsx` — araç çubuğunda "Özet" butonu; gün görünümünde tek gün, haftada 7 gün analizi: 6 üst kart (Toplam/Onaylı/Bekleyen/Beklenen Ciro/Doluluk barı/En Yoğun Gün), gün kırılımı tablosu (randevu, bekleyen, ciro, doluluk barı), personel performansı kartları (randevu, ciro, en yoğun gün) — tamamı client-side, ek API yok
+- UI 7: `customer-manager.tsx` CustomerDetailDialog'a "Son 6 Ay Randevu Trendi" — aylık CSS çubuk grafiği (geçen 5 ay + bu ay, count etiketli, güncel ay koyu yeşil, boş aylar muted), geçmiş verisinden hesaplanır
+- BULUNAN+DÜZELTİLEN: birthday bandı ilk render'da ham ISO gösteriyordu ("09/29T00:00:00.000Z") → toLocaleDateString tr-TR ile düzeltildi; staff-manager'da çift useQuery import (derleme hatası) kaldırıldı; lucide `PalmTree` → `Palmtree` (2 dosya)
+- TEST VERİSİ TEMİZLİĞİ: 8 test müşterisi (Test Müşteri×3, Otomatik/Pazartesi/Ahmet Test, erersfes, Web Any) silindi; demo doğum günleri: Selin Demir +2 gün, Burak Şahin +5 gün; e2e izin kaydı ve iptal test randevusu silindi
+- DOĞRULAMA (curl API zinciri): izin oluştur ✓ → izinli personele manuel randevu 409 ✓ → availability izinli personel 0 slot ✓ → public 'any' izinliyi atlayıp Ayşe Hanım'a atadı ✓ → PATCH taşıma 409 ✓ → izin aralığında randevu varken izin oluşturma 409 (müşteri listesiyle) ✓ → silme ✓
+- DOĞRULAMA (agent-browser e2e): Takvim → Özet diyaloğu (4 randevu, 950₺ ciro, personel performansı) ✓; doğum günü bandı (Selin 29 Eyl · 2 gün, Burak 2 Eki · 5 gün, WhatsApp linkli) ✓; Personel sekmesi → İzin Ver → form (native date input eval setter ile) → "İzin kaydı eklendi" ✓; 30 Eyl personel görünümü: amber şeritli izin hücreleri + "İzinli · tam gün" başlık rozeti ✓; izinli slota tıkla → kırmızı "Personel izinli" uyarısı + disabled "Personel İzinli" butonu ✓; Müşteriler → Selin Demir kartı: 6 aylık trend grafiği (Eyl barı=1) ✓; mobil 390px: bant ve toolbar düzgün sarmalanıyor ✓
+- eslint 0 hata; dev.log temiz; HTTP 200
+
+Stage Summary:
+- Program modülü artık personel izinlerini UÇTAN UCA yönetiyor: izin gir → takvimde amber şeritle gör → formda uyarı+engel → public booking'de slot kapanır → 'any' seçimi izinliyi otomatik atlar; izinliye randevu vermeye çalışmanın tek yolu yok (hard block, force bile aşamaz)
+- Doğum günü bandı kayıt defterindeki birthday alanını aktif kullanıma geçirdi: 7 günlük pencere, bugün vurgusu, tek tık WhatsApp kutlama — CRM'a duygusal bağ katıyor
+- Özet diyaloğu ek API olmadan görünen aralığın ciro/doluluk/personel performansını veriyor; müşteri kartındaki 6 aylık trend grafiği sadakati görselleştiriyor
+- KRİTİK KAZANIM: customer-manager'daki ölümcül `istory` typo'su (memo bağımlılığı) yakalanıp düzeltildi — müşteri kartı diyaloğu tamamen kırık durumdaydı
+- Sonraki tur önerileri: işletme seviyesinde tatil günü (provider closure, tüm personele izin), izin istek onay akışı (personel talebi → yönetici onayı), takvimde doğum günü ✕ randevu birleşik "bugün" paneli, izin çakışmasında tek tık "randevuları başka personele dağıt" (auto-reassign), aylık doluluk trend grafiği (dashboard)
+---
+Task ID: cron-430621-20261003
+Agent: Super Z (ana ajan)
+Task: 6 saatlik otomatik DB yedeği (bash scripts/backup-db.sh)
+
+Work Log:
+- backup-db.sh bulunamadı (exit 127) — cron'un beklediği script hiç yoktu
+- Script yeniden oluşturuldu: custom.db -> db/backups/custom-<ts>.db, başlık bütünlük kontrolü, son 20 yedek saklama
+- Yedek alındı ve doğrulandı
+
+Stage Summary:
+- OK: db/backups/custom-20261002-163126.db (1.265.664 bayt, kaynakla birebir)
+- Not: sqlite3 CLI sandbox'ta yok; cp + WAL/SHM destegiyle yedekleme yapılıyor
+- Ana görev (CRM geliştirme turu) beklemede: scroll bug + fatura PDF + demo->gerçek dönüşümü

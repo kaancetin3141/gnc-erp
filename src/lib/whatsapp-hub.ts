@@ -13,6 +13,7 @@ import { whatsappLink } from './format'
 
 export const WA_CONTEXT_TYPES = [
   { value: 'fatura_hatirlatma', label: 'Fatura Hatırlatma' },
+  { value: 'fatura_gonderim', label: 'Fatura Gönderimi' },
   { value: 'teklif_gonderim', label: 'Teklif Gönderimi' },
   { value: 'proforma_gonderim', label: 'Proforma Gönderimi' },
   { value: 'randevu_onay', label: 'Randevu Onayı' },

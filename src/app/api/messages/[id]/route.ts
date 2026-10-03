@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { notifyChatService } from '@/lib/chat-realtime'
 
 // PATCH /api/messages/[id] — okundu olarak işaretle
 export async function PATCH(
@@ -25,6 +26,13 @@ export async function PATCH(
   const updated = await db.message.update({
     where: { id },
     data: { isRead: true },
+  })
+
+  // Gerçek zamanlı görüldü — mesajın sahibine anında bildir (fire-and-forget)
+  notifyChatService({
+    event: 'read',
+    senderId: message.senderId,
+    readerId: user!.id,
   })
 
   return ok(updated)

@@ -2138,6 +2138,12 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
     await db.user.update({ where: { id: u.id }, data: { employeeCode: code } })
   }
 
+  // === VARSAYILAN ŞİFRE — Yeni seed'lenen kullanıcılar '1234' ile giriş yapabilir ===
+  // (bcrypt hash; kullanıcılar ilk girişten sonra Şifre Değiştir ile güncellemelidir)
+  const { default: bcrypt } = await import('bcryptjs')
+  const defaultHash = await bcrypt.hash('1234', 10)
+  await db.user.updateMany({ where: { passwordHash: null }, data: { passwordHash: defaultHash } })
+
   const counts = {
     tenants: 6,
     users: 18,
