@@ -9,6 +9,8 @@
 # Cron ile 30 dakikada bir çağrılır (fixed_rate).
 # ============================================================
 BASE="/home/z/my-project/mini-services"
+LOGDIR="/home/z/my-project/logs"
+mkdir -p "$LOGDIR"
 RESTARTED=""
 
 # --- Env self-healing: sandbox resume bazen .env dosyalarını geri sarıyor ---
@@ -36,7 +38,7 @@ ensure() {
   if port_alive "$port"; then return; fi
   # 3 deneme: her başlatmadan sonra portu bekle (max ~20 sn)
   for attempt in 1 2 3; do
-    (cd "$dir" && nohup bun run dev > /home/z/my-project/logs/$name.log 2>&1 &)
+    (cd "$dir" && nohup bun run dev > "$LOGDIR/$name.log" 2>&1 &)
     for i in $(seq 1 10); do
       sleep 2
       port_alive "$port" && return
