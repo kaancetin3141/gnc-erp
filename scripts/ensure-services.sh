@@ -36,7 +36,7 @@ ensure() {
   if port_alive "$port"; then return; fi
   # 3 deneme: her başlatmadan sonra portu bekle (max ~20 sn)
   for attempt in 1 2 3; do
-    (cd "$dir" && nohup bun run dev > /tmp/$name.log 2>&1 &)
+    (cd "$dir" && nohup bun run dev > /home/z/my-project/logs/$name.log 2>&1 &)
     for i in $(seq 1 10); do
       sleep 2
       port_alive "$port" && return
