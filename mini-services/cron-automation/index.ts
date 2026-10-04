@@ -2,7 +2,7 @@
 // Gece 02:00'de iletişimsiz müşteriler için otomatik görev oluşturur
 // Port: 3010 (health check endpoint)
 
-import cron from 'node-cron'
+import cron from './vendor/node-cron/src/node-cron.js'
 import { createServer } from 'http'
 
 const PORT = 3010

@@ -4,7 +4,7 @@
 //  · 2+ saattir onay bekleyen randevuları işletmeye bildirir (escalation)
 // Port: 3011 (health check endpoint)
 
-import cron from 'node-cron'
+import cron from './vendor/node-cron/src/node-cron.js'
 import { createServer } from 'http'
 
 const PORT = 3011
