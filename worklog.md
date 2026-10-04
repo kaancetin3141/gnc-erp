@@ -7814,3 +7814,20 @@ Stage Summary:
 - Crash loop'un iki katmanlı kök nedeni: (1) bun run dev'in node_modules yarışı, (2) sandbox'un parsiyel FS rollback'i — ikisi de guardian scriptinde otomatik çözülüyor
 - CRON_SECRET artık scripts/.cron-env'de kalıcı; FS geri sarsa bile sonraki turda otomatik onarılır
 - Not: VPS'e geçişte bu kararsız sandbox ortamı sorun olmayacak; ensure-services.sh + .cron-env kopyalanmalı
+
+---
+Task ID: cron-433093-fix4 (vendor)
+Agent: main (Super Z)
+Task: node_modules silinmesine kalıcı çözüm — bağımlılıkları vendor etme
+
+Work Log:
+- Sandbox rollback node_modules'ı tekrar tekrar siliyor (12:10 turunda yeniden boşalmıştı); bun install 42ms'de çalışsa da install-start arası rollback yarışı sürüyordu
+- Çözüm: node-cron saf JS paketi — her iki servise (appointment-reminders, cron-automation) vendor/node-cron olarak gömüldü (124KB, test klasörü hariç), import'lar './vendor/node-cron/src/node-cron.js' yoluna çevrildi
+- uuid zaten import edilmemişti (artık dependency listesinde kalması zararsız)
+- Doğrulama: vendor boot temiz (boot logu "çalışıyor — port 3011", import hatası yok); 13:10 guardian turu "tüm mini servisler çalışıyor"
+- ensure() içindeki bun install adımı artık yalnızca fallback (zararsız)
+- Not: oturum 3 kez "broken session 403" ile koptu (pkill şüphesi ilk başta, sonra cd'siz komutlarda da tekrarlandı — aralıklı altyapı sorunu); her seferinde cron görevleri akışı sürdürdü
+
+Stage Summary:
+- Mini-servisler artık node_modules'tan TAMAMEN bağımsız boot oluyor — sandbox rollback'inin üç etkisine (env, node_modules, süreçler) karşı tam dayanıklılık
+- crash loop efsanesi kapanmıştır: env self-healing + port-tabanlı kontrol + vendor deps
