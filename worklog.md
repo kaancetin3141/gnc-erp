@@ -7854,3 +7854,25 @@ Stage Summary:
 - İki yeni modül production kalitesinde: Personel & İK (personel/izin/vardiya) + Destek Masası (ticket) — 78+87 = 80 model; 26/26 E2E pass
 - SMTP gerçek e-posta zaten çalışıyordu (beklemedeki görev kapanmış durumda); sabit kur ve harita mock fallback'i sonraki tur adayları
 - VPS notu: yeni env'ler gerekmiyor; db/custom.db'yi şemayla birlikte almak yeterli (prisma db push idempotent)
+---
+Task ID: modules-20261006
+Agent: Super Z (ana ajan)
+Task: "Program adminini göremiyorum + benzer firmaları araştır + eksik modülleri ekle + test edip gerçek kullanılabilir seviyeye getir"
+
+Work Log:
+- PROGRAM ADMİNİ GÖRÜNÜRLÜĞÜ: superadmin hesabı (program.admin@gnccrm.app / 1234) DB'de mevcuttu ama login ekranında görünmüyordu → login-screen'e ayrı "Yönetim" grubu + mor gradyanlı "Program Admini olarak gir" butonu (Crown ikonlu) eklendi; giriş yapınca Admin Paneli + Dağıtım Merkezi menüde görünüyor (agent-browser ile doğrulandı)
+- 🐛 BULGU (LOGIN): admin@sikkuaför.com tarayıcıdan giremiyordu — (1) Unicode NFC/NFD farkı, (2) tarayıcıların IDN domain'i punycode'a çevirmesi → auth route'una NFC normalizasyonu + xn-- punycode→unicode dönüşümü eklendi; KÖKTEN ÇÖZÜM: DB + seed + login-screen'de tüm Türkçe karakterli email'ler ASCII'ye çevrildi (sikkuaför → sikkuafur)
+- RAKİP ARAŞTIRMASI (web_search, 6 sorgu): CRM (Zoho/HubSpot), site yönetimi (Site BYS/Kozmos: kasa-banka modülü), kafe POS (adisyon/masa), market otomasyonu (barkod/sayım/carî), randevu (Fresha/GymMaster/Vagaro: membership packages) → GNC'de eksik: ÜYELİK/PAKET, KASA & BANKA, SADAKAT PUANI (paralel ajanın tespiti: HR, DESTEK MASASI)
+- MODÜL 1 ÜYELİK & PAKET: MembershipPackage + MemberPackage + MemberPackageUsage modelleri; /api/membership/packages(+[id]) ve /subscriptions(+[id]) route'ları; appointments-view'a "Üyelikler" sekmesi (paket tanım kartları, satış dialogu, seans düş/uzat/iptal, 7-gün-bitiyor uyarısı, 30-günlük ciro) → E2E TEST: paket oluştur→sat→seans düş(x2)→uzat OK; RANDEVU ENTEGRASYONU: randevu "tamamlandi" olunca müşterinin en erken biten aktif paketinden otomatik 1 seans düşülüyor (packageUsed döner, usage kaydı "Randevu tamamlandı" notuyla) — curl + UI toast ile doğrulandı (2/5)
+- MODÜL 2 KASA & BANKA: CashAccount + CashTransaction modelleri; /api/cash/accounts(+[id]) ve /transactions(+[id]) route'ları; expenses-view Tabs yapısına çevrildi + "Kasa & Banka" sekmesi (hesap kartları, gelir/gider dialogları, oto hareket silinemez kilidi) → E2E: hesap aç(5000)→gelir(+3500)→gider(-1200)→bakiye 7300 ✓; GİDER ENTEGRASYONU: status=odendi gider kaydı → kasa çıkışı otomatik (hesap yoksa "Ana Kasa" otomatik açılır, refType=expense) ✓ UI doğrulandı (32.050₺ toplam, 7.050 Ana Kasa)
+- MODÜL 3 SADAKAT PUANI: LoyaltyAccount + LoyaltyTransaction modelleri; /api/loyalty/accounts(+[id]) route'ları; market-view'a "Sadakat Puanı" sekmesi (puan kartları, harca/duzelt/geçmiş) → POS ENTEGRASYONU: market POS satışında customerName girilirse her 100₺ = 1 puan otomatik (upsert + kazanma tx, satışı bloklamaz, earnedPoints döner) — 405₺ satış→4 puan ✓; redeem'de yetersiz puan kontrolü ✓
+- PARALEL AJAN DURUMU: bu oturumda ikinci bir ajan aynı görevi paralel yürüttü; app-store/command-palette/sidebar/topbar/rbac/tenant-sector/types + HrEmployee/HrLeaveRequest/HrShift/Ticket/TicketComment şemasını ekledi ama hr-view + support-tickets-view bileşenlerini YAZAMADAN kesildi → uygulama 500 (Module not found) — BEN TAMAMLADIM: /api/hr/employees(+[id]), /api/hr/leaves(+[id] approve/reject + çakışma kontrolü), /api/tickets(+[id]/comments) route'ları + HrView (personel CRUD, bordro özeti, izin onay/ret) + SupportTicketsView (TRK kodlu ticketlar, öncelik/durum select'leri, dahili yorum) bileşenleri; Ticket↔Customer/User ilişkileri şemaya eklendi
+- İZİN SENKRONU: yeni yetkiler (hr.view/tickets.view) DB'deki eski kullanıcı izinlerinde yoktu → union senkronu (mevcut özel yetkiler korundu) ile 23 kullanıcı güncellendi
+- E2E (agent-browser, iki ayrı tenant): Program Admini girişi→Admin Paneli ✓; Üyelikler sekmesi (Burak Şahin 2/5, toast) ✓; Kasa & Banka (bakiyeler doğru) ✓; Sadakat (Zeynep 4 puan) ✓; Personel & İK (3 personel, 121.000₺ bordro, 2 bekleyen izin) ✓; Destek Masası (TRK-0001..0006 canlı liste) ✓
+- eslint 0 hata; dev.log temiz; ensure-services "tüm mini servisler çalışıyor"
+
+Stage Summary:
+- 5 YENİ GERÇEK MODÜL: Üyelik&Paket (randevu entegrasyonlu), Kasa&Banka (gider entegrasyonlu), Sadakat Puanı (POS entegrasyonlu), Personel&İK (izin onay akışlı), Destek Masası (yorumlu) — hepsi API+E2E doğrulamalı
+- Login ekranında Program Admini butonu; Türkçe-karakterli email sorunları kökten çözüldü (ASCII migration + NFC/punycode savunması)
+- RİSK: paralel ajan hâlâ aktif olabilir (scripts/research-competitors.sh + kendi test verileri); çakışma olmaması için onun dosyalarına dokunulmadı, eksikleri tamamlandı
+- Sonraki tur önerileri: sadakat puanını POS ekranında müşteri adı yazarken anlık gösterme, üyelik bitişine SMS/e-posta hatırlatma (cron-automation'a bağla), kasa hesapları arası transfer, HR vardiya planı UI'ı, ticket'a müşteri portalı bağlantısı
