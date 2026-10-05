@@ -42,7 +42,7 @@ import {
   Search, RefreshCw, Building2, MapPin, Mail, Phone,
   Eye, Edit3, BarChart3, ListTree, Activity, Clock, Hash,
   CircleUser, Layers, Coffee, Store,
-  History, Filter, ScrollText, ChevronLeft, Loader2,
+  History, Filter, ScrollText, ChevronLeft, Loader2, Download,
 } from 'lucide-react'
 import { initials, formatRelative, formatDateTime, formatDate } from '@/lib/format'
 import {
@@ -1008,6 +1008,33 @@ function AuditLogsTab() {
 
   const hasActiveFilters = entityFilter !== 'all' || actionFilter !== 'all' || actorFilter !== 'all'
 
+  // CSV dışa aktarma — yüklü kayıtları (maks 1000) indirir
+  const exportCsv = () => {
+    if (allItems.length === 0) return
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`
+    const rows = [
+      ['Tarih', 'Aktör', 'E-posta', 'İşlem', 'Varlık', 'Kayıt ID', 'Özet'].join(','),
+      ...allItems.map((log) =>
+        [
+          new Date(log.createdAt).toLocaleString('tr-TR'),
+          log.actor?.name ?? '—',
+          log.actor?.email ?? '',
+          AUDIT_ACTION_LABELS[log.action] ?? log.action,
+          AUDIT_ENTITY_LABELS[log.entity] ?? log.entity,
+          log.entityId ?? '',
+          prettyJson(log.after ?? log.before),
+        ].map(esc).join(','),
+      ),
+    ]
+    const blob = new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `denetim-kayitlari-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -1021,10 +1048,16 @@ function AuditLogsTab() {
               Sistemde yapılan tüm değişiklikler — müşteri, fırsat, fatura, oturum ve daha fazlası.
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching && !isFetchingNextPage}>
-            <RefreshCw className={cn('w-4 h-4 mr-1.5', isFetching && !isFetchingNextPage && 'animate-spin')} />
-            Yenile
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={exportCsv} disabled={allItems.length === 0} title="Yüklü kayıtları CSV olarak indir">
+              <Download className="w-4 h-4 mr-1.5" />
+              CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching && !isFetchingNextPage}>
+              <RefreshCw className={cn('w-4 h-4 mr-1.5', isFetching && !isFetchingNextPage && 'animate-spin')} />
+              Yenile
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">

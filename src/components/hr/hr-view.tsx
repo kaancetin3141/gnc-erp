@@ -1,8 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-client'
+import { useAppStore } from '@/store/app-store'
+import { hasPermission } from '@/lib/rbac'
+import type { SessionUser } from '@/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,10 +18,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate } from '@/lib/format'
 import {
   Plus, Users, Wallet, UserCheck, CalendarOff, Trash2, Pencil,
-  Check, X, Search, Briefcase,
+  Check, X, Search, Briefcase, CalendarDays, ChevronLeft, ChevronRight, Clock,
 } from 'lucide-react'
 
 interface HrEmployee {
@@ -48,6 +52,39 @@ interface HrLeave {
   decisionNote: string | null
 }
 
+interface HrShift {
+  id: string
+  employeeId: string
+  employee: { id: string; name: string; position: string }
+  date: string
+  startTime: string
+  endTime: string
+  note: string | null
+}
+
+const DAY_LABELS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+
+function startOfWeek(d: Date): Date {
+  const x = new Date(d)
+  const day = (x.getDay() + 6) % 7 // Pazartesi=0
+  x.setDate(x.getDate() - day)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+function addDays(d: Date, n: number): Date {
+  const x = new Date(d)
+  x.setDate(x.getDate() + n)
+  return x
+}
+
+function toISODate(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 const LEAVE_TYPES: Record<string, string> = {
   yillik: 'Yıllık İzin',
   mazeret: 'Mazeret İzni',
@@ -69,6 +106,8 @@ const EMPTY_FORM = {
 
 export function HrView() {
   const qc = useQueryClient()
+  const { user } = useAppStore()
+  const canManage = hasPermission(user as SessionUser | null, 'hr.manage')
   const [tab, setTab] = useState('employees')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -79,6 +118,11 @@ export function HrView() {
   const [busy, setBusy] = useState<string | null>(null)
 
   const [leaveForm, setLeaveForm] = useState({ employeeId: '', type: 'yillik', startDate: '', endDate: '', reason: '' })
+
+  // Vardiya planı
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
+  const [shiftOpen, setShiftOpen] = useState(false)
+  const [shiftForm, setShiftForm] = useState({ employeeId: '', date: '', startTime: '09:00', endTime: '18:00', note: '' })
 
   const { data, isLoading } = useQuery({
     queryKey: ['hr-employees', search, statusFilter],
@@ -95,9 +139,44 @@ export function HrView() {
     queryFn: () => apiGet<{ items: HrLeave[]; pendingCount: number }>('/api/hr/leaves'),
   })
 
+  const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart])
+  const { data: shiftData, isLoading: shiftLoading } = useQuery({
+    queryKey: ['hr-shifts', toISODate(weekStart)],
+    queryFn: () =>
+      apiGet<{ items: HrShift[] }>(
+        `/api/hr/shifts?from=${toISODate(weekStart)}&to=${toISODate(weekEnd)}`,
+      ),
+  })
+
   const employees = data?.items ?? []
   const leaves = leaveData?.items ?? []
   const summary = data?.summary
+  const shifts = shiftData?.items ?? []
+
+  // Hafta içi günler + personel bazlı vardiya haritası
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart],
+  )
+  const shiftMap = useMemo(() => {
+    const map = new Map<string, HrShift[]>()
+    for (const s of shifts) {
+      const key = `${s.employeeId}|${toISODate(new Date(s.date))}`
+      const arr = map.get(key) ?? []
+      arr.push(s)
+      map.set(key, arr)
+    }
+    return map
+  }, [shifts])
+  const weeklyHours = useMemo(() => {
+    let total = 0
+    for (const s of shifts) {
+      const [sh, sm] = s.startTime.split(':').map(Number)
+      const [eh, em] = s.endTime.split(':').map(Number)
+      total += (eh * 60 + em - (sh * 60 + sm)) / 60
+    }
+    return total
+  }, [shifts])
 
   function openNew() {
     setEditEmp(null)
@@ -159,6 +238,36 @@ export function HrView() {
       qc.invalidateQueries({ queryKey: ['hr-leaves'] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function saveShift() {
+    if (!shiftForm.employeeId || !shiftForm.date) return toast.error('Personel ve tarih zorunludur')
+    if (shiftForm.startTime >= shiftForm.endTime) return toast.error('Bitiş saati başlangıçtan sonra olmalıdır')
+    setBusy('shift')
+    try {
+      await apiPost('/api/hr/shifts', shiftForm)
+      toast.success('Vardiya eklendi')
+      setShiftOpen(false)
+      setShiftForm({ employeeId: '', date: '', startTime: '09:00', endTime: '18:00', note: '' })
+      qc.invalidateQueries({ queryKey: ['hr-shifts'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Vardiya eklenemedi')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function deleteShift(s: HrShift) {
+    setBusy(s.id)
+    try {
+      await apiDelete(`/api/hr/shifts/${s.id}`)
+      toast.success('Vardiya silindi')
+      qc.invalidateQueries({ queryKey: ['hr-shifts'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Silinemedi')
     } finally {
       setBusy(null)
     }
@@ -234,19 +343,130 @@ export function HrView() {
                 </span>
               )}
             </TabsTrigger>
+            <TabsTrigger value="shifts" className="text-xs">Vardiya Planı</TabsTrigger>
           </TabsList>
           <div className="flex gap-2">
-            {tab === 'employees' ? (
+            {tab === 'employees' && (
               <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={openNew}>
                 <Plus className="w-4 h-4 mr-1" /> Personel Ekle
               </Button>
-            ) : (
+            )}
+            {tab === 'leaves' && (
               <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setLeaveOpen(true)}>
                 <Plus className="w-4 h-4 mr-1" /> İzin Talebi
               </Button>
             )}
+            {tab === 'shifts' && canManage && (
+              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setShiftOpen(true)}>
+                <Plus className="w-4 h-4 mr-1" /> Vardiya Ekle
+              </Button>
+            )}
           </div>
         </div>
+
+        {/* VARDİYA PLANI — haftalık grid */}
+        <TabsContent value="shifts" className="mt-3 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => setWeekStart(addDays(weekStart, -7))} title="Önceki hafta">
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => setWeekStart(addDays(weekStart, 7))} title="Sonraki hafta">
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setWeekStart(startOfWeek(new Date()))}>
+                Bu Hafta
+              </Button>
+              <span className="text-sm font-medium ml-1">
+                {formatDate(weekStart.toISOString())} — {formatDate(weekEnd.toISOString())}
+              </span>
+            </div>
+            <Badge variant="outline" className="text-[11px] w-fit gap-1">
+              <Clock className="w-3 h-3" /> {shifts.length} vardiya · {weeklyHours.toFixed(1)} saat
+            </Badge>
+          </div>
+
+          <Card className="shadow-soft overflow-hidden">
+            <CardContent className="p-0">
+              {shiftLoading ? (
+                <div className="p-4 space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
+              ) : employees.length === 0 ? (
+                <div className="p-10 text-center text-sm text-muted-foreground">
+                  <CalendarDays className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  Vardiya planı için önce personel tanımlayın.
+                </div>
+              ) : (
+                <div className="overflow-x-auto custom-scroll">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="sticky left-0 bg-background z-10 min-w-[150px]">Personel</TableHead>
+                        {weekDays.map((d, i) => {
+                          const isToday = toISODate(d) === toISODate(new Date())
+                          return (
+                            <TableHead key={i} className={cn('text-center min-w-[96px]', isToday && 'bg-emerald-50/60 dark:bg-emerald-950/20')}>
+                              <div className={cn('text-xs', isToday && 'text-emerald-700 dark:text-emerald-400 font-semibold')}>
+                                {DAY_LABELS[i]}
+                              </div>
+                              <div className={cn('text-[10px] text-muted-foreground', isToday && 'text-emerald-600/70')}>
+                                {d.getDate()}.{d.getMonth() + 1}
+                              </div>
+                            </TableHead>
+                          )
+                        })}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {employees.map((e) => (
+                        <TableRow key={e.id}>
+                          <TableCell className="sticky left-0 bg-background z-10">
+                            <div className="font-medium text-sm truncate max-w-[140px]">{e.name}</div>
+                            <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">{e.position}</div>
+                          </TableCell>
+                          {weekDays.map((d, di) => {
+                            const cellShifts = shiftMap.get(`${e.id}|${toISODate(d)}`) ?? []
+                            return (
+                              <TableCell key={di} className={cn('p-1.5 align-top', toISODate(d) === toISODate(new Date()) && 'bg-emerald-50/40 dark:bg-emerald-950/10')}>
+                                {cellShifts.length === 0 ? (
+                                  <div className="h-8" />
+                                ) : (
+                                  <div className="space-y-1">
+                                    {cellShifts.map((s) => (
+                                      <div key={s.id} className="group relative rounded-md bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-1 text-center">
+                                        <div className="text-[10px] font-semibold text-emerald-800 dark:text-emerald-300 whitespace-nowrap">
+                                          {s.startTime}–{s.endTime}
+                                        </div>
+                                        {canManage && (
+                                          <button
+                                            className="absolute top-0.5 right-0.5 hidden group-hover:flex w-3.5 h-3.5 rounded-full bg-rose-500 text-white items-center justify-center shadow"
+                                            disabled={busy === s.id}
+                                            onClick={() => deleteShift(s)}
+                                            title="Vardiyayı sil"
+                                          >
+                                            <X className="w-2 h-2" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </TableCell>
+                            )
+                          })}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          {canManage && employees.length > 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              Hücre üzerindeki vardiyaların üzerine gelip ✕ ile silebilir ya da &quot;Vardiya Ekle&quot; ile yeni kayıt oluşturabilirsiniz.
+            </p>
+          )}
+        </TabsContent>
 
         {/* PERSONEL */}
         <TabsContent value="employees" className="mt-3 space-y-3">
@@ -491,6 +711,50 @@ export function HrView() {
             <Button variant="outline" onClick={() => setLeaveOpen(false)}>Vazgeç</Button>
             <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={saveLeave} disabled={busy === 'leave'}>
               {busy === 'leave' ? 'Oluşturuluyor…' : 'Talep Oluştur'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* VARDİYA DİALOGU */}
+      <Dialog open={shiftOpen} onOpenChange={setShiftOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Yeni Vardiya</DialogTitle>
+            <DialogDescription>Personel için çalışma saati tanımlayın.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Personel *</Label>
+              <Select value={shiftForm.employeeId || undefined} onValueChange={(v) => setShiftForm({ ...shiftForm, employeeId: v })}>
+                <SelectTrigger><SelectValue placeholder="Personel seçin" /></SelectTrigger>
+                <SelectContent>
+                  {employees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name} — {e.position}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tarih *</Label>
+              <Input type="date" value={shiftForm.date} onChange={(e) => setShiftForm({ ...shiftForm, date: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Başlangıç *</Label>
+                <Input type="time" value={shiftForm.startTime} onChange={(e) => setShiftForm({ ...shiftForm, startTime: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Bitiş *</Label>
+                <Input type="time" value={shiftForm.endTime} onChange={(e) => setShiftForm({ ...shiftForm, endTime: e.target.value })} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Not</Label>
+              <Input value={shiftForm.note} onChange={(e) => setShiftForm({ ...shiftForm, note: e.target.value })} placeholder="Örn: Sabah vardiyası" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShiftOpen(false)}>Vazgeç</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={saveShift} disabled={busy === 'shift'}>
+              {busy === 'shift' ? 'Kaydediliyor…' : 'Kaydet'}
             </Button>
           </DialogFooter>
         </DialogContent>

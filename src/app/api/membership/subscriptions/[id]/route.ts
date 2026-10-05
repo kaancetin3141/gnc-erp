@@ -26,6 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 //   action=use-session  → 1 seans düş (aktif + süre uygun + seans kalmış olmalı)
 //   action=cancel       → iptal et
 //   action=extend       → { days } kadar süre uzat
+//   action=renew        → yeni dönem: seanslar sıfırlanır, süre paket.validityDays uzatılır
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
@@ -36,7 +37,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const body = await req.json().catch(() => null)
   const action = body?.action
-  if (!['use-session', 'cancel', 'extend'].includes(action)) return err('Geçersiz işlem')
+  if (!['use-session', 'cancel', 'extend', 'renew'].includes(action)) return err('Geçersiz işlem')
 
   const sub = await db.memberPackage.findFirst({ where: { id, tenantId: user!.tenantId } })
   if (!sub) return err('Abonelik bulunamadı', 404)
@@ -93,6 +94,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       entityId: id,
       before: { status: sub.status },
       after: { status: 'iptal' },
+    })
+    return ok(updated)
+  }
+
+  if (action === 'renew') {
+    const pkg = await db.membershipPackage.findUnique({ where: { id: sub.packageId } })
+    if (!pkg) return err('Paket tanımı bulunamadı', 404)
+    const validity = Math.max(1, pkg.validityDays || 30)
+    const now = new Date()
+    // Süre: kalan süreden devam (bitmemişse mevcut bitişten), bittiyse bugünden
+    const base = sub.expiryDate > now ? sub.expiryDate : now
+    const updated = await db.$transaction(async (tx) => {
+      const u = await tx.memberPackage.update({
+        where: { id },
+        data: {
+          status: 'aktif',
+          sessionsTotal: pkg.sessionCount || sub.sessionsTotal,
+          sessionsUsed: 0,
+          startDate: sub.status === 'aktif' ? sub.startDate : now,
+          expiryDate: new Date(base.getTime() + validity * 24 * 60 * 60 * 1000),
+          remindedAt: null, // yeni dönem için hatırlatma yeniden çalışsın
+        },
+      })
+      await tx.memberPackageUsage.create({
+        data: { packageId: id, note: 'Yenileme — yeni dönem açıldı' },
+      })
+      return u
+    })
+    await writeAuditLog({
+      tenantId: user!.tenantId,
+      actorId: user!.id,
+      action: 'update',
+      entity: 'member_package',
+      entityId: id,
+      before: { status: sub.status, sessionsUsed: sub.sessionsUsed },
+      after: { action: 'renew', validityDays: validity, newExpiry: updated.expiryDate },
     })
     return ok(updated)
   }

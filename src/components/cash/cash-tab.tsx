@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate } from '@/lib/format'
-import { Plus, Landmark, Wallet, ArrowDownCircle, ArrowUpCircle, Trash2, Scale, Lock } from 'lucide-react'
+import { Plus, Landmark, Wallet, ArrowDownCircle, ArrowUpCircle, Trash2, Scale, Lock, ArrowLeftRight } from 'lucide-react'
 
 interface CashAccount {
   id: string
@@ -54,6 +54,8 @@ export function CashTab() {
 
   const [accForm, setAccForm] = useState({ name: '', type: 'kasa', initialBalance: '' })
   const [txForm, setTxForm] = useState({ accountId: '', type: 'gelir', category: 'tahsilat', amount: '', description: '', date: '' })
+  const [trOpen, setTrOpen] = useState(false)
+  const [trForm, setTrForm] = useState({ fromAccountId: '', toAccountId: '', amount: '', description: '', date: '' })
 
   const { data: accData, isLoading: accLoading } = useQuery({
     queryKey: ['cash-accounts'],
@@ -113,6 +115,33 @@ export function CashTab() {
       qc.invalidateQueries({ queryKey: ['cash-accounts'] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Kaydedilemedi')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function createTransfer() {
+    if (!trForm.fromAccountId || !trForm.toAccountId) return toast.error('Kaynak ve hedef hesap seçin')
+    if (trForm.fromAccountId === trForm.toAccountId) return toast.error('Aynı hesap seçilemez')
+    if (!trForm.description.trim()) return toast.error('Açıklama gerekli')
+    const amount = parseFloat(trForm.amount)
+    if (isNaN(amount) || amount <= 0) return toast.error('Geçerli tutar girin')
+    setBusy('tr')
+    try {
+      await apiPost('/api/cash/transfer', {
+        fromAccountId: trForm.fromAccountId,
+        toAccountId: trForm.toAccountId,
+        amount,
+        description: trForm.description,
+        date: trForm.date || undefined,
+      })
+      toast.success('Transfer tamamlandı')
+      setTrOpen(false)
+      setTrForm({ fromAccountId: '', toAccountId: '', amount: '', description: '', date: '' })
+      qc.invalidateQueries({ queryKey: ['cash-transactions'] })
+      qc.invalidateQueries({ queryKey: ['cash-accounts'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Transfer başarısız')
     } finally {
       setBusy(null)
     }
@@ -233,6 +262,9 @@ export function CashTab() {
               </Select>
             </div>
             <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setTrOpen(true)} disabled={accounts.length < 2} title={accounts.length < 2 ? 'Transfer için en az 2 hesap gerekli' : 'Hesaplar arası transfer'}>
+                <ArrowLeftRight className="w-3.5 h-3.5 mr-1" /> Transfer
+              </Button>
               <Button size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={() => openTx('gelir')}>
                 <Plus className="w-3.5 h-3.5 mr-1" /> Gelir
               </Button>
@@ -266,7 +298,9 @@ export function CashTab() {
                     <TableRow key={t.id}>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {t.type === 'gelir' ? (
+                          {t.refType === 'transfer' ? (
+                            <ArrowLeftRight className="w-4 h-4 text-sky-600 shrink-0" />
+                          ) : t.type === 'gelir' ? (
                             <ArrowDownCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                           ) : (
                             <ArrowUpCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -286,11 +320,11 @@ export function CashTab() {
                         )}
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{formatDate(t.date)}</TableCell>
-                      <TableCell className={cn('text-right font-medium text-sm', t.type === 'gelir' ? 'text-emerald-600' : 'text-rose-600')}>
+                      <TableCell className={cn('text-right font-medium text-sm', t.refType === 'transfer' ? 'text-sky-600' : t.type === 'gelir' ? 'text-emerald-600' : 'text-rose-600')}>
                         {t.type === 'gelir' ? '+' : '-'}{formatCurrency(t.amount)}
                       </TableCell>
                       <TableCell>
-                        {(!t.refType || t.refType === 'manual') && (
+                        {(!t.refType || t.refType === 'manual' || t.refType === 'transfer') && (
                           <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-rose-500" disabled={busy === t.id} onClick={() => deleteTransaction(t)}>
                             <Trash2 className="w-3 h-3" />
                           </Button>
@@ -337,6 +371,65 @@ export function CashTab() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setAccOpen(false)}>Vazgeç</Button>
             <Button onClick={createAccount} disabled={busy === 'acc'}>{busy === 'acc' ? 'Açılıyor…' : 'Hesap Aç'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* TRANSFER */}
+      <Dialog open={trOpen} onOpenChange={setTrOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Hesaplar Arası Transfer</DialogTitle>
+            <DialogDescription>Kaynak hesaptan hedef hesaba para aktarın. İki hareket de kayıt altına alınır.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Kaynak Hesap (çıkış) *</Label>
+              <Select value={trForm.fromAccountId || undefined} onValueChange={(v) => setTrForm({ ...trForm, fromAccountId: v, toAccountId: trForm.toAccountId === v ? '' : trForm.toAccountId })}>
+                <SelectTrigger><SelectValue placeholder="Hesap seçin" /></SelectTrigger>
+                <SelectContent>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name} — {formatCurrency(a.balance)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-center">
+              <div className="w-8 h-8 rounded-full bg-sky-50 dark:bg-sky-950/30 flex items-center justify-center">
+                <ArrowLeftRight className="w-4 h-4 text-sky-600" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Hedef Hesap (giriş) *</Label>
+              <Select value={trForm.toAccountId || undefined} onValueChange={(v) => setTrForm({ ...trForm, toAccountId: v })}>
+                <SelectTrigger><SelectValue placeholder="Hesap seçin" /></SelectTrigger>
+                <SelectContent>
+                  {accounts.filter((a) => a.id !== trForm.fromAccountId).map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name} — {formatCurrency(a.balance)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tutar (₺) *</Label>
+                <Input type="number" min="0" step="0.01" value={trForm.amount} onChange={(e) => setTrForm({ ...trForm, amount: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tarih</Label>
+                <Input type="date" value={trForm.date} onChange={(e) => setTrForm({ ...trForm, date: e.target.value })} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Açıklama *</Label>
+              <Input value={trForm.description} onChange={(e) => setTrForm({ ...trForm, description: e.target.value })} placeholder="Örn: Kasa teslim / banka yatırma" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTrOpen(false)}>Vazgeç</Button>
+            <Button className="bg-sky-600 hover:bg-sky-700" onClick={createTransfer} disabled={busy === 'tr'}>
+              {busy === 'tr' ? 'Aktarılıyor…' : 'Transfer Et'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

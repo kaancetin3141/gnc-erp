@@ -57,9 +57,30 @@ async function runAutomationForAllTenants() {
 
     const result = await runRes.json()
     console.log(`[${new Date().toISOString()}] Otomasyon tamamlandı: ${result.created} görev oluşturuldu, ${result.skipped} atlandı (toplam ${result.scanned} müşteri tarandı)`)
+
+    // Üyelik bitiş hatırlatmaları (aktif paketler, 3 gün içinde bitenler)
+    try {
+      const memRes = await fetch(`${APP_URL}/api/automation/membership-reminders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-gnc-session': session },
+        body: JSON.stringify({ days: 3 }),
+      })
+      if (memRes.ok) {
+        const mem = await memRes.json()
+        console.log(`[${new Date().toISOString()}] Üyelik hatırlatma: ${rem(mem.reminded)} hatırlatıldı, ${rem(mem.emailed)} e-posta, ${rem(mem.tasksCreated)} görev`)
+      } else {
+        console.error(`[${new Date().toISOString()}] Üyelik hatırlatma başarısız: ${memRes.status}`)
+      }
+    } catch (e) {
+      console.error(`[${new Date().toISOString()}] Üyelik hatırlatma hatası:`, e)
+    }
   } catch (e) {
     console.error(`[${new Date().toISOString()}] Otomasyon cron hatası:`, e)
   }
+}
+
+function rem(v: unknown): string {
+  return typeof v === 'number' ? String(v) : '0'
 }
 
 // Cron schedule: her gece 02:00

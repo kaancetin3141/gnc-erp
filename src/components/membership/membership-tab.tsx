@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { formatCurrency, formatDate } from '@/lib/format'
-import { Plus, Ticket, PackageX, MinusCircle, CalendarClock, Users, Wallet, Search, TicketCheck } from 'lucide-react'
+import { Plus, Ticket, PackageX, MinusCircle, CalendarClock, Users, Wallet, Search, TicketCheck, BellRing, Bell, RefreshCw } from 'lucide-react'
 
 interface MembershipPackage {
   id: string
@@ -42,6 +42,7 @@ interface MemberSubscription {
   sessionsUsed: number
   pricePaid: number
   status: string
+  remindedAt: string | null
   notes: string | null
   usages?: { id: string; usedAt: string; note: string | null }[]
 }
@@ -98,6 +99,30 @@ export function MembershipTab() {
   const monthlyRevenue = subs
     .filter((s) => new Date(s.startDate).getTime() > Date.now() - 30 * 86400000)
     .reduce((sum, s) => sum + (s.pricePaid || 0), 0)
+
+  async function sendReminder(s: MemberSubscription) {
+    setBusy(s.id)
+    try {
+      const res = await apiPost<{ reminded: number; emailed: number; tasksCreated: number; message?: string }>(
+        '/api/automation/membership-reminders',
+        { subscriptionId: s.id, days: 7 },
+      )
+      if (res.reminded === 0) {
+        toast.info('Bu üyelik için hatırlatma zaten gönderilmiş')
+      } else {
+        toast.success(
+          res.emailed > 0
+            ? `Hatırlatma gönderildi (${res.emailed} e-posta, ${res.tasksCreated} görev)`
+            : `Takip görevi oluşturuldu (${res.tasksCreated}) — müşteri e-postası tanımlı değil`,
+        )
+      }
+      qc.invalidateQueries({ queryKey: ['membership-subscriptions'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hatırlatma gönderilemedi')
+    } finally {
+      setBusy(null)
+    }
+  }
 
   async function createPackage() {
     if (!pkgForm.name.trim()) return toast.error('Paket adı gerekli')
@@ -178,6 +203,20 @@ export function MembershipTab() {
       qc.invalidateQueries({ queryKey: ['membership-subscriptions'] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Uzatılamadı')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function renewSubscription(sub: MemberSubscription) {
+    if (!confirm(`${sub.customerName} için yeni dönem açılsın mı?\nSeanslar sıfırlanır, süre paket geçerlilik süresi kadar uzatılır.`)) return
+    setBusy(sub.id)
+    try {
+      await apiPatch(`/api/membership/subscriptions/${sub.id}`, { action: 'renew' })
+      toast.success(`${sub.customerName} — üyelik yeni döneme geçirildi`)
+      qc.invalidateQueries({ queryKey: ['membership-subscriptions'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Yenileme başarısız')
     } finally {
       setBusy(null)
     }
@@ -332,6 +371,11 @@ export function MembershipTab() {
                                   {daysLeft < 0 ? 'süresi geçti' : `${daysLeft} gün kaldı`}
                                 </div>
                               )}
+                              {s.remindedAt && (
+                                <div className="text-[10px] text-emerald-600 flex items-center gap-0.5 mt-0.5">
+                                  <Bell className="w-2.5 h-2.5" /> hatırlatıldı
+                                </div>
+                              )}
                             </TableCell>
                             <TableCell>
                               <Badge className={`text-[10px] border-0 ${meta.cls}`}>{meta.label}</Badge>
@@ -344,8 +388,25 @@ export function MembershipTab() {
                                   </Button>
                                 )}
                                 {s.status === 'aktif' && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2 text-[11px] text-sky-600"
+                                    disabled={busy === s.id || !!s.remindedAt}
+                                    onClick={() => sendReminder(s)}
+                                    title={s.remindedAt ? 'Hatırlatma gönderildi' : 'Bitiş hatırlatması gönder (görev + e-posta)'}
+                                  >
+                                    <BellRing className="w-3 h-3" />
+                                  </Button>
+                                )}
+                                {s.status === 'aktif' && (
                                   <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px]" disabled={busy === s.id} onClick={() => extendSubscription(s)} title="30 gün uzat">
                                     <CalendarClock className="w-3 h-3" />
+                                  </Button>
+                                )}
+                                {s.status !== 'iptal' && (
+                                  <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px] text-emerald-600" disabled={busy === s.id} onClick={() => renewSubscription(s)} title="Yenile — yeni dönem (seanslar sıfırlanır, süre paket süresi kadar uzar)">
+                                    <RefreshCw className="w-3 h-3" />
                                   </Button>
                                 )}
                                 {(s.status === 'aktif' || s.status === 'suresi_doldu') && (

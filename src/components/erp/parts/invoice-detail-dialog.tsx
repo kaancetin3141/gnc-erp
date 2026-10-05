@@ -29,7 +29,7 @@ import {
   Receipt, Pencil, Trash2, RefreshCw, User, Calendar,
   Clock, CheckCircle2, AlertTriangle, TrendingUp, FileText,
   Printer, Plus, CircleCheckBig, Undo2, MessageCircle, CalendarClock,
-  HandCoins, Loader2, Send, Download,
+  HandCoins, Loader2, Send, Download, FileCode2,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/format'
 import { sendWhatsAppTracked } from '@/lib/whatsapp-hub'
@@ -264,6 +264,21 @@ export function InvoiceDetailDialog({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Fatura PDF önizleme</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        window.location.href = `/api/invoices/${invoice.id}/einvoice`
+                        toast.info('e-Arşiv fatura XML (UBL-TR 1.2) indiriliyor — GİB portalına yükleyebilirsiniz')
+                      }}
+                    >
+                      <FileCode2 className="w-3.5 h-3.5 mr-1" /> e-Arşiv XML
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>GİB UBL-TR 1.2 e-Arşiv fatura XML indir</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>

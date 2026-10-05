@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, apiPost, apiPatch } from '@/lib/api-client'
 import { useAppStore } from '@/store/app-store'
@@ -20,7 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   ScanLine, Search, Plus, Minus, Trash2, ShoppingCart,
-  Banknote, CreditCard, Wallet, X, Receipt, Play, Square, FileText, Printer,
+  Banknote, CreditCard, Wallet, X, Receipt, Play, Square, FileText, Printer, Star,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCurrency, formatDateTime } from '@/lib/format'
@@ -101,6 +101,8 @@ interface SaleResponse {
   taxTotal: number
   discount: number
   createdAt: string
+  customerName: string | null
+  earnedPoints: number
   items: Array<{
     id: string
     name: string
@@ -109,6 +111,10 @@ interface SaleResponse {
     lineTotal: number
     taxRate: number
   }>
+}
+
+interface LoyaltyLookup {
+  items: Array<{ id: string; name: string; phone: string | null; points: number }>
 }
 
 // ============================================================
@@ -150,6 +156,30 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
   const [shiftForm, setShiftForm] = useState({ openingCash: 0, closingCash: 0, notes: '' })
   const [zReportOpen, setZReportOpen] = useState(false)
   const [lastClosedShift, setLastClosedShift] = useState<Shift | null>(null)
+  const [customerName, setCustomerName] = useState('')
+
+  // Sadakat puanı — müşteri adı yazıldıkça canlı arama (300ms debounce)
+  const [debouncedCustomer, setDebouncedCustomer] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedCustomer(customerName.trim()), 300)
+    return () => clearTimeout(t)
+  }, [customerName])
+  const { data: loyaltyData } = useQuery({
+    queryKey: ['loyalty-lookup', debouncedCustomer],
+    queryFn: () => apiGet<LoyaltyLookup>(`/api/loyalty/accounts?q=${encodeURIComponent(debouncedCustomer)}`),
+    enabled: debouncedCustomer.length >= 2,
+  })
+  const loyaltyMatch = useMemo(() => {
+    const q = debouncedCustomer.toLowerCase()
+    if (!q) return null
+    return (loyaltyData?.items ?? []).find((a) => a.name.toLowerCase() === q) ?? null
+  }, [loyaltyData, debouncedCustomer])
+  // Kesin eşleşme yoksa en yakın 2 isim önerisi göster
+  const loyaltySuggestions = useMemo(() => {
+    if (loyaltyMatch || debouncedCustomer.length < 2) return []
+    const q = debouncedCustomer.toLowerCase()
+    return (loyaltyData?.items ?? []).filter((a) => a.name.toLowerCase().includes(q)).slice(0, 2)
+  }, [loyaltyData, loyaltyMatch, debouncedCustomer])
 
   const barcodeRef = useRef<HTMLInputElement>(null)
 
@@ -241,6 +271,7 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
     setDiscount(0)
     setCashGiven(0)
     setCardAmount(0)
+    setCustomerName('')
   }
 
   // Sepet toplamları
@@ -253,6 +284,7 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
     return s + lineAfterDisc - lineAfterDisc / (1 + x.taxRate / 100)
   }, 0)
   const total = taxableBase
+  const willEarnPoints = Math.floor(total / 100)
   const change = paymentMethod === 'cash' ? Math.max(0, cashGiven - total) : 0
   const mixedShort = paymentMethod === 'mixed' ? Math.max(0, total - cashGiven - cardAmount) : 0
 
@@ -290,15 +322,22 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
         cashAmount: paymentMethod === 'cash' ? cashGiven : paymentMethod === 'mixed' ? cashGiven : 0,
         cardAmount: paymentMethod === 'card' ? total : paymentMethod === 'mixed' ? cardAmount : 0,
         discount: discountAmount,
+        customerName: customerName.trim() || undefined,
       })
 
       setLastSale(sale)
       setReceiptOpen(true)
       clearCart()
+      setCustomerName('')
       qc.invalidateQueries({ queryKey: ['market-shifts', marketId] })
       qc.invalidateQueries({ queryKey: ['market-sales', marketId] })
       qc.invalidateQueries({ queryKey: ['market-barcodes', marketId] })
-      toast.success(`Satış tamamlandı: ${sale.number}`)
+      qc.invalidateQueries({ queryKey: ['loyalty-lookup'] })
+      if (sale.earnedPoints > 0) {
+        toast.success(`Satış tamamlandı: ${sale.number} — ${sale.customerName} +${sale.earnedPoints} puan kazandı ⭐`)
+      } else {
+        toast.success(`Satış tamamlandı: ${sale.number}`)
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Satış başarısız')
     } finally {
@@ -574,6 +613,50 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
                   <span className="font-semibold">Genel Toplam</span>
                   <span className="font-bold text-emerald-700 dark:text-emerald-400 text-xl">{formatCurrency(total)}</span>
                 </div>
+              </div>
+
+              {/* Sadakat müşterisi */}
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1">
+                  <Star className="w-3 h-3 text-amber-500" /> Sadakat Müşterisi (opsiyonel)
+                </Label>
+                <Input
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Müşteri adı yazın…"
+                  className="h-9"
+                />
+                {customerName.trim().length >= 2 && (
+                  <div className="text-[11px] rounded-md px-2 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40">
+                    {loyaltyMatch ? (
+                      <span className="text-amber-700 dark:text-amber-400">
+                        ⭐ <b>{loyaltyMatch.name}</b> — mevcut puan: <b>{loyaltyMatch.points}</b>
+                        {willEarnPoints > 0 && <span className="text-muted-foreground"> · bu satıştan +{willEarnPoints} puan</span>}
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-muted-foreground">
+                          Yeni müşteri — satış sonrası sadakat hesabı otomatik açılır
+                          {willEarnPoints > 0 && <> ve <b className="text-amber-700 dark:text-amber-400">+{willEarnPoints} puan</b> kazanır</>}
+                        </span>
+                        {loyaltySuggestions.length > 0 && (
+                          <div className="mt-1 space-y-0.5">
+                            {loyaltySuggestions.map((s) => (
+                              <button
+                                key={s.id}
+                                type="button"
+                                className="block text-left text-[11px] text-emerald-700 dark:text-emerald-400 hover:underline"
+                                onClick={() => setCustomerName(s.name)}
+                              >
+                                Benzer: <b>{s.name}</b> ({s.points} puan) — seçmek için tıklayın
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Ödeme yöntemi */}

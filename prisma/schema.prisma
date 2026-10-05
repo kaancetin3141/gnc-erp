@@ -1698,6 +1698,7 @@ model MemberPackage {
   sessionsUsed  Int     @default(0)
   pricePaid     Float   @default(0)
   status        String  @default("aktif") // aktif | bitti | suresi_doldu | iptal
+  remindedAt    DateTime? // bitiş hatırlatması gönderildi (cron tekrarını önler)
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
