@@ -84,5 +84,37 @@ export async function POST(req: NextRequest) {
     after: expense,
   })
 
+  // Kasa & Banka entegrasyonu: ödenmiş gider → kasa çıkışı (otomatik)
+  if (expense.status === 'odendi') {
+    try {
+      let account = await db.cashAccount.findFirst({
+        where: { tenantId: user!.tenantId, type: 'kasa', archived: false },
+        orderBy: { createdAt: 'asc' },
+      })
+      if (!account) {
+        // İlk kullanımda varsayılan "Ana Kasa"yı aç
+        account = await db.cashAccount.create({
+          data: { tenantId: user!.tenantId, name: 'Ana Kasa', type: 'kasa' },
+        })
+      }
+      await db.cashTransaction.create({
+        data: {
+          tenantId: user!.tenantId,
+          accountId: account.id,
+          type: 'gider',
+          category: `Gider/${expense.category}`,
+          amount: expense.amount,
+          description: expense.description,
+          date: expense.date,
+          refType: 'expense',
+          refId: expense.id,
+          userId: user!.id,
+        },
+      })
+    } catch {
+      // Kasa entegrasyonu gider kaydını bloklamaz
+    }
+  }
+
   return ok(expense)
 }

@@ -32,6 +32,8 @@ import { ResidentPortal } from '@/components/site/resident-portal'
 import { SocialView } from '@/components/social/social-view'
 import { DistributionCenter } from '@/components/distribution/distribution-center'
 import { AdminPanel } from '@/components/admin/admin-panel'
+import { HrView } from '@/components/hr/hr-view'
+import { SupportTicketsView } from '@/components/support/support-tickets-view'
 import { hasPermission } from '@/lib/rbac'
 import { Card } from '@/components/ui/card'
 import { ShieldX } from 'lucide-react'
@@ -117,6 +119,8 @@ function AuthenticatedApp() {
       admin: 'admin.access',
       users: 'users.manage',
       settings: 'settings.manage',
+      hr: 'hr.view',
+      support: 'tickets.view',
     }
 
     const requiredPerm = viewPermissions[view]
@@ -250,13 +254,23 @@ function AuthenticatedApp() {
               </ProtectedView>
             )}
             {view === 'distribution' && (
-              <ProtectedView perm="admin.access" message="Dağıtım Merkezi yalnızca Program Admini (superadmin) içindir.">
+              <ProtectedView perm="admin.access" message="Dağıtım Merkezi için yetkiniz yok.">
                 <DistributionCenter />
               </ProtectedView>
             )}
             {view === 'admin' && (
               <ProtectedView perm="admin.access" message="Admin Paneli için yetkiniz yok. Bu alan sadece adminlere özeldir.">
                 <AdminPanel />
+              </ProtectedView>
+            )}
+            {view === 'hr' && (
+              <ProtectedView perm="hr.view" message="Personel & İK modülü için yetkiniz yok.">
+                <HrView />
+              </ProtectedView>
+            )}
+            {view === 'support' && (
+              <ProtectedView perm="tickets.view" message="Destek Masası için yetkiniz yok.">
+                <SupportTicketsView />
               </ProtectedView>
             )}
             {view === 'users' && (

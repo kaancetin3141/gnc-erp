@@ -59,6 +59,10 @@ export type PermissionKey =
   | 'irsaliye.view'
   | 'irsaliye.manage'
   | 'invoices.view'
+  | 'hr.view'
+  | 'hr.manage'
+  | 'tickets.view'
+  | 'tickets.manage'
 
 export interface SessionUser {
   id: string

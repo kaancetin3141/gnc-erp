@@ -16,7 +16,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate, toCSV, downloadFile } from '@/lib/format'
-import { Plus, Pencil, Trash2, Download, TrendingDown, Receipt, Building2, Zap, Users, Megaphone, Shield, FileText, Package } from 'lucide-react'
+import { Plus, Pencil, Trash2, Download, TrendingDown, Receipt, Building2, Zap, Users, Megaphone, Shield, FileText, Package, Wallet } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { CashTab } from '@/components/cash/cash-tab'
 
 interface Expense {
   id: string
@@ -55,6 +57,7 @@ export function ExpensesView() {
   const [filterStatus, setFilterStatus] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [editItem, setEditItem] = useState<Expense | null>(null)
+  const [topTab, setTopTab] = useState('expenses')
 
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', filterCategory, filterStatus],
@@ -103,6 +106,14 @@ export function ExpensesView() {
           </Button>
         </div>
       </div>
+
+      <Tabs value={topTab} onValueChange={setTopTab}>
+        <TabsList className="max-w-md">
+          <TabsTrigger value="expenses" className="text-xs"><Receipt className="w-3.5 h-3.5 mr-1" /> Giderler</TabsTrigger>
+          <TabsTrigger value="cash" className="text-xs"><Wallet className="w-3.5 h-3.5 mr-1" /> Kasa & Banka</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="expenses" className="space-y-5 mt-3">
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -219,6 +230,14 @@ export function ExpensesView() {
           )}
         </CardContent>
       </Card>
+
+        </TabsContent>
+
+        {/* Kasa & Banka */}
+        <TabsContent value="cash" className="mt-3">
+          <CashTab />
+        </TabsContent>
+      </Tabs>
 
       {/* Add/Edit Dialog */}
       {addOpen && (

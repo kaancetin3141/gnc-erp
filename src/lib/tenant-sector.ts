@@ -128,6 +128,8 @@ export const ALL_PERMISSION_GROUP_NAMES = [
   'Site Yönetimi',
   'Randevu',
   'Sosyal Medya',
+  'İnsan Kaynakları',
+  'Destek Masası',
 ] as const
 
 /**
@@ -151,7 +153,7 @@ export function getVisiblePermissionGroups(
       return ['Genel', 'Randevu']
     case 'crm':
       // CRM/Satış/Ticaret şirketleri → tüm CRM + ERP + üretim +
-      // gider + rapor + iletişim + yönetim grupları
+      // gider + rapor + iletişim + yönetim + İK + destek grupları
       return [
         'Genel',
         'Müşteriler',
@@ -163,6 +165,8 @@ export function getVisiblePermissionGroups(
         'Raporlar',
         'İletişim',
         'Yönetim',
+        'İnsan Kaynakları',
+        'Destek Masası',
       ]
     case 'platform':
       // Platform tenant'ı (GNC Süperapp) — tüm gruplar görünür

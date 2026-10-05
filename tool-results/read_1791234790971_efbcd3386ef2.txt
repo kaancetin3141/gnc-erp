@@ -1,0 +1,1167 @@
+     1→'use client'
+     2→
+     3→import { useState } from 'react'
+     4→import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+     5→import { apiGet, apiPost } from '@/lib/api-client'
+     6→import { useAppStore } from '@/store/app-store'
+     7→import { hasPermission } from '@/lib/rbac'
+     8→import type { SessionUser } from '@/types'
+     9→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    10→import { Skeleton } from '@/components/ui/skeleton'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Progress } from '@/components/ui/progress'
+    14→import {
+    15→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    16→} from '@/components/ui/select'
+    17→import {
+    18→  Users, DollarSign, TrendingUp, CheckSquare, AlertTriangle,
+    19→  Phone, Mail, MessageCircle, MapPin, StickyNote, Calendar,
+    20→  ArrowUpRight, ArrowRight, Building2, Clock, ShieldAlert, Truck,
+    21→  Loader2,
+    22→} from 'lucide-react'
+    23→import { toast } from 'sonner'
+    24→import { formatCurrency, formatRelative, formatDate } from '@/lib/format'
+    25→import { DEAL_STAGES } from '@/lib/constants'
+    26→import { getOrderStatusMeta } from '@/components/erp/parts/order-utils'
+    27→import { IrsaliyePdfDialog } from '@/components/erp/irsaliye-pdf-dialog'
+    28→import { cn } from '@/lib/utils'
+    29→import { getTenantSector, SECTOR_META } from '@/lib/tenant-sector'
+    30→import {
+    31→  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+    32→  AreaChart, Area, CartesianGrid, ComposedChart, Line, Legend,
+    33→} from 'recharts'
+    34→import { useCountUp } from '@/hooks/use-count-up'
+    35→import { WidgetsSection } from './widgets/widgets-section'
+    36→import {
+    37→  CafeDashboard, MarketDashboard, SiteDashboard, AppointmentsDashboard,
+    38→} from './sector-dashboards'
+    39→import type {
+    40→  CafeDashboardData, MarketDashboardData,
+    41→  SiteDashboardData, AppointmentsDashboardData,
+    42→} from './types'
+    43→
+    44→// CRM alanları + sektör alanları birleşik tip
+    45→interface DashboardData {
+    46→  restricted?: boolean
+    47→  message?: string
+    48→  sector?: string
+    49→  range: string
+    50→  customers: { total: number; newThisMonth: number; staleCount: number }
+    51→  deals: { activeCount: number; totalPipelineValue: number; wonThisMonth: number; revenueThisMonth: number }
+    52→  tasks: { openCount: number; overdueCount: number; upcomingCount: number }
+    53→  pipelineByStage: { stage: string; count: number; totalValue: number }[]
+    54→  activitiesOverTime: { date: string; count: number }[]
+    55→  recentActivities: {
+    56→    id: string; type: string; subject: string; detail: string | null
+    57→    date: string; outcome: string | null
+    58→    user: { id: string; name: string } | null
+    59→    customer: { id: string; name: string } | null
+    60→  }[]
+    61→  upcomingTasks: {
+    62→    id: string; title: string; dueDate: string; priority: string
+    63→    assignee: { id: string; name: string } | null
+    64→    customer: { id: string; name: string } | null
+    65→  }[]
+    66→  // Bekleyen sevkiyatlar — henüz sevk edilmemiş siparişler
+    67→  shipments?: {
+    68→    pendingCount: number
+    69→    orders: {
+    70→      id: string; number: string; status: string
+    71→      orderDate: string; expectedDelivery: string | null
+    72→      totalAmount?: number; currency?: string
+    73→      customer: { id: string; name: string } | null
+    74→    }[]
+    75→  }
+    76→  // 6 aylık sevk & sipariş trendi (ciro yalnızca tutar gören rollerde)
+    77→  shipmentsTrend?: {
+    78→    label: string
+    79→    orders: number
+    80→    shipped: number
+    81→    revenue?: number
+    82→  }[]
+    83→  // Sektör bazlı opsiyonel alanlar
+    84→  cafe?: CafeDashboardData['cafe']
+    85→  market?: MarketDashboardData['market']
+    86→  site?: SiteDashboardData['site']
+    87→  appointments?: AppointmentsDashboardData['appointments']
+    88→}
+    89→
+    90→const ACTIVITY_ICONS: Record<string, typeof Phone> = {
+    91→  arama: Phone, toplanti: Users, email: Mail, whatsapp: MessageCircle,
+    92→  not: StickyNote, ziyaret: MapPin, gorev: CheckSquare,
+    93→}
+    94→const ACTIVITY_COLORS: Record<string, string> = {
+    95→  arama: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30',
+    96→  toplanti: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30',
+    97→  email: 'text-sky-600 bg-sky-50 dark:bg-sky-950/30',
+    98→  whatsapp: 'text-green-600 bg-green-50 dark:bg-green-950/30',
+    99→  not: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30',
+   100→  ziyaret: 'text-rose-600 bg-rose-50 dark:bg-rose-950/30',
+   101→  gorev: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/30',
+   102→}
+   103→
+   104→export function DashboardView() {
+   105→  const { user, setView, openCustomer } = useAppStore()
+   106→  const sector = getTenantSector(user?.tenant.name)
+   107→  const sectorMeta = SECTOR_META[sector]
+   108→  const [range, setRange] = useState<'today' | '7d' | '30d' | 'month' | 'quarter' | 'all'>('month')
+   109→  const { data, isLoading } = useQuery({
+   110→    queryKey: ['dashboard', range, sector],
+   111→    queryFn: () => apiGet<DashboardData>(`/api/dashboard?range=${range}`),
+   112→    refetchInterval: 60_000,
+   113→  })
+   114→
+   115→  // Depo rolü için kısıtlı ekran — ancak bekleyen sevkiyatlar görünür (orders.view)
+   116→  if (user?.role === 'stock' || data?.restricted) {
+   117→    const stockShipments = data?.shipments
+   118→    return (
+   119→      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 gap-4">
+   120→        <Card className="p-8 max-w-md text-center">
+   121→          <div className="w-14 h-14 rounded-full bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center mx-auto mb-4">
+   122→            <ShieldAlert className="w-7 h-7 text-amber-500" />
+   123→          </div>
+   124→          <h3 className="font-semibold text-lg mb-2">Depo rolü için erişim kısıtlıdır</h3>
+   125→          <p className="text-sm text-muted-foreground">
+   126→            Satış ve müşteri verileri gizlilik gereği yalnızca yönetici/admin rolleri tarafından görüntülenebilir.
+   127→            Depo rolü olarak üretim listesine ve belge yönetimine erişebilirsiniz.
+   128→          </p>
+   129→        </Card>
+   130→        {stockShipments && stockShipments.orders.length > 0 && (
+   131→          <div className="w-full max-w-2xl">
+   132→            <PendingShipmentsWidget shipments={stockShipments} showAmounts={false} />
+   133→          </div>
+   134→        )}
+   135→      </div>
+   136→    )
+   137→  }
+   138→
+   139→  // Loading state
+   140→  if (isLoading || !data) {
+   141→    return (
+   142→      <div className="space-y-6">
+   143→        <SectorWelcomeBannerSkeleton sector={sector} />
+   144→        <div className="flex items-center gap-2">
+   145→          <Skeleton className="h-7 w-40" />
+   146→        </div>
+   147→        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+   148→          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28" />)}
+   149→        </div>
+   150→        <div className="grid lg:grid-cols-3 gap-4">
+   151→          <Skeleton className="h-80 lg:col-span-2" />
+   152→          <Skeleton className="h-80" />
+   153→        </div>
+   154→      </div>
+   155→    )
+   156→  }
+   157→
+   158→  return (
+   159→    <div className="space-y-6 animate-fade-in">
+   160→      <SectorWelcomeBanner sector={sector} sectorMeta={sectorMeta} data={data} />
+   161→
+   162→      {/* Date range selector — tüm sektörlerde ortak */}
+   163→      <div className="flex items-center gap-2 flex-wrap">
+   164→        <span className="text-xs text-muted-foreground">Dönem:</span>
+   165→        <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 gap-0.5">
+   166→          {([
+   167→            { value: 'today', label: 'Bugün' },
+   168→            { value: '7d', label: '7G' },
+   169→            { value: '30d', label: '30G' },
+   170→            { value: 'month', label: 'Bu Ay' },
+   171→            { value: 'quarter', label: 'Çeyrek' },
+   172→            { value: 'all', label: 'Tümü' },
+   173→          ] as const).map((opt) => (
+   174→            <button
+   175→              key={opt.value}
+   176→              onClick={() => setRange(opt.value)}
+   177→              className={cn(
+   178→                'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+   179→                range === opt.value
+   180→                  ? 'bg-background text-foreground shadow-sm'
+   181→                  : 'text-muted-foreground hover:text-foreground',
+   182→              )}
+   183→            >
+   184→              {opt.label}
+   185→            </button>
+   186→          ))}
+   187→        </div>
+   188→      </div>
+   189→
+   190→      {/* Sektör bazlı render */}
+   191→      {sector === 'crm' && <CrmDashboard data={data} />}
+   192→      {sector === 'cafe' && data.cafe && <CafeDashboard data={{ sector: 'cafe', cafe: data.cafe }} />}
+   193→      {sector === 'market' && data.market && <MarketDashboard data={{ sector: 'market', market: data.market }} />}
+   194→      {sector === 'site' && data.site && <SiteDashboard data={{ sector: 'site', site: data.site }} />}
+   195→      {sector === 'appointments' && data.appointments && (
+   196→        <AppointmentsDashboard data={{ sector: 'appointments', appointments: data.appointments }} />
+   197→      )}
+   198→
+   199→      {/* Widget'lar — hava durumu, mesajlar, döviz, haberler, streak — tüm sektörlerde ortak */}
+   200→      <WidgetsSection />
+   201→    </div>
+   202→  )
+   203→}
+   204→
+   205→// ============================================================
+   206→// Sektör bazlı karşılama banner'ı
+   207→// ============================================================
+   208→function SectorWelcomeBanner({
+   209→  sector, sectorMeta, data,
+   210→}: {
+   211→  sector: string
+   212→  sectorMeta: { label: string; emoji: string; gradient: string; shortLabel: string }
+   213→  data: DashboardData
+   214→}) {
+   215→  const { user, setView } = useAppStore()
+   216→
+   217→  // Sektöre göre özet mesaj
+   218→  let summary = ''
+   219→  let quickActions: { label: string; view: string; icon: typeof Users }[] = []
+   220→
+   221→  if (sector === 'crm') {
+   222→    summary = data.customers.staleCount > 0
+   223→      ? `${data.customers.staleCount} müşteri iletişimsiz — ilgilenmen gerek.`
+   224→      : 'Tüm müşterilerle iletişim güncel!'
+   225→    quickActions = [
+   226→      { label: 'Müşteriler', view: 'customers', icon: Users },
+   227→      { label: 'Yeni Lead Bul', view: 'leads-maps', icon: MapPin },
+   228→    ]
+   229→  } else if (sector === 'cafe' && data.cafe) {
+   230→    summary = data.cafe.activeTables > 0
+   231→      ? `${data.cafe.activeTables} masa aktif · Bugün ${formatCurrency(data.cafe.todayRevenue)} ciro`
+   232→      : `Bugün ${formatCurrency(data.cafe.todayRevenue)} ciro · ${data.cafe.todayOrderCount} sipariş`
+   233→    quickActions = [{ label: 'Kafe Yönetimi', view: 'cafe', icon: TrendingUp }]
+   234→  } else if (sector === 'market' && data.market) {
+   235→    summary = data.market.lowStockProducts > 0
+   236→      ? `${data.market.lowStockProducts} ürün stokta tükendi! Acil tedarik gerekli.`
+   237→      : `Bugün ${formatCurrency(data.market.todayRevenue)} satış · ${data.market.todayTxCount} fiş`
+   238→    quickActions = [{ label: 'Market Yönetimi', view: 'market', icon: TrendingUp }]
+   239→  } else if (sector === 'site' && data.site) {
+   240→    summary = data.site.openComplaints > 0
+   241→      ? `${data.site.openComplaints} açık şikayet · %${data.site.collectionRate.toFixed(0)} tahsilat oranı`
+   242→      : `Tahsilat oranı %${data.site.collectionRate.toFixed(0)} · ${data.site.residentsCount} sakin`
+   243→    quickActions = [{ label: 'Site Yönetimi', view: 'site', icon: Building2 }]
+   244→  } else if (sector === 'appointments' && data.appointments) {
+   245→    summary = data.appointments.pendingCount > 0
+   246→      ? `${data.appointments.pendingCount} randevu onay bekliyor · ${data.appointments.todayCount} bugün`
+   247→      : `${data.appointments.todayCount} bugünkü randevu · ${formatCurrency(data.appointments.todayRevenue)} ciro`
+   248→    quickActions = [{ label: 'Randevular', view: 'appointments', icon: Calendar }]
+   249→  }
+   250→
+   251→  // Sektöre göre renk gradyanı
+   252→  const bannerGradient = sector === 'cafe'
+   253→    ? 'from-slate-900 via-amber-900 to-slate-900'
+   254→    : sector === 'market'
+   255→      ? 'from-slate-900 via-emerald-900 to-slate-900'
+   256→      : sector === 'site'
+   257→        ? 'from-slate-900 via-violet-900 to-slate-900'
+   258→        : sector === 'appointments'
+   259→          ? 'from-slate-900 via-pink-900 to-slate-900'
+   260→          : 'from-slate-900 via-slate-800 to-emerald-900'
+   261→
+   262→  return (
+   263→    <div className={cn(
+   264→      'relative overflow-hidden rounded-xl bg-gradient-to-br text-white p-6 lg:p-7',
+   265→      bannerGradient,
+   266→    )}>
+   267→      <div className="absolute inset-0 opacity-10" style={{
+   268→        backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 30%, white 1px, transparent 1px)',
+   269→        backgroundSize: '40px 40px, 60px 60px',
+   270→      }} />
+   271→      <div className="relative z-10 flex items-center justify-between flex-wrap gap-4">
+   272→        <div>
+   273→          <div className="text-xs text-slate-300 mb-1 flex items-center gap-2">
+   274→            <span>{new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+   275→            <span>·</span>
+   276→            <span className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] font-medium">
+   277→              {sectorMeta.emoji} {sectorMeta.label}
+   278→            </span>
+   279→          </div>
+   280→          <h2 className="text-2xl lg:text-3xl font-bold tracking-tight">
+   281→            Merhaba, {user?.name.split(' ')[0]} 👋
+   282→          </h2>
+   283→          <p className="text-sm text-slate-300 mt-1">
+   284→            {summary}
+   285→          </p>
+   286→        </div>
+   287→        <div className="flex gap-2 flex-wrap">
+   288→          {quickActions.map((q) => (
+   289→            <Button
+   290→              key={q.label}
+   291→              size="sm"
+   292→              variant="outline"
+   293→              onClick={() => setView(q.view as never)}
+   294→              className="bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white"
+   295→            >
+   296→              <q.icon className="w-4 h-4 mr-1.5" />
+   297→              {q.label}
+   298→            </Button>
+   299→          ))}
+   300→        </div>
+   301→      </div>
+   302→
+   303→      {/* Mini quick stats — sektöre göre özelleşir */}
+   304→      <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t border-white/10">
+   305→        <QuickStat sector={sector} data={data} />
+   306→      </div>
+   307→    </div>
+   308→  )
+   309→}
+   310→
+   311→function QuickStat({ sector, data }: { sector: string; data: DashboardData }) {
+   312→  let stats: { label: string; value: string | number; accent?: string }[] = []
+   313→
+   314→  if (sector === 'crm') {
+   315→    stats = [
+   316→      { label: 'Müşteri', value: data.customers.total },
+   317→      { label: 'Açık Fırsat', value: data.deals.activeCount },
+   318→      { label: 'Açık Görev', value: data.tasks.openCount },
+   319→      { label: 'Bu Ay Ciro', value: formatCurrency(data.deals.revenueThisMonth), accent: 'text-emerald-300' },
+   320→    ]
+   321→  } else if (sector === 'cafe' && data.cafe) {
+   322→    stats = [
+   323→      { label: 'Aktif Masa', value: data.cafe.activeTables },
+   324→      { label: 'Bugünkü Sipariş', value: data.cafe.todayOrderCount },
+   325→      { label: 'Toplam Masa', value: data.cafe.totalTables },
+   326→      { label: 'Bugün Ciro', value: formatCurrency(data.cafe.todayRevenue), accent: 'text-emerald-300' },
+   327→    ]
+   328→  } else if (sector === 'market' && data.market) {
+   329→    stats = [
+   330→      { label: 'Bugünkü Fiş', value: data.market.todayTxCount },
+   331→      { label: 'Aktif Vardiya', value: data.market.activeShifts },
+   332→      { label: 'Stok Uyarısı', value: data.market.lowStockProducts, accent: data.market.lowStockProducts > 0 ? 'text-red-300' : 'text-emerald-300' },
+   333→      { label: 'Bugün Satış', value: formatCurrency(data.market.todayRevenue), accent: 'text-emerald-300' },
+   334→    ]
+   335→  } else if (sector === 'site' && data.site) {
+   336→    stats = [
+   337→      { label: 'Toplam Sakin', value: data.site.residentsCount },
+   338→      { label: 'Açık Şikayet', value: data.site.openComplaints, accent: data.site.openComplaints > 0 ? 'text-red-300' : 'text-emerald-300' },
+   339→      { label: 'Tahsilat Oranı', value: `%${data.site.collectionRate.toFixed(0)}`, accent: 'text-emerald-300' },
+   340→      { label: 'Bu Ay Tahsilat', value: formatCurrency(data.site.collectedThisMonth), accent: 'text-emerald-300' },
+   341→    ]
+   342→  } else if (sector === 'appointments' && data.appointments) {
+   343→    stats = [
+   344→      { label: 'Bugünkü Randevu', value: data.appointments.todayCount },
+   345→      { label: 'Bu Hafta', value: data.appointments.weekCount },
+   346→      { label: 'Bekleyen', value: data.appointments.pendingCount, accent: data.appointments.pendingCount > 0 ? 'text-amber-300' : 'text-emerald-300' },
+   347→      { label: 'Bugün Ciro', value: formatCurrency(data.appointments.todayRevenue), accent: 'text-emerald-300' },
+   348→    ]
+   349→  }
+   350→
+   351→  return (
+   352→    <>
+   353→      {stats.map((s, i) => (
+   354→        <div key={i}>
+   355→          <div className="text-xs text-slate-400">{s.label}</div>
+   356→          <div className={cn('text-lg font-bold tabular-nums', s.accent ?? '')}>{s.value}</div>
+   357→        </div>
+   358→      ))}
+   359→    </>
+   360→  )
+   361→}
+   362→
+   363→function SectorWelcomeBannerSkeleton({ sector }: { sector: string }) {
+   364→  const gradient = sector === 'cafe'
+   365→    ? 'from-slate-900 via-amber-900 to-slate-900'
+   366→    : sector === 'market'
+   367→      ? 'from-slate-900 via-emerald-900 to-slate-900'
+   368→      : sector === 'site'
+   369→        ? 'from-slate-900 via-violet-900 to-slate-900'
+   370→        : sector === 'appointments'
+   371→          ? 'from-slate-900 via-pink-900 to-slate-900'
+   372→          : 'from-slate-900 via-slate-800 to-emerald-900'
+   373→  return (
+   374→    <div className={cn('rounded-xl bg-gradient-to-br p-6 lg:p-7 h-48', gradient)} />
+   375→  )
+   376→}
+   377→
+   378→// ============================================================
+   379→// CRM DASHBOARD — mevcut dashboard (CRM sektörü için)
+   380→// ============================================================
+   381→function CrmDashboard({ data }: { data: DashboardData }) {
+   382→  const { setView, openCustomer } = useAppStore()
+   383→
+   384→  const kpis = [
+   385→    {
+   386→      label: 'Toplam Müşteri',
+   387→      value: data.customers.total,
+   388→      numericValue: data.customers.total,
+   389→      sub: `Bu ay +${data.customers.newThisMonth} yeni`,
+   390→      icon: Users,
+   391→      color: 'from-sky-500 to-blue-600',
+   392→      onClick: () => setView('customers'),
+   393→    },
+   394→    {
+   395→      label: 'Aktif Pipeline',
+   396→      value: formatCurrency(data.deals.totalPipelineValue),
+   397→      numericValue: data.deals.totalPipelineValue,
+   398→      sub: `${data.deals.activeCount} açık fırsat`,
+   399→      icon: TrendingUp,
+   400→      color: 'from-violet-500 to-purple-600',
+   401→      onClick: () => setView('pipeline'),
+   402→    },
+   403→    {
+   404→      label: 'Bu Ay Ciro',
+   405→      value: formatCurrency(data.deals.revenueThisMonth),
+   406→      numericValue: data.deals.revenueThisMonth,
+   407→      sub: `${data.deals.wonThisMonth} kazanıldı`,
+   408→      icon: DollarSign,
+   409→      color: 'from-emerald-500 to-teal-600',
+   410→      onClick: () => setView('pipeline'),
+   411→    },
+   412→    {
+   413→      label: 'Açık Görevler',
+   414→      value: data.tasks.openCount,
+   415→      numericValue: data.tasks.openCount,
+   416→      sub: data.tasks.overdueCount > 0 ? `${data.tasks.overdueCount} gecikmiş!` : 'Zamanında',
+   417→      icon: CheckSquare,
+   418→      color: data.tasks.overdueCount > 0 ? 'from-red-500 to-rose-600' : 'from-amber-500 to-orange-600',
+   419→      onClick: () => setView('tasks'),
+   420→    },
+   421→  ]
+   422→
+   423→  const chartData = DEAL_STAGES
+   424→    .filter((s) => s.value !== 'kazanıldı' && s.value !== 'kaybedildi')
+   425→    .map((s) => {
+   426→      const found = data.pipelineByStage.find((p) => p.stage === s.value)
+   427→      return { stage: s.label, count: found?.count ?? 0, value: found?.totalValue ?? 0 }
+   428→    })
+   429→
+   430→  return (
+   431→    <>
+   432→      {/* KPI kartları */}
+   433→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+   434→        {kpis.map((kpi) => (
+   435→          <CrmKpiCard key={kpi.label} kpi={kpi} />
+   436→        ))}
+   437→      </div>
+   438→
+   439→      {/* Bekleyen sevkiyatlar — sevk edilmemiş siparişler (ERP akışı) */}
+   440→      {data.shipments && data.shipments.orders.length > 0 && (
+   441→        <PendingShipmentsWidget shipments={data.shipments} showAmounts />
+   442→      )}
+   443→
+   444→      {/* 6 aylık sevk & sipariş trendi grafiği */}
+   445→      {data.shipmentsTrend && (
+   446→        <ShipmentsTrendWidget
+   447→          trend={data.shipmentsTrend}
+   448→          showRevenue={data.shipmentsTrend.some((t) => t.revenue != null)}
+   449→        />
+   450→      )}
+   451→
+   452→      {/* İkincil satır */}
+   453→      <div className="grid lg:grid-cols-3 gap-4">
+   454→        {/* Pipeline grafiği */}
+   455→        <Card className="lg:col-span-2">
+   456→          <CardHeader className="pb-2">
+   457→            <div className="flex items-center justify-between">
+   458→              <CardTitle className="text-base">Satış Hunisi</CardTitle>
+   459→              <Button variant="ghost" size="sm" onClick={() => setView('pipeline')} className="text-xs h-7">
+   460→                Tümü <ArrowRight className="w-3 h-3 ml-1" />
+   461→              </Button>
+   462→            </div>
+   463→          </CardHeader>
+   464→          <CardContent>
+   465→            {chartData.every((d) => d.count === 0) ? (
+   466→              <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
+   467→                Açık fırsat yok.
+   468→              </div>
+   469→            ) : (
+   470→              <ResponsiveContainer width="100%" height={260}>
+   471→                <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+   472→                  <XAxis
+   473→                    dataKey="stage"
+   474→                    tick={{ fontSize: 11 }}
+   475→                    axisLine={false}
+   476→                    tickLine={false}
+   477→                  />
+   478→                  <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={30} />
+   479→                  <Tooltip
+   480→                    contentStyle={{
+   481→                      borderRadius: '8px',
+   482→                      border: '1px solid hsl(var(--border))',
+   483→                      fontSize: '12px',
+   484→                    }}
+   485→                    formatter={(value: number, name: string) =>
+   486→                      name === 'value' ? [formatCurrency(value), 'Değer'] : [value, 'Fırsat']
+   487→                    }
+   488→                  />
+   489→                  <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={60}>
+   490→                    {chartData.map((_, i) => (
+   491→                      <Cell key={i} fill={['#94a3b8', '#0ea5e9', '#f59e0b', '#8b5cf6'][i % 4]} />
+   492→                    ))}
+   493→                  </Bar>
+   494→                </BarChart>
+   495→              </ResponsiveContainer>
+   496→            )}
+   497→          </CardContent>
+   498→        </Card>
+   499→
+   500→        {/* Yaklaşan görevler */}
+   501→        <Card>
+   502→          <CardHeader className="pb-2">
+   503→            <div className="flex items-center justify-between">
+   504→              <CardTitle className="text-base">Yaklaşan Görevler</CardTitle>
+   505→              <Button variant="ghost" size="sm" onClick={() => setView('tasks')} className="text-xs h-7">
+   506→                Tümü <ArrowRight className="w-3 h-3 ml-1" />
+   507→              </Button>
+   508→            </div>
+   509→          </CardHeader>
+   510→          <CardContent className="space-y-2 max-h-[280px] overflow-y-auto custom-scroll">
+   511→            {data.upcomingTasks.length === 0 ? (
+   512→              <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
+   513→                <div className="text-center">
+   514→                  <CheckSquare className="w-8 h-8 mx-auto mb-2 opacity-30" />
+   515→                  Önümüzdeki 7 günde görev yok.
+   516→                </div>
+   517→              </div>
+   518→            ) : (
+   519→              data.upcomingTasks.map((task) => (
+   520→                <div
+   521→                  key={task.id}
+   522→                  className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+   523→                  onClick={() => task.customer && openCustomer(task.customer.id)}
+   524→                >
+   525→                  <div className={cn(
+   526→                    'w-2 h-2 rounded-full mt-1.5 shrink-0',
+   527→                    task.priority === 'acil' ? 'bg-red-500' :
+   528→                    task.priority === 'yuksek' ? 'bg-amber-500' :
+   529→                    task.priority === 'orta' ? 'bg-sky-500' : 'bg-gray-400'
+   530→                  )} />
+   531→                  <div className="flex-1 min-w-0">
+   532→                    <div className="text-sm font-medium truncate">{task.title}</div>
+   533→                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+   534→                      <Clock className="w-3 h-3" />
+   535→                      <span>{formatDate(task.dueDate)}</span>
+   536→                      {task.customer && (
+   537→                        <>
+   538→                          <span>·</span>
+   539→                          <span className="truncate">{task.customer.name}</span>
+   540→                        </>
+   541→                      )}
+   542→                    </div>
+   543→                  </div>
+   544→                </div>
+   545→              ))
+   546→            )}
+   547→          </CardContent>
+   548→        </Card>
+   549→      </div>
+   550→
+   551→      {/* Aktivite trend grafiği */}
+   552→      <Card>
+   553→        <CardHeader className="pb-2">
+   554→          <div className="flex items-center justify-between">
+   555→            <div>
+   556→              <CardTitle className="text-base">Aktivite Trendi</CardTitle>
+   557→              <p className="text-xs text-muted-foreground mt-0.5">Son 30 gün · Toplam {data.activitiesOverTime.reduce((s, d) => s + d.count, 0)} aktivite</p>
+   558→            </div>
+   559→            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   560→              <div className="w-2 h-2 rounded-full bg-emerald-500" />
+   561→              <span>Günlük aktivite</span>
+   562→            </div>
+   563→          </div>
+   564→        </CardHeader>
+   565→        <CardContent>
+   566→          {data.activitiesOverTime.every((d) => d.count === 0) ? (
+   567→            <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
+   568→              Son 30 günde aktivite kaydı yok
+   569→            </div>
+   570→          ) : (
+   571→            <ResponsiveContainer width="100%" height={180}>
+   572→              <AreaChart data={data.activitiesOverTime} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+   573→                <defs>
+   574→                  <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">
+   575→                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+   576→                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+   577→                  </linearGradient>
+   578→                </defs>
+   579→                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.3} vertical={false} />
+   580→                <XAxis
+   581→                  dataKey="date"
+   582→                  tick={{ fontSize: 10 }}
+   583→                  axisLine={false}
+   584→                  tickLine={false}
+   585→                  tickFormatter={(v: string) => {
+   586→                    const d = new Date(v)
+   587→                    return `${d.getDate()}.${d.getMonth() + 1}`
+   588→                  }}
+   589→                  interval={4}
+   590→                />
+   591→                <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={25} allowDecimals={false} />
+   592→                <Tooltip
+   593→                  contentStyle={{
+   594→                    borderRadius: '8px',
+   595→                    border: '1px solid hsl(var(--border))',
+   596→                    fontSize: '12px',
+   597→                  }}
+   598→                  labelFormatter={(v: string) => {
+   599→                    const d = new Date(v)
+   600→                    return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`
+   601→                  }}
+   602→                  formatter={(value: number) => [`${value} aktivite`, '']}
+   603→                />
+   604→                <Area
+   605→                  type="monotone"
+   606→                  dataKey="count"
+   607→                  stroke="#10b981"
+   608→                  strokeWidth={2}
+   609→                  fill="url(#activityGradient)"
+   610→                  dot={false}
+   611→                  activeDot={{ r: 4, fill: '#10b981' }}
+   612→                />
+   613→              </AreaChart>
+   614→            </ResponsiveContainer>
+   615→          )}
+   616→        </CardContent>
+   617→      </Card>
+   618→
+   619→      {/* Son aktiviteler + İletişimsiz müşteriler */}
+   620→      <div className="grid lg:grid-cols-3 gap-4">
+   621→        {/* Son aktiviteler */}
+   622→        <Card className="lg:col-span-2">
+   623→          <CardHeader className="pb-2">
+   624→            <CardTitle className="text-base">Son Aktiviteler</CardTitle>
+   625→          </CardHeader>
+   626→          <CardContent>
+   627→            {data.recentActivities.length === 0 ? (
+   628→              <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
+   629→                Henüz aktivite kaydedilmedi.
+   630→              </div>
+   631→            ) : (
+   632→              <div className="space-y-1">
+   633→                {data.recentActivities.slice(0, 8).map((act) => {
+   634→                  const Icon = ACTIVITY_ICONS[act.type] ?? Phone
+   635→                  return (
+   636→                    <div
+   637→                      key={act.id}
+   638→                      className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+   639→                      onClick={() => act.customer && openCustomer(act.customer.id)}
+   640→                    >
+   641→                      <div className={cn(
+   642→                        'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+   643→                        ACTIVITY_COLORS[act.type] ?? 'text-gray-600 bg-gray-50',
+   644→                      )}>
+   645→                        <Icon className="w-4 h-4" />
+   646→                      </div>
+   647→                      <div className="flex-1 min-w-0">
+   648→                        <div className="flex items-center gap-2">
+   649→                          <span className="text-sm font-medium truncate">{act.subject}</span>
+   650→                          {act.outcome && (
+   651→                            <Badge variant="outline" className={cn(
+   652→                              'text-[10px] px-1.5 py-0 h-4',
+   653→                              act.outcome === 'basarili' ? 'text-emerald-600 border-emerald-200' :
+   654→                              act.outcome === 'basarisiz' ? 'text-red-600 border-red-200' :
+   655→                              'text-amber-600 border-amber-200'
+   656→                            )}>
+   657→                              {act.outcome}
+   658→                            </Badge>
+   659→                          )}
+   660→                        </div>
+   661→                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+   662→                          {act.customer && <span className="truncate">{act.customer.name}</span>}
+   663→                          <span>·</span>
+   664→                          <span>{act.user?.name ?? 'Bilinmiyor'}</span>
+   665→                          <span>·</span>
+   666→                          <span>{formatRelative(act.date)}</span>
+   667→                        </div>
+   668→                      </div>
+   669→                    </div>
+   670→                  )
+   671→                })}
+   672→              </div>
+   673→            )}
+   674→          </CardContent>
+   675→        </Card>
+   676→
+   677→        {/* İletişimsiz müşteriler uyarısı */}
+   678→        <Card className="border-amber-200 dark:border-amber-900/50">
+   679→          <CardHeader className="pb-2">
+   680→            <div className="flex items-center gap-2">
+   681→              <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center">
+   682→                <AlertTriangle className="w-4 h-4 text-amber-600" />
+   683→              </div>
+   684→              <CardTitle className="text-base">Dikkat Gerekli</CardTitle>
+   685→            </div>
+   686→          </CardHeader>
+   687→          <CardContent className="space-y-3">
+   688→            <div className="p-3 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
+   689→              <div className="flex items-center justify-between mb-1">
+   690→                <span className="text-sm font-medium">İletişimsiz Müşteriler</span>
+   691→                <span className="text-lg font-bold text-amber-600">{data.customers.staleCount}</span>
+   692→              </div>
+   693→              <p className="text-xs text-muted-foreground">30+ gündür iletişim kurulmamış</p>
+   694→              <Progress value={data.customers.total > 0 ? (data.customers.staleCount / data.customers.total) * 100 : 0} className="h-1.5 mt-2" />
+   695→            </div>
+   696→
+   697→            <div className="p-3 rounded-lg bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30">
+   698→              <div className="flex items-center justify-between mb-1">
+   699→                <span className="text-sm font-medium">Gecikmiş Görevler</span>
+   700→                <span className="text-lg font-bold text-red-600">{data.tasks.overdueCount}</span>
+   701→              </div>
+   702→              <p className="text-xs text-muted-foreground">Acilen tamamlanmalı</p>
+   703→            </div>
+   704→
+   705→            <Button
+   706→              variant="outline"
+   707→              size="sm"
+   708→              className="w-full"
+   709→              onClick={() => setView('customers')}
+   710→            >
+   711→              <Users className="w-4 h-4 mr-1.5" />
+   712→              Müşterileri Gör
+   713→            </Button>
+   714→          </CardContent>
+   715→        </Card>
+   716→      </div>
+   717→    </>
+   718→  )
+   719→}
+   720→
+   721→// ============================================================
+   722→// Sevk & Sipariş Trendi — ERP sevkiyat akışının aylık özeti:
+   723→// yeni sipariş (bar) vs sevk edilen irsaliye (çizgi), opsiyonel
+   724→// TRY bazlı fatura cirosu (alan). Depo rolünde ciro gizli.
+   725→// DÖNEM SEÇİCİ: 3 / 6 / 12 ay dilimleri (API 12 ay döner).
+   726→// ============================================================
+   727→const TREND_PERIODS = [3, 6, 12] as const
+   728→
+   729→type TrendPeriod = (typeof TREND_PERIODS)[number]
+   730→
+   731→// Bağımsız trend ucu yanıtı — şirket filtresi için müşteri listesi de döner
+   732→interface TrendFilterData {
+   733→  trend: NonNullable<DashboardData['shipmentsTrend']>
+   734→  customers: { id: string; name: string }[]
+   735→  canSeeAmounts: boolean
+   736→  restricted?: boolean
+   737→}
+   738→
+   739→function ShipmentsTrendWidget({
+   740→  trend,
+   741→  showRevenue,
+   742→}: {
+   743→  trend: NonNullable<DashboardData['shipmentsTrend']>
+   744→  showRevenue: boolean
+   745→}) {
+   746→  const { setView } = useAppStore()
+   747→  const [period, setPeriod] = useState<TrendPeriod>(6)
+   748→  // Şirket filtresi — bağımsız hafif uçtan (/api/dashboard/trend) çekilir
+   749→  const [customerId, setCustomerId] = useState<string>('__all__')
+   750→  const { data: trendData, isFetching } = useQuery({
+   751→    queryKey: ['shipments-trend', customerId],
+   752→    queryFn: () => apiGet<TrendFilterData>(
+   753→      `/api/dashboard/trend${customerId !== '__all__' ? `?customerId=${encodeURIComponent(customerId)}` : ''}`,
+   754→    ),
+   755→    placeholderData: keepPreviousData,
+   756→    staleTime: 60_000,
+   757→  })
+   758→  // Filtre yokken parent'tan gelen trend, filtre varken uçtan gelen trend kullanılır
+   759→  const activeTrend = customerId !== '__all__'
+   760→    ? (trendData?.trend ?? [])
+   761→    : (trendData?.trend?.length ? trendData.trend : trend)
+   762→  const customers = trendData?.customers ?? []
+   763→  const selectedCustomer = customers.find((c) => c.id === customerId)
+   764→  // API 12 ay döner — görünür dilim son N ay
+   765→  const visible = activeTrend.slice(-period)
+   766→  const totalOrders = visible.reduce((s, t) => s + t.orders, 0)
+   767→  const totalShipped = visible.reduce((s, t) => s + t.shipped, 0)
+   768→  const totalRevenue = visible.reduce((s, t) => s + (t.revenue ?? 0), 0)
+   769→  const shipRate = totalOrders > 0 ? Math.round((totalShipped / totalOrders) * 100) : 0
+   770→  const hasAnyData = totalOrders > 0 || totalShipped > 0 || totalRevenue > 0
+   771→
+   772→  return (
+   773→    <Card className="overflow-hidden hover:shadow-md transition-shadow duration-300">
+   774→      <CardHeader className="pb-3">
+   775→        <div className="flex items-center justify-between gap-2 flex-wrap">
+   776→          <div className="flex items-center gap-2.5">
+   777→            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-sky-500 to-cyan-600 flex items-center justify-center shadow-sm shrink-0">
+   778→              <TrendingUp className="w-4 h-4 text-white" />
+   779→            </div>
+   780→            <div>
+   781→              <CardTitle className="text-base leading-tight">Sevk &amp; Sipariş Trendi</CardTitle>
+   782→              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 min-w-0">
+   783→                <span className="truncate max-w-[160px]">
+   784→                  {customerId !== '__all__' && selectedCustomer ? selectedCustomer.name : 'Tüm müşteriler'}
+   785→                </span>
+   786→                <span className="text-muted-foreground/60">·</span>
+   787→                <span className="shrink-0">Son {period} ay</span>
+   788→              </p>
+   789→            </div>
+   790→          </div>
+   791→          <div className="flex items-center gap-3 flex-wrap">
+   792→            <div className="text-right">
+   793→              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Sevk Oranı</div>
+   794→              <div className="text-sm font-bold tabular-nums text-sky-600">%{shipRate}</div>
+   795→            </div>
+   796→            {showRevenue && (
+   797→              <div className="text-right">
+   798→                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{period} Ay Ciro</div>
+   799→                <div className="text-sm font-bold tabular-nums text-emerald-600">
+   800→                  {totalRevenue >= 1000
+   801→                    ? `${(totalRevenue / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} bin ₺`
+   802→                    : `${totalRevenue.toLocaleString('tr-TR')} ₺`}
+   803→                </div>
+   804→              </div>
+   805→            )}
+   806→            {/* Şirket filtresi */}
+   807→            <Select value={customerId} onValueChange={setCustomerId}>
+   808→              <SelectTrigger
+   809→                size="sm"
+   810→                className={cn(
+   811→                  'w-[160px] h-8 text-xs gap-1',
+   812→                  customerId !== '__all__' && 'border-sky-300 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/30',
+   813→                )}
+   814→                aria-label="Trend şirket filtresi"
+   815→              >
+   816→                <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+   817→                <SelectValue placeholder="Tüm müşteriler" />
+   818→              </SelectTrigger>
+   819→              <SelectContent>
+   820→                <SelectItem value="__all__">Tüm müşteriler</SelectItem>
+   821→                {customers.map((c) => (
+   822→                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+   823→                ))}
+   824→              </SelectContent>
+   825→            </Select>
+   826→            {/* Dönem seçici — segmented control */}
+   827→            <div
+   828→              className="flex items-center rounded-lg bg-muted p-0.5 gap-0.5"
+   829→              role="group"
+   830→              aria-label="Trend dönem seçimi"
+   831→            >
+   832→              {TREND_PERIODS.map((p) => (
+   833→                <button
+   834→                  key={p}
+   835→                  onClick={() => setPeriod(p)}
+   836→                  aria-pressed={period === p}
+   837→                  className={cn(
+   838→                    'px-2 py-1 text-[11px] font-medium rounded-md transition-all',
+   839→                    period === p
+   840→                      ? 'bg-background shadow-sm text-foreground'
+   841→                      : 'text-muted-foreground hover:text-foreground',
+   842→                  )}
+   843→                >
+   844→                  {p} Ay
+   845→                </button>
+   846→              ))}
+   847→            </div>
+   848→          </div>
+   849→        </div>
+   850→      </CardHeader>
+   851→      <CardContent className="pt-0">
+   852→        {hasAnyData ? (
+   853→          <>
+   854→            <div className="relative h-[220px] w-full">
+   855→              {/* Filtre değişiminde yumuşak yükleme katmanı */}
+   856→              {isFetching && customerId !== '__all__' && (
+   857→                <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 rounded-lg">
+   858→                  <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
+   859→                </div>
+   860→              )}
+   861→              <ResponsiveContainer width="100%" height="100%">
+   862→                <ComposedChart data={visible} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+   863→                  <defs>
+   864→                    <linearGradient id="trendOrderBar" x1="0" y1="0" x2="0" y2="1">
+   865→                      <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.95} />
+   866→                      <stop offset="100%" stopColor="#6d28d9" stopOpacity={0.75} />
+   867→                    </linearGradient>
+   868→                    <linearGradient id="trendRevenueArea" x1="0" y1="0" x2="0" y2="1">
+   869→                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.25} />
+   870→                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+   871→                    </linearGradient>
+   872→                  </defs>
+   873→                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" className="text-border" opacity={0.5} />
+   874→                  <XAxis
+   875→                    dataKey="label"
+   876→                    tick={{ fontSize: 11 }}
+   877→                    tickLine={false}
+   878→                    axisLine={false}
+   879→                    className="text-muted-foreground"
+   880→                  />
+   881→                  <YAxis
+   882→                    yAxisId="counts"
+   883→                    tick={{ fontSize: 11 }}
+   884→                    tickLine={false}
+   885→                    axisLine={false}
+   886→                    allowDecimals={false}
+   887→                    width={38}
+   888→                    className="text-muted-foreground"
+   889→                  />
+   890→                  {showRevenue && (
+   891→                    <YAxis
+   892→                      yAxisId="revenue"
+   893→                      orientation="right"
+   894→                      hide
+   895→                    />
+   896→                  )}
+   897→                  <Tooltip
+   898→                    cursor={{ fill: 'rgba(139, 92, 246, 0.06)' }}
+   899→                    contentStyle={{
+   900→                      borderRadius: 10,
+   901→                      border: '1px solid rgba(0,0,0,0.08)',
+   902→                      fontSize: 12,
+   903→                      boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+   904→                    }}
+   905→                    formatter={(value: number | string, name: string) => {
+   906→                      if (name === 'Ciro') return [`${Number(value).toLocaleString('tr-TR')} ₺`, name]
+   907→                      return [value, name]
+   908→                    }}
+   909→                  />
+   910→                  <Legend
+   911→                    wrapperStyle={{ fontSize: 11, paddingTop: 6 }}
+   912→                    iconType="circle"
+   913→                    iconSize={8}
+   914→                  />
+   915→                  {showRevenue && (
+   916→                    <Area
+   917→                      yAxisId="revenue"
+   918→                      type="monotone"
+   919→                      dataKey="revenue"
+   920→                      name="Ciro"
+   921→                      stroke="none"
+   922→                      fill="url(#trendRevenueArea)"
+   923→                      legendType="none"
+   924→                    />
+   925→                  )}
+   926→                  <Bar
+   927→                    yAxisId="counts"
+   928→                    dataKey="orders"
+   929→                    name="Yeni Sipariş"
+   930→                    fill="url(#trendOrderBar)"
+   931→                    radius={[5, 5, 0, 0]}
+   932→                    maxBarSize={38}
+   933→                  />
+   934→                  <Line
+   935→                    yAxisId="counts"
+   936→                    type="monotone"
+   937→                    dataKey="shipped"
+   938→                    name="Sevk Edilen"
+   939→                    stroke="#0ea5e9"
+   940→                    strokeWidth={2.5}
+   941→                    dot={{ r: 3, fill: '#0ea5e9', strokeWidth: 0 }}
+   942→                    activeDot={{ r: 5 }}
+   943→                  />
+   944→                </ComposedChart>
+   945→              </ResponsiveContainer>
+   946→            </div>
+   947→            <button
+   948→              className="w-full mt-2 text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 transition-colors"
+   949→              onClick={() => setView('irsaliye')}
+   950→            >
+   951→              Belge Yönetimi&apos;nde tüm sevkiyatları incele <ArrowRight className="w-3 h-3" />
+   952→            </button>
+   953→          </>
+   954→        ) : (
+   955→          <div className="h-[220px] flex flex-col items-center justify-center gap-2 text-center">
+   956→            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+   957→              <Truck className="w-6 h-6 text-muted-foreground/50" />
+   958→            </div>
+   959→            <div className="text-sm font-medium">Henüz sevkiyat hareketi yok</div>
+   960→            <div className="text-xs text-muted-foreground max-w-xs">
+   961→              Sipariş onaylandığında ve irsaliye sevk edildiğinde aylık trend burada görünür.
+   962→            </div>
+   963→          </div>
+   964→        )}
+   965→      </CardContent>
+   966→    </Card>
+   967→  )
+   968→}
+   969→
+   970→// ============================================================
+   971→// Bekleyen Sevkiyatlar widget — sevk edilmemiş siparişler
+   972→// ERP akışı: hazırlanıyor / onaylandı / üretimde durumundaki
+   973→// siparişler termin tarihine göre listelenir. Depo rolünde
+   974→// tutarlar gizlidir (showAmounts=false).
+   975→// ============================================================
+   976→function PendingShipmentsWidget({
+   977→  shipments,
+   978→  showAmounts = true,
+   979→}: {
+   980→  shipments: NonNullable<DashboardData['shipments']>
+   981→  showAmounts?: boolean
+   982→}) {
+   983→  const { setView, user } = useAppStore()
+   984→  const qc = useQueryClient()
+   985→  const [genLoading, setGenLoading] = useState<string | null>(null)
+   986→  const [irsaliyePreview, setIrsaliyePreview] = useState<{ id: string; number: string } | null>(null)
+   987→  const canGenIrsaliye = hasPermission(user as SessionUser | null, 'irsaliye.view')
+   988→  const now = new Date()
+   989→  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+   990→
+   991→  // Hızlı aksiyon: eksik irsaliyeyi otomatik üret + PDF önizleme aç
+   992→  const quickGenerateIrsaliye = async (orderId: string, orderNumber: string) => {
+   993→    setGenLoading(orderId)
+   994→    try {
+   995→      const res = await apiPost<{
+   996→        created: boolean
+   997→        document: { id: string; number: string }
+   998→      }>(`/api/orders/${orderId}/generate-document`, { type: 'irsaliye' })
+   999→
+  1000→      if (res.created) {
+  1001→        toast.success(`İrsaliye otomatik oluşturuldu: ${res.document.number}`, {
+  1002→          description: `${orderNumber} siparişi için sevk belgesi hazır`,
+  1003→        })
+  1004→      }
+  1005→      setIrsaliyePreview({ id: res.document.id, number: res.document.number })
+  1006→      qc.invalidateQueries({ queryKey: ['documents-orders'] })
+  1007→      qc.invalidateQueries({ queryKey: ['irsaliye'] })
+  1008→    } catch (e) {
+  1009→      toast.error(e instanceof Error ? e.message : 'İrsaliye oluşturulamadı')
+  1010→    } finally {
+  1011→      setGenLoading(null)
+  1012→    }
+  1013→  }
+  1014→
+  1015→  return (
+  1016→    <Card className="overflow-hidden hover:shadow-md transition-shadow duration-300">
+  1017→      <CardHeader className="pb-3">
+  1018→        <div className="flex items-center justify-between gap-2 flex-wrap">
+  1019→          <div className="flex items-center gap-2.5">
+  1020→            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-sm shrink-0">
+  1021→              <Truck className="w-4 h-4 text-white" />
+  1022→            </div>
+  1023→            <div>
+  1024→              <CardTitle className="text-base leading-tight">Bekleyen Sevkiyatlar</CardTitle>
+  1025→              <p className="text-xs text-muted-foreground mt-0.5">
+  1026→                Sevk edilmeyi bekleyen <span className="font-semibold text-foreground">{shipments.pendingCount}</span> sipariş
+  1027→              </p>
+  1028→            </div>
+  1029→          </div>
+  1030→          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setView('irsaliye')}>
+  1031→            Belge Yönetimi <ArrowRight className="w-3 h-3 ml-1" />
+  1032→          </Button>
+  1033→        </div>
+  1034→      </CardHeader>
+  1035→      <CardContent className="p-0">
+  1036→        <div className="divide-y divide-border/60 max-h-[320px] overflow-y-auto custom-scroll">
+  1037→          {shipments.orders.map((order) => {
+  1038→            const meta = getOrderStatusMeta(order.status)
+  1039→            const StatusIcon = meta.icon
+  1040→            const overdue =
+  1041→              order.expectedDelivery != null && new Date(order.expectedDelivery) < today
+  1042→            return (
+  1043→              <div
+  1044→                key={order.id}
+  1045→                role="button"
+  1046→                tabIndex={0}
+  1047→                aria-label={`${order.number} sipariş detayı`}
+  1048→                className="flex items-center gap-3 px-5 py-3 hover:bg-muted/50 transition-colors cursor-pointer focus-visible:outline-none focus-visible:bg-muted/50"
+  1049→                onClick={() => setView('orders')}
+  1050→                onKeyDown={(e) => e.key === 'Enter' && setView('orders')}
+  1051→              >
+  1052→                <div className={cn(
+  1053→                  'w-9 h-9 rounded-lg border flex items-center justify-center shrink-0',
+  1054→                  meta.color,
+  1055→                )}>
+  1056→                  <StatusIcon className="w-4 h-4" />
+  1057→                </div>
+  1058→                <div className="flex-1 min-w-0">
+  1059→                  <div className="flex items-center gap-2 flex-wrap">
+  1060→                    <span className="text-sm font-semibold font-mono whitespace-nowrap">{order.number}</span>
+  1061→                    <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0 h-4.5', meta.color)}>
+  1062→                      {meta.label}
+  1063→                    </Badge>
+  1064→                    {overdue && (
+  1065→                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4.5 text-red-600 border-red-200 bg-red-50 dark:bg-red-950/30 animate-pulse">
+  1066→                        Termin geçti
+  1067→                      </Badge>
+  1068→                    )}
+  1069→                  </div>
+  1070→                  <div className="text-xs text-muted-foreground mt-0.5 truncate">
+  1071→                    {order.customer?.name ?? 'Müşteri yok'}
+  1072→                  </div>
+  1073→                </div>
+  1074→                <div className="text-right shrink-0 hidden sm:block">
+  1075→                  {order.expectedDelivery ? (
+  1076→                    <div className={cn(
+  1077→                      'text-xs font-medium flex items-center gap-1 justify-end',
+  1078→                      overdue ? 'text-red-600' : 'text-muted-foreground',
+  1079→                    )}>
+  1080→                      <Clock className="w-3 h-3" />
+  1081→                      <span className="whitespace-nowrap">{formatDate(order.expectedDelivery)}</span>
+  1082→                    </div>
+  1083→                  ) : (
+  1084→                    <div className="text-xs text-muted-foreground/60">Termin yok</div>
+  1085→                  )}
+  1086→                  {showAmounts && order.totalAmount != null && (
+  1087→                    <div className="text-sm font-semibold mt-0.5">
+  1088→                      {formatCurrency(order.totalAmount, order.currency || 'TRY')}
+  1089→                    </div>
+  1090→                  )}
+  1091→                </div>
+  1092→                {canGenIrsaliye && (
+  1093→                  <button
+  1094→                    className="h-8 px-2.5 rounded-md border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 dark:bg-violet-950/30 dark:border-violet-900/50 dark:text-violet-300 text-[11px] font-medium flex items-center gap-1 shrink-0 transition-colors disabled:opacity-60 print:hidden"
+  1095→                    disabled={genLoading === order.id}
+  1096→                    aria-label={`${order.number} için irsaliye üret`}
+  1097→                    onClick={(e) => {
+  1098→                      e.stopPropagation()
+  1099→                      quickGenerateIrsaliye(order.id, order.number)
+  1100→                    }}
+  1101→                  >
+  1102→                    {genLoading === order.id ? (
+  1103→                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+  1104→                    ) : (
+  1105→                      <Truck className="w-3.5 h-3.5" />
+  1106→                    )}
+  1107→                    İrsaliye Üret
+  1108→                  </button>
+  1109→                )}
+  1110→              </div>
+  1111→            )
+  1112→          })}
+  1113→        </div>
+  1114→      </CardContent>
+  1115→
+  1116→      {/* Hızlı irsaliye PDF önizleme */}
+  1117→      {irsaliyePreview && (
+  1118→        <IrsaliyePdfDialog
+  1119→          irsaliyeId={irsaliyePreview.id}
+  1120→          irsaliyeNumber={irsaliyePreview.number}
+  1121→          open={!!irsaliyePreview}
+  1122→          onOpenChange={(v) => { if (!v) setIrsaliyePreview(null) }}
+  1123→        />
+  1124→      )}
+  1125→    </Card>
+  1126→  )
+  1127→}
+  1128→
+  1129→// CRM KPI kartı — count-up animasyonlu
+  1130→interface KpiData {
+  1131→  label: string
+  1132→  value: string | number
+  1133→  numericValue: number
+  1134→  sub: string
+  1135→  icon: typeof Users
+  1136→  color: string
+  1137→  onClick: () => void
+  1138→}
+  1139→
+  1140→function CrmKpiCard({ kpi }: { kpi: KpiData }) {
+  1141→  const animated = useCountUp(kpi.numericValue, 900)
+  1142→  const displayValue = typeof kpi.value === 'string' && kpi.value.includes('₺')
+  1143→    ? formatCurrency(animated, 'TRY')
+  1144→    : typeof kpi.value === 'number'
+  1145→      ? animated
+  1146→      : kpi.value
+  1147→
+  1148→  return (
+  1149→    <Card
+  1150→      className="relative overflow-hidden cursor-pointer hover:shadow-md transition-all duration-300 group hover:-translate-y-0.5"
+  1151→      onClick={kpi.onClick}
+  1152→    >
+  1153→      <CardContent className="p-5">
+  1154→        <div className="flex items-start justify-between mb-3">
+  1155→          <div className={cn('w-10 h-10 rounded-lg bg-gradient-to-br flex items-center justify-center shadow-sm', kpi.color)}>
+  1156→            <kpi.icon className="w-5 h-5 text-white" />
+  1157→          </div>
+  1158→          <ArrowUpRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground transition-colors" />
+  1159→        </div>
+  1160→        <div className="text-2xl font-bold tracking-tight">{displayValue}</div>
+  1161→        <div className="text-sm text-muted-foreground mt-0.5">{kpi.label}</div>
+  1162→        <div className="text-xs text-muted-foreground/80 mt-1.5">{kpi.sub}</div>
+  1163→      </CardContent>
+  1164→    </Card>
+  1165→  )
+  1166→}
+  1167→

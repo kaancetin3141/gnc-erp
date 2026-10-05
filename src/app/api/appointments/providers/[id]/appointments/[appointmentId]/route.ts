@@ -133,7 +133,58 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
   })
 
-  return ok(updated)
+  // Üyelik entegrasyonu: randevu tamamlandığında müşterinin aktif paketinden 1 seans düş
+  let packageUsed: { id: string; remaining: number; packageName: string } | null = null
+  if (status === 'tamamlandi' && existing.status !== 'tamamlandi') {
+    try {
+      const candidate = await db.memberPackage.findFirst({
+        where: {
+          tenantId: user!.tenantId,
+          status: 'aktif',
+          expiryDate: { gte: new Date() },
+          ...(existing.customerId ? { customerId: existing.customerId } : {}),
+          ...(existing.customerId
+            ? {}
+            : { customerName: { equals: existing.customerName } }),
+        },
+        orderBy: { expiryDate: 'asc' }, // en erken biten paketi harca
+        include: { package: { select: { name: true } } },
+      })
+      if (
+        candidate &&
+        (candidate.sessionsTotal === 0 || candidate.sessionsUsed < candidate.sessionsTotal)
+      ) {
+        const [upd] = await db.$transaction([
+          db.memberPackage.update({
+            where: { id: candidate.id },
+            data: {
+              sessionsUsed: { increment: 1 },
+              ...(candidate.sessionsTotal > 0 &&
+              candidate.sessionsUsed + 1 >= candidate.sessionsTotal
+                ? { status: 'bitti' }
+                : {}),
+            },
+          }),
+          db.memberPackageUsage.create({
+            data: {
+              packageId: candidate.id,
+              appointmentId: existing.id,
+              note: `Randevu tamamlandı: ${existing.customerName}`,
+            },
+          }),
+        ])
+        packageUsed = {
+          id: upd.id,
+          remaining: upd.sessionsTotal === 0 ? -1 : upd.sessionsTotal - upd.sessionsUsed,
+          packageName: candidate.package.name,
+        }
+      }
+    } catch {
+      // Üyelik entegrasyonu randevu akışını bloklamaz
+    }
+  }
+
+  return ok({ ...updated, packageUsed })
 }
 
 // DELETE — randevu iptal et

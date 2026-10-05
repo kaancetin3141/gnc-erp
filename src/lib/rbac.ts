@@ -35,14 +35,18 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'appointments.view', 'appointments.manage',
     'social.view', 'social.manage',
     'orders.view', 'irsaliye.view', 'irsaliye.manage', 'invoices.view',
+    'hr.view', 'hr.manage', 'tickets.view', 'tickets.manage',
   ],
 
   // ===== ADMİN — Şirket admini, SADECE kendi sektörü =====
   // Not: admin rolüne hangi sektörün yetkileri verileceği
   // tenant'ın sektörüne göre belirlenir (seed sırasında)
   // Varsayılan olarak CRM yetkileri verilir
-  // ÖNEMLİ: 'admin.access' VE 'roles.manage' SADECE superadmin'e verilir.
-  // Admin Paneli ve Dağıtım Merkezi SADECE Program Admini (superadmin) içindir.
+  // ÖNEMLİ: 'roles.manage' SADECE superadmin'e verilir.
+  // 'admin.access' → Şirket admini Admin Paneli'ni GÖREBİLİR (kendi tenant'ı
+  //   scoblu; API'ler tenantId ile filtrelenir). Dağıtım Merkezi de görünür —
+  //   kendi firmasının PWA/APK dağıtımını yapabilir.
+  //   Superadmin ayrıca platform genelini ve tüm tenant'ları görür.
   admin: [
     'dashboard.view',
     'messages.view',
@@ -51,6 +55,8 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'expenses.view', 'expenses.manage',
     'audit.view',
     'social.view', 'social.manage',
+    'admin.access',
+    'hr.view', 'hr.manage', 'tickets.view', 'tickets.manage',
   ],
 
   // ===== MÜDÜR — CRM + ekip + raporlar =====
@@ -66,6 +72,8 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'expenses.view',
     'social.view', 'social.manage',
     'orders.view', 'irsaliye.view', 'invoices.view',
+    'hr.view', 'hr.manage',
+    'tickets.view', 'tickets.manage',
   ],
 
   // ===== SATIŞ TEMSİLCİSİ — Sadece kendi müşterileri =====
@@ -77,6 +85,8 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'reports.view',
     'messages.view',
     'social.view',
+    'tickets.view',
+    'hr.view',
   ],
 
   // ===== SALT OKUNUR =====
@@ -85,6 +95,7 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'customers.view.own', 'leads.view', 'tasks.view',
     'messages.view',
     'social.view',
+    'tickets.view',
   ],
 
   // ===== STOK / DEPO — Sadece üretim listesi + irsaliye + sipariş =====
@@ -94,6 +105,7 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'production.view', 'production.manage',
     'orders.view',
     'irsaliye.view', 'irsaliye.manage',
+    'tickets.view',
   ],
 
   // ===== KAFE ROLLERİ — Sadece kafe =====
@@ -102,16 +114,19 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'cafe.view', 'cafe.manage', 'cafe.orders', 'cafe.kitchen',
     'reports.view', // kasa raporları görebilir
     'messages.view',
+    'tickets.view',
   ],
   barmen: [
     'dashboard.view',
     'cafe.view', 'cafe.bar', 'cafe.orders',
     'messages.view',
+    'tickets.view',
   ],
   komi: [
     'dashboard.view',
     'cafe.view', 'cafe.orders', 'cafe.kitchen',
     'messages.view',
+    'tickets.view',
   ],
 
   // ===== MARKET ROLLERİ — Market + üretim + mesajlaşma =====
@@ -120,6 +135,7 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'reports.view',
     'messages.view',
     'dashboard.view',
+    'tickets.view',
   ],
   depo_sorumlusu: [
     'market.view', 'market.stock',
@@ -129,15 +145,16 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'production.view', 'production.manage',
     'orders.view',
     'irsaliye.view', 'irsaliye.manage',
+    'tickets.view',
   ],
 }
 
 // Şirket admini (admin rolü) için sektöre göre ek yetkiler
 // Bu fonksiyon, admin rolündeki kullanıcının tenant'ının sektörüne göre
 // hangi modül yetkilerini alacağını belirler
-// ÖNEMLİ: 'admin.access' ve 'roles.manage' burada YOK — onlar yalnızca
-// superadmin (Program Admini) rolüne özeldir. Admin Paneli ve Dağıtım
-// Merkezi yalnızca superadmin içindir.
+// ÖNEMLİ: 'roles.manage' burada YOK — yalnızca superadmin (Program Admini)
+// rolüne özeldir. 'admin.access' base'e DAHİLDİR: şirket admini Admin
+// Paneli'ni görebilir (API'ler kendi tenant'ı ile sınırlıdır).
 export function getAdminPermissionsForTenant(tenantName: string): PermissionKey[] {
   const base: PermissionKey[] = [
     'dashboard.view',
@@ -147,6 +164,8 @@ export function getAdminPermissionsForTenant(tenantName: string): PermissionKey[
     'expenses.view', 'expenses.manage',
     'audit.view',
     'social.view', 'social.manage',
+    'admin.access',
+    'hr.view', 'hr.manage', 'tickets.view', 'tickets.manage',
   ]
 
   const name = tenantName.toLowerCase()

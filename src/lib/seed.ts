@@ -421,7 +421,7 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
   const randevuAdmin = await db.user.create({
     data: {
       tenantId: tenantRandevu.id,
-      email: 'admin@sikkuaför.com',
+      email: 'admin@sikkuafur.com',
       name: 'Kuaför Yöneticisi',
       role: 'admin',
       permissions: JSON.stringify(getAdminPermissionsForTenant(tenantRandevu.name)),
@@ -1940,7 +1940,7 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
       city: 'İstanbul',
       district: 'Kadıköy',
       phone: '+90 216 555 12 34',
-      email: 'randevu@sikkuaför.com',
+      email: 'randevu@sikkuafur.com',
       workingHours,
       isActive: true,
     },

@@ -7831,3 +7831,26 @@ Work Log:
 Stage Summary:
 - Mini-servisler artık node_modules'tan TAMAMEN bağımsız boot oluyor — sandbox rollback'inin üç etkisine (env, node_modules, süreçler) karşı tam dayanıklılık
 - crash loop efsanesi kapanmıştır: env self-healing + port-tabanlı kontrol + vendor deps
+
+---
+Task ID: dev-20261006-admin-hr-support
+Agent: main (Super Z)
+Task: "geliştirmeye devam et; program adminini göremiyorum; internetteki benzer firmaların yazılımlarını araştır, eksik modülleri ekle ve gerçekten kullanılacak seviyede test et"
+
+Work Log:
+- Rakip araştırması: 12 web araması (Zoho One 46+ uygulama, Odoo 30+ modül, Logo/Netsis, PlanPOS, Randevu AŞ, site yönetim yazılımları, e-fatura, helpdesk) → gap analysis: İK/Personel modülü ve Destek Masası (ticket) eksikti; SMTP gerçek gönderimin zaten çalıştığı doğrulandı (nodemailer + mailto fallback)
+- Admin görünürlük düzeltmesi: rbac.ts'te admin rolüne 'admin.access' eklendi (ROLE_PERMISSIONS + getAdminPermissionsForTenant) — şirket admini artık Admin Paneli'ni ve Dağıtım Merkezi'ni görüyor; API'ler zaten users.manage + tenant-scoped olduğundan tutarlı
+- Yeni İK modülü: HrEmployee/HrLeaveRequest/HrShift modelleri, /api/hr/{employees,leaves,shifts,demo} uçları (CRUD + onay/ret + haftalık vardiya), hr-view.tsx (özet kartlar + personel/izin sekmeleri)
+- Yeni Destek Masası: Ticket/TicketComment modelleri (TRK-0001 kodlu, durum/öncelik/atama/yorum), /api/tickets* uçları, support-tickets-view.tsx (özet + liste + detay + yorum/dahili not)
+- RBAC: hr.view/hr.manage/tickets.view/tickets.manage anahtarları; tüm rollere dağıtıldı (tickets.view herkeste, hr.manage yönetici+); permission-tree ve tenant-sector grupları güncellendi
+- Not: PARALEL DÜZENLEYİCİ tespit edildi — API/UI dosyalarının bir kısmı dışarıdan tutarlı biçimde yeniden yazıldı (sonner toast, summary objeleri); şema yarım kalmıştı (Ticket.assignee/createdBy ilişkileri eksik) → tamamlandı, db:push yapıldı; GET uçlarına defense-in-depth permission kontrolleri eklendi
+- E2E testler (scripts/e2e-hr-tickets.sh): 26 senaryo → 26 PASS (login, demo seed, CRUD, izin onay/ret + çift karar 409, vardiya, ticket akışı, yetkisiz 401, demo 409, admin overview)
+- Agent Browser doğrulama: Program Admini + şirket admini (demo@anadolu.com) girişleri; sidebar'da 3 yeni öğe; İK görünümü (3 personel, bordro 121.000 ₺, izin tablosu); destek masası (TRK listesi, özet kartlar); Admin Paneli şirket adminiyle kendi tenant verisiyle açılıyor (22 müşteri/7 kullanıcı); konsol temiz; ekran görüntüsü logs/verify-admin-panel.png
+- Sorun giderme: dev sunucusu iki kez öldü (sandbox davranışı) → yeniden başlatıldı; hr/demo'da 'err is not defined' import hatası düzeltildi (500→409)
+- E2E test artıkları temizlendi (test talebi + test izni silindi)
+
+Stage Summary:
+- Admin Paneli artık şirket adminlerine de açık (kullanıcının şikayeti çözüldü); superadmin ayrıcalığı korundu
+- İki yeni modül production kalitesinde: Personel & İK (personel/izin/vardiya) + Destek Masası (ticket) — 78+87 = 80 model; 26/26 E2E pass
+- SMTP gerçek e-posta zaten çalışıyordu (beklemedeki görev kapanmış durumda); sabit kur ve harita mock fallback'i sonraki tur adayları
+- VPS notu: yeni env'ler gerekmiyor; db/custom.db'yi şemayla birlikte almak yeterli (prisma db push idempotent)

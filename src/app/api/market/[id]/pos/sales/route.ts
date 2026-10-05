@@ -240,5 +240,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     after: { number: result.number, total: result.total, paymentMethod: result.paymentMethod },
   })
 
-  return ok(result)
+  // Sadakat puanı: müşteri belirtilmişse her 100 TL için 1 puan kazan
+  let earnedPoints = 0
+  if (customerName?.trim() && result.total > 0) {
+    try {
+      earnedPoints = Math.floor(result.total / 100)
+      if (earnedPoints > 0) {
+        const name = customerName.trim()
+        const account = await db.loyaltyAccount.upsert({
+          where: { tenantId_name: { tenantId: user!.tenantId, name } },
+          create: { tenantId: user!.tenantId, name, points: earnedPoints },
+          update: { points: { increment: earnedPoints } },
+        })
+        await db.loyaltyTransaction.create({
+          data: {
+            accountId: account.id,
+            type: 'kazanma',
+            points: earnedPoints,
+            saleId: result.id,
+            note: `${result.number} nolu satış (${result.total.toFixed(2)} TL)`,
+            userId: user!.id,
+          },
+        })
+      }
+    } catch {
+      // Sadakat entegrasyonu satışı bloklamaz
+      earnedPoints = 0
+    }
+  }
+
+  return ok({ ...result, earnedPoints })
 }

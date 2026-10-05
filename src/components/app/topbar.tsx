@@ -43,6 +43,8 @@ const VIEW_TITLES: Record<string, string> = {
   social: 'Sosyal Medya',
   distribution: 'Dağıtım Merkezi',
   admin: 'Admin Paneli',
+  hr: 'Personel & İK',
+  support: 'Destek Masası',
 }
 
 export function Topbar() {

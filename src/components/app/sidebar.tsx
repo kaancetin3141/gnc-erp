@@ -10,7 +10,7 @@ import {
   BarChart3, UserCog, Settings, ChevronLeft, Sparkles, Boxes,
   FileText, Receipt, Package, MessageCircle, ClipboardCheck,
   ShieldCheck, Coffee, Store, Calendar, Building2, Home, Share2, Rocket, FileStack,
-  MessageSquareText,
+  MessageSquareText, LifeBuoy, UserSquare2,
 } from 'lucide-react'
 import type { PermissionKey } from '@/types'
 
@@ -47,6 +47,7 @@ const NAV_ITEMS: { group: string; items: NavItem[] }[] = [
       { view: 'tasks', label: 'Görevler', icon: CheckSquare, permission: 'tasks.view' },
       { view: 'chat', label: 'Mesajlar', icon: MessageCircle, permission: 'messages.view' },
       { view: 'whatsapp-hub', label: 'WhatsApp Merkezi', icon: MessageSquareText, permission: 'messages.view' },
+      { view: 'support', label: 'Destek Masası', icon: LifeBuoy, permission: 'tickets.view' },
     ],
   },
   {
@@ -89,6 +90,12 @@ const NAV_ITEMS: { group: string; items: NavItem[] }[] = [
     group: 'Randevu',
     items: [
       { view: 'appointments', label: 'Randevular', icon: Calendar, permission: 'appointments.view' },
+    ],
+  },
+  {
+    group: 'İnsan Kaynakları',
+    items: [
+      { view: 'hr', label: 'Personel & İK', icon: UserSquare2, permission: 'hr.view' },
     ],
   },
   {

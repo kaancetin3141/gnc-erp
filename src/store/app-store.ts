@@ -31,6 +31,8 @@ export type AppView =
   | 'social'
   | 'distribution'
   | 'irsaliye'
+  | 'hr'
+  | 'support'
 
 interface AppState {
   // Session

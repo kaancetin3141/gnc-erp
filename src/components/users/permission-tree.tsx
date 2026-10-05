@@ -76,6 +76,22 @@ const PERMISSION_TREE: TreeNode = {
       ],
     },
     {
+      id: 'hr',
+      label: 'İnsan Kaynakları',
+      children: [
+        { id: 'hr-view', label: 'Personel & İK görüntüle', permission: 'hr.view' },
+        { id: 'hr-manage', label: 'Personel/izin/vardiya yönet', permission: 'hr.manage' },
+      ],
+    },
+    {
+      id: 'tickets',
+      label: 'Destek Masası',
+      children: [
+        { id: 'tickets-view', label: 'Destek taleplerini görüntüle/yeni aç', permission: 'tickets.view' },
+        { id: 'tickets-manage', label: 'Talep yönet (atama, durum)', permission: 'tickets.manage' },
+      ],
+    },
+    {
       id: 'admin',
       label: 'Yönetim',
       children: [

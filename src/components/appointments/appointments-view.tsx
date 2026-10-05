@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate, formatTime, whatsappLink } from '@/lib/format'
-import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban, UserCheck, UserX, RotateCcw, UserPlus } from 'lucide-react'
+import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban, UserCheck, UserX, RotateCcw, UserPlus, Ticket } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { ProviderSettings } from './provider-settings'
 import { StaffManager } from './staff-manager'
@@ -25,6 +25,7 @@ import { ServiceManager } from './service-manager'
 import { AppointmentCalendar } from './appointment-calendar'
 import { RejectDialog } from './reject-dialog'
 import { CustomerHistoryDialog } from './customer-history-dialog'
+import { MembershipTab } from '@/components/membership/membership-tab'
 import { CustomerManager, CustomerDetailDialog, type RegistryCustomer } from './customer-manager'
 import { CustomerAutocomplete } from './customer-autocomplete'
 import { formatDateTime } from '@/lib/format'
@@ -251,6 +252,7 @@ export function AppointmentsView() {
           <TabsTrigger value="customers" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Müşteriler</TabsTrigger>
           <TabsTrigger value="staff" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Personel</TabsTrigger>
           <TabsTrigger value="services" className="text-xs"><Scissors className="w-3.5 h-3.5 mr-1" /> Hizmetler</TabsTrigger>
+          <TabsTrigger value="membership" className="text-xs"><Ticket className="w-3.5 h-3.5 mr-1" /> Üyelikler</TabsTrigger>
           <TabsTrigger value="booking" className="text-xs"><Store className="w-3.5 h-3.5 mr-1" /> Müşteri Görünümü</TabsTrigger>
           <TabsTrigger value="settings" className="text-xs"><Settings2 className="w-3.5 h-3.5 mr-1" /> İşletme Ayarları</TabsTrigger>
         </TabsList>
@@ -484,6 +486,11 @@ export function AppointmentsView() {
         {/* İşletme Ayarları — otomatik onay anahtarı, çalışma saatleri */}
         <TabsContent value="settings" className="mt-4">
           {providerId && <ProviderSettings providerId={providerId} />}
+        </TabsContent>
+
+        {/* Üyelik & Paket Yönetimi */}
+        <TabsContent value="membership" className="mt-4">
+          <MembershipTab />
         </TabsContent>
       </Tabs>
 

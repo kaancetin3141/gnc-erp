@@ -44,8 +44,23 @@ export async function GET() {
 // POST — gerçek giriş: email + şifre (bcrypt)
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
-  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+  let email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const password = typeof body.password === 'string' ? body.password : ''
+
+  // IDN normalizasyonu: tarayıcılar Türkçe karakterli domain'leri punycode'a çevirebilir
+  // (örn. admin@sikkuaför.com → admin@xn--sikkuaf-r-t4a.com) — unicode'a geri çevir
+  const atIdx = email.lastIndexOf('@')
+  if (atIdx > 0 && email.slice(atIdx + 1).includes('xn--')) {
+    try {
+      const { domainToUnicode } = await import('url')
+      const local = email.slice(0, atIdx)
+      const domain = domainToUnicode(email.slice(atIdx + 1))
+      email = `${local}@${domain}`
+    } catch {
+      // punycode çözülemezse olduğu gibi devam
+    }
+  }
+  email = email.normalize('NFC')
 
   if (!email || !password) {
     return err('E-posta ve şifre gerekli', 400)

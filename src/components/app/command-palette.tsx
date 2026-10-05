@@ -16,6 +16,7 @@ import {
   Search, Users, KanbanSquare, CheckSquare, MapPin,
   LayoutDashboard, UserCog, Settings, BarChart3,
   Plus, ArrowRight, Clock, AlertTriangle, TrendingUp, Phone,
+  LifeBuoy, UserSquare2,
 } from 'lucide-react'
 import type { AppView } from '@/store/app-store'
 
@@ -49,6 +50,8 @@ const NAV_ITEMS: { view: AppView; label: string; icon: typeof LayoutDashboard; g
   { view: 'reports', label: 'Raporlar', icon: BarChart3, group: 'Sayfalar' },
   { view: 'users', label: 'Kullanıcılar', icon: UserCog, group: 'Sayfalar' },
   { view: 'settings', label: 'Ayarlar', icon: Settings, group: 'Sayfalar' },
+  { view: 'hr', label: 'Personel & İK', icon: UserSquare2, group: 'Sayfalar' },
+  { view: 'support', label: 'Destek Masası', icon: LifeBuoy, group: 'Sayfalar' },
 ]
 
 const QUICK_ACTIONS: { label: string; icon: typeof Plus; view: AppView; hint: string }[] = [

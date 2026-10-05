@@ -8,11 +8,18 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Building2, Shield, Database, MapPin, Mail, Lock, Eye, EyeOff, LogIn, Sparkles, AlertTriangle, Zap, ChevronDown } from 'lucide-react'
+import { Building2, Shield, Database, MapPin, Mail, Lock, Eye, EyeOff, LogIn, Sparkles, AlertTriangle, Zap, ChevronDown, Crown } from 'lucide-react'
 import type { SessionUser } from '@/types'
+
+// Program Admini (superadmin) — tüm modülleri + Admin Paneli + Dağıtım Merkezi görür
+const PROGRAM_ADMIN = { email: 'program.admin@gnccrm.app', name: 'Program Admini', role: 'Süper Admin — Tüm Yetkiler', badge: 'violet' }
 
 // Tek tıkla denenebilecek demo hesapları (şifre: 1234) — tüm modüller
 const DEMO_GROUPS: { label: string; accounts: { email: string; name: string; role: string; badge: string }[] }[] = [
+  {
+    label: 'Yönetim',
+    accounts: [PROGRAM_ADMIN],
+  },
   {
     label: 'CRM / ERP (Ana)',
     accounts: [
@@ -26,7 +33,7 @@ const DEMO_GROUPS: { label: string; accounts: { email: string; name: string; rol
     accounts: [
       { email: 'admin@sikkafe.com', name: 'Sık Kafe', role: 'Kafe Yöneticisi', badge: 'orange' },
       { email: 'admin@anadolumarket.com', name: 'Anadolu Market', role: 'Market Yöneticisi', badge: 'lime' },
-      { email: 'admin@sikkuaför.com', name: 'Sık Kuaför', role: 'Kuaför Yöneticisi', badge: 'rose' },
+      { email: 'admin@sikkuafur.com', name: 'Sık Kuaför', role: 'Kuaför Yöneticisi', badge: 'rose' },
       { email: 'admin@parksitesi.com', name: 'Park Sitesi', role: 'Site Yöneticisi', badge: 'violet' },
     ],
   },
@@ -310,6 +317,27 @@ export function LoginScreen() {
                   <span className="flex items-center gap-2">
                     <Zap className="w-4 h-4" />
                     Demo Girişi — Yönetici olarak gir
+                  </span>
+                )}
+              </Button>
+
+              {/* Program Admini girişi — en üst seviye yetki */}
+              <Button
+                type="button"
+                disabled={loading || needsSeed || !!demoLoading}
+                onClick={() => handleDemoLogin(PROGRAM_ADMIN.email)}
+                className="w-full h-11 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white shadow-sm"
+              >
+                {demoLoading === PROGRAM_ADMIN.email ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-violet-300 border-t-white rounded-full animate-spin" />
+                    Program Admini olarak giriliyor...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Crown className="w-4 h-4" />
+                    Program Admini olarak gir
+                    <span className="ml-1 text-[10px] font-normal bg-white/20 px-1.5 py-0.5 rounded">Admin Paneli</span>
                   </span>
                 )}
               </Button>
