@@ -44,7 +44,7 @@ function getSharedSocket(token: string): Socket {
   if (sharedSocket && sharedSocketToken === token) return sharedSocket
   if (sharedSocket) sharedSocket.disconnect()
   sharedSocketToken = token
-  sharedSocket = io('/?XTransformPort=3003', {
+  sharedSocket = io('/?XTransformPort=3005', {
     transports: ['websocket', 'polling'],
     // KRİTİK: chat-service socket.io path '/' ile kurulur (Caddy kuralı).
     // path verilmezse istemci varsayılan '/socket.io/' ile yanlış yola

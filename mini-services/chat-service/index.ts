@@ -13,7 +13,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { Server } from 'socket.io'
 import { PrismaClient } from '@prisma/client'
 
-const PORT = 3003 // SABİT — değiştirme
+const PORT = 3005 // SABİT — Fruit Storm artık 3003'te (3003=customer oyun, 3002=customer-page, 3004=KaloriAI)
 const INTERNAL_SECRET = 'gnc-internal-chat-2026'
 
 const prisma = new PrismaClient()

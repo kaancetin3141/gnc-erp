@@ -55,6 +55,8 @@ export async function GET(req: NextRequest) {
     photo: p.photo,
     phone: p.phone,
     email: p.email,
+    lat: p.lat,
+    lng: p.lng,
     workingHours: safeJsonParse<WorkingHours>(p.workingHours, {}),
     services: p.services.map((s) => ({
       id: s.id,

@@ -64,6 +64,13 @@ model Tenant {
   tickets         Ticket[]
 }
 
+// Platform-genel ayar (tenant-bağımsız) — base_domain vb.
+model SystemSetting {
+  key       String   @id // "base_domain" → "gncrm.com"
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // Tenant bazlı ayarlar (key-value) — otomasyon threshold, enabled flag vb.
 model TenantSetting {
   id        String   @id @default(cuid())
@@ -1124,6 +1131,9 @@ model ServiceProvider {
   workingHours String  @default("{}") // JSON: { "mon": {"start":"09:00","end":"18:00"}, ... }
   autoApprove  Boolean @default(true) // randevular otomatik onaylansın mı? (kapalıysa müşteri onay bekler)
   isActive    Boolean  @default(true)
+  lat         Float?   // enlem — müşteri sayfası "en yakın" sıralaması için
+  lng         Float?   // boylam — OSM Nominatim ile otomatik bulunabilir
+  geoCheckedAt DateTime? // son geocode deneme zamanı (rate-limit/idempotency)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

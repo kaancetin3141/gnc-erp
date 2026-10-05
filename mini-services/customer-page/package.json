@@ -1,0 +1,6 @@
+{
+  "name": "customer-page",
+  "scripts": {
+    "dev": "bun --hot index.ts"
+  }
+}

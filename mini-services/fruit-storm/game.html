@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#7a2a10">
+<title>🍉 Fruit Storm — GNC CRM Mini Oyun</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; }
+  body {
+    display:flex; flex-direction:column; overflow:hidden; overscroll-behavior:none;
+    background:#2b0d0a; color:#fff4e6; user-select:none; -webkit-user-select:none;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  }
+  header {
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 12px;
+    padding:10px 16px; padding-top:calc(10px + env(safe-area-inset-top));
+    background:linear-gradient(90deg,#7a2a10 0%,#b34317 55%,#d95a1e 100%);
+    border-bottom:1px solid rgba(255,170,90,.4); box-shadow:0 2px 12px rgba(0,0,0,.45); z-index:10;
+  }
+  .brand { font-weight:900; font-size:clamp(17px,4vw,22px); letter-spacing:.3px; text-shadow:0 2px 6px rgba(0,0,0,.5); white-space:nowrap; }
+  .brand small { font-weight:600; opacity:.8; font-size:.6em; display:block; letter-spacing:1.5px; }
+  .stats { display:flex; align-items:center; gap:8px; }
+  .chip { background:rgba(0,0,0,.32); border:1px solid rgba(255,190,120,.25); border-radius:999px; padding:5px 13px; font-size:13px; white-space:nowrap; }
+  .chip b { color:#ffd166; font-size:15px; margin-left:4px; }
+  #pauseBtn { width:38px; height:38px; border-radius:50%; border:1px solid rgba(255,190,120,.45); background:rgba(0,0,0,.32); color:#ffd8a8; font-size:16px; cursor:pointer; }
+  #pauseBtn:active { transform:scale(.94); }
+  main#stage { position:relative; flex:1; min-height:0; }
+  canvas#game { position:absolute; inset:0; width:100%; height:100%; touch-action:none; display:block; cursor:crosshair; }
+  .overlay { position:absolute; inset:0; z-index:5; display:flex; align-items:center; justify-content:center; padding:18px; overflow:auto;
+    background:radial-gradient(ellipse at center, rgba(52,12,5,.62) 0%, rgba(24,5,2,.86) 100%); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px); }
+  .hidden { display:none !important; }
+  .card { width:min(440px,94%); text-align:center; background:linear-gradient(165deg, rgba(96,28,10,.92), rgba(46,12,5,.95));
+    border:1px solid rgba(255,160,90,.4); border-radius:24px; padding:26px 22px; box-shadow:0 18px 50px rgba(0,0,0,.55); }
+  .card h1 { font-size:clamp(30px,7vw,44px); font-weight:900; margin-bottom:4px;
+    background:linear-gradient(90deg,#ffd166,#ff7b3d,#ff4d6d); -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 3px 8px rgba(0,0,0,.45)); }
+  .card .sub { color:#f8c8a0; font-size:14px; margin-bottom:16px; }
+  .how { text-align:left; margin:0 auto 16px; max-width:340px; font-size:13.5px; line-height:1.8; color:#ffe3c2; list-style:none; }
+  .how li::before { content:"›"; color:#ffb703; font-weight:900; margin-right:8px; }
+  .how b { color:#ffd166; }
+  .btn { display:inline-block; border:none; cursor:pointer; font-family:inherit; font-weight:800; text-align:center;
+    background:linear-gradient(180deg,#ffb703,#ff6b00); color:#3a0d00; border-radius:999px;
+    padding:13px 34px; font-size:18px; box-shadow:0 6px 18px rgba(255,107,0,.4), inset 0 1px 0 rgba(255,255,255,.5); }
+  .btn:active { transform:translateY(1px) scale(.98); }
+  .btn.ghost { background:transparent; color:#ffd8a8; border:1.5px solid rgba(255,170,90,.55); box-shadow:none; font-weight:600; font-size:15px; padding:11px 24px; }
+  .btnrow { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:8px; }
+  .bestline { margin:12px 0 18px; font-size:14px; color:#ffd166; font-weight:700; }
+  .scoregrid { display:flex; gap:10px; justify-content:center; margin:16px 0 18px; flex-wrap:wrap; }
+  .scoregrid div { background:rgba(0,0,0,.3); border:1px solid rgba(255,170,90,.3); border-radius:14px; padding:10px 16px; min-width:88px; }
+  .scoregrid span { display:block; font-size:11.5px; color:#f8c8a0; margin-bottom:3px; }
+  .scoregrid b { font-size:22px; color:#ffd166; }
+  .newrec { color:#ffd166; font-weight:900; font-size:15px; margin-bottom:8px; text-shadow:0 0 14px rgba(255,209,102,.8); }
+  footer {
+    display:flex; align-items:center; justify-content:space-between; gap:8px 14px; flex-wrap:wrap;
+    padding:9px 16px; padding-bottom:calc(9px + env(safe-area-inset-bottom));
+    background:rgba(24,6,3,.92); border-top:1px solid rgba(255,140,66,.3);
+    font-size:12.5px; color:#f8c8a0; z-index:10;
+  }
+  footer a { color:#ffb703; font-weight:700; text-decoration:none; }
+  footer a:hover { text-decoration:underline; }
+  footer .dot { opacity:.5; margin:0 4px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🍉 Fruit Storm<small>GNC CRM MİNİ OYUN · 3003</small></div>
+  <div class="stats">
+    <div class="chip">Skor<b id="score">0</b></div>
+    <div class="chip">Rekor<b id="best">0</b></div>
+    <button id="pauseBtn" title="Duraklat / Devam (P)">⏸</button>
+  </div>
+</header>
+
+<main id="stage">
+  <canvas id="game"></canvas>
+
+  <div id="menu" class="overlay">
+    <div class="card">
+      <h1>🍉 Fruit Storm</h1>
+      <div class="sub">Meyve kesme fırtınası — refleks &amp; kombo</div>
+      <ul class="how">
+        <li>Fareyle basıp kaydır veya parmağını kaydır — meyveleri havada dilimle!</li>
+        <li>Meyve <b>+10</b> · Aynı hamlede 3+ meyve <b>KOMBO +25</b> · Altın meyve <b>+50</b> ✨</li>
+        <li>Bombalara dikkat 💣 — her bomba 1 can götürür, 3 canın var!</li>
+        <li>Kaçan meyve can götürmez; 100 puanda <b>FIRTINA</b> başlar 🌪️</li>
+      </ul>
+      <div class="bestline">🏆 En Yüksek Skor: <span id="menuBest">0</span></div>
+      <button id="playBtn" class="btn">▶ Oyna</button>
+    </div>
+  </div>
+
+  <div id="pauseOv" class="overlay hidden">
+    <div class="card">
+      <h1 style="font-size:30px">⏸ Duraklatıldı</h1>
+      <div class="sub">Meyveler seni bekliyor…</div>
+      <div class="btnrow">
+        <button id="resumeBtn" class="btn">▶ Devam Et</button>
+        <a href="/" class="btn ghost" style="text-decoration:none">🏠 Ana Sayfa</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="overOv" class="overlay hidden">
+    <div class="card">
+      <h1 style="font-size:30px">💥 Oyun Bitti</h1>
+      <div id="newRec" class="newrec hidden">🏆 YENİ REKOR!</div>
+      <div class="scoregrid">
+        <div><span>Skor</span><b id="finalScore">0</b></div>
+        <div><span>Kesilen Meyve</span><b id="finalFruit">0</b></div>
+        <div><span>Rekor</span><b id="finalBest">0</b></div>
+      </div>
+      <div class="btnrow">
+        <button id="againBtn" class="btn">🔄 Tekrar Oyna</button>
+        <a href="/" class="btn ghost" style="text-decoration:none">🏠 Ana Sayfa</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span>GNC CRM — port 3003</span>
+  <span><a href="/">Ana uygulamaya dön ↗</a><span class="dot">·</span>P: duraklat</span>
+</footer>
+
+<script>
+"use strict";
+var TAU = Math.PI * 2;
+function $(id) { return document.getElementById(id); }
+
+var canvas = $("game"), stageEl = $("stage");
+var ctx = canvas.getContext("2d");
+var scoreEl = $("score"), bestEl = $("best"), pauseBtn = $("pauseBtn");
+var menuOv = $("menu"), pauseOv = $("pauseOv"), overOv = $("overOv");
+var menuBestEl = $("menuBest");
+
+/* ───────────── yardımcılar ───────────── */
+function rnd(a, b) { return a + Math.random() * (b - a); }
+function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function loadBest() { try { return parseInt(localStorage.getItem("fruitStormHigh") || "0", 10) || 0; } catch (e) { return 0; } }
+function saveBest(v) { try { localStorage.setItem("fruitStormHigh", String(v)); } catch (e) {} }
+
+/* ───────────── oyun durumu ───────────── */
+var ST_MENU = "menu", ST_PLAY = "play", ST_PAUSE = "pause", ST_OVER = "over";
+var state = ST_MENU;
+var score = 0, lives = 3, fruitsSliced = 0;
+var stormLevel = 0, stormVisual = 0;
+var best = loadBest(), startBest = best;
+var flash = 0, shake = 0, spawnTimer = 500;
+var comboCount = 0, comboLast = 0;
+var banner = null;
+
+/* ───────────── görünüm / boyutlandırma ───────────── */
+var view = { w: 0, h: 0, dpr: 1, left: 0, top: 0 };
+var bgGrad = null, vinGrad = null;
+var embers = [];
+
+function resize() {
+  var r = stageEl.getBoundingClientRect();
+  view.w = Math.max(1, r.width); view.h = Math.max(1, r.height);
+  var cr = canvas.getBoundingClientRect();
+  view.left = cr.left; view.top = cr.top;
+  view.dpr = Math.min(2.5, window.devicePixelRatio || 1);
+  canvas.width = Math.round(view.w * view.dpr);
+  canvas.height = Math.round(view.h * view.dpr);
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  bgGrad = ctx.createLinearGradient(0, 0, 0, view.h);
+  bgGrad.addColorStop(0, "#310e08");
+  bgGrad.addColorStop(0.45, "#551a0c");
+  bgGrad.addColorStop(1, "#8a3413");
+  vinGrad = ctx.createRadialGradient(view.w / 2, view.h / 2, Math.min(view.w, view.h) * 0.35, view.w / 2, view.h / 2, Math.max(view.w, view.h) * 0.75);
+  vinGrad.addColorStop(0, "rgba(0,0,0,0)");
+  vinGrad.addColorStop(1, "rgba(20,4,0,0.42)");
+}
+window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", function () { setTimeout(resize, 150); });
+resize();
+
+for (var ei = 0; ei < 26; ei++) {
+  embers.push({ x: Math.random(), y: Math.random(), s: 1 + Math.random() * 2.4, v: 8 + Math.random() * 22, a: 0.05 + Math.random() * 0.16, w: Math.random() * TAU });
+}
+
+function rs() { return clamp(Math.min(view.w, view.h) / 700, 0.72, 1.3); }
+function grav() { return view.h * 2.1; }
+
+/* ───────────── varlıklar ───────────── */
+var fruits = [], halves = [], parts = [], rings = [], floats = [];
+var FRUIT_NAMES = ["karpuz", "portakal", "elma", "cilek", "muz", "uzum"];
+var META = {
+  karpuz:   { r: 46, juice: "#ff5a5f" },
+  portakal: { r: 34, juice: "#ff922b" },
+  elma:     { r: 33, juice: "#e5383b" },
+  cilek:    { r: 27, juice: "#ff4d6d" },
+  muz:      { r: 34, juice: "#ffd60a" },
+  uzum:     { r: 36, juice: "#9d4edd" },
+  altin:    { r: 30, juice: "#ffd700" },
+  bomba:    { r: 31, juice: "#8d99ae" }
+};
+
+/* ───────────── ses (basit WebAudio bip — opsiyonel) ───────────── */
+var actx = null;
+function initAudio() {
+  if (actx) { if (actx.state === "suspended") { try { actx.resume(); } catch (e) {} } return; }
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) actx = new AC();
+  } catch (e) { actx = null; }
+}
+function beep(freq, dur, type, vol) {
+  if (!actx) return;
+  try {
+    var o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    var d = dur || 0.08;
+    g.gain.setValueAtTime(vol || 0.04, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + d);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + d + 0.02);
+  } catch (e) {}
+}
+
+/* ───────────── meyve çizimleri (harici görsel YOK) ───────────── */
+function ballGrad(r, c1, c2, c3) {
+  var g = ctx.createRadialGradient(-r * 0.32, -r * 0.36, r * 0.12, 0, 0, r);
+  g.addColorStop(0, c1); g.addColorStop(0.55, c2); g.addColorStop(1, c3);
+  return g;
+}
+function hl(x, y, rx, ry, rot, a) {
+  ctx.save(); ctx.globalAlpha = (a == null ? 0.35 : a); ctx.fillStyle = "#ffffff";
+  ctx.beginPath(); ctx.ellipse(x, y, rx, ry, rot || 0, 0, TAU); ctx.fill(); ctx.restore();
+}
+function leaf(x, y, rx, ry, rot) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0);
+  ctx.fillStyle = "#2f9e44";
+  ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = "rgba(20,80,35,0.6)"; ctx.lineWidth = Math.max(1, rx * 0.12);
+  ctx.beginPath(); ctx.moveTo(-rx, 0); ctx.lineTo(rx, 0); ctx.stroke();
+  ctx.restore();
+}
+
+function drawKarpuz(r) {
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.98, 0, TAU);
+  ctx.fillStyle = ballGrad(r, "#b2e58a", "#43a35f", "#1c6b40"); ctx.fill();
+  ctx.strokeStyle = "rgba(16,70,40,0.5)"; ctx.lineWidth = r * 0.04; ctx.stroke();
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.96, 0, TAU); ctx.clip();
+  ctx.strokeStyle = "rgba(20,82,45,0.85)"; ctx.lineWidth = r * 0.13; ctx.lineCap = "round";
+  var ks = [0.18, 0.52, 0.86];
+  for (var i = 0; i < ks.length; i++) { ctx.beginPath(); ctx.ellipse(0, 0, r * ks[i], r * 0.99, 0, 0, TAU); ctx.stroke(); }
+  ctx.restore();
+  ctx.strokeStyle = "#5c3a1e"; ctx.lineWidth = r * 0.08; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(0, -r * 0.95); ctx.quadraticCurveTo(r * 0.1, -r * 1.12, r * 0.22, -r * 1.1); ctx.stroke();
+  leaf(-r * 0.16, -r * 1.02, r * 0.2, r * 0.1, -0.5);
+  hl(-r * 0.34, -r * 0.38, r * 0.26, r * 0.15, -0.6, 0.4);
+}
+
+function drawPortakal(r) {
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.95, 0, TAU);
+  ctx.fillStyle = ballGrad(r, "#ffd98a", "#ff922b", "#e8590c"); ctx.fill();
+  ctx.strokeStyle = "rgba(160,70,0,0.4)"; ctx.lineWidth = r * 0.045; ctx.stroke();
+  ctx.fillStyle = "rgba(200,90,10,0.28)";
+  var pores = [[-0.4, -0.2], [0.1, -0.45], [0.4, -0.05], [-0.15, 0.15], [0.25, 0.35], [-0.35, 0.42], [0.45, 0.3], [-0.05, -0.1]];
+  for (var i = 0; i < pores.length; i++) { ctx.beginPath(); ctx.arc(pores[i][0] * r, pores[i][1] * r, r * 0.035, 0, TAU); ctx.fill(); }
+  ctx.strokeStyle = "#7f4f24"; ctx.lineWidth = r * 0.08; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(0, -r * 0.9); ctx.lineTo(0, -r * 1.06); ctx.stroke();
+  leaf(r * 0.2, -r * 1.0, r * 0.24, r * 0.11, 0.35);
+  leaf(-r * 0.2, -r * 0.98, r * 0.2, r * 0.1, -0.4);
+  hl(-r * 0.3, -r * 0.35, r * 0.24, r * 0.13, -0.6, 0.4);
+}
+
+function drawElma(r, golden) {
+  var c = golden ? ["#fff3b0", "#ffb703", "#e07a00"] : ["#ff9a9a", "#e5383b", "#99161d"];
+  if (golden) { ctx.save(); ctx.shadowColor = "rgba(255,183,3,0.9)"; ctx.shadowBlur = r * 0.55; }
+  ctx.beginPath(); ctx.ellipse(0, r * 0.04, r * 0.92, r * 0.9, 0, 0, TAU);
+  ctx.fillStyle = ballGrad(r, c[0], c[1], c[2]); ctx.fill();
+  if (golden) ctx.restore();
+  ctx.strokeStyle = golden ? "rgba(160,90,0,0.45)" : "rgba(90,12,16,0.4)";
+  ctx.lineWidth = r * 0.045; ctx.stroke();
+  ctx.strokeStyle = golden ? "rgba(150,90,0,0.5)" : "rgba(90,12,16,0.45)";
+  ctx.lineWidth = r * 0.06; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.arc(0, -r * 0.6, r * 0.3, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+  ctx.strokeStyle = "#7f4f24"; ctx.lineWidth = r * 0.09;
+  ctx.beginPath(); ctx.moveTo(0, -r * 0.78); ctx.quadraticCurveTo(r * 0.06, -r * 1.0, r * 0.2, -r * 1.06); ctx.stroke();
+  leaf(-r * 0.16, -r * 0.96, r * 0.22, r * 0.11, -0.45);
+  hl(-r * 0.3, -r * 0.3, r * 0.26, r * 0.15, -0.6, 0.42);
+}
+
+function drawCilek(r) {
+  ctx.beginPath();
+  ctx.moveTo(0, r);
+  ctx.bezierCurveTo(-r * 1.05, r * 0.45, -r * 0.85, -r * 0.45, 0, -r * 0.5);
+  ctx.bezierCurveTo(r * 0.85, -r * 0.45, r * 1.05, r * 0.45, 0, r);
+  ctx.closePath();
+  var g = ctx.createRadialGradient(-r * 0.25, -r * 0.15, r * 0.1, 0, 0, r * 1.15);
+  g.addColorStop(0, "#ff7b7b"); g.addColorStop(0.55, "#e5383b"); g.addColorStop(1, "#9d0208");
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = "rgba(120,10,20,0.6)"; ctx.lineWidth = r * 0.06; ctx.stroke();
+  ctx.fillStyle = "#ffe066";
+  var pts = [[-0.42, 0.05], [-0.2, 0.4], [0, 0.0], [0.2, 0.4], [0.42, 0.05], [-0.1, -0.25], [0.1, -0.25], [0, 0.68]];
+  for (var i = 0; i < pts.length; i++) { ctx.beginPath(); ctx.ellipse(pts[i][0] * r, pts[i][1] * r, r * 0.045, r * 0.075, 0, 0, TAU); ctx.fill(); }
+  ctx.fillStyle = "#2f9e44";
+  for (var k = -2; k <= 2; k++) {
+    ctx.save(); ctx.translate(0, -r * 0.42); ctx.rotate(k * 0.5);
+    ctx.beginPath(); ctx.ellipse(0, -r * 0.18, r * 0.09, r * 0.24, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  ctx.beginPath(); ctx.ellipse(0, -r * 0.42, r * 0.16, r * 0.1, 0, 0, TAU); ctx.fill();
+}
+
+function drawMuz(r) {
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.95, -r * 0.25);
+  ctx.bezierCurveTo(-r * 0.5, r * 0.75, r * 0.5, r * 0.75, r * 0.95, -r * 0.25);
+  ctx.bezierCurveTo(r * 0.55, r * 0.28, -r * 0.55, r * 0.28, -r * 0.95, -r * 0.25);
+  ctx.closePath();
+  var g = ctx.createLinearGradient(0, -r * 0.3, 0, r * 0.8);
+  g.addColorStop(0, "#ffe066"); g.addColorStop(0.6, "#ffd000"); g.addColorStop(1, "#e8a400");
+  ctx.fillStyle = g; ctx.fill();
+  ctx.strokeStyle = "rgba(140,90,0,0.55)"; ctx.lineWidth = r * 0.07; ctx.stroke();
+  ctx.strokeStyle = "rgba(160,110,0,0.5)"; ctx.lineWidth = r * 0.06;
+  ctx.beginPath(); ctx.moveTo(-r * 0.75, -r * 0.05); ctx.quadraticCurveTo(0, r * 0.5, r * 0.75, -r * 0.05); ctx.stroke();
+  ctx.fillStyle = "#6b4a12";
+  ctx.beginPath(); ctx.ellipse(-r * 0.93, -r * 0.22, r * 0.1, r * 0.07, 0.5, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(r * 0.93, -r * 0.22, r * 0.1, r * 0.07, -0.5, 0, TAU); ctx.fill();
+  hl(0, r * 0.28, r * 0.5, r * 0.14, 0, 0.3);
+}
+
+function drawUzum(r) {
+  ctx.strokeStyle = "#7f4f24"; ctx.lineWidth = r * 0.09; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(0, -r * 0.9); ctx.lineTo(0, -r * 0.4); ctx.stroke();
+  leaf(r * 0.24, -r * 0.78, r * 0.26, r * 0.12, 0.4);
+  var pos = [[-0.5, -0.22], [0.5, -0.22], [0, -0.34], [-0.3, 0.16], [0.3, 0.16], [0, 0.02], [-0.15, 0.52], [0.16, 0.52]];
+  for (var i = 0; i < pos.length; i++) {
+    var gx = pos[i][0] * r, gy = pos[i][1] * r, gr = r * 0.31;
+    var g2 = ctx.createRadialGradient(gx - gr * 0.35, gy - gr * 0.35, gr * 0.12, gx, gy, gr);
+    g2.addColorStop(0, "#b07ce8"); g2.addColorStop(0.6, "#7b2cbf"); g2.addColorStop(1, "#4a148c");
+    ctx.fillStyle = g2;
+    ctx.beginPath(); ctx.arc(gx, gy, gr, 0, TAU); ctx.fill();
+    hl(gx - gr * 0.3, gy - gr * 0.32, gr * 0.26, gr * 0.15, -0.6, 0.45);
+  }
+}
+
+function drawBomba(r, t) {
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.92, 0, TAU);
+  ctx.fillStyle = ballGrad(r, "#8a8a8a", "#2c2c2c", "#060606"); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.1)"; ctx.lineWidth = r * 0.04; ctx.stroke();
+  hl(-r * 0.3, -r * 0.35, r * 0.22, r * 0.12, -0.6, 0.4);
+  ctx.fillStyle = "#3a3a3a";
+  ctx.beginPath(); ctx.ellipse(0, -r * 0.86, r * 0.2, r * 0.11, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = "#b08968"; ctx.lineWidth = r * 0.09; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(0, -r * 0.9); ctx.quadraticCurveTo(r * 0.22, -r * 1.22, r * 0.4, -r * 1.12); ctx.stroke();
+  var sx = r * 0.4, sy = -r * 1.12;
+  ctx.save(); ctx.globalCompositeOperation = "lighter";
+  for (var i = 0; i < 6; i++) {
+    var a = Math.random() * TAU, d = Math.random() * r * 0.26;
+    ctx.fillStyle = Math.random() < 0.5 ? "#ffd166" : "#ff7b00";
+    ctx.beginPath(); ctx.arc(sx + Math.cos(a) * d, sy + Math.sin(a) * d, r * 0.04 + Math.random() * r * 0.05, 0, TAU); ctx.fill();
+  }
+  ctx.fillStyle = "#fff3bf";
+  ctx.beginPath(); ctx.arc(sx, sy, r * 0.09, 0, TAU); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "#f2f2f2";
+  ctx.beginPath(); ctx.ellipse(0, r * 0.04, r * 0.33, r * 0.29, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = "#101010";
+  ctx.beginPath(); ctx.arc(-r * 0.13, -r * 0.02, r * 0.085, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(r * 0.13, -r * 0.02, r * 0.085, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0, r * 0.08); ctx.lineTo(-r * 0.055, r * 0.17); ctx.lineTo(r * 0.055, r * 0.17); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#101010"; ctx.lineWidth = r * 0.028;
+  ctx.beginPath(); ctx.moveTo(-r * 0.07, r * 0.24); ctx.lineTo(-r * 0.07, r * 0.31); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(r * 0.07, r * 0.24); ctx.lineTo(r * 0.07, r * 0.31); ctx.stroke();
+}
+
+function drawFruit(type, r, t, golden) {
+  switch (type) {
+    case "karpuz": drawKarpuz(r); break;
+    case "portakal": drawPortakal(r); break;
+    case "elma": drawElma(r, false); break;
+    case "altin": drawElma(r, true); break;
+    case "cilek": drawCilek(r); break;
+    case "muz": drawMuz(r); break;
+    case "uzum": drawUzum(r); break;
+    case "bomba": drawBomba(r, t); break;
+  }
+  if (type === "altin") {
+    var s = 0.7 + 0.3 * Math.sin(t * 6);
+    ctx.save(); ctx.translate(r * 0.5, -r * 0.62); ctx.rotate(t * 2); ctx.scale(s, s);
+    ctx.fillStyle = "#fff8d6";
+    ctx.beginPath();
+    for (var i = 0; i < 8; i++) {
+      var a = i * Math.PI / 4, rad = (i % 2 ? 2.2 : 6.5);
+      ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+    }
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+}
+
+/* ───────────── kesim yüzü (dilim iç görünümü) ───────────── */
+var CUT = {
+  karpuz:   { layers: [["#1f6e43", 1], ["#e9f5db", 0.86], ["#ff5a5f", 0.76]], seeds: true, seedCol: "#241f1c" },
+  portakal: { layers: [["#e8590c", 1], ["#ffe8cc", 0.9], ["#ffa94d", 0.8]], segments: true },
+  elma:     { layers: [["#99161d", 1], ["#fff3d6", 0.86]], seeds: true, seedCol: "#7f4f24" },
+  altin:    { layers: [["#e07a00", 1], ["#fff3b0", 0.86]], seeds: true, seedCol: "#a06a00" },
+  cilek:    { layers: [["#c9184a", 1], ["#ff8fa3", 0.84]], core: true },
+  muz:      { layers: [["#e8a400", 1], ["#fff7cc", 0.82]] },
+  uzum:     { layers: [["#4a148c", 1], ["#b5e48c", 0.8]] }
+};
+
+function drawCutFace(type, r, side) {
+  var c = CUT[type];
+  if (!c) return;
+  var RX = r * 0.97, RY = r * 0.3;
+  for (var i = 0; i < c.layers.length; i++) {
+    ctx.fillStyle = c.layers[i][0];
+    ctx.beginPath(); ctx.ellipse(0, 0, RX * c.layers[i][1], RY * c.layers[i][1], 0, 0, TAU); ctx.fill();
+  }
+  var fy = -side * r * 0.07;
+  if (c.seeds) {
+    ctx.fillStyle = c.seedCol || "#241f1c";
+    var xs = [-0.42, 0, 0.42];
+    for (var k = 0; k < xs.length; k++) { ctx.beginPath(); ctx.ellipse(xs[k] * r, fy, r * 0.05, r * 0.085, 0, 0, TAU); ctx.fill(); }
+  }
+  if (c.segments) {
+    ctx.strokeStyle = "rgba(255,248,240,0.85)"; ctx.lineWidth = Math.max(1.5, r * 0.05);
+    var as = [-0.55, 0, 0.55];
+    for (var j = 0; j < as.length; j++) {
+      ctx.beginPath(); ctx.moveTo(0, fy * 0.4);
+      ctx.lineTo(Math.cos(as[j]) * RX * 0.72, fy * 0.4 + Math.sin(as[j]) * RY * 0.62);
+      ctx.stroke();
+    }
+  }
+  if (c.core) {
+    ctx.fillStyle = "rgba(255,240,245,0.85)";
+    ctx.beginPath(); ctx.ellipse(0, fy, r * 0.13, r * 0.09, 0, 0, TAU); ctx.fill();
+  }
+}
+
+function drawHalf(h, t) {
+  var PAD = h.r * 1.9 + 30;
+  ctx.save();
+  ctx.translate(h.x, h.y);
+  ctx.rotate(h.cutA + h.rot);
+  ctx.beginPath();
+  if (h.side > 0) ctx.rect(-PAD, -PAD, PAD * 2, PAD);
+  else ctx.rect(-PAD, 0, PAD * 2, PAD);
+  ctx.clip();
+  drawFruit(h.type, h.r, t, h.golden);
+  drawCutFace(h.type, h.r, h.side);
+  ctx.restore();
+}
+
+/* ───────────── fırlatma ───────────── */
+function spawnOne() {
+  if (state !== ST_PLAY) return;
+  var isBomb = Math.random() < Math.min(0.17, 0.09 + score / 1800);
+  var golden = !isBomb && Math.random() < 0.07;
+  var type = isBomb ? "bomba" : (golden ? "altin" : FRUIT_NAMES[(Math.random() * FRUIT_NAMES.length) | 0]);
+  var r = META[type].r * rs();
+  var x = view.w * 0.14 + Math.random() * view.w * 0.72;
+  var peak = view.h * (0.52 + Math.random() * 0.3 + stormLevel * 0.05);
+  var vy = -Math.sqrt(2 * grav() * peak);
+  var vx = ((view.w * 0.5 - x) / view.w) * rnd(150, 330) + rnd(-40, 40);
+  fruits.push({ type: type, x: x, y: view.h + r + 12, vx: vx, vy: vy, rot: Math.random() * TAU, spin: rnd(-2.6, 2.6), r: r, golden: golden, isBomb: isBomb, dead: false });
+}
+function spawnWave() {
+  var n = 1;
+  if (Math.random() < 0.22 + stormLevel * 0.16) n = (Math.random() < 0.1 + stormLevel * 0.1) ? 3 : 2;
+  for (var i = 0; i < n; i++) spawnOne();
+}
+
+/* ───────────── kesme ───────────── */
+function segCircle(x1, y1, x2, y2, cx, cy, rr) {
+  var dx = x2 - x1, dy = y2 - y1;
+  var l2 = dx * dx + dy * dy || 1;
+  var t = ((cx - x1) * dx + (cy - y1) * dy) / l2;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  var px = x1 + t * dx, py = y1 + t * dy;
+  var ex = cx - px, ey = cy - py;
+  return ex * ex + ey * ey <= rr * rr;
+}
+
+function sliceAt(x1, y1, x2, y2, dtMs) {
+  if (state !== ST_PLAY) return;
+  var dist = Math.hypot(x2 - x1, y2 - y1);
+  var speed = dist / Math.max(1, dtMs);
+  if (speed < 0.18 || dist < 3) return;
+  var ang = Math.atan2(y2 - y1, x2 - x1);
+  for (var i = 0; i < fruits.length; i++) {
+    var f = fruits[i];
+    if (f.dead) continue;
+    if (!segCircle(x1, y1, x2, y2, f.x, f.y, f.r * 1.02)) continue;
+    f.dead = true;
+    if (f.isBomb) explodeBomb(f);
+    else sliceFruit(f, ang);
+  }
+}
+
+function sliceFruit(f, ang) {
+  var nx = Math.cos(ang + Math.PI / 2), ny = Math.sin(ang + Math.PI / 2);
+  for (var i = 0; i < 2; i++) {
+    var side = (i === 0) ? 1 : -1;
+    halves.push({
+      type: f.type, golden: f.golden, r: f.r, side: side,
+      x: f.x + nx * side * f.r * 0.08, y: f.y + ny * side * f.r * 0.08,
+      vx: f.vx * 0.35 + nx * side * rnd(70, 170),
+      vy: f.vy * 0.35 + ny * side * rnd(70, 170) - 70,
+      rot: 0, spin: side * rnd(1.6, 3.4), cutA: ang
+    });
+  }
+  juice(f.x, f.y, META[f.type].juice, f.golden ? 26 : 16);
+  fruitsSliced++;
+  addScore(f.golden ? 50 : 10);
+  floats.push({ x: f.x, y: f.y - f.r * 0.4, text: f.golden ? "ALTIN! +50" : "+10", color: f.golden ? "#ffd700" : "#fff4e6", size: f.golden ? 26 : 19, ttl: 0.9, life: 0.9 });
+  if (f.golden) {
+    juice(f.x, f.y, "#fff3b0", 14);
+    beep(1100, 0.09, "triangle", 0.05);
+    setTimeout(function () { beep(1500, 0.09, "triangle", 0.045); }, 70);
+  } else {
+    beep(520 + Math.random() * 260, 0.05, "triangle", 0.03);
+  }
+  var now = performance.now();
+  comboCount = (now - comboLast < 420) ? comboCount + 1 : 1;
+  comboLast = now;
+  if (comboCount >= 3) {
+    var bonus = (comboCount === 3) ? 25 : 10;
+    addScore(bonus);
+    floats.push({ x: f.x, y: f.y - f.r - 26, text: "KOMBO! x" + comboCount + "  +" + bonus, color: "#ffd166", size: 24, ttl: 1.1, life: 1.1 });
+  }
+}
+
+function explodeBomb(f) {
+  juice(f.x, f.y, "#ff7b00", 22);
+  juice(f.x, f.y, "#8d99ae", 14);
+  rings.push({ x: f.x, y: f.y, r: 8, v: 950, ttl: 0.38, life: 0.38 });
+  flash = 0.9; shake = 16;
+  lives--;
+  beep(90, 0.32, "sawtooth", 0.07);
+  floats.push({ x: f.x, y: f.y, text: "💣 -1 CAN", color: "#ff6b6b", size: 24, ttl: 1.1, life: 1.1 });
+  if (lives <= 0) endGame();
+}
+
+function juice(x, y, color, n) {
+  for (var i = 0; i < n; i++) {
+    var a = Math.random() * TAU, sp = rnd(60, 320), tt = rnd(0.45, 0.85);
+    parts.push({ x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 120, r: rnd(2, 5.5) * rs(), color: color, ttl: tt, life: tt });
+  }
+}
+
+function addScore(n) {
+  score += n;
+  scoreEl.textContent = String(score);
+  if (score > best) { best = score; bestEl.textContent = String(best); }
+  if (score >= 100 && stormLevel < 1) { stormLevel = 1; banner = { text: "FIRTINA!", t: 0 }; beep(880, 0.15, "square", 0.04); }
+  if (score >= 300 && stormLevel < 2) { stormLevel = 2; banner = { text: "MEGA FIRTINA!", t: 0 }; beep(988, 0.18, "square", 0.05); }
+}
+
+/* ───────────── akış kontrolü ───────────── */
+function setOverlay(name) {
+  menuOv.classList.toggle("hidden", name !== "menu");
+  pauseOv.classList.toggle("hidden", name !== "pause");
+  overOv.classList.toggle("hidden", name !== "over");
+}
+
+function startGame() {
+  fruits.length = 0; halves.length = 0; parts.length = 0; rings.length = 0; floats.length = 0;
+  score = 0; lives = 3; fruitsSliced = 0; stormLevel = 0; stormVisual = 0;
+  flash = 0; shake = 0; spawnTimer = 450; comboCount = 0; comboLast = 0; banner = null;
+  startBest = best;
+  scoreEl.textContent = "0"; bestEl.textContent = String(best);
+  setOverlay(null);
+  pauseBtn.textContent = "⏸";
+  state = ST_PLAY;
+}
+
+function endGame() {
+  state = ST_OVER;
+  saveBest(best);
+  $("finalScore").textContent = String(score);
+  $("finalFruit").textContent = String(fruitsSliced);
+  $("finalBest").textContent = String(best);
+  $("newRec").classList.toggle("hidden", !(score > startBest && score > 0));
+  menuBestEl.textContent = String(best);
+  setTimeout(function () { if (state === ST_OVER) setOverlay("over"); }, 650);
+}
+
+function togglePause() {
+  if (state === ST_PLAY) { state = ST_PAUSE; setOverlay("pause"); pauseBtn.textContent = "▶"; }
+  else if (state === ST_PAUSE) { state = ST_PLAY; setOverlay(null); pauseBtn.textContent = "⏸"; }
+}
+
+pauseBtn.addEventListener("click", togglePause);
+$("playBtn").addEventListener("click", function () { initAudio(); startGame(); });
+$("againBtn").addEventListener("click", function () { initAudio(); startGame(); });
+$("resumeBtn").addEventListener("click", togglePause);
+document.addEventListener("keydown", function (e) {
+  if (e.key === "p" || e.key === "P") togglePause();
+});
+window.addEventListener("blur", function () { if (state === ST_PLAY) togglePause(); });
+document.addEventListener("visibilitychange", function () { if (document.hidden && state === ST_PLAY) togglePause(); });
+canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+/* ───────────── işaretçi (fare + dokunmatik) ───────────── */
+var pointers = new Map();
+function localPt(e) { return { x: e.clientX - view.left, y: e.clientY - view.top }; }
+
+canvas.addEventListener("pointerdown", function (e) {
+  initAudio();
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  var p = localPt(e);
+  pointers.set(e.pointerId, { pts: [{ x: p.x, y: p.y, t: performance.now() }], active: true });
+  e.preventDefault();
+});
+canvas.addEventListener("pointermove", function (e) {
+  var en = pointers.get(e.pointerId);
+  if (!en || !en.active) return;
+  var p = localPt(e), now = performance.now();
+  var last = en.pts[en.pts.length - 1];
+  if (last) sliceAt(last.x, last.y, p.x, p.y, now - last.t);
+  en.pts.push({ x: p.x, y: p.y, t: now });
+  if (en.pts.length > 24) en.pts.shift();
+  e.preventDefault();
+});
+function endPointer(e) {
+  var en = pointers.get(e.pointerId);
+  if (en) en.active = false;
+}
+canvas.addEventListener("pointerup", endPointer);
+canvas.addEventListener("pointercancel", endPointer);
+
+/* ───────────── güncelleme ───────────── */
+function update(dt) {
+  if (state === ST_PLAY) {
+    spawnTimer -= dt * 1000;
+    if (spawnTimer <= 0) {
+      spawnWave();
+      var base = Math.max(400, 1150 - score * 2);
+      spawnTimer = base * Math.pow(0.9, stormLevel) * rnd(0.8, 1.15);
+    }
+  }
+  var G = grav();
+  var i;
+  for (i = fruits.length - 1; i >= 0; i--) {
+    var f = fruits[i];
+    f.vy += G * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.spin * dt;
+    if (f.y > view.h + f.r * 2 + 60 && f.vy > 0) fruits.splice(i, 1);
+  }
+  for (i = halves.length - 1; i >= 0; i--) {
+    var h = halves[i];
+    h.vy += G * dt; h.x += h.vx * dt; h.y += h.vy * dt; h.rot += h.spin * dt;
+    if (h.y > view.h + h.r * 3 + 80) halves.splice(i, 1);
+  }
+  for (i = parts.length - 1; i >= 0; i--) {
+    var p = parts[i];
+    p.vy += G * 0.9 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+    if (p.life <= 0) parts.splice(i, 1);
+  }
+  for (i = rings.length - 1; i >= 0; i--) {
+    var rg = rings[i];
+    rg.r += rg.v * dt; rg.life -= dt;
+    if (rg.life <= 0) rings.splice(i, 1);
+  }
+  for (i = floats.length - 1; i >= 0; i--) {
+    var fl = floats[i];
+    fl.y -= 55 * dt; fl.life -= dt;
+    if (fl.life <= 0) floats.splice(i, 1);
+  }
+  if (banner) { banner.t += dt; if (banner.t > 2.6) banner = null; }
+  if (flash > 0) flash = Math.max(0, flash - dt * 1.6);
+  if (shake > 0) shake = Math.max(0, shake - dt * 34);
+  var target = stormLevel >= 2 ? 0.34 : stormLevel >= 1 ? 0.2 : 0;
+  stormVisual += (target - stormVisual) * Math.min(1, dt * 2.2);
+  for (i = 0; i < embers.length; i++) {
+    var em = embers[i];
+    em.y -= (em.v / view.h) * dt; em.w += dt * 2;
+    em.x += Math.sin(em.w) * 0.0004;
+    if (em.y < -0.02) { em.y = 1.02; em.x = Math.random(); }
+  }
+}
+
+/* ───────────── çizim ───────────── */
+function drawTrails(now) {
+  ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round";
+  pointers.forEach(function (en, pid) {
+    while (en.pts.length && now - en.pts[0].t > 150) en.pts.shift();
+    if (!en.active && en.pts.length === 0) { pointers.delete(pid); return; }
+    for (var i = 1; i < en.pts.length; i++) {
+      var a = 1 - (now - en.pts[i].t) / 150;
+      if (a <= 0) continue;
+      ctx.strokeStyle = "rgba(255,238,214," + (0.8 * a).toFixed(3) + ")";
+      ctx.lineWidth = 1.5 + 7.5 * a;
+      ctx.beginPath();
+      ctx.moveTo(en.pts[i - 1].x, en.pts[i - 1].y);
+      ctx.lineTo(en.pts[i].x, en.pts[i].y);
+      ctx.stroke();
+    }
+  });
+  ctx.restore();
+}
+
+function heart(x, y, s, full) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  ctx.beginPath();
+  ctx.moveTo(0, -0.22);
+  ctx.bezierCurveTo(0.32, -0.62, 1.0, -0.28, 0, 0.62);
+  ctx.bezierCurveTo(-1.0, -0.28, -0.32, -0.62, 0, -0.22);
+  ctx.closePath();
+  if (full) {
+    ctx.fillStyle = "#ff4d6d"; ctx.shadowColor = "rgba(255,77,109,0.8)"; ctx.shadowBlur = 10;
+    ctx.fill(); ctx.shadowBlur = 0;
+    ctx.lineWidth = 0.09; ctx.strokeStyle = "rgba(120,10,30,0.8)"; ctx.stroke();
+  } else {
+    ctx.fillStyle = "rgba(255,255,255,0.1)"; ctx.fill();
+    ctx.lineWidth = 0.09; ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawHearts() {
+  var s = clamp(view.w * 0.028, 13, 20);
+  for (var i = 0; i < 3; i++) heart(26 + i * s * 1.9, 26, s, i < lives);
+}
+
+function drawBanner() {
+  var b = banner, a;
+  if (b.t < 0.35) a = b.t / 0.35;
+  else if (b.t > 2.1) a = Math.max(0, (2.6 - b.t) / 0.5);
+  else a = 1;
+  var pop = b.t < 0.35 ? 0.6 + 0.4 * (b.t / 0.35) : 1 + 0.04 * Math.sin(b.t * 6);
+  var size = Math.min(view.w * 0.13, 88);
+  ctx.save();
+  ctx.translate(view.w / 2, view.h * 0.3);
+  ctx.rotate(-0.06); ctx.scale(pop, pop);
+  ctx.globalAlpha = a;
+  ctx.font = "900 " + size + "px system-ui, sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.lineWidth = size * 0.12; ctx.strokeStyle = "rgba(60,12,4,0.9)";
+  ctx.strokeText(b.text, 0, 0);
+  var g = ctx.createLinearGradient(0, -size / 2, 0, size / 2);
+  g.addColorStop(0, "#ffe066"); g.addColorStop(1, "#ff5e5b");
+  ctx.fillStyle = g;
+  ctx.fillText(b.text, 0, 0);
+  ctx.restore();
+}
+
+function render(now) {
+  var t = now / 1000, i;
+  ctx.save();
+  if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+  ctx.fillStyle = bgGrad; ctx.fillRect(-30, -30, view.w + 60, view.h + 60);
+  for (i = 0; i < embers.length; i++) {
+    var em = embers[i];
+    ctx.globalAlpha = em.a * (0.75 + 0.25 * Math.sin(t * 3 + em.w));
+    ctx.fillStyle = "#ffb703";
+    ctx.beginPath(); ctx.arc(em.x * view.w, em.y * view.h, em.s, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  if (stormVisual > 0.005) {
+    ctx.fillStyle = "rgba(25,5,2," + stormVisual.toFixed(3) + ")";
+    ctx.fillRect(-30, -30, view.w + 60, view.h + 60);
+  }
+  for (i = 0; i < halves.length; i++) drawHalf(halves[i], t);
+  for (i = 0; i < fruits.length; i++) {
+    var f = fruits[i];
+    if (f.dead) continue;
+    ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot);
+    drawFruit(f.type, f.r, t, f.golden);
+    ctx.restore();
+  }
+  for (i = 0; i < rings.length; i++) {
+    var rg = rings[i];
+    ctx.strokeStyle = "rgba(255,140,40," + (rg.life / rg.ttl * 0.8).toFixed(3) + ")";
+    ctx.lineWidth = 5 * (rg.life / rg.ttl) + 1;
+    ctx.beginPath(); ctx.arc(rg.x, rg.y, rg.r, 0, TAU); ctx.stroke();
+  }
+  for (i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    ctx.globalAlpha = Math.max(0, p.life / p.ttl);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  drawTrails(now);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (i = 0; i < floats.length; i++) {
+    var fl = floats[i];
+    ctx.font = "800 " + fl.size + "px system-ui, sans-serif";
+    ctx.globalAlpha = Math.max(0, fl.life / fl.ttl);
+    ctx.lineWidth = 4; ctx.strokeStyle = "rgba(50,10,4,0.85)";
+    ctx.strokeText(fl.text, fl.x, fl.y);
+    ctx.fillStyle = fl.color;
+    ctx.fillText(fl.text, fl.x, fl.y);
+  }
+  ctx.globalAlpha = 1;
+  if (state !== ST_MENU) drawHearts();
+  if (banner) drawBanner();
+  ctx.fillStyle = vinGrad; ctx.fillRect(0, 0, view.w, view.h);
+  ctx.restore();
+  if (flash > 0) {
+    ctx.fillStyle = "rgba(255,32,32," + (flash * 0.5).toFixed(3) + ")";
+    ctx.fillRect(0, 0, view.w, view.h);
+  }
+}
+
+/* ───────────── ana döngü (60fps rAF) ───────────── */
+var lastT = performance.now();
+function frame(now) {
+  var dt = Math.min(0.033, (now - lastT) / 1000);
+  lastT = now;
+  if (state === ST_PLAY || state === ST_OVER) update(dt);
+  render(now);
+  requestAnimationFrame(frame);
+}
+
+/* ───────────── başlat ───────────── */
+bestEl.textContent = String(best);
+menuBestEl.textContent = String(best);
+setOverlay("menu");
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
