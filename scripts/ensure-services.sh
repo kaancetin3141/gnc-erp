@@ -1,7 +1,8 @@
 #!/bin/bash
 # ============================================================
 # GNC CRM mini-service bekçisi
-# chat-service (3003), appointment-reminders (3011), cron-automation (3010)
+# customer-page (3002), fruit-storm (3003), kaloriai (3004),
+# chat-service (3005), appointment-reminders (3011), cron-automation (3010)
 # PORT tabanlı sağlık kontrolü yapar; ölmüşse yeniden başlatır.
 # Not: sandbox resume sonrası `bun run dev` node_modules'ı yeniden
 # kurarken child erken başlayıp import hatasıyla zombie kalabiliyor;
@@ -48,7 +49,10 @@ ensure() {
   return
 }
 
-ensure chat-service 3003
+ensure customer-page 3002
+ensure fruit-storm 3003
+ensure kaloriai 3004
+ensure chat-service 3005
 ensure appointment-reminders 3011
 ensure cron-automation 3010
 

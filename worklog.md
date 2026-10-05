@@ -7920,3 +7920,50 @@ Stage Summary:
 - Üyelik yenileme: hatırlatma→arama→yenileme döngüsü kapandı (remindedAt sıfırlama dahil)
 - RBAC: kullanıcı oluşturma artık seed ile AYNI kaynak (getAdminPermissionsForTenant) — sektör tutarlılığı
 - Sonraki tur adayları: e-Arşiv XML'i Belge Yönetimi toplu indirmesine ekleme, HR bordro PDF, ticket müşteri e-posta bildirimi, sosyal medya gerçek API (anahtar gerektirir)
+---
+Task ID: 3-b
+Agent: general-purpose (fruit-storm)
+Task: Port 3003 Fruit Storm canvas oyunu
+
+Work Log:
+- Ortam tespiti: 3003 gerçekte BOŞ DEĞİLDİ — eski (21:45'ten kalma, --hot ile hem 3003 hem 3005 tutan) stale chat-service süreci + iki adet takılı kalmış eski-portlu (3003 kontrol eden) ensure-services.sh watchdog kopyası bulundu; stale chat-service süreçleri öldürüldü, chat-service 3005'te taze başlatıldı (mevcut kod zaten PORT=3005; dosyalara dokunulmadı)
+- mini-services/fruit-storm/ oluşturuldu; SADECE 3 dosya: package.json ({"name":"fruit-storm","scripts":{"dev":"bun --hot index.ts"}}), index.ts (Bun.serve, PORT=3003 hardcode; GET / → game.html, GET /health → "ok" düz metin, /favicon.ico → 🍉, diğer 404 TR), game.html (tüm oyun tek dosya, harici asset/bağımlılık YOK)
+- Oyun: canvas 2D + 60fps rAF; meyveler alttan parabolik fırlar (yükseklik/yerçekimi canvas boyutuna oranlı, mobil-masaüstü ölçekli); pointer events + touch-action:none, pointer hız vektörü (px/ms) eşik üstündeyse segment↔daire kesişimi ile dilimleme; çoklu dokunuş desteği (pointerId başına iz/bıçak)
+- 6 meyve tamamen canvas ile çizili (gradient + vurgu + yaprak/sap): karpuz (yeşil kabuk+meridyen şeritler), portakal (gözenekli turuncu), elma, çilek (kalp + çenek yaprakları + sarı çekim noktaları), muz (hilal), üzüm (8 tanemli salkım) + nadir altın elma (parıltı, +50) + bomba (siyah gradient, fitil, canlı kıvılcım additive-blend, kafatası)
+- Kesim: meyve 2 yarıma bölünüyor — yarım düzlem clip ile gövde + kesim yüzü elipsi (karpuz: kırmızı+çekirdek, portakal: dilim çizgileri, elma: çekirdek…), her yarım kendi hız/açısal momentumu ile düşüyor; renkli su damlası partikülleri + şok halkası
+- Skor: meyve +10, 420ms pencerede 3. meyvede KOMBO! x3 +25 (sonrası her meyve +10, "KOMBO! xN" uçan yazı), altın +50 "ALTIN! +50"; rekor localStorage('fruitStormHigh')
+- Can: 3 kalp canvas'ta çizili; kaçan meyve can götürmez, BOMBA → -1 can + kırmızı flaş + ekran sarsıntısı + patlama partikülleri; 3 bomba → oyun sonu
+- Fırtına Modu: skorla fırlatma aralığı 1150ms→400ms, dalga boyutu ve hız artar; 100 puanda "FIRTINA!" banner + arka plan sıcak kararma, 300'de "MEGA FIRTINA!"
+- UI: TR başlangıç ekranı (nasıl oynanır + rekor), P tuşu/⏸ butonu pause (blur/visibilitychange'de otomatik pause), oyun sonu kartı (skor/kesilen meyve/rekor + YENİ REKOR rozeti + Tekrar Oyna + Ana Sayfa→"/"), header'da canlı Skor/Rekor çipleri, sticky footer "GNC CRM — port 3003" + ana uygulama linki; sıcak palet (koyu kahve-turuncu, indigo/mavi yok), responsive resize+devicePixelRatio(≤2.5), safe-area destekli
+- Ses: opsiyonel minik WebAudio bip eklendi (kesme/altın/bomba; kullanıcı jestiyle unlock, try/catch ile güvenli)
+- JS sözdizimi: HTML'den <script> ayıklandı → node --check → OK (29.182 bayt)
+- Doğrulama: curl / → 200; grep -c "<canvas" → 1; curl /health → "ok"; log temiz ("🍉 Fruit Storm hazır → http://localhost:3003")
+- Tarayıcı E2E (agent-browser, headless): menü açılıyor, konsol/hata TEMİZ; Oyna→state=play; doğrudan sliceAt testi (2→1 meyve, 2 yarım, 16 damla, +10); sentetik PointerEvent swipe (production olay yolu) ile 5 meyveli tek hamle → skor 10→105, 10 yarım, 80 damla, KOMBO; bomba dilimleme → lives 3→2 + flaş 0.9, 3. bomba → state=over + oyun sonu kartı (skor 105, rekor 105, YENİ REKOR, localStorage=105); Tekrar Oyna → skor 0/can 3; P ile pause/devam (⏸/▶); ekran görüntüleri: logs/fruit-storm-menu.png, logs/fruit-storm-oynanis.png, logs/fruit-storm-gameover.png
+- Bilinen sorun/limit: sandbox bellek baskısı nedeniyle arka plan süreçleri oturumlar arası ölebiliyor (dmesg'de OOM kayıtları; worklog'da önceden de notlu) — fruit-storm son doğrulamada ÇALIŞIR durumda bırakıldı (pid doğrulandı); scripts/ensure-services.sh hâlâ chat-service'i 3003'te sağlık kontrol ediyor (3005'e taşındı) → o dosyaya dokunma yasağı nedeniyle ANA AJANA NOT: watchdog'un port eşlemesi 3005'e güncellenmeli, aksi halde 3003'ü fruit-storm sanıp chat-service'i yeniden başlatmayabilir
+
+Stage Summary:
+- Port 3003'te "🍉 Fruit Storm" mini oyun servisi canlı: tek dosyalık Türkçe Fruit-Ninja tarzı canvas oyunu, sıfır npm bağımlılığı, / + /health uçları; curl + tarayıcı E2E ile mekaniklerin tamamı (dilimleme, kombo, altın, bomba, can, fırtına, pause, rekor, oyun sonu) doğrulandı, konsol temiz
+- Dosya listesi: mini-services/fruit-storm/{package.json, index.ts, game.html} — dışında hiçbir dosya değiştirilmedi
+- Test kanıtları: HTTP 200 / canvas=1 / health="ok" / node --check OK / agent-browser akış testleri (skor 10→105, lives→0→game over→yeniden başlat) + 3 ekran görüntüsü (logs/fruit-storm-*.png)
+- Ana ajana devredilen: ensure-services.sh içindeki chat-service port kontrolünün 3003→3005 düzeltilmesi (dokunma yasağı nedeniyle yapılmadı)
+---
+Task ID: 3-a
+Agent: full-stack-developer (customer-page)
+Task: Port 3002 müşteri sitesi — işletme listesi, konuma göre en yakın, alt alan adı iskeleti, randevu akışı
+
+Work Log:
+- Önce upstream sözleşmesi curl ile doğrulandı: GET /api/public/providers → {items:[…]}; GET …/{slug} → {provider, services} (detayda servisler AYRI dizi!); …/availability → {slots:[{time,available}], workingHours, dayKey} (görev metnindeki {data:[]} şeklinden farklıydı → gerçek şekle uyuldu); POST /api/public/appointments hataları {error:"…"} Türkçe dönüyor (ör. "Geçmiş tarih için randevu oluşturulamaz"), başarı {id, status:"onaylandi", date:"DD.MM.YYYY", whatsappLink, appointmentCode, price…}
+- mini-services/customer-page/ oluşturuldu: package.json (name+scripts only, bağımlılık YOK), index.ts (sunucu+API), views.ts (gömülü HTML/CSS/JS — build yok, CDN yok)
+- Bun.serve port 3002 HARDCODE (env okunmaz); BASE_DOMAIN = process.env.BASE_DOMAIN || '' tek istisna (alt alan adı anahtarı)
+- Endpoint'ler: GET /api/businesses?q=&type=&city= (60 sn memory-cache, TR-locale filtre: isim/adres/ilçe/şehir/HİZMET adı), GET /api/businesses/{slug} (60 sn), GET /api/businesses/{slug}/slots?date=&serviceId= (10 sn cache, YYYY-MM-DD doğrulaması), POST /api/book (validasyon + upstream'e geçiş, hata → {success:false,error} Türkçe), GET / (ana sayfa), GET /isletme/{slug} (server-rendered detay), /assets/{style.css,home.js,detail.js}, /healthz
+- Ana sayfa: sticky header (🍉 GNC Randevu + arama), hero + "📍 Konumuma göre en yakını bul" (navigator.geolocation + haversine; km rozeti "1,2 km" tr-TR biçimli, mesafeye göre sıralama; izin yoksa zarif inline uyarı + toast; koordinatsız işletmelerde "konum bilgisi henüz yok" uyarısı), 7 filtre çipi (Tümü/💈/✂️/🦷/💄/🧖/🎨), şehir select (işletmelerden türetildi), responsive kart grid 1→2→3→4 kolon, foto yoksa tür-emoji gradient placeholder, hizmet sayısı + min. fiyat (tabular-nums), alt alan adı farkındalı link (BASE_DOMAIN varsa https://{slug}.{DOMAIN}, yoksa /isletme/{slug}), skeleton shimmer + hata/boş durumları + retry, min-h-screen flex + mt-auto sticky footer (safe-area destekli)
+- Detay sayfası: başlık kartı (foto/emoji, tür rozeti, tel: linki, "🟢 Şu anda açık/kapalı" canlı rozet), çalışma saatleri tablosu (TR gün adları, bugün JS ile vurgulu + "Bugün" pill), hizmet listesi (max-height + custom scrollbar, "Randevu Al" butonu hizmeti ön-seçer), randevu formu: hizmet select → 14 günlük tarih grid (bugün ön-seçili, otomatik slot yükler) → slot butonları (dolu olanlar disabled+üstü çizili; hepsi doluysa mesaj) → özet satırı → ad/telefon/not + honeypot (website, görsel gizli) → başarı ekranı (✅ pop animasyonu, özet kartı, Randevu No, WhatsApp onay linki, "Ana sayfaya dön" + "Yeni randevu al")
+- Alt alan adı: Host header → {slug}.{BASE_DOMAIN} tek-etiket eşleşmesi; kök "/" işletme detayını render eder, çok seviyeli host ve BASE_DOMAIN'in kendisi ana sayfaya düşer; subdomain'de "ana sayfa" linki https://{BASE_DOMAIN}'e gider; env tanımsızsa özellik kapalı (sandbox durumu)
+- Tasarım: sıcak palet (gül #c2334d / amber / zümrüt — mavi/indigo yok), custom CSS (sistem fontu, yumuşak gölgeler, 12-26px radius, hover translateY animasyonları, kart giriş animasyonu, custom scrollbar, :focus-visible erişilebilirlik, 44px+ dokunma hedefleri), mobil-first
+- SORUN: sandbox bu oturumda nohup'la başlatılan süreçleri çağrılar arasında öldürüyordu → çözüm: ensure-services.sh ile birebir aynı çift-fork deseni `( cd … && setsid nohup bun run dev … & )` — süreçler artık kalıcı; ana uygulama (3000) da bu oturumda ölmüştü, aynı yöntemle yeniden başlatıldı
+- Browser E2E (agent-browser): ana sayfa tüm bileşenleri render + konsol hatası 0; geo reddi → zarif uyarı ✓; detayda bugün (Pazartesi) satırı "Bugün" pill'li ✓; tarih seçince 18 slot (14 uygun) geldi; slot 10:30 seçilip form dolduruldu → "Randevun oluşturuldu!" ekranı: Şık Kuaför · Manikür · 06.10.2026 10:30 · No: OUHKBU5X + WhatsApp linki; ana uygulamada 10:30 artık available:false (rezervasyon ana uygulamaya düştü); ekran görüntüleri: logs/customer-page-home.png, logs/customer-page-success.png
+
+Stage Summary:
+- Port 3002'de müstakil Türkçe müşteri sitesi çalışıyor: işletme listesi + arama/filtre, konuma göre en yakın (haversine), alt alan adı iskeleti (env ile açılır), uçtan uca randevu akışı (slot→form→başarı+WhatsApp)
+- 8 zorunlu doğrulama adımının tamamı kanıtlı: upstream gerçek veri ✓, HTML ✓, /api/businesses JSON ✓, detay title'da işletme adı ✓, slot array ✓, POST /api/book 200+id ✓ (ana uygulamada göründü), python ile işletme sayısı ✓
+- Sınırlamalar: DB'de şu an 1 işletme var (sistem çok işletmeyi otomatik gösterir); işletmelerde lat/lng null → mesafe rozeti koordinat eklenince otomatik aktifleşir; BASE_DOMAIN sandbox'ta tanımsız (kod test edildi, ör. example.test ile subdomain render kanıtlandı); ensure-services.sh 3002'yi bilmiyor (dokunulmadı) — kalıcılık çift-fork nohup deseniyle sağlandı

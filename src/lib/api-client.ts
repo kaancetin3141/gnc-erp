@@ -52,6 +52,17 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   return data as T
 }
 
+export async function apiPut<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  return data as T
+}
+
 export async function apiDelete<T>(path: string): Promise<T> {
   const res = await fetch(path, { method: 'DELETE', headers: getHeaders() })
   const data = await res.json()

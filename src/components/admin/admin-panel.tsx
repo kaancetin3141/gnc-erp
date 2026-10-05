@@ -39,7 +39,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   ShieldCheck, Users, Crown, Briefcase, Package, ChevronRight, ChevronDown,
-  Search, RefreshCw, Building2, MapPin, Mail, Phone,
+  Search, RefreshCw, Building2, MapPin, Mail, Phone, Globe,
   Eye, Edit3, BarChart3, ListTree, Activity, Clock, Hash,
   CircleUser, Layers, Coffee, Store,
   History, Filter, ScrollText, ChevronLeft, Loader2, Download,
@@ -51,6 +51,8 @@ import {
 } from './customer-type-badge'
 import { CustomerTypeDialog } from './customer-type-dialog'
 import { RoleAssignDialog } from './role-assign-dialog'
+import { TenantsTab } from './tenants-tab'
+import { DomainsTab } from './domains-tab'
 
 // ─── API tipleri ────────────────────────────────────────────────
 interface OverviewResponse {
@@ -1505,18 +1507,30 @@ export function AdminPanel() {
         />
       </div>
 
-      {/* Tab'lar: Müşteriler & Roller + Denetim Kayıtları */}
-      <Tabs defaultValue="customers" className="w-full space-y-0">
+      {/* Tab'lar: İşletmeler · Müşteriler & Roller · Alan Adları · Denetim */}
+      <Tabs defaultValue={isSuperAdmin() ? 'tenants' : 'customers'} className="w-full space-y-0">
         <TabsList className="flex flex-wrap h-auto p-1 gap-1">
+          <TabsTrigger value="tenants" className="text-xs gap-1.5">
+            <Building2 className="w-3.5 h-3.5" />
+            İşletmeler
+          </TabsTrigger>
           <TabsTrigger value="customers" className="text-xs gap-1.5">
             <Users className="w-3.5 h-3.5" />
             Müşteriler &amp; Roller
+          </TabsTrigger>
+          <TabsTrigger value="domains" className="text-xs gap-1.5">
+            <Globe className="w-3.5 h-3.5" />
+            Alan Adları
           </TabsTrigger>
           <TabsTrigger value="audit" className="text-xs gap-1.5">
             <History className="w-3.5 h-3.5" />
             Denetim Kayıtları
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="tenants" className="space-y-4">
+          <TenantsTab />
+        </TabsContent>
 
         <TabsContent value="customers" className="space-y-4">
           {/* 3 kolon layout */}
@@ -1649,6 +1663,10 @@ export function AdminPanel() {
           <RecentActivity activities={overview?.recentActivity ?? []} />
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="domains" className="space-y-4">
+          <DomainsTab />
         </TabsContent>
 
         <TabsContent value="audit" className="space-y-4">
