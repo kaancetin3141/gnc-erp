@@ -10,9 +10,9 @@ check() {
 }
 jget() { echo "$1" | python3 -c "import sys,json;print(json.load(sys.stdin)$2)" 2>/dev/null; }
 
-# Login
+# Login — üyelik modülü randevu-sektör tenant'ı (Şık Kuaför) için test edilir
 R=$(curl -s -c "$JAR" -X POST "$BASE/api/auth" -H 'Content-Type: application/json' \
-  -d '{"email":"demo@anadolu.com","password":"1234"}')
+  -d '{"email":"admin@sikkuafur.com","password":"1234"}')
 check "login" '"user"' "$R"
 
 # 1) Test paketi tanımla (validity 30 gün, 5 seans)
@@ -43,16 +43,19 @@ check "renew-ok" 'aktif' "$R"
 NEW_USED=$(jget "$R" "['sessionsUsed']")
 NEW_TOTAL=$(jget "$R" "['sessionsTotal']")
 NEW_EXP=$(jget "$R" "['expiryDate']")
-REM =$(jget "$R" "['remindedAt']")
 say "INFO" "yenileme sonrası: used=$NEW_USED total=$NEW_TOTAL bitiş=$NEW_EXP"
 if [ "$NEW_USED" = "0" ]; then PASS=$((PASS+1)); say "PASS" "renew-sessions-reset"
 else FAIL=$((FAIL+1)); say "FAIL" "renew-sessions-reset → $NEW_USED"; fi
 if [ "$NEW_TOTAL" = "5" ]; then PASS=$((PASS+1)); say "PASS" "renew-total-from-package"
 else FAIL=$((FAIL+1)); say "FAIL" "renew-total-from-package → $NEW_TOTAL"; fi
 # bitiş ~30 gün sonrası olmalı (kalan süreden devam: satış bugün + 30 gün + 30 gün)
-DAYS_AHEAD=$(python3 -c "from datetime import datetime;print((datetime.fromisoformat('$NEW_EXP'.replace('Z','+00:00'))-datetime.now(datetime.timezone.utc)).days)" 2>/dev/null)
-if [ "$DAYS_AHEAD" -ge 58 ] && [ "$DAYS_AHEAD" -le 61 ]; then PASS=$((PASS+1)); say "PASS" "renew-expiry-+30d ($DAYS_AHEAD gün)"
-else FAIL=$((FAIL+1)); say "FAIL" "renew-expiry-+30d → $DAYS_AHEAD gün"; fi
+DAYS_AHEAD=$(python3 -c "
+from datetime import datetime, timezone
+exp = datetime.fromisoformat('$NEW_EXP'.replace('Z','+00:00'))
+print((exp - datetime.now(timezone.utc)).days)
+" 2>/dev/null)
+if [ -n "$DAYS_AHEAD" ] && [ "$DAYS_AHEAD" -ge 58 ] && [ "$DAYS_AHEAD" -le 61 ]; then PASS=$((PASS+1)); say "PASS" "renew-expiry-+30d ($DAYS_AHEAD gün)"
+else FAIL=$((FAIL+1)); say "FAIL" "renew-expiry-+30d → '$DAYS_AHEAD' gün"; fi
 
 # 6) Geçersiz action reddedilmeli
 R=$(curl -s -b "$JAR" -X PATCH "$BASE/api/membership/subscriptions/$SUB_ID" -H 'Content-Type: application/json' -d '{"action":"hocus-pocus"}')

@@ -6,7 +6,7 @@ import {
 } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
 import { normalizePhone } from '@/lib/format'
-import { hasPermission, getRolePermissions } from '@/lib/rbac'
+import { hasPermission, getRolePermissions, getAdminPermissionsForTenant } from '@/lib/rbac'
 import type { Role, PermissionKey } from '@/types'
 
 // GET — kullanıcı listesi
@@ -117,7 +117,13 @@ export async function POST(req: NextRequest) {
     permsToStore = permissions as PermissionKey[]
   } else {
     // Rolün varsayılan yetkileri
-    permsToStore = getRolePermissions(role as Role)
+    // admin rolü İSTİSNA: seed ile aynı şekilde sektör-bazlı yetkiler verilir
+    // (getAdminPermissionsForTenant — kafe/market/site/kuaför/CRM ayrımı)
+    if (role === 'admin') {
+      permsToStore = getAdminPermissionsForTenant(user!.tenant?.name ?? '')
+    } else {
+      permsToStore = getRolePermissions(role as Role)
+    }
   }
 
   const newUser = await db.user.create({

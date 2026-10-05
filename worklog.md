@@ -7898,3 +7898,25 @@ Stage Summary:
 - 5 özellik production kalitesinde: kasa transferi (çift-bacaklı, geri alınabilir), üyelik bitiş hatırlatması (görev + gerçek SMTP e-posta + idempotent cron), POS'ta canlı sadakat puanı (öneri listeli), haftalık vardiya planı (grid UI ilk kez), audit CSV dışa aktarma
 - cron-automation artık gece turunda üyelik hatırlatmaları da çalıştırıyor; VPS'e taşırken ek env gerekmiyor
 - Sonraki tur adayları: sadakat puan harcama POS entegrasyonu (redeem UI), HR bordro raporu/Excel, üyelik yenileme tek-tık akışı, vardiya kopyala-gelecek haftaya, audit CSV sunucu-taraflı tam geçmiş (limit 500+), e-Fatura/döviz kuru API
+
+---
+Task ID: dev-20261006-round4
+Agent: Super Z (ana ajan)
+Task: "programı geliştirmeye devam et" — önceki tur önerilerini doğrula, eksikleri tamamla
+
+Work Log:
+- ÖNCEKİ TUR ÖNERİLERİNİN DURUMU (paralel düzenleyici tamamlamış): kasa transferi (API+UI), üyelik bitiş hatırlatması (API + cron-automation entegrasyonu + SMTP), POS'ta sadakat anlık gösterim (debounce'lu lookup), döviz widget'ı gerçek API (open.er-api.com + frankfurter/ECB + offline fallback), harita OSM + mock fallback → hepsi taranarak tespit edildi
+- Tur 4 E2E (scripts/e2e-round4.sh): 15/15 PASS — transfer oluşturma, bakiye A−250/B+250, aynı-hesap + negatif reddi, transfer bacakları hareket listesinde, döviz kaynak=er-api (canlı), sadakat arama, hatırlatma çalıştırma + dedupe (remindedAt), 401
+- YENİ ÖZELLİK 1 — e-ARŞİV FATURA (GİB UBL-TR 1.2): src/lib/efatura.ts (XML üreteci: EARSIVFATURA profili, deterministik ETTN md5→UUID, GİB 16 haneli numara FAT+2026+000000005 formatı, VKN/TCKN 10-11 hane doğrulama + yoksa PartyIdentification atla, KDV gruplama — konvansiyon: lineTotal KDV HARİÇ), /api/invoices/[id]/einvoice route (auth + tenant kontrol + attachment + X-Efatura-Warn header), invoice-detail-dialog'a "e-Arşiv XML" butonu (FileCode2 + toast)
+- E2E e-Arşiv (scripts/e2e-efatura.sh): 13/13 PASS — XML well-formed (python minidom), GİB numara formatı regex, iki VKN XML'de, uyarı header VKN girilince kalkıyor, PayableAmount == API total, 401, 404
+- YENİ ÖZELLİK 2 — ÜYELİK YENİLEME (1 tık): PATCH action=renew → sessionsUsed=0, sessionsTotal=paket.sessionCount, expiryDate=kalan süreden devam+validityDays, status=aktif, remindedAt=null (yeni dönem hatırlatması yeniden çalışır), usage kaydı "Yenileme"; UI'da RefreshCw butonu (iptal hariç tüm durumlarda) + confirm dialog
+- E2E yenileme (scripts/e2e-membership-renew.sh): 11/11 PASS — satış→2 seans düş→yenile→0/5 + bitiş +30gün, geçersiz action reddi, kullanım geçmişinde yenileme notu. NOT: test doğru tenant ile yapılmalı (üyelik=randevu sektörü) → admin@sikkuafur.com kullanıldı; demo@anadolu (CRM/ERP) kasıtlı olarak randevu izinlerine sahip değil
+- HATA DÜZELTME — SEKTÖR İZİN TUTARSIZLIĞI: POST /api/users yeni admin'e statik ROLE_PERMISSIONS.admin veriyordu; seed ise getAdminPermissionsForTenant (sektör-bazlı) → kuaför tenant'ına sonradan eklenen admin randevu modülünü göremezdi. Düzeltildi: role==='admin' ise getAdminPermissionsForTenant(tenant.name). E2E: kuaför tenant'ında yeni admin 18 izin + appointments.manage ✓ (test kullanıcısı silindi)
+- Tarayıcı doğrulama (agent-browser, Şık Kuaför admin): Randevular→Üyelikler→"Yenile" butonu görünür, confirm + toast "Burak Şahin — üyelik yeni döneme geçirildi", API'de 2/5→0/5, bitiş 03.01.2027→03.04.2027 (+90g). Screenshot'lar: logs/verify-uyelik-yenile.png, logs/verify-uyelik-yenile-toast.png, logs/verify-earsiv-button.png
+- eslint 0 hata (tüm yeni/değişen dosyalar); dev sunucu 200; ensure-services "tüm mini servisler çalışıyor"
+
+Stage Summary:
+- e-Arşiv Fatura: her fatura artık GİB uyumlu UBL-TR 1.2 XML olarak indirilebilir (portal/entegratöre yüklenebilir) — VKN/vergi dairesi Fatura Şablonu'ndan ve müşteri kaydından otomatik
+- Üyelik yenileme: hatırlatma→arama→yenileme döngüsü kapandı (remindedAt sıfırlama dahil)
+- RBAC: kullanıcı oluşturma artık seed ile AYNI kaynak (getAdminPermissionsForTenant) — sektör tutarlılığı
+- Sonraki tur adayları: e-Arşiv XML'i Belge Yönetimi toplu indirmesine ekleme, HR bordro PDF, ticket müşteri e-posta bildirimi, sosyal medya gerçek API (anahtar gerektirir)
