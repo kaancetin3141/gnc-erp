@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Building2, Shield, Database, MapPin, Mail, Lock, Eye, EyeOff, LogIn, Sparkles, AlertTriangle, Zap, ChevronDown, Crown } from 'lucide-react'
+import { Building2, Shield, Database, MapPin, Mail, Lock, Eye, EyeOff, LogIn, Sparkles, AlertTriangle, Zap, ChevronDown } from 'lucide-react'
 import type { SessionUser } from '@/types'
 
 // Program Admini (superadmin) — tüm modülleri + Admin Paneli + Dağıtım Merkezi görür
@@ -321,26 +321,8 @@ export function LoginScreen() {
                 )}
               </Button>
 
-              {/* Program Admini girişi — en üst seviye yetki */}
-              <Button
-                type="button"
-                disabled={loading || needsSeed || !!demoLoading}
-                onClick={() => handleDemoLogin(PROGRAM_ADMIN.email)}
-                className="w-full h-11 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white shadow-sm"
-              >
-                {demoLoading === PROGRAM_ADMIN.email ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-violet-300 border-t-white rounded-full animate-spin" />
-                    Program Admini olarak giriliyor...
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2">
-                    <Crown className="w-4 h-4" />
-                    Program Admini olarak gir
-                    <span className="ml-1 text-[10px] font-normal bg-white/20 px-1.5 py-0.5 rounded">Admin Paneli</span>
-                  </span>
-                )}
-              </Button>
+              {/* Program Admini girişi kaldırıldı (talep) — superadmin
+                  hesabıyla e-posta + şifre ile giriş yapılabilir */}
 
               <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40">
                 <button

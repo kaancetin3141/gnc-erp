@@ -43,10 +43,10 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
   // tenant'ın sektörüne göre belirlenir (seed sırasında)
   // Varsayılan olarak CRM yetkileri verilir
   // ÖNEMLİ: 'roles.manage' SADECE superadmin'e verilir.
-  // 'admin.access' → Şirket admini Admin Paneli'ni GÖREBİLİR (kendi tenant'ı
-  //   scoblu; API'ler tenantId ile filtrelenir). Dağıtım Merkezi de görünür —
-  //   kendi firmasının PWA/APK dağıtımını yapabilir.
-  //   Superadmin ayrıca platform genelini ve tüm tenant'ları görür.
+  // 'admin.access' → ARTIK YALNIZCA superadmin (Program Admini).
+  //   Şirket adminleri Admin Paneli'ni ve Dağıtım Merkezi'ni GÖREMEZ
+  //   (talep: menüden kaldırıldı); buildSessionUser eski kayıtlardaki
+  //   kalıntı 'admin.access'leri de temizler.
   admin: [
     'dashboard.view',
     'messages.view',
@@ -55,7 +55,6 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'expenses.view', 'expenses.manage',
     'audit.view',
     'social.view', 'social.manage',
-    'admin.access',
     'hr.view', 'hr.manage', 'tickets.view', 'tickets.manage',
   ],
 
@@ -153,8 +152,8 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
 // Bu fonksiyon, admin rolündeki kullanıcının tenant'ının sektörüne göre
 // hangi modül yetkilerini alacağını belirler
 // ÖNEMLİ: 'roles.manage' burada YOK — yalnızca superadmin (Program Admini)
-// rolüne özeldir. 'admin.access' base'e DAHİLDİR: şirket admini Admin
-// Paneli'ni görebilir (API'ler kendi tenant'ı ile sınırlıdır).
+// rolüne özeldir. 'admin.access' de YOK — Admin Paneli + Dağıtım Merkezi
+// yalnızca Program Admini'ne açıktır (buildSessionUser kalıntıları da temizler).
 export function getAdminPermissionsForTenant(tenantName: string): PermissionKey[] {
   const base: PermissionKey[] = [
     'dashboard.view',
@@ -164,7 +163,6 @@ export function getAdminPermissionsForTenant(tenantName: string): PermissionKey[
     'expenses.view', 'expenses.manage',
     'audit.view',
     'social.view', 'social.manage',
-    'admin.access',
     'hr.view', 'hr.manage', 'tickets.view', 'tickets.manage',
   ]
 

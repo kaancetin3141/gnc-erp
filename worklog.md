@@ -8299,6 +8299,30 @@ Stage Summary:
 - "deneme" işletmesinin CRM'de oluşturulması gerektiği belirtildi
 
 ---
+Task ID: 20
+Agent: Ana ajan (Super Z)
+Task: (2) "Program Admini olarak gir" butonunu kaldır + (3) Admin Paneli ve Dağıtım Merkezi'ni şirket adminleri/müdürlerden çek + (4) nginx subdomain davranışı açıklaması
+
+Work Log:
+- (2) login-screen.tsx: "Program Admini olarak gir" butonu (violet gradient blok) kaldırıldı, kullanılmayan Crown importu temizlendi. NOT: superadmin hesabı hâlâ "Demo hesaplar" listesinde (kullanıcı istemezse oradan da çıkarılır).
+- (3) Kök yapı: Admin Paneli ('admin') + Dağıtım Merkezi ('distribution') görünürlüğü 'admin.access' yetkisine bağlı; eski rbac'ta admin (şirket admini) rolüne verilmişti + DB'deki eski kullanıcı kayıtlarında kalıntı olarak duruyordu (login permissions = DB ∪ rol varsayılanı).
+  - rbac.ts: ROLE_PERMISSIONS.admin ve getAdminPermissionsForTenant base'inden 'admin.access' ÇIKARILDI (yorumlar güncellendi)
+  - auth.ts buildSessionUser: superadmin dışındaki TÜM rollerden 'admin.access' filtrelenir (kalıntı DB yetkileri de temizler — menü + API tek noktadan kapanır)
+  - /api/auth login: aynı filtre login yanıtına eklendi (istemci store'u anında doğru yetkiyi alır)
+- (4) Sunucu nginx grep çıktısı analiz edildi: kullanıcı benim önerdiğim catch-all'u kurmuş (server_name _ + default_server ✓); gnc conf'unda regex ~^([a-z0-9-]+)\.gncinc.online$ TÜM subdomainleri randevu'ya (3002) yönlendiriyor → sik-kuafor açılır (seed işletmesi), deneme "işletme bulunamadı" verir. 443 tarafında regex YOK (certbot blokları) → https bilinmeyen subdomainler catch-all'daki ssl_reject_handshake ile zaten reddediliyor.
+
+Doğrulama (canlı):
+- bun run lint ✓
+- Login API: demo@anadolu.com (admin) → admin.access YOK ✓; ayse.kaya (manager) → YOK ✓; program.admin → VAR ✓
+- API: şirket admini → /api/admin/tenants HTTP 403 ✓; program admini → HTTP 200 ✓
+- NOT: dev server (3000) bu oturumda inmişti — yeniden başlatıldı
+
+Stage Summary:
+- Admin Paneli + Dağıtım Merkezi artık YALNIZCA Program Admini'nde (menü + API + eski kayıt kalıntıları dahil)
+- Login ekranında superadmin tek tık girişi yok; e-posta+şifre ile girilir
+- Push hâlâ bekliyor: GitHub PAT süresi dolmuş (401) — kullanıcı yeni token üretmeli
+
+---
 Task ID: 19
 Agent: Z.ai Code (main) + genel-purpose ajanlar
 Task: "Rastgele alt alan adlarında rastgele sayfa/işletme-bulunamadı açılıyor" — kök neden + düzeltme

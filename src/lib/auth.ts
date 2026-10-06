@@ -164,6 +164,15 @@ function buildSessionUser(user: {
     allPerms = Array.from(new Set([...allPerms, ...sectorPerms])) as SessionUser['permissions']
   }
 
+  // GÜVENLİK (talep: Admin Paneli + Dağıtım Merkezi yalnızca Program Admini'nde)
+  // Eski kullanıcı kayıtlarının DB'deki permissions alanında 'admin.access'
+  // kalmış olabilir → superadmin dışındaki TÜM rollerden temizlenir.
+  // Menü (sidebar) ve API (requirePermission) aynı buildSessionUser'ı
+  // kullandığı için tek noktadan hem görünüm hem erişim kapatılmış olur.
+  if (user.role !== 'superadmin') {
+    allPerms = allPerms.filter((p) => p !== 'admin.access') as SessionUser['permissions']
+  }
+
   return {
     id: user.id,
     tenantId: user.tenantId,

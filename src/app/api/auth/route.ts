@@ -96,7 +96,10 @@ export async function POST(req: NextRequest) {
 
   const rolePerms = getRolePermissions(user.role as 'admin' | 'manager' | 'rep' | 'superadmin' | 'readonly' | 'stock')
   const userPerms = JSON.parse(user.permissions || '[]') as string[]
+  // 'admin.access' (Admin Paneli + Dağıtım Merkezi) yalnızca Program Admini'nde —
+  // eski kayıtlardaki kalıntı yetkiler de burada süzülür (buildSessionUser ile aynı kural)
   const permissions = Array.from(new Set([...userPerms, ...rolePerms]))
+    .filter((p) => p !== 'admin.access' || user.role === 'superadmin')
 
   const userAgent = req.headers.get('user-agent') ?? undefined
   const token = await createSession(user.id, userAgent)
