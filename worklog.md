@@ -8032,3 +8032,22 @@ Work Log:
 Stage Summary:
 - GERİ ALMA GEREKMedi: mevcut kod = o oturumun kodu + bugünkü eklemeler (gncinc.online, server-setup.sh, şema tamiri)
 - Kullanıcıya kanıtlı özellik listesi sunuldu; istenirse test verilerini yeniden üretebilir
+
+---
+Task ID: 8
+Agent: main agent
+Task: Kullanıcının repolarını kontrol et — "ana menü ve deploy dosyalarını al"
+
+Work Log:
+- Kullanıcının public repoları: KaloriAI + skiller (fruit-storm listede yok — private olmuş olabilir)
+- skiller repo incelendi: 10 agents/*.md + 12 skills/*/SKILL.md + boş 'skil' dosyası — menü/deploy İÇERMİYOR
+- KaloriAI repo klonlandı ve incelendi: scripts/deploy/{deploy.sh, backup.sh, kaloriai.service, nginx-kaloriai.conf} + DEPLOYMENT.md (tam Türkçe VDS rehberi) BULUNDU — kullanıcı bunları kastediyordu
+- "Ana menü" = KaloriAI'nin app ana menüsü (MainLayout + TodayScreen, page.tsx) — repoyla birlikte gelir, ayrı dosya gerektirmez
+- Alınan dosyalar CRM'e deploy/kaloriai/ altına kopyalandı (orijinaller bozulmadan) + kaloriai-3004.service uyarlaması (port 3004, /var/www/my-project/mini-services/kaloriai, dinamik User) + README.md (entegrasyon notları, nginx-vs-Caddy uyarısı)
+- server-setup.sh güncellendi: 4b adımı ekledi — KaloriAI production build + systemd servisi (kullanıcının kendi unit dosyasından, __KALORIAI_USER__ dinamik); güncelleme talimatı: deploy/kaloriai/deploy.sh; bash -n OK
+- Commit: b079d1a
+
+Stage Summary:
+- KaloriAI deploy dosyaları artık CRM projesinde güvende (git commit'li) ve sunucu kurulumuna entegre
+- Sistemd yaklaşımı = kullanıcının kendi tasarımı (MemoryMax 700M, güvenlik sertleştirmesi) — VDS için sağlam
+- fruit-storm reposu görünmüyor: private ise kullanıcıya haber verildi, kurulum scripti uyarı basar
