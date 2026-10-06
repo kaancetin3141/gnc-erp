@@ -8372,3 +8372,19 @@ Stage Summary:
 - Sunucu güncelleme: bash guncelle-gnc.sh (geçişi otomatik yapar) veya manuel: node scripts/update-program-admin.cjs && pm2 restart gnc-crm
 - Harita linki cevabı: randevu.gncinc.online genel haritasındaki her işletme kartı https://<slug>.gncinc.online'a gider (views.ts bizHref) — ör. sik-kuafor → https://sik-kuafor.gncinc.online; BASE_DOMAIN'siz (yerel) modda /isletme/<slug>
 - Push hâlâ engelli: GitHub PAT ölü — 8 commit beklemede (02b39ef dahil)
+
+---
+Task ID: 22
+Agent: Ana ajan (Super Z)
+Task: Yeni GitHub PAT ile push + sunucuya dağıtım talimatı
+
+Work Log:
+- Kullanıcı yeni PAT verdi; remote URL güncellendi (token maskeli tutuldu)
+- git push origin main BAŞARILI: acc21e0..160c9cf — 9+ commit artık GitHub'da:
+  fc5c53a (randevu RESERVED_SLUGS + 404 sayfası + kurulum.sh v3.3), 2749cb7 (RBAC: Admin Paneli/Dağıtım Merkezi yalnızca Program Admini), 02b39ef (superadmin demo girişi kaldırıldı + admin/314159 geçişi + scripts/update-program-admin.cjs + guncelle-gnc.sh adımı), worklog kayıtları ve cron commit'leri
+- Sunucu talimatı verildi: cd /var/www/gnc-erp && bash guncelle-gnc.sh (pull → npm install → prisma db push → update-program-admin.cjs otomatik → build → pm2 restart gnc-crm + gnc-customer-page → sağlık kontrolü)
+- Kullanıcıya 7. güvenlik uyarısı: token sohbete yapıştırıldı — push sonrası GitHub'da revoke edip yenisi üretmesi önerildi
+
+Stage Summary:
+- Push engeli KALDIRILDI; repo origin/main = local main (160c9cf)
+- Kullanıcı sunucuda guncelle-gnc.sh çalıştırınca: randevu.gncinc.online ana liste (bug fix), Program Admini admin/314159, RBAC kısıtları canlı olacak
