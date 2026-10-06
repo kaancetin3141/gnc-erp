@@ -8051,3 +8051,21 @@ Stage Summary:
 - KaloriAI deploy dosyaları artık CRM projesinde güvende (git commit'li) ve sunucu kurulumuna entegre
 - Sistemd yaklaşımı = kullanıcının kendi tasarımı (MemoryMax 700M, güvenlik sertleştirmesi) — VDS için sağlam
 - fruit-storm reposu görünmüyor: private ise kullanıcıya haber verildi, kurulum scripti uyarı basar
+
+---
+Task ID: 9
+Agent: main agent
+Task: "ne değişiklik yaptıysan sil" — Task 8'deki tüm değişiklikleri geri alma
+
+Work Log:
+- Kapsam belirlendi: Task 8 (repo kontrol → deploy dosyaları alma) değişiklikleri = commit b079d1a (deploy/kaloriai/ 7 dosya + server-setup.sh 4b adımı)
+- git revert --no-edit b079d1a → commit 1f0b67e (420 satır silindi, deploy/ klasörü tamamen kaldırıldı)
+- server-setup.sh Task 6'daki haline döndü (4b/8 KaloriAI production adımı kaldırıldı, ayrı-DB garantisi ve temel kurulum korundu)
+- /tmp/kaloriai-check klonu ve /tmp/kaloriai-install.log silindi
+- Doğrulama: deploy/ yok, git status temiz, schema 85 model (dokunulmadı), dev.log 200 OK
+- Kullanıcının GitHub repolarına dokunulmadı (orijinaller her zaman güvendeydi)
+
+Stage Summary:
+- Task 8'den kalma HİÇBİR iz kalmadı: deploy/ klasörü yok, server-setup.sh eski hâlinde, temp klon silindi
+- Korunan (kullanıcının istediği) şeyler: DB kurtarma + 85 model şema + gncinc.online + Task 6 server-setup.sh + tüm v46 özellikleri
+- Kullanıcının KaloriAI/fruit-storm repoları GitHub'da değişmedi — deploy dosyaları orijinal reposunda duruyor
