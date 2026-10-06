@@ -165,7 +165,7 @@ async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | 
   const r = await upstream(`/api/public/providers/${encodeURIComponent(slug)}`);
   if (r.status === 404) {
     // Alt alan adı modunda "tüm işletmelere dön" hedefi: randevu.ANA_DOMAIN ana liste
-    const randevuHome = subdomain && BASE_DOMAIN ? `https://randevu.${BASE_DOMAIN}` : null;
+    const randevuHome = subdomain && BASE_DOMAIN ? `https://${listHost()}` : null;
     return { body: notFoundPage(slug, gwPort, randevuHome), status: 404 };
   }
   if (!r.ok || !r.data || !r.data.provider) {
@@ -174,8 +174,14 @@ async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | 
   const services: Json[] = Array.isArray(r.data.services) ? r.data.services : [];
   const provider = normBiz({ ...r.data.provider, services });
   // Gateway modunda ana sayfa bağlantısına param ekle (CRM'e düşmesin)
-  const homeUrl = subdomain && BASE_DOMAIN ? `https://${BASE_DOMAIN}` : gwq('/')
+  // Düzeltme: "Tüm işletmeler" her zaman randevu LİSTESİNE gider (ana siteye değil)
+  const homeUrl = subdomain && BASE_DOMAIN ? `https://${listHost()}` : gwq('/')
   return { body: detailPage({ provider, services, homeUrl, gwPort }), status: 200 };
+
+  // BASE_DOMAIN=randevu.x biçimindeyse aynen; bare domain ise randevu. öneki ekle
+  function listHost(): string {
+    return BASE_DOMAIN.startsWith('randevu.') ? BASE_DOMAIN : `randevu.${BASE_DOMAIN}`;
+  }
 
   function gwq(p: string) {
     return gwPort ? p + (p.indexOf('?') === -1 ? '?' : '&') + 'XTransformPort=' + encodeURIComponent(gwPort) : p;
