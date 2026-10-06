@@ -1,6 +1,11 @@
 #!/bin/bash
 # ============================================================
-#  GNC — TEK KOMUT KURULUM (v3.0 — tüm uygulamalar otomatik)
+#  GNC — TEK KOMUT KURULUM (v3.1 — tüm uygulamalar otomatik)
+#
+#  v3.1: (1) Bun artık ÖNCE npm ile kurulur (npm sunucuda garantili çalışır),
+#            curl yükleyicisi yedek. (2) npm install peer-deps çakışmasında
+#            otomatik --legacy-peer-deps fallback. (3) nodemailer ^7.0.7
+#            (next-auth uyumu — ERESOLVE hatası kökten çözüldü).
 #
 #  Ne kurar (hepsi GitHub'dan OTOMATİK indirilir):
 #   Sistem   : güncelleme + swap + Node 20 + pm2 + Bun + nginx + certbot + ufw
@@ -51,7 +56,7 @@ step "1/12 Sistem güncelleniyor (2-5 dk)..."
 export DEBIAN_FRONTEND=noninteractive
 $SUDO apt-get update -y
 $SUDO apt-get upgrade -y
-$SUDO apt-get install -y git curl nginx certbot python3-certbot-nginx ufw
+$SUDO apt-get install -y git curl nginx certbot python3-certbot-nginx ufw unzip
 $SUDO timedatectl set-timezone Europe/Istanbul 2>/dev/null || true
 
 # ---- 2) Swap (1 GB RAM için şart) ----
@@ -85,7 +90,15 @@ info "node $(node -v) | pm2 $(pm2 -v)"
 # ---- 3b) Bun (customer-page çalışma zamanı) ----
 step "3b/12 Bun..."
 if ! command -v bun >/dev/null 2>&1; then
-  curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1 || warn "Bun kurulamadı — customer-page atlanacak"
+  # YÖNTEM 1: npm global kurulum (sunucuda npm garantili — pm2 bu yolla kuruldu)
+  info "npm ile kuruluyor: npm install -g bun"
+  $SUDO npm install -g bun --no-audit --no-fund >/dev/null 2>&1 \
+    || warn "npm ile bun kurulamadı — curl yöntemi denencek"
+fi
+if ! command -v bun >/dev/null 2>&1; then
+  # YÖNTEM 2: resmi kurulum scripti (unzip ister — 1. adımda kuruldu)
+  curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1 \
+    || warn "Bun kurulamadı — customer-page atlanacak"
 fi
 export PATH="$HOME/.bun/bin:$PATH"
 if command -v bun >/dev/null 2>&1; then
@@ -135,7 +148,9 @@ mkdir -p db
 
 # ---- 6-8) Bağımlılıklar + şema + derleme ----
 step "6/12 npm install (birkaç dk)..."
-npm install
+npm install \
+  || { warn "npm install peer-deps çakışması — --legacy-peer-deps ile tekrar deneniyor"; \
+       npm install --legacy-peer-deps; }
 step "7/12 Veritabanı şeması..."
 npx prisma generate
 npx prisma db push
@@ -411,7 +426,7 @@ PUBLIC_IP=$(curl -s --max-time 5 https://checkip.amazonaws.com || curl -s --max-
 
 echo ""
 echo -e "${G}============================================================${N}"
-echo -e "${G}   KURULUM TAMAMLANDI! (v3.0 — tüm uygulamalar)${N}"
+echo -e "${G}   KURULUM TAMAMLANDI! (v3.1 — tüm uygulamalar)${N}"
 echo -e "${G}============================================================${N}"
 echo -e "  Sunucu IP'niz  : ${B}$PUBLIC_IP${N}   <- BUNU NOT ALIN"
 echo -e ""

@@ -248,7 +248,9 @@ step "2/4 Uygulama tipi tespit ediliyor..."
 pm2x delete "$NAME" >/dev/null 2>&1 || true
 if [ -f package.json ] && grep -qE '"start"[[:space:]]*:' package.json; then
   info "Tip: Node uygulaması (npm start, PORT=$PORT)"
-  npm install --no-audit --no-fund
+  npm install --no-audit --no-fund \
+    || { warn "npm install peer-deps çakışması — --legacy-peer-deps ile tekrar"; \
+         npm install --legacy-peer-deps --no-audit --no-fund; }
   if [ -f prisma/schema.prisma ]; then
     info "Prisma tespit edildi — veritabanı hazırlanıyor..."
     DB_DIR="$APP_DIR/db"; mkdir -p "$DB_DIR"
@@ -276,7 +278,7 @@ if [ -f package.json ] && grep -qE '"start"[[:space:]]*:' package.json; then
   fi
 elif [ -f package.json ] && grep -qE '"build"[[:space:]]*:' package.json; then
   info "Tip: build alınıp statik servis (dist/build/out)"
-  npm install
+  npm install || npm install --legacy-peer-deps
   npm run build
   OUT="dist"; [ -d "build" ] && OUT="build"; [ -d "out" ] && OUT="out"
   [ -d "$OUT" ] || die "build çıktısı bulunamadı (dist/build/out) — loglara bakın"

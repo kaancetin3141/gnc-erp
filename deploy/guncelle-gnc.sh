@@ -31,7 +31,7 @@ fi
 cd "$APP_DIR"
 
 echo "1/8) git pull...";        git pull --ff-only 2>/dev/null || git pull || echo "   (pull başarısız — mevcut kodla devam)"
-echo "2/8) npm install...";    npm install
+echo "2/8) npm install...";    npm install || { echo "   ! peer-deps çakışması — --legacy-peer-deps ile tekrar"; npm install --legacy-peer-deps; }
 echo "3/8) veritabanı...";     npx prisma db push
 echo "4/8) build...";          NODE_OPTIONS=--max-old-space-size=1536 npm run build
 echo "5/8) pm2 restart (CRM + Randevu)..."

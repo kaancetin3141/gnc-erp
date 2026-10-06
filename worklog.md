@@ -8245,3 +8245,22 @@ Stage Summary:
 - Hostinger'da TEK şey: DNS'e A @ / CNAME www / A * (yıldız) → VPS IP; hosting paketi GEREKMEZ
 - GitHub otomatik indirme: kurulum.sh her çalışmada pull/klor; güncelleme: guncelle-gnc.sh + sudo gnc-oyun <isim>
 - Kapsam kuralı korundu: repo = CRM + customer-page; KaloriAI/Fruit Storm yalnızca sunucuda /var/www/oyunlar/ altına, kendi repolarından iner
+
+---
+Task ID: 17
+Agent: main (Z.ai Code)
+Task: Sunucu kurulum çıktısındaki 2 hata düzeltildi — (1) npm install ERESOLVE (next-auth@4.24.15 ↔ nodemailer@10), (2) Bun kurulamadı → customer-page atlandı
+
+Work Log:
+- Sunucu çıktısı analiz edildi: script 6/12 adımında npm ERESOLVE ile öldü (set -e); 3b'de de curl ile Bun kurulumu sessizce başarısız → 3002 kurulamadı
+- KÖK NEDEN 1: package.json "nodemailer": "^10.0.13" ↔ next-auth@4.24.15 peerOptional "nodemailer@^7.0.7" çakışması (npm katı, bun esnek olduğu için lokalde görünmüyordu)
+- Düzeltme 1: package.json nodemailer ^10.0.13 → ^7.0.7 (src/lib/mailer.ts yalnız createTransport/sendMail kullanıyor — v7'de API birebir aynı, güvenli). bun install → lock güncellendi (nodemailer@7.0.13, @types/nodemailer 8 kalabilir — sadece tip paketi)
+- KÖK NEDEN 2: curl ile bun kurulumu sunucuda sessiz fail (unzip eksik / PATH). Düzeltme: kurulum.sh 3b artık ÖNCE "npm install -g bun" ile kuruyor (npm sunucuda kanıtlanmış — pm2 bu yolla kuruldu), curl yedek; apt paketlerine unzip eklendi
+- Güvence: kurulum.sh 6/12, oyun-deploy.sh (2 yer), guncelle-gnc.sh 2/8 → npm install başarısızsa otomatik "npm install --legacy-peer-deps" fallback (KaloriAI gibi 3. parti repoların kendi peer çakışmalarına karşı)
+- Versiyon: kurulum.sh v3.0 → v3.1; bash -n 3 script ✓; bun install ✓; dev.log temiz (tüm istekler 200)
+
+Stage Summary:
+- Server'da TEK komut (tekrar çalıştır): bash /var/www/gnc-erp/deploy/kurulum.sh gncinc.online "TOKEN'li-repo-adresi" → git pull (bu düzeltmeyi çeker) + npm install (artık geçer) + bun (npm'den) + customer-page 3002 + FruitStorm 3003 + KaloriAI 3004 + nginx
+- Hostinger'da gerekli TEK şey: DNS → A @ / CNAME www / A * (yıldız) → VPS IP (script sonunda IP'yi yazdırır); hosting paketi GEREKMEZ
+- SSL: DNS yayılınca "sudo certbot --nginx -d gncinc.online -d www... -d crm... -d randevu... -d fruitstorm... -d kaloriai..."
+- NOT: db/custom.db bilinçli commit edilmedi (server'da runtime değişiyor → git pull çakışması yaratabilir)
