@@ -8018,3 +8018,17 @@ Work Log:
 Stage Summary:
 - Kullanıcı sunucuda artık 3 komutla tüm sistemi kurabilir: git clone → sudo bash scripts/server-setup.sh → DNS
 - Alan adı zinciri tamamı gncinc.online: ana site + * müşteri siteleri + oyun + kalori
+
+---
+Task ID: 7
+Agent: main agent
+Task: "v46'ya geri dön" isteği — kullanıcı eski oturumun özelliklerini istediği sanıldı; doğrulama
+
+Work Log:
+- Projede "v46" etiketi yok (git tag boş, 59 commit UUID adlı) — kullanıcı "✅ Tamamlananlar (e-Arşiv, üyelik yenileme, kasa transferi...)" raporunu yapıştırdı; istediği o oturumdaki dosyalar
+- KAPSAMLI DOĞRULAMA: tüm o özellikler MEVCUT ve çalışıyor → efatura.ts (GİB UBL-TR 1.2) + api/invoices/[id]/einvoice CANLI TEST EDİLDİ (demo@anadolu.com/1234 ile giriş, fatura cmu7mgkno... için geçerli UBL XML döndü); membership/subscriptions/[id] action=renew mevcut; cash/transfer mevcut; loyalty/accounts mevcut; widgets er-api döviz mevcut
+- SONUÇ: kod hiç kaybolmadı — site çöküşü (KaloriAI'nın DB üzerine yazması) özellikler bozuk sanılmasına yol açtı; veri 16:30 yedeğine döndü, akşam test verileri (Burak Şahin vb.) ise kazada kayboldu (kurtarılamaz)
+
+Stage Summary:
+- GERİ ALMA GEREKMedi: mevcut kod = o oturumun kodu + bugünkü eklemeler (gncinc.online, server-setup.sh, şema tamiri)
+- Kullanıcıya kanıtlı özellik listesi sunuldu; istenirse test verilerini yeniden üretebilir
