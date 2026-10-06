@@ -8143,3 +8143,19 @@ Stage Summary:
 - gnc-erp reposundaki TÜM eksik özellikler porta edildi: 90 model şema, 17 yeni dosya, 6 dosyada iki yönlü birleştirme — mevcut (domains/tenants/cash/loyalty/membership/efatura) hiçbir şey kaybolmadı
 - Yeni yetenekler: Kafe rezervasyonları, Market veresiye (POS entegrli + ekstre PDF), İşletme tatil/kapanış günleri, Bugün paneli, Portfolyo yöneticisi (ana-site ile senkron), canlı döviz API'si, gerçekçi demo veri üreteci, aidat makbuzu, gelişmiş şikayet yönetimi
 - Repo klonu /tmp/gnc-erp'de duruyor; commit sonrası /tmp silinebilir (her şey git'te)
+
+---
+Task ID: 12
+Agent: main (Z.ai Code)
+Task: Projeyi gnc-erp GitHub reposuna push et ("bu son halini push la")
+
+Work Log:
+- Projede remote yoktu; /tmp/gnc-erp klonundaki token'li URL ile origin eklendi (kaancetin3141/gnc-erp)
+- git fetch: iki geçmişin ilişkisiz olduğu doğrulandı (merge-base yok)
+- git merge origin/main -s ours --allow-unrelated-histories: repo geçmişi korunarak merge edildi, ağaç olarak CRM son hali (7c0301d, Task 11) korundu
+- git push origin main → 6498acd..1cd6c33 (force gerekmedi, fast-forward)
+- Doğrulama: origin/main = 1cd6c33, çalışma ağacı temiz
+
+Stage Summary:
+- GitHub reposu artık CRM'in son halini içeriyor; repo eski geçmişi (gnc-oyun, cron commitleri) merge commit'in atası olarak duruyor
+- Sonraki push'lar artık normal git push ile yapılabilir (remote tanımlı)
