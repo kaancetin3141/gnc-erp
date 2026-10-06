@@ -8297,3 +8297,19 @@ Work Log:
 Stage Summary:
 - Repo değişikliği YOK (sunucu tarafı nginxconfig konusu); davranış analizi + tek komut teslim edildi
 - "deneme" işletmesinin CRM'de oluşturulması gerektiği belirtildi
+
+---
+Task ID: 19
+Agent: Z.ai Code (main) + genel-purpose ajanlar
+Task: "Rastgele alt alan adlarında rastgele sayfa/işletme-bulunamadı açılıyor" — kök neden + düzeltme
+
+Work Log:
+- Teşhis: Hostinger DNS wildcard (A *) tüm alt alan adlarını sunucuya çeker; nginx'teki {slug}.gncinc.online regex catch-all bloğu kayıtsız alt alan adlarını customer-page'e (3002) gönderir. Kayıtsız slug'da "işletme bulunamadı" sayfası TASARIM gereğidir (her işletmeye otomatik alt alan adı özelliği). Kullanıcının "Fruit Storm açılıyor" izlenimi: GNC Randevu'nun 🍉 markasının Fruit Storm ile karışması.
+- BUG 1 düzeltildi (index.ts): sunucuda BASE_DOMAIN=gncinc.online iken randevu.gncinc.online DAHİ subSlug="randevu" sanılıp ana liste yerine 404 çıkıyordu. RESERVED_SLUGS set'i eklendi (randevu, www, crm, admin, api, ana, panel, mail, ftp, ns1, ns2).
+- BUG 2 düzeltildi (views.ts): alt alan adındaki 404 sayfasındaki "/" linki subdomain'de yine 404'e dönüyordu. notFoundPage homeUrl param'lı oldu; subdomain modunda buton https://randevu.<ANA_DOMAIN> listesine gider; metin netleştirildi.
+- FIX 3 (kurulum.sh v3.3): nginx ana site bloğuna default_server — IP/yabancı domain trafiği garantili ana siteye düşer.
+- Doğrulama: bun build parse OK, bash -n OK, Host-header testleri: T1(randevu)=200 + ana sayfa title "GNC Randevu — Yakınındaki Berber, Kuaför, Dişçi ve Spa İşletmeleri" (randevu artık RESERVED → ana liste), T2(deneme)=404 + "Böyle bir işletme yok" + "Tüm işletmelere göz at" (not-found sayfası doğru), T3(normal)=200 + ana sayfa title.
+
+Stage Summary:
+- Değişen dosyalar: mini-services/customer-page/index.ts, mini-services/customer-page/views.ts, deploy/kurulum.sh (cron tarafından fc5c53a içinde commit'lenmişti).
+- Sunucuya uygulanış: cd /var/www/gnc-erp && git pull --ff-only && pm2 restart gnc-customer-page
