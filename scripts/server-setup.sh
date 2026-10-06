@@ -72,36 +72,12 @@ for entry in "${REPOS[@]}"; do
 done
 # KRİTİK: KaloriAI asla CRM'in veritabanını kullanmamalı (eski kaza!)
 if [ -d kaloriai ]; then
-  mkdir -p kaloriai/db kaloriai/upload
+  mkdir -p kaloriai/db
   grep -q '^DATABASE_URL=' kaloriai/.env 2>/dev/null || \
     echo "DATABASE_URL=file:$PROJ/mini-services/kaloriai/db/kaloriai.db" > kaloriai/.env
   ok "KaloriAI ayrı veritabanı garantili (kaloriai/db/kaloriai.db)"
 fi
 cd "$PROJ"
-
-step "4b/8 KaloriAI production kurulum (kullanıcının deploy dosyaları ile)"
-KDIR="$PROJ/mini-services/kaloriai"
-if [ -d "$KDIR/.git" ] && command -v systemctl >/dev/null; then
-  cd "$KDIR"
-  bun install >/dev/null 2>&1 || warn "kaloriai: bun install uyarı"
-  bunx prisma generate >/dev/null 2>&1
-  bunx prisma db push >/dev/null 2>&1 || warn "kaloriai: prisma push uyarı (.env kontrol et)"
-  if bun run build > /tmp/kaloriai-build.log 2>&1; then
-    OWNER=$(stat -c %U "$PROJ")
-    sed -e "s/__KALORIAI_USER__/$OWNER/g" \
-      "$PROJ/deploy/kaloriai/kaloriai-3004.service" > /etc/systemd/system/kaloriai.service
-    systemctl daemon-reload
-    systemctl enable --now kaloriai >/dev/null 2>&1 \
-      && ok "KaloriAI systemd servisi AKTİF (port 3004, production build)" \
-      || warn "kaloriai.service başlatılamadı: journalctl -u kaloriai -n 20"
-  else
-    warn "kaloriai build başarısız — /tmp/kaloriai-build.log son satırları:"
-    tail -3 /tmp/kaloriai-build.log
-  fi
-  cd "$PROJ"
-else
-  [ -d "$KDIR" ] || warn "kaloriai klasörü yok — production kurulum atlandı"
-fi
 
 step "5/8 Tüm servisleri başlat"
 bash scripts/ensure-services.sh
@@ -156,10 +132,8 @@ echo -e "\n\033[35m════════ KURULUM BİTTİ ══════�
 echo "  🌐 CRM        → https://gncinc.online          (:3000)"
 echo "  🍉 Müşteri    → https://sik-kuafor.gncinc.online (:3002, * alt alan adları)"
 echo "  🎮 Oyun       → https://oyun.gncinc.online     (:3003)"
-echo "  🥗 KaloriAI   → https://kalori.gncinc.online   (:3004, systemd: kaloriai.service)"
+echo "  🥗 KaloriAI   → https://kalori.gncinc.online   (:3004)"
 echo ""
-echo "  Güncelleme:   cd mini-services/kaloriai && bash $PROJ/deploy/kaloriai/deploy.sh"
-echo "  Yedek (günlük): deploy/kaloriai/backup.sh  → crontab'a eklenebilir"
 echo "  DNS kontrol (bu sunucudan): dig +short gncinc.online  → VDS IP'nizi dönmeli"
 echo "  Admin panel → gncinc.online → 'Program Admini olarak gir' → Admin Paneli → Alan Adları"
 echo "  Yedekler her 6 saatte db/backups/ altına otomatik alınır."
