@@ -8069,3 +8069,25 @@ Stage Summary:
 - Task 8'den kalma HİÇBİR iz kalmadı: deploy/ klasörü yok, server-setup.sh eski hâlinde, temp klon silindi
 - Korunan (kullanıcının istediği) şeyler: DB kurtarma + 85 model şema + gncinc.online + Task 6 server-setup.sh + tüm v46 özellikleri
 - Kullanıcının KaloriAI/fruit-storm repoları GitHub'da değişmedi — deploy dosyaları orijinal reposunda duruyor
+
+---
+Task ID: 10
+Agent: main agent
+Task: Kullanıcının gnc-erp reposundan ana-site + deploy dosyalarını almak (token ile erişim)
+
+Work Log:
+- Kullanıcı GitHub PAT + repo adresi verdi: kaancetin3141/gnc-erp ("ana site ve deploy burada")
+- Repo /tmp/gnc-erp'e klonlandı (shallow); token hiçbir dosyaya yazılmadı, sadece clone URL'de kullanıldı
+- Repo yapısı: ANA BULUNTULAR — ana-site/index.html (GNC Yazılım portfolyo landing, fruitstorm.gncinc.online kartlı, 36KB) + deploy/{kurulum.sh v2.3, guncelle-gnc.sh, oyun-deploy.sh, yeni-proje.sh} + DEPLOY.md (343 satır) + YAYINLAMA-REHBERI.md (1297 satır)
+- Kullanıcının VDS mimarisi (kendi tasarımı): gncinc.online → statik ana-site (/var/www/gncinc-ana), crm.gncinc.online → CRM (:3000, pm2 gnc-crm), meyvepatlat → oyun (:3001); nginx + certbot + swap
+- Sır kontrolü: deploy/ ve dokümanlarda ghp_ token YOK (temiz) → projeye alınabilir
+- Alınanlar: ana-site/ + deploy/ (4 script, chmod +x korundu) + 2 yayın dokümanı → commit ba13e6a
+- bash -n: 4 script de sözdizimi OK
+- src/ ağaçları KARŞILAŞTIRILDI: repo ile mevcut proje iki ayrı hat (119 fark; repoda closures API + pdf-lib fatura/veresiye PDF "GERÇEK ÖZELLİKLER" commit'i var; mevcutta admin/domains + admin/tenants var) → KOD BİRLEŞTİRİLMEDİ, sadece istenen dosyalar alındı
+- Task 8 dersi uygulandı: bu kez yalnızca kullanıcının işaret ettiği dosyalar, olduğu gibi alındı; server-setup.sh VE src/ DOKUNULMADI
+
+Stage Summary:
+- ana-site + 4 deploy scripti + 2 yayın rehberi artık CRM projesinde ve git'li (ba13e6a)
+- Kullanıcının kendi kurulum hattı (kurulum.sh) projede güvende; benim server-setup.sh da duruyor — sunucuda hangisiyle kurarsa onun tasarımı
+- Repo src'sindeki ekstra özellikler (pdf-lib fatura PDF, veresiye ekstresi, kazandı→fatura zinciri, closures) ayrı iş — istenirse tek tek taşınabilir
+- Klon /tmp/gnc-erp'de duruyor (takip işleri için); /tmp temizlenince kaybolur ama GitHub'da güvende
