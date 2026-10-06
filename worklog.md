@@ -8003,3 +8003,18 @@ Stage Summary:
 - CRM verisi TAM kurtarıldı: 7 tenant, 23 kullanıcı, 33 müşteri, 1 işletme, 19 randevu, 56 lead
 - KaloriAI verisi de kaybolmadı: db/kaloriai-data-recovered.db (sunucuya taşınabilir)
 - SUNUCU UYARISI (önemli): KaloriAI reposu sunucuda kesinlikle CRM'in DATABASE_URL'ini KULLANMAMALI — kendi .env'inde file:./db/kaloriai.db gibi AYRI bir yol olmalı; aksi hâlde CRM db'si yine üzerine yazılır!
+
+---
+Task ID: 6
+Agent: main agent
+Task: gncinc.online alan adını sisteme işle + tek komutluk sunucu kurulum scripti
+
+Work Log:
+- Kullanıcının gerçek alan adı öğrenildi: gncinc.online ("alanadi.com" örneklerin yerini aldı)
+- SystemSetting.base_domain = "gncinc.online" olarak PUT /api/admin/domains/settings ile ayarlandı (200) → admin paneli Caddyfile üreteci ve {slug} linkleri artık gerçek alan adını gösterir
+- scripts/server-setup.sh yazıldı (tek komut, idempotent): 1) apt + Caddy kur 2) bun kur 3) CRM .env + prisma db push 4) fruit-storm/kaloriai repolarını mini-services'e klonla + KaloriAI'ya AYRI veritabanı garantisi (eski kaza dersı: CRM db'sini asla üzerine yazmasın) 5) ensure-services.sh ile tüm portları başlat + 3000-3004 sağlık kontrolü 6) /etc/caddy/Caddyfile yaz (gncinc.online→3000, *.gncinc.online→3002, oyun.→3003, kalori.→3004) + validate + reload 7) crontab'a 30dk ensure-services.sh 8) ufw 22/80/443
+- bash -n ile sözdizimi doğrulandı (OK)
+
+Stage Summary:
+- Kullanıcı sunucuda artık 3 komutla tüm sistemi kurabilir: git clone → sudo bash scripts/server-setup.sh → DNS
+- Alan adı zinciri tamamı gncinc.online: ana site + * müşteri siteleri + oyun + kalori
