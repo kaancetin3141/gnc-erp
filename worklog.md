@@ -8203,3 +8203,23 @@ Stage Summary:
 - KaloriAI/Fruit Storm bu projede YOK — bağlantıları panelden yönetiliyor (URL düzenlenebilir); sunucu kurulum komutları deploy/SUNUCU-KOMUTLARI-3002-3003-3004.md'de duruyor
 - customer-page önizleme panelinden tam çalışır hale geldi (gateway uyumu kalıcı fix)
 - Şema 91 model; tüm değişiklikler git'li
+
+---
+Task ID: 15
+Agent: main (Z.ai Code)
+Task: Proje kapsamı netleştirme — bu projede SADECE CRM (3000) + customer-page (3002); KaloriAI (3004) ve Fruit Storm (3003) sunucuya GitHub'dan ayrı yüklenecek
+
+Work Log:
+- KULLANICI KARARI: "bu dosya yapısında sadece crm ana site ve customer page olacak; kaloriai ile fruit stormu buraya karıştırma" → her iki uygulamanın PlatformService link kaydı DB'den silindi; seedDefaultsIfEmpty yalnızca customer-page üretir
+- Port çakışması giderildi: eski chat-service süreci (pid 29751) 3003+3005 ÇİFT dinliyordu → öldürüldü; kaynak koddaki sabit PORT=3005 ile temiz başlatıldı; 3003 artık BOŞ (sunucudaki Fruit Storm için ayrıldı)
+- ensure-services.sh: fruit-storm/kaloriai ensure satırları kaldırıldı — bekçi yalnızca 3002/3005/3011/3010 portlarını izler (klasörleri olmadığından zaten atlıyordu)
+- domains-tab önizleme notu: 3003/3004 bağlantıları kaldırıldı, tek bağlantı /?XTransformPort=3002 + "Yeni Servis ile ekle" açıklaması; sunucu kurulum örneğindeki oyun./kalori. blokları KORUNDU (sunucuda lazım)
+- sidebar.tsx yorumu kapsam ile uyumlu hale getirildi
+- KRİTİK TESPİT: tarayıcıda "Servisler" sekmesi görünmüyordu (kod doğru, UI bayat) → dev sunucu derleme cache'i; pkill + rm -rf .next + temiz restart sonrası sekme Geldi
+- Doğrulama (agent-browser + curl): Admin'de 6. sekme Servisler ✓; 1 kayıt "Müşteri Randevu Sitesi :3002 ● çalışıyor" ✓; kapsam bilgi bandı ✓; sidebar UYGULAMALAR'da yalnız Müşteri Randevu Sitesi ✓; localhost:81/?XTransformPort=3002 müşteri sitesini döndürüyor ✓; lint temiz ✓
+- Cron 439047 raporu: "OK: tüm mini servisler çalışıyor"
+
+Stage Summary:
+- Proje net iki parça oldu: CRM ana site (3000) + müşteri randevu sitesi (3002); chat 3005, cron 3010/3011 iç servis
+- KaloriAI/Fruit Storm bu projede hiçbir yerde listelenmez; sunucuya yüklenince Admin → Servisler → "Yeni Servis" ile bağlantı eklenir (yönetim yeri hazır)
+- Bayat derleme cache belirtisi: kod doğru ama UI eski kalır → çözüm rm -rf .next + temiz restart

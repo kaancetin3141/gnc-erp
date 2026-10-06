@@ -454,19 +454,14 @@ kalori.${bd} {
       <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 p-3 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
         <ExternalLink className="h-4 w-4 mt-0.5 shrink-0" />
         <p>
-          <span className="font-medium">Önizleme:</span> Müşteri Sayfası (port 3002 — 2. sıra):{' '}
+          <span className="font-medium">Önizleme:</span> Müşteri Sayfası (port 3002):{' '}
           <a href="/?XTransformPort=3002" target="_blank" rel="noreferrer" className="underline font-medium">
             /?XTransformPort=3002
           </a>
-          {' '}· Fruit Storm (port 3003 — 3. sıra, <span className="font-medium">senin GitHub repon</span>):{' '}
-          <a href="/?XTransformPort=3003" target="_blank" rel="noreferrer" className="underline font-medium">
-            /?XTransformPort=3003
-          </a>
-          {' '}· KaloriAI (port 3004 — 4. sıra, <span className="font-medium">senin GitHub repon</span>):{' '}
-          <a href="/?XTransformPort=3004" target="_blank" rel="noreferrer" className="underline font-medium">
-            /?XTransformPort=3004
-          </a>
-          . Fruit Storm ve KaloriAI bu projede DEĞİL — sunucuda mini-services/ altına klonlanınca bekçi otomatik başlatır. Gerçek sunucuda yukarıdaki DNS + Caddyfile adımlarıyla <span className="font-mono">isletme-slug.anaalanadi.com</span> adresleri otomatik çalışır.
+          . Bu projede yalnızca CRM (3000) ve Müşteri Sayfası (3002) vardır; Fruit Storm ve KaloriAI&apos;yi
+          sanal sunucuna GitHub&apos;dan ayrı yüklersin — yükleyince Admin Paneli → Servisler sekmesinden
+          &quot;Yeni Servis&quot; ile bağlantılarını ekleyebilirsin. Gerçek sunucuda yukarıdaki DNS + Caddyfile
+          adımlarıyla <span className="font-mono">isletme-slug.anaalanadi.com</span> adresleri otomatik çalışır.
         </p>
       </div>
     </div>

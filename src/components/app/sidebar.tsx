@@ -147,7 +147,8 @@ export function Sidebar() {
     refetchInterval: 15_000,
   })
 
-  // Platform uygulamaları (yalnızca superadmin): Müşteri Sitesi, KaloriAI, Fruit Storm...
+  // Platform uygulamaları (yalnızca superadmin): Müşteri Sitesi + sunucudaki
+  // ayrı uygulamaların bağlantıları (Servisler sekmesinden yönetilir)
   const isSuper = user?.role === 'superadmin'
   const { data: servicesData } = useQuery({
     queryKey: ['sidebar-services'],

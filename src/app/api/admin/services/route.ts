@@ -25,6 +25,9 @@ type SeedService = {
 
 // Varsayılan servis kataloğu — tablo boşsa ilk GET'te otomatik eklenir.
 // URL'ler base_domain ayarı varsa alt alan adı ile üretilir.
+// BU PROJEDE yalnızca customer-page vardır: KaloriAI ve Fruit Storm kullanıcı
+// sunucusuna GitHub'dan ayrı yüklenir; istenirse "Yeni Servis" ile link olarak
+// eklenebilir (varsayılan olarak burada listelenmezler).
 async function seedDefaultsIfEmpty(): Promise<void> {
   const count = await db.platformService.count()
   if (count > 0) return
@@ -42,28 +45,6 @@ async function seedDefaultsIfEmpty(): Promise<void> {
       icon: 'map-pin',
       color: '#16a34a',
       sortOrder: 1,
-    },
-    {
-      key: 'kalori-ai',
-      name: 'KaloriAI',
-      description:
-        "Kalori takip ve diyet asistanı. Bu projede DEĞİL — sunucuya GitHub'dan (kaancetin3141/KaloriAI) ayrı yüklenir (port 3004).",
-      url: sub('kaloriai'),
-      localPort: 3004,
-      icon: 'salad',
-      color: '#ea580c',
-      sortOrder: 2,
-    },
-    {
-      key: 'fruit-storm',
-      name: 'Fruit Storm',
-      description:
-        'Meyve toplama oyunu. Bu projede DEĞİL — sunucuda ayrı çalışır (port 3003).',
-      url: sub('oyun'),
-      localPort: 3003,
-      icon: 'cherry',
-      color: '#dc2626',
-      sortOrder: 3,
     },
   ]
   // SQLite'ta benzersiz anahtar çakışmasına dayanıklı seed

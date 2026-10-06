@@ -53,8 +53,6 @@ ensure() {
 }
 
 ensure customer-page 3002
-ensure fruit-storm 3003
-ensure kaloriai 3004
 ensure chat-service 3005
 ensure appointment-reminders 3011
 ensure cron-automation 3010
