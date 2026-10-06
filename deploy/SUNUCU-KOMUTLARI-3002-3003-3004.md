@@ -1,8 +1,15 @@
 # SUNUCU KURULUM KOMUTLARI — Port 3002 / 3003 / 3004 + Alt Alan Adları
 
-> Sunucun: nginx + pm2 + certbot (kurulum.sh v2.3 ile kurulmuş).
-> Aşağıdaki komutların hepsi `ubuntu` kullanıcısıyla, sunucuda SSH oturumunda çalıştırılır.
-> Sırayla uygula; her bölümün sonunda test komutu var.
+> ⚡ **v3.0 GÜNCELLEME — Artık elle kurulum GEREKMEZ:**
+> `deploy/kurulum.sh` v3.0 aşağıdaki HER ŞEYİ otomatik yapıyor:
+> CRM (3000) + Müşteri Randevu (3002) + Fruit Storm GitHub'dan (3003) + KaloriAI GitHub'dan (3004)
+> + nginx alt alan adları (randevu / {slug} catch-all / fruitstorm / kaloriai) + ana site kartları.
+>
+> **Tek komut:**
+> ```bash
+> cd /var/www/gnc-erp && git pull && bash deploy/kurulum.sh gncinc.online "https://kaancetin3141:TOKEN@github.com/kaancetin3141/gnc-erp.git"
+> ```
+> Aşağıdaki elle adımlar yalnızca bir adım başarısız olursa **yedek/teşhis** amaçlıdır.
 
 ---
 
