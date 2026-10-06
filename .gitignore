@@ -52,3 +52,8 @@ prompt
 server.log
 # Skills directory
 /skills/
+# Veritabanı dosyaları — canlı veri repoda taşınmaz (sunucu verisi korunur)
+db/custom.db
+db/*.db
+db/.pdf-share-secret
+db/backups/
