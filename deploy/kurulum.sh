@@ -1,6 +1,12 @@
 #!/bin/bash
 # ============================================================
-#  GNC — TEK KOMUT KURULUM (v3.2 — tüm uygulamalar otomatik)
+#  GNC — TEK KOMUT KURULUM (v3.3 — tüm uygulamalar otomatik)
+#
+#  v3.3: (1) nginx ana site bloğu artık default_server — IP'den/boş Host'tan
+#            gelen trafik GARANTİ ana siteye gider (rastgele uygulama açılmaz).
+#        (2) customer-page v1.4 ile birlikte: 'randevu' gibi sistem alt alan
+#            adları işletme slug'ı sanılmaz (randevu.gncinc.online ana listeyi
+#            gösterir); boş işletme adreslerinde açıklayıcı 404 sayfası.
 #
 #  v3.2: (1) .env artık repoda TUTULMAZ (yanlış yol /home/z/my-project
 #            sunucaya klonlanıyordu → Prisma 'Permission denied').
@@ -247,8 +253,10 @@ $SUDO rm -f /etc/nginx/sites-available/kaloriai /etc/nginx/sites-enabled/kaloria
 
 cat > /tmp/gnc.nginx << 'NGINXEOF'
 # ============ ANA SİTE — gncinc.online + www (statik portfolyo) ============
+# default_server: eşleşmeyen TÜM trafik (doğrudan IP, yabancı domain, boş Host)
+# buraya düşer — asla CRM/randevu/oyun uygulamalarına sızamaz.
 server {
-    listen 80;
+    listen 80 default_server;
     server_name __DOMAIN__ __WWW__;
 
     root __ANA_DIR__;
@@ -469,7 +477,7 @@ PUBLIC_IP=$(curl -s --max-time 5 https://checkip.amazonaws.com || curl -s --max-
 
 echo ""
 echo -e "${G}============================================================${N}"
-echo -e "${G}   KURULUM TAMAMLANDI! (v3.2 — tüm uygulamalar)${N}"
+echo -e "${G}   KURULUM TAMAMLANDI! (v3.3 — tüm uygulamalar)${N}"
 echo -e "${G}============================================================${N}"
 echo -e "  Sunucu IP'niz  : ${B}$PUBLIC_IP${N}   <- BUNU NOT ALIN"
 echo -e ""

@@ -635,17 +635,20 @@ ${siteFooter()}`;
 
 // ---------------------------------------------------------------- HATA SAYFALARI
 
-export function notFoundPage(slug?: string, gwPort?: string | null): string {
+export function notFoundPage(slug?: string, gwPort?: string | null, homeUrl?: string | null): string {
+  const backHref = homeUrl || '/';
+  const backLabel = homeUrl ? '🔍 Tüm işletmelere göz at' : '← Tüm işletmelere dön';
   return pageShell({
     title: 'İşletme bulunamadı | GNC Randevu',
     desc: 'Aradığın işletme bulunamadı.',
     gwPort,
-    body: `<header class="top"><div class="top-in"><a class="logo" href="/"><span class="lg">🍉</span>GNC Randevu</a></div></header>
+    body: `<header class="top"><div class="top-in"><a class="logo" href="${esc(backHref)}"><span class="lg">🍉</span>GNC Randevu</a></div></header>
 <main><div class="center-page"><div class="center-card">
   <span class="big" aria-hidden="true">🔍</span>
-  <h1>İşletmeyi bulamadık</h1>
-  <p>${slug ? `"<b>${esc(slug)}</b>" adında bir işletme yok ya da kaldırılmış olabilir.` : 'Aradığın sayfa mevcut değil.'}</p>
-  <a class="btn btn-geo" href="/">← Tüm işletmelere dön</a>
+  <h1>Böyle bir işletme yok</h1>
+  <p>${slug ? `"<b>${esc(slug)}</b>" adında kayıtlı bir işletme bulamadık — henüz eklenmemiş ya da kaldırılmış olabilir.` : 'Aradığın sayfa mevcut değil.'}</p>
+  <p style="font-size:12.5px;color:#7b869c;margin-top:8px">Not: <b>işletme-adi</b> biçimindeki alt alan adları GNC Randevu sistemine ayrılmıştır; henüz işletme atanmamış adreslerde bu sayfa görünür.</p>
+  <a class="btn btn-geo" href="${esc(backHref)}">${backLabel}</a>
 </div></div></main>
 ${siteFooter()}`,
   });

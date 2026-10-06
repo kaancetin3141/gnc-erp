@@ -8283,3 +8283,17 @@ Stage Summary:
 - Kullanıcıya verilen TEK komut: cd /var/www/gnc-erp && git pull --ff-only && bash deploy/kurulum.sh gncinc.online "TOKEN'li-adres"  (önce pull → v3.2 diskte → sonra çalıştır = offset riski sıfır)
 - v3.2 ile: .env sunucuda doğru üretilir (file:/var/www/gnc-erp/db/custom.db), bun 3 yöntemle kurulur, 3002 customer-page + 3003 FruitStorm + 3004 KaloriAI + nginx otomatik
 - Kritik kural: .env ASLA repoya eklenmez; sunucuya özel değerler kurulumun 5. adımında üretilir
+
+---
+Task ID: Job 439047 (cron, 12:37 turu) + kullanıcı sorusu
+Agent: Ana ajan (Super Z)
+Task: ensure-services.sh çalıştır + "her subdomain'de Fruit Storm açılıyor / deneme.gncinc.online'da randevu + işletme bulunamadı" sorusunu yanıtla
+
+Work Log:
+- ensure-services.sh bu turda 120s timeout (muhtemelen restart denemesi) → portlar doğrudan curl ile doğrulandı: 3002:200, 3005:✓(400=listener), 3010:200, 3011:200 — hepsi sağlıklı
+- Kullanıcı sorusu kök nedeni açıklandı: (1) Hostinger wildcard A * → sunucuya HER subdomain gelir; (2) nginx'te eşleşmeyen isim default_server'a düşer → Fruit Storm block'u catch-all/default olduğu için her yerde FS açılıyor; (3) deneme.gncinc.online'da "işletme bulunamadı" BEKLENEN davranış — customer-page subdomain'i kiracı slug'ı olarak arıyor, "deneme" işletmesi CRM'de yok
+- Çözüm verildi: tek komutla /etc/nginx/sites-available/catch-all (default_server + ssl_reject_handshake + return 444) + nginx -t/reload; her uygulamaya net server_name (randevu→3002, fruitstorm→3003, kaloriai→3004, ana→3000); teşhis: grep -RnE "server_name|default_server" /etc/nginx/sites-enabled/
+
+Stage Summary:
+- Repo değişikliği YOK (sunucu tarafı nginxconfig konusu); davranış analizi + tek komut teslim edildi
+- "deneme" işletmesinin CRM'de oluşturulması gerektiği belirtildi

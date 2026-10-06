@@ -24,6 +24,11 @@ const PORT = 3002;
 const UPSTREAM = 'http://localhost:3000';
 // Alt alan adı anahtarı: örn. BASE_DOMAIN=randevu.example.com → sik-kuafor.randevu.example.com
 const BASE_DOMAIN = (process.env.BASE_DOMAIN || '').trim().toLowerCase();
+// Sistem alt alan adları — işletme slug'ı OLAMAZ (yoksa randevu.alanadi ana liste
+// yerine "işletme bulunamadı" gösterirdi — sunucuda tespit edilen bug, v1.4)
+const RESERVED_SLUGS = new Set([
+  'randevu', 'www', 'crm', 'app', 'admin', 'api', 'ana', 'panel', 'mail', 'ftp', 'ns1', 'ns2',
+]);
 
 // ---------------------------------------------------------------- bellek cache
 
@@ -158,7 +163,11 @@ const leafletRes = (f: { data: string | Uint8Array; type: string }) =>
 
 async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | null): Promise<{ body: string; status: number }> {
   const r = await upstream(`/api/public/providers/${encodeURIComponent(slug)}`);
-  if (r.status === 404) return { body: notFoundPage(slug, gwPort), status: 404 };
+  if (r.status === 404) {
+    // Alt alan adı modunda "tüm işletmelere dön" hedefi: randevu.ANA_DOMAIN ana liste
+    const randevuHome = subdomain && BASE_DOMAIN ? `https://randevu.${BASE_DOMAIN}` : null;
+    return { body: notFoundPage(slug, gwPort, randevuHome), status: 404 };
+  }
   if (!r.ok || !r.data || !r.data.provider) {
     throw new UpstreamError('İşletme bilgileri şu anda alınamıyor — ana uygulama yanıt vermiyor olabilir.');
   }
@@ -188,7 +197,7 @@ Bun.serve({
     let subSlug: string | null = null;
     if (BASE_DOMAIN && host.length > BASE_DOMAIN.length + 1 && host.endsWith('.' + BASE_DOMAIN)) {
       const s = host.slice(0, host.length - BASE_DOMAIN.length - 1);
-      if (s && !s.includes('.')) subSlug = s;
+      if (s && !s.includes('.') && !RESERVED_SLUGS.has(s)) subSlug = s;
     }
 
     try {
