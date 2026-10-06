@@ -1509,7 +1509,7 @@ export function AdminPanel() {
       </div>
 
       {/* Tab'lar: İşletmeler · Müşteriler & Roller · Alan Adları · Denetim */}
-      <Tabs defaultValue={isSuperAdmin() ? 'tenants' : 'customers'} className="w-full space-y-0">
+      <Tabs defaultValue={isSuperAdmin(user?.role ?? '') ? 'tenants' : 'customers'} className="w-full space-y-0">
         <TabsList className="flex flex-wrap h-auto p-1 gap-1">
           <TabsTrigger value="tenants" className="text-xs gap-1.5">
             <Building2 className="w-3.5 h-3.5" />

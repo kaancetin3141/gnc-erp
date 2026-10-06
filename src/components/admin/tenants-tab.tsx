@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { ROLE_LABELS, isSuperAdmin } from '@/lib/rbac'
 import { SECTOR_META } from '@/lib/tenant-sector'
+import { useAppStore } from '@/store/app-store'
 import type { Role } from '@/types'
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -92,7 +93,8 @@ function StatMini({ icon: Icon, label, value, color }: {
 
 export function TenantsTab() {
   const qc = useQueryClient()
-  const superAdmin = isSuperAdmin()
+  const { user: sessionUser } = useAppStore()
+  const superAdmin = isSuperAdmin(sessionUser?.role ?? '')
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
 

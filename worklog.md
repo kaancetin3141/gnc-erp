@@ -8159,3 +8159,25 @@ Work Log:
 Stage Summary:
 - GitHub reposu artık CRM'in son halini içeriyor; repo eski geçmişi (gnc-oyun, cron commitleri) merge commit'in atası olarak duruyor
 - Sonraki push'lar artık normal git push ile yapılabilir (remote tanımlı)
+
+---
+Task ID: 13
+Agent: main (Z.ai Code)
+Task: Program admini işletme yönetimi doğrulama + customer-page'e gerçek harita + VDS port/subdomain komutları
+
+Work Log:
+- Mevcut durum tespiti: TenantsTab (superadmin=tümü, admin=kendi işletmesi) ve DomainsTab (slug+geocoding) zaten kurulu; customer-page (3002) konum sıralaması yapıyordu ama GÖRSEL harita yoktu
+- Leaflet 1.9.4 self-hosted eklendi (assets/leaflet/ — js/css/png; unpkg'den indirildi, CDN bağımlılığı yok)
+- index.ts: /assets/leaflet/* dosya servis yolları (GET+HEAD, 24h cache)
+- Ana sayfa: "Haritada işletmeler" bölümü (OSM karoları), işletme emojili pinler, popup'ta "Randevu Al →", gizle/göster toggle, Leaflet yüklenemezse bölümü gizleme
+- Konum akışı: geolocation → mavi konum noktası + en yakın işletme yeşil ⭐ pin + fitBounds + popup açma; loc-status mesajı "En yakın: X (km)"
+- Detay sayfası: lat/lng json ada'ya eklendi, "Konum" kartı (harita + Google Yol Tarifi + OSM linkleri); /api/public/providers/[slug] dönüşüne lat/lng eklendi
+- BUG FIX: isSuperAdmin() argümansız çağrılıyordu (admin-panel.tsx:1512, tenants-tab.tsx:95) → hep false; "Tüm platform" badge'i ve Plan seçimi superadmin'de çalışmıyordu; useAppStore'dan user.role ile düzeltildi
+- QA (agent-browser): ana sayfa harita 1 pin ✓, İstanbul konumu ile "Sana 6 km" popup + user-dot + pin-nearest ✓, /isletme/sik-kuafor detay haritası + yol tarifi ✓, admin İşletmeler sekmesi 7 işletme + seçim + düzenleme ✓, Alan Adları sekmesi (gncinc.online, DNS, Caddyfile) ✓
+- deploy/SUNUCU-KOMUTLARI-3002-3003-3004.md yazıldı: DNS wildcard, customer-page 3002 (bun+pm2+BASE_DOMAIN), nginx catch-all {slug}.gncinc.online → 3002, Fruit Storm 3001→3003 taşıma, KaloriAI 3004 (AYRI DATABASE_URL uyarısıyla), certbot, sağlık kontrolleri
+- bun run lint: temiz
+
+Stage Summary:
+- Müşteri sitesi artık haritalı: kişi konumunu paylaşınca en yakın işletme haritada ⭐ ile vurgulanıyor
+- Superadmin işletme yönetimi tam yetkili hale geldi (isSuperAdmin bug fix)
+- Sunucuda 3002/3003/3004 + alt alan adları için hazır komut dokümanı deploy/ altında

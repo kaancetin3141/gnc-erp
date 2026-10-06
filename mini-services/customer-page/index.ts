@@ -137,6 +137,23 @@ const htmlRes = (body: string, status = 200) =>
 const assetRes = (body: string, type: string) =>
   new Response(body, { headers: { 'content-type': `${type}; charset=utf-8`, 'cache-control': 'public, max-age=300' } });
 
+// ---- Leaflet (self-hosted; startup'ta diske okunur)
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+const LEAFLET_DIR = join(import.meta.dir, 'assets', 'leaflet');
+const LEAFLET_FILES: Record<string, { data: string | Uint8Array; type: string }> = {};
+try {
+  LEAFLET_FILES['/assets/leaflet/leaflet.js'] = { data: readFileSync(join(LEAFLET_DIR, 'leaflet.js'), 'utf8'), type: 'text/javascript' };
+  LEAFLET_FILES['/assets/leaflet/leaflet.css'] = { data: readFileSync(join(LEAFLET_DIR, 'leaflet.css'), 'utf8'), type: 'text/css' };
+  LEAFLET_FILES['/assets/leaflet/images/marker-icon.png'] = { data: new Uint8Array(readFileSync(join(LEAFLET_DIR, 'images', 'marker-icon.png'))), type: 'image/png' };
+  LEAFLET_FILES['/assets/leaflet/images/marker-icon-2x.png'] = { data: new Uint8Array(readFileSync(join(LEAFLET_DIR, 'images', 'marker-icon-2x.png'))), type: 'image/png' };
+  LEAFLET_FILES['/assets/leaflet/images/marker-shadow.png'] = { data: new Uint8Array(readFileSync(join(LEAFLET_DIR, 'images', 'marker-shadow.png'))), type: 'image/png' };
+} catch (e) {
+  console.error('[customer-page] Leaflet varlıkları okunamadı — harita devre dışı:', (e as Error).message);
+}
+const leafletRes = (f: { data: string | Uint8Array; type: string }) =>
+  new Response(f.data as BodyInit, { headers: { 'content-type': `${f.type}; charset=utf-8`, 'cache-control': 'public, max-age=86400' } });
+
 // ---------------------------------------------------------------- sayfa render
 
 async function renderDetail(slug: string, subdomain: boolean): Promise<{ body: string; status: number }> {
@@ -277,6 +294,10 @@ Bun.serve({
       if (path === '/assets/style.css' && method === 'GET') return assetRes(STYLE_CSS, 'text/css');
       if (path === '/assets/home.js' && method === 'GET') return assetRes(HOME_JS, 'text/javascript');
       if (path === '/assets/detail.js' && method === 'GET') return assetRes(DETAIL_JS, 'text/javascript');
+
+      // --- leaflet varlıkları (self-hosted harita kütüphanesi)
+      const lf = LEAFLET_FILES[path];
+      if (lf && (method === 'GET' || method === 'HEAD')) return leafletRes(lf);
 
       return htmlRes(notFoundPage(), 404);
     } catch (e: any) {

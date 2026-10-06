@@ -283,13 +283,42 @@ footer.ft{margin-top:auto;background:#2b211b;color:#e9d9c9;padding:22px 16px cal
   .search{order:3;flex:1 1 100%;max-width:none}
   .dbody,.book-card{padding:18px}
   .dates{grid-template-columns:repeat(4,1fr)}
+  .biz-map{height:300px}
 }
+
+/* ---- harita (Leaflet + OSM) ---- */
+.map-card{background:#fff;border:1px solid #ecdcd0;border-radius:16px;padding:14px 14px 12px;margin:18px 0;box-shadow:0 4px 18px rgba(63,36,22,.06)}
+.map-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 10px}
+.map-head h2{font-size:1.02rem;color:#3f2416;margin:0}
+.map-toggle{border:1px solid #e4cbb8;background:#fff;color:#8a5a3b;border-radius:999px;padding:5px 12px;font-size:.78rem;font-weight:600;cursor:pointer;transition:all .15s}
+.map-toggle:hover{background:#fdf3ec;border-color:#d3ae93}
+.biz-map{height:380px;border-radius:12px;border:1px solid #eadbcd;z-index:0;background:#e8e0d4}
+.map-hint{font-size:.78rem;color:#8a7160;margin:8px 2px 0}
+.biz-pin{width:32px;height:32px;border-radius:50%;background:#fff;border:2.5px solid var(--brand);display:grid;place-items:center;font-size:16px;line-height:1;box-shadow:0 3px 8px rgba(0,0,0,.28);cursor:pointer;transition:transform .15s}
+.biz-pin:hover{transform:scale(1.12)}
+.biz-pin.pin-nearest{width:46px;height:46px;font-size:23px;border-color:#118a4e;background:#eafff2;box-shadow:0 0 0 7px rgba(17,138,78,.18),0 4px 10px rgba(0,0,0,.32)}
+.biz-pin .pin-star{position:absolute;top:-14px;right:-12px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
+.user-dot{width:18px;height:18px;border-radius:50%;background:#1e88e5;border:3px solid #fff;box-shadow:0 0 0 9px rgba(30,136,229,.22),0 2px 6px rgba(0,0,0,.3)}
+.biz-pop{font-family:inherit}
+.biz-pop .pop-t{font-weight:800;color:#3f2416;font-size:.92rem}
+.biz-pop .pop-s{font-size:.78rem;color:#8a7160;margin:2px 0 4px}
+.biz-pop .pop-d{font-size:.8rem;font-weight:700;color:#118a4e}
+.biz-pop .pop-link{display:inline-block;margin-top:7px;font-size:.82rem;font-weight:700;color:var(--brand);text-decoration:none;border-bottom:2px solid rgba(194,51,77,.25)}
+.biz-pop .pop-link:hover{color:#a02145}
+.detail-map{height:260px;border-radius:12px;border:1px solid #eadbcd;z-index:0;margin-top:12px}
+.dir-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.dir-links a{display:inline-flex;align-items:center;gap:5px;font-size:.8rem;font-weight:700;color:#8a5a3b;background:#fdf3ec;border:1px solid #e4cbb8;border-radius:999px;padding:6px 13px;text-decoration:none;transition:all .15s}
+.dir-links a:hover{background:#f7e4d7;transform:translateY(-1px)}
+/* leaflet kontrolleri tema uyumu */
+.leaflet-bar a,.leaflet-control-attribution{font-family:inherit}
+.leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.82)!important}
 `;
 
 // ---------------------------------------------------------------- Ortak sayfa parçaları
 
-function pageShell(o: { title: string; desc: string; body: string; scripts?: string[] }): string {
+function pageShell(o: { title: string; desc: string; body: string; scripts?: string[]; extraCss?: string[] }): string {
   const scripts = (o.scripts || []).map((s) => `<script src="${s}" defer></script>`).join('\n  ');
+  const extraCss = (o.extraCss || []).map((s) => `<link rel="stylesheet" href="${s}">`).join('\n  ');
   return `<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -299,6 +328,7 @@ function pageShell(o: { title: string; desc: string; body: string; scripts?: str
 <meta name="description" content="${esc(o.desc)}">
 <link rel="icon" href="${FAVICON}">
 <link rel="stylesheet" href="/assets/style.css">
+  ${extraCss}
 </head>
 <body>
 <div class="page">
@@ -358,6 +388,15 @@ export function homePage(baseDomain: string): string {
     <label class="city-wrap"><span class="sr-only">Şehir filtresi</span><select id="city" aria-label="Şehir seç"><option value="">Tüm şehirler</option></select></label>
   </div>
 
+  <section class="map-card" aria-label="İşletme haritası">
+    <div class="map-head">
+      <h2>🗺️ Haritada işletmeler</h2>
+      <button type="button" class="map-toggle" id="map-toggle" aria-expanded="true" aria-controls="biz-map">Haritayı gizle</button>
+    </div>
+    <div id="biz-map" class="biz-map" role="application" aria-label="İşletmelerin harita üzerinde konumları"></div>
+    <p class="map-hint" id="map-hint">💡 Konum izni verirsen 📍 senin konumun da haritada görünür, en yakın işletme ⭐ ile vurgulanır.</p>
+  </section>
+
   <p class="count" id="count" role="status">İşletmeler yükleniyor…</p>
   <section class="grid" id="grid" aria-label="İşletme listesi" aria-live="polite">
     ${Array.from({ length: 8 })
@@ -374,7 +413,8 @@ ${siteFooter()}`;
     title: 'GNC Randevu — Yakınındaki Berber, Kuaför, Dişçi ve Spa İşletmeleri',
     desc: 'Konumuna göre en yakın berber, kuaför, dişçi, güzellik salonu, spa ve dövme stüdyolarını bul; online randevunu saniyeler içinde oluştur.',
     body,
-    scripts: ['/assets/home.js'],
+    extraCss: ['/assets/leaflet/leaflet.css'],
+    scripts: ['/assets/leaflet/leaflet.js', '/assets/home.js'],
   });
 
   // cfg adasını <main> başına değil body başına koy: defer script'ten Önce tanımlı olsun
@@ -419,6 +459,8 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
       district: p.district,
       phone: p.phone,
       workingHours: wh,
+      lat: p.lat,
+      lng: p.lng,
     },
     services: a.services.map((s) => ({
       id: s.id,
@@ -430,6 +472,22 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
     })),
     cfg: { homeUrl: a.homeUrl },
   });
+
+  const hasGeo = typeof p.lat === 'number' && typeof p.lng === 'number' && !isNaN(p.lat as number) && !isNaN(p.lng as number);
+  const latStr = hasGeo ? String(p.lat) : '';
+  const lngStr = hasGeo ? String(p.lng) : '';
+  const mapCard = hasGeo
+    ? `<article class="dcard">
+        <div class="dbody">
+          <h2 class="section-title" style="margin:0">🗺️ Konum</h2>
+          <div id="detail-map" class="detail-map" role="application" aria-label="${esc(p.name)} konum haritası"></div>
+          <div class="dir-links">
+            <a href="https://www.google.com/maps/dir/?api=1&destination=${latStr},${lngStr}" target="_blank" rel="noopener">🧭 Google Yol Tarifi</a>
+            <a href="https://www.openstreetmap.org/?mlat=${latStr}&mlon=${lngStr}#map=17/${latStr}/${lngStr}" target="_blank" rel="noopener">🗺️ Haritada Aç</a>
+          </div>
+        </div>
+      </article>`
+    : '';
 
   const body = `<header class="top">
   <div class="top-in">
@@ -467,6 +525,7 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
           <table class="hours" aria-label="Çalışma saatleri">${hoursRows}</table>
         </div>
       </article>
+      ${mapCard}
     </div>
 
     <section aria-labelledby="svc-h">
@@ -560,7 +619,8 @@ ${siteFooter()}`;
     title: `${p.name} — Online Randevu | GNC Randevu`,
     desc: `${p.name} (${p.city}) online randevu: hizmetler, çalışma saatleri ve uygun saatler. Saniyeler içinde üyeliksiz randevu.`,
     body,
-    scripts: ['/assets/detail.js'],
+    extraCss: hasGeo ? ['/assets/leaflet/leaflet.css'] : undefined,
+    scripts: hasGeo ? ['/assets/leaflet/leaflet.js', '/assets/detail.js'] : ['/assets/detail.js'],
   }).replace(
     '</main>',
     `<script id="page-data" type="application/json">${data}</script>\n</main>`
@@ -652,6 +712,106 @@ export const HOME_JS = `
     t.className = 'show' + (kind ? ' ' + kind : '');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.className = ''; }, 4200);
+  }
+
+  // ---- harita (Leaflet + OpenStreetMap)
+  var map = null, markerLayer = null, userMarker = null, nearestM = null, mapReady = false;
+  var mapEl = document.getElementById('biz-map');
+
+  function pinIcon(emoji, nearest) {
+    var size = nearest ? [46, 46] : [32, 32];
+    var html = '<div class="biz-pin' + (nearest ? ' pin-nearest' : '') + '">' + emoji + (nearest ? '<span class="pin-star" aria-hidden="true">⭐</span>' : '') + '</div>';
+    return L.divIcon({ className: '', html: html, iconSize: size, iconAnchor: [size[0] / 2, size[1]], popupAnchor: [0, -(size[1] + 6)] });
+  }
+
+  function popHtml(it) {
+    var t = TYPE[it.type] || { label: 'İşletme' };
+    var sub = esc(t.label) + (it.district ? ' · ' + esc(it.district) : '') + (it.city ? ' · ' + esc(it.city) : '');
+    var dist = (typeof it._d === 'number') ? '<div class="pop-d">📍 Sana ' + esc(fmtKm(it._d)) + '</div>' : '';
+    return '<div class="biz-pop"><div class="pop-t">' + esc(it.name) + '</div><div class="pop-s">' + sub + '</div>' + dist +
+      '<a class="pop-link" href="' + bizHref(it.slug) + '">Randevu Al →</a></div>';
+  }
+
+  function initMap() {
+    if (mapReady || !mapEl) return;
+    if (typeof L === 'undefined') {
+      // Leaflet yüklenemedi — harita bölümünü nazikçe gizle
+      var mc = mapEl.closest('.map-card');
+      if (mc) mc.style.display = 'none';
+      return;
+    }
+    var hasGeoPts = lastItems.some(function (it) { return typeof it.lat === 'number' && typeof it.lng === 'number'; });
+    map = L.map('biz-map', { scrollWheelZoom: true });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> katkıcıları'
+    }).addTo(map);
+    markerLayer = L.layerGroup().addTo(map);
+    mapReady = true;
+    if (hasGeoPts) {
+      map.fitBounds(L.latLngBounds(lastItems.filter(function (it) { return typeof it.lat === 'number'; }).map(function (it) { return [it.lat, it.lng]; })).pad(0.2));
+    } else {
+      map.setView([39.2, 35.2], 5.4);
+    }
+  }
+
+  function updateMap(items) {
+    if (!mapReady) { initMap(); if (!mapReady) return; }
+    markerLayer.clearLayers();
+    nearestM = null;
+    var pts = [];
+    var minD = null;
+    for (var i = 0; i < items.length; i++) {
+      var d = items[i]._d;
+      if (typeof d === 'number' && (minD === null || d < minD)) minD = d;
+    }
+    items.forEach(function (it) {
+      if (typeof it.lat !== 'number' || typeof it.lng !== 'number' || isNaN(it.lat) || isNaN(it.lng)) return;
+      var t = TYPE[it.type] || { label: 'İşletme', emoji: '🏪' };
+      var isNearest = (minD !== null && it._d === minD);
+      var m = L.marker([it.lat, it.lng], { icon: pinIcon(t.emoji, isNearest), title: it.name, alt: it.name });
+      m.bindPopup(popHtml(it), { maxWidth: 260 });
+      m.addTo(markerLayer);
+      if (isNearest) nearestM = m;
+      pts.push([it.lat, it.lng]);
+    });
+    if (!pts.length) {
+      map.setView([39.2, 35.2], 5.4);
+    } else if (pts.length === 1) {
+      map.setView(pts[0], 14);
+    } else {
+      map.fitBounds(L.latLngBounds(pts).pad(0.2));
+    }
+  }
+
+  function setUserDot(la, ln) {
+    if (!mapReady) return;
+    if (userMarker) map.removeLayer(userMarker);
+    userMarker = L.marker([la, ln], {
+      icon: L.divIcon({ className: '', html: '<div class="user-dot" role="img" aria-label="Konumun"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+      interactive: false, keyboard: false
+    }).addTo(map);
+  }
+
+  function zoomToNearest() {
+    if (!mapReady || !nearestM) return;
+    var target = nearestM.getLatLng();
+    var pts = [];
+    if (userMarker) pts.push([userMarker.getLatLng().lat, userMarker.getLatLng().lng]);
+    pts.push([target.lat, target.lng]);
+    map.fitBounds(L.latLngBounds(pts).pad(0.35), { animate: true });
+    setTimeout(function () { nearestM.openPopup(); }, 450);
+  }
+
+  var mapToggle = document.getElementById('map-toggle');
+  if (mapToggle) {
+    mapToggle.addEventListener('click', function () {
+      var collapsed = mapEl.style.display === 'none';
+      mapEl.style.display = collapsed ? '' : 'none';
+      mapToggle.textContent = collapsed ? 'Haritayı gizle' : 'Haritayı göster';
+      mapToggle.setAttribute('aria-expanded', String(collapsed));
+      if (collapsed && mapReady) setTimeout(function () { map.invalidateSize(); }, 80);
+    });
   }
 
   function bizHref(slug) {
@@ -747,6 +907,8 @@ export const HOME_JS = `
         fillCities(x.j.cities || []);
         countEl.textContent = lastItems.length + ' işletme listeleniyor' + (state.q || state.type || state.city ? ' (filtreli)' : '');
         render(lastItems);
+        initMap();
+        updateMap(lastItems);
       })
       .catch(function () {
         countEl.textContent = '';
@@ -809,8 +971,13 @@ export const HOME_JS = `
       return (a._d === null ? 1e12 : a._d) - (b._d === null ? 1e12 : b._d);
     });
     render(sorted);
-    locStatus.textContent = '✅ Konumuna göre en yakın ' + withD + ' işletme öne alındı.';
-    toast('En yakın işletmeler öne alındı.', 'ok');
+    initMap();
+    updateMap(sorted);
+    setUserDot(la, ln);
+    var nearest = sorted[0];
+    locStatus.innerHTML = '✅ En yakın işletme: <b>' + esc(nearest.name) + '</b> (' + esc(fmtKm(nearest._d)) + ') — haritada ⭐ ile işaretlendi.';
+    toast('En yakın işletme: ' + nearest.name, 'ok');
+    zoomToNearest();
   }
 
   function onErr() {
@@ -1129,6 +1296,24 @@ export const DETAIL_JS = `
     loadSlots();
   } else {
     slotsEl.innerHTML = '<p class="hint">Bu işletme henüz hizmet eklememiş.</p>';
+  }
+
+  // ---- konum haritası
+  var dMapEl = document.getElementById('detail-map');
+  if (dMapEl && typeof L !== 'undefined' && typeof P.lat === 'number' && typeof P.lng === 'number') {
+    var EMO = { berber: '💈', kuafor: '✂️', disci: '🦷', guzellik: '💄', spa: '🧖', dovme: '🎨' };
+    var dMap = L.map('detail-map', { scrollWheelZoom: false });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> katkıcıları'
+    }).addTo(dMap);
+    var dSize = [36, 36];
+    var dIcon = L.divIcon({ className: '', html: '<div class="biz-pin" style="width:36px;height:36px;font-size:18px">' + (EMO[P.type] || '🏪') + '</div>', iconSize: dSize, iconAnchor: [18, 36], popupAnchor: [0, -42] });
+    var dM = L.marker([P.lat, P.lng], { icon: dIcon }).addTo(dMap);
+    dM.bindPopup('<div class="biz-pop"><div class="pop-t">' + esc(P.name) + '</div><div class="pop-s">' + esc(P.city || '') + (P.district ? ' · ' + esc(P.district) : '') + '</div></div>', { maxWidth: 240 });
+    dMap.setView([P.lat, P.lng], 15);
+    dM.openPopup();
+    setTimeout(function () { dMap.invalidateSize(); }, 120);
   }
 })();
 `;

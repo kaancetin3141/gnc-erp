@@ -43,7 +43,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
       },
     },
   })
-
   if (!provider) {
     // Fallback: ismi slugify edenle eşleşen (backfill olmayan provider için)
     const all = await db.serviceProvider.findMany({
@@ -99,6 +98,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
       phone: provider.phone,
       email: provider.email,
       photo: provider.photo,
+      lat: provider.lat,
+      lng: provider.lng,
       workingHours: safeJsonParse<WorkingHours>(provider.workingHours, {}),
     },
     services: provider.services.map((s) => ({
