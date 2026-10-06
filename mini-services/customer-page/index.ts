@@ -156,16 +156,21 @@ const leafletRes = (f: { data: string | Uint8Array; type: string }) =>
 
 // ---------------------------------------------------------------- sayfa render
 
-async function renderDetail(slug: string, subdomain: boolean): Promise<{ body: string; status: number }> {
+async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | null): Promise<{ body: string; status: number }> {
   const r = await upstream(`/api/public/providers/${encodeURIComponent(slug)}`);
-  if (r.status === 404) return { body: notFoundPage(slug), status: 404 };
+  if (r.status === 404) return { body: notFoundPage(slug, gwPort), status: 404 };
   if (!r.ok || !r.data || !r.data.provider) {
     throw new UpstreamError('İşletme bilgileri şu anda alınamıyor — ana uygulama yanıt vermiyor olabilir.');
   }
   const services: Json[] = Array.isArray(r.data.services) ? r.data.services : [];
   const provider = normBiz({ ...r.data.provider, services });
-  const homeUrl = subdomain && BASE_DOMAIN ? `https://${BASE_DOMAIN}` : '/';
-  return { body: detailPage({ provider, services, homeUrl }), status: 200 };
+  // Gateway modunda ana sayfa bağlantısına param ekle (CRM'e düşmesin)
+  const homeUrl = subdomain && BASE_DOMAIN ? `https://${BASE_DOMAIN}` : gwq('/')
+  return { body: detailPage({ provider, services, homeUrl, gwPort }), status: 200 };
+
+  function gwq(p: string) {
+    return gwPort ? p + (p.indexOf('?') === -1 ? '?' : '&') + 'XTransformPort=' + encodeURIComponent(gwPort) : p;
+  }
 }
 
 // ---------------------------------------------------------------- sunucu
@@ -187,12 +192,16 @@ Bun.serve({
     }
 
     try {
+      // Gateway modu tespiti: önizleme paneli ?XTransformPort ile açar;
+      // bu durumda göreli varlık/API URL'lerine aynı paramı ekleriz.
+      const gwPort = url.searchParams.get('XTransformPort');
+
       // --- sağlık kontrolü
       if (path === '/healthz') return json({ ok: true, service: 'customer-page', port: PORT, subdomainMode: !!subSlug });
 
       // --- alt alan adı kökü: {slug}.BASE_DOMAIN/ → o işletmenin detay sayfası
       if (subSlug && path === '/') {
-        const page = await renderDetail(subSlug, true);
+        const page = await renderDetail(subSlug, true, gwPort);
         return htmlRes(page.body, page.status);
       }
 
@@ -281,12 +290,12 @@ Bun.serve({
       }
 
       // --- sayfalar
-      if (path === '/' && method === 'GET') return htmlRes(homePage(BASE_DOMAIN));
+      if (path === '/' && method === 'GET') return htmlRes(homePage(BASE_DOMAIN, gwPort));
 
       const mDetail = path.match(/^\/isletme\/([^/]+)$/);
       if (mDetail && method === 'GET') {
         const slug = safeDecode(mDetail[1]);
-        const page = await renderDetail(slug, false);
+        const page = await renderDetail(slug, false, gwPort);
         return htmlRes(page.body, page.status);
       }
 
@@ -299,12 +308,12 @@ Bun.serve({
       const lf = LEAFLET_FILES[path];
       if (lf && (method === 'GET' || method === 'HEAD')) return leafletRes(lf);
 
-      return htmlRes(notFoundPage(), 404);
+      return htmlRes(notFoundPage(undefined, gwPort), 404);
     } catch (e: any) {
       const isUp = e instanceof UpstreamError;
       console.error(`[customer-page] ${method} ${path} →`, isUp ? e.message : e?.message || e);
       return htmlRes(
-        serverErrorPage(isUp ? e.message : 'Beklenmeyen bir sorun oluştu. Lütfen sayfayı yenile.'),
+        serverErrorPage(isUp ? e.message : 'Beklenmeyen bir sorun oluştu. Lütfen sayfayı yenile.', url.searchParams.get('XTransformPort')),
         isUp ? 502 : 500
       );
     }

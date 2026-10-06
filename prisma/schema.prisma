@@ -2017,3 +2017,22 @@ model ProviderClosure {
 
   @@index([providerId, date])
 }
+
+// ============================================================
+// PLATFORM SERVİSLERİ — ana siteden yönetilen uygulama bağlantıları
+// customer-page (3002) bu projede; KaloriAI (3004) ve Fruit Storm (3003)
+// kullanıcının sunucusunda AYRI projelerdir — burada yalnızca LİNK tutulur.
+// ============================================================
+model PlatformService {
+  id          String   @id @default(cuid())
+  key         String   @unique // "customer-page" | "kalori-ai" | "fruit-storm"
+  name        String // "Müşteri Randevu Sitesi"
+  description String   @default("")
+  url         String   @default("") // sunucu adresi (ör. https://randevu.gncinc.online)
+  localPort   Int? // sandbox/yerel port — XTransformPort ile açılır
+  icon        String   @default("app-window") // lucide ikon adı
+  color       String   @default("#16a34a")
+  enabled     Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}

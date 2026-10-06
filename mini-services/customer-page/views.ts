@@ -316,9 +316,13 @@ footer.ft{margin-top:auto;background:#2b211b;color:#e9d9c9;padding:22px 16px cal
 
 // ---------------------------------------------------------------- Ortak sayfa parçaları
 
-function pageShell(o: { title: string; desc: string; body: string; scripts?: string[]; extraCss?: string[] }): string {
-  const scripts = (o.scripts || []).map((s) => `<script src="${s}" defer></script>`).join('\n  ');
-  const extraCss = (o.extraCss || []).map((s) => `<link rel="stylesheet" href="${s}">`).join('\n  ');
+function pageShell(o: { title: string; desc: string; body: string; scripts?: string[]; extraCss?: string[]; gwPort?: string | null }): string {
+  // Gateway (XTransformPort) ile açıldıysa göreli varlık URL'lerine param ekle —
+  // aksi hâlde /assets/* istekleri gateway'den CRM'e düşer ve 404 olur.
+  const gw = (p: string) =>
+    o.gwPort ? p + (p.includes('?') ? '&' : '?') + 'XTransformPort=' + encodeURIComponent(o.gwPort) : p;
+  const scripts = (o.scripts || []).map((s) => `<script src="${gw(s)}" defer></script>`).join('\n  ');
+  const extraCss = (o.extraCss || []).map((s) => `<link rel="stylesheet" href="${gw(s)}">`).join('\n  ');
   return `<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -326,8 +330,8 @@ function pageShell(o: { title: string; desc: string; body: string; scripts?: str
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(o.title)}</title>
 <meta name="description" content="${esc(o.desc)}">
-<link rel="icon" href="${FAVICON}">
-<link rel="stylesheet" href="/assets/style.css">
+<link rel="icon" href="${gw(FAVICON)}">
+<link rel="stylesheet" href="${gw('/assets/style.css')}">
   ${extraCss}
 </head>
 <body>
@@ -351,7 +355,7 @@ function siteFooter(): string {
 
 // ---------------------------------------------------------------- ANA SAYFA
 
-export function homePage(baseDomain: string): string {
+export function homePage(baseDomain: string, gwPort?: string | null): string {
   const cfg = jsonIsland({ baseDomain });
   const chips: Array<[string, string]> = [
     ['', 'Tümü'],
@@ -415,6 +419,7 @@ ${siteFooter()}`;
     body,
     extraCss: ['/assets/leaflet/leaflet.css'],
     scripts: ['/assets/leaflet/leaflet.js', '/assets/home.js'],
+    gwPort,
   });
 
   // cfg adasını <main> başına değil body başına koy: defer script'ten Önce tanımlı olsun
@@ -433,7 +438,7 @@ const DAY_TR: Array<[string, string]> = [
   ['sun', 'Pazar'],
 ];
 
-export function detailPage(a: { provider: Json; services: Json[]; homeUrl: string }): string {
+export function detailPage(a: { provider: Json; services: Json[]; homeUrl: string; gwPort?: string | null }): string {
   const p = a.provider;
   const meta = typeMeta(p.type);
   const wh = (p.workingHours && typeof p.workingHours === 'object') ? p.workingHours : {};
@@ -621,6 +626,7 @@ ${siteFooter()}`;
     body,
     extraCss: hasGeo ? ['/assets/leaflet/leaflet.css'] : undefined,
     scripts: hasGeo ? ['/assets/leaflet/leaflet.js', '/assets/detail.js'] : ['/assets/detail.js'],
+    gwPort: a.gwPort,
   }).replace(
     '</main>',
     `<script id="page-data" type="application/json">${data}</script>\n</main>`
@@ -629,10 +635,11 @@ ${siteFooter()}`;
 
 // ---------------------------------------------------------------- HATA SAYFALARI
 
-export function notFoundPage(slug?: string): string {
+export function notFoundPage(slug?: string, gwPort?: string | null): string {
   return pageShell({
     title: 'İşletme bulunamadı | GNC Randevu',
     desc: 'Aradığın işletme bulunamadı.',
+    gwPort,
     body: `<header class="top"><div class="top-in"><a class="logo" href="/"><span class="lg">🍉</span>GNC Randevu</a></div></header>
 <main><div class="center-page"><div class="center-card">
   <span class="big" aria-hidden="true">🔍</span>
@@ -644,10 +651,11 @@ ${siteFooter()}`,
   });
 }
 
-export function serverErrorPage(msg: string): string {
+export function serverErrorPage(msg: string, gwPort?: string | null): string {
   return pageShell({
     title: 'Bir sorun oluştu | GNC Randevu',
     desc: 'Beklenmeyen bir hata oluştu.',
+    gwPort,
     body: `<header class="top"><div class="top-in"><a class="logo" href="/"><span class="lg">🍉</span>GNC Randevu</a></div></header>
 <main><div class="center-page"><div class="center-card">
   <span class="big" aria-hidden="true">🛠️</span>
@@ -669,6 +677,12 @@ export const HOME_JS = `
   'use strict';
   var cfgEl = document.getElementById('page-cfg');
   var CFG = cfgEl ? JSON.parse(cfgEl.textContent) : { baseDomain: '' };
+  // Gateway (XTransformPort) uyumu: göreli API/link çağrılarına param ekle
+  var GWPORT = new URLSearchParams(location.search).get('XTransformPort');
+  function gwq(p) {
+    if (!GWPORT) return p;
+    return p + (p.indexOf('?') === -1 ? '?' : '&') + 'XTransformPort=' + encodeURIComponent(GWPORT);
+  }
   var TYPE = {
     berber: { label: 'Berber', emoji: '💈' },
     kuafor: { label: 'Kuaför', emoji: '✂️' },
@@ -815,7 +829,8 @@ export const HOME_JS = `
   }
 
   function bizHref(slug) {
-    return CFG.baseDomain ? 'https://' + slug + '.' + CFG.baseDomain : '/isletme/' + encodeURIComponent(slug);
+    if (CFG.baseDomain) return 'https://' + slug + '.' + CFG.baseDomain;
+    return gwq('/isletme/' + encodeURIComponent(slug));
   }
 
   function cardHtml(it, i) {
@@ -893,7 +908,7 @@ export const HOME_JS = `
     if (state.type) params.set('type', state.type);
     if (state.city) params.set('city', state.city);
     var qs = params.toString();
-    fetch('/api/businesses' + (qs ? '?' + qs : ''), { headers: { accept: 'application/json' } })
+    fetch(gwq('/api/businesses' + (qs ? '?' + qs : '')), { headers: { accept: 'application/json' } })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (x) {
         if (!x.ok) {
@@ -998,6 +1013,12 @@ export const DETAIL_JS = `
   if (!dataEl) return;
   var D = JSON.parse(dataEl.textContent);
   var P = D.provider, SVCS = D.services, CFG = D.cfg;
+  // Gateway (XTransformPort) uyumu: göreli API çağrılarına param ekle
+  var GWPORT = new URLSearchParams(location.search).get('XTransformPort');
+  function gwq(p) {
+    if (!GWPORT) return p;
+    return p + (p.indexOf('?') === -1 ? '?' : '&') + 'XTransformPort=' + encodeURIComponent(GWPORT);
+  }
   var $ = function (s) { return document.querySelector(s); };
   var state = { serviceId: SVCS.length ? SVCS[0].id : null, date: null, time: null };
 
@@ -1109,7 +1130,7 @@ export const DETAIL_JS = `
     hideErr();
     if (!state.serviceId || !state.date) return;
     slotsEl.innerHTML = '<div class="slotload"><span class="spin dark"></span> Uygun saatler yükleniyor…</div>';
-    fetch('/api/businesses/' + encodeURIComponent(P.slug) + '/slots?date=' + state.date + '&serviceId=' + encodeURIComponent(state.serviceId), { headers: { accept: 'application/json' } })
+    fetch(gwq('/api/businesses/' + encodeURIComponent(P.slug) + '/slots?date=' + state.date + '&serviceId=' + encodeURIComponent(state.serviceId)), { headers: { accept: 'application/json' } })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (x) {
         if (!x.ok) {
@@ -1214,7 +1235,7 @@ export const DETAIL_JS = `
     btn.disabled = true;
     btn.innerHTML = '<span class="spin"></span> Gönderiliyor…';
 
-    fetch('/api/book', {
+    fetch(gwq('/api/book'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({

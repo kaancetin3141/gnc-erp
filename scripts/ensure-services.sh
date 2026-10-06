@@ -1,11 +1,11 @@
 #!/bin/bash
 # ============================================================
-# GNC CRM mini-service bekçisi
-# customer-page (3002), chat-service (3005),
-# appointment-reminders (3011), cron-automation (3010)
-# fruit-storm (3003) ve kaloriai (3004) KULLANICI YÖNETİMİNDEDİR:
-# sunucuda GitHub'dan mini-services/ altına klonlanırsa bekçi otomatik başlatır
-# (klasör yoksa sessizce atlar).
+# GNC CRM mini-service bekçisi — BU PROJEDE SADECE:
+#   CRM ana site (3000, ayrı yönetilir) + customer-page (3002)
+#   chat-service (3005), appointment-reminders (3011), cron-automation (3010)
+# fruit-storm (3003) ve kaloriai (3004) BU PROJEDE YOK:
+#   kullanıcı onları sunucuya GitHub'dan ayrı yükler; klasör olmadığından
+#   ensure() zaten sessizce atlar (genel yapı korunuyor).
 # PORT tabanlı sağlık kontrolü yapar; ölmüşse yeniden başlatır.
 # Not: sandbox resume sonrası `bun run dev` node_modules'ı yeniden
 # kurarken child erken başlayıp import hatasıyla zombie kalabiliyor;

@@ -41,7 +41,7 @@ import {
   ShieldCheck, Users, Crown, Briefcase, Package, ChevronRight, ChevronDown,
   Search, RefreshCw, Building2, MapPin, Mail, Phone, Globe,
   Eye, Edit3, BarChart3, ListTree, Activity, Clock, Hash,
-  CircleUser, Layers, Coffee, Store,
+  CircleUser, Layers, Coffee, Store, Blocks,
   History, Filter, ScrollText, ChevronLeft, Loader2, Download, LayoutGrid,
 } from 'lucide-react'
 import { initials, formatRelative, formatDateTime, formatDate } from '@/lib/format'
@@ -54,6 +54,7 @@ import { RoleAssignDialog } from './role-assign-dialog'
 import { PortfolioManager } from './portfolio-manager'
 import { TenantsTab } from './tenants-tab'
 import { DomainsTab } from './domains-tab'
+import { ServicesTab } from './services-tab'
 
 // ─── API tipleri ────────────────────────────────────────────────
 interface OverviewResponse {
@@ -1531,6 +1532,12 @@ export function AdminPanel() {
             <LayoutGrid className="w-3.5 h-3.5" />
             Portfolyo
           </TabsTrigger>
+          {isSuperAdmin(user?.role ?? '') && (
+            <TabsTrigger value="services" className="text-xs gap-1.5">
+              <Blocks className="w-3.5 h-3.5" />
+              Servisler
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="tenants" className="space-y-4">
@@ -1681,6 +1688,12 @@ export function AdminPanel() {
         <TabsContent value="portfolio" className="space-y-4">
           <PortfolioManager user={user} />
         </TabsContent>
+
+        {isSuperAdmin(user?.role ?? '') && (
+          <TabsContent value="services" className="space-y-4">
+            <ServicesTab />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Diyaloglar */}

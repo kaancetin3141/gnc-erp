@@ -10,9 +10,23 @@ import {
   BarChart3, UserCog, Settings, ChevronLeft, Sparkles, Boxes,
   FileText, Receipt, Package, MessageCircle, ClipboardCheck,
   ShieldCheck, Coffee, Store, Calendar, Building2, Home, Share2, Rocket, FileStack,
-  MessageSquareText, LifeBuoy, UserSquare2,
+  MessageSquareText, LifeBuoy, UserSquare2, ExternalLink,
 } from 'lucide-react'
 import type { PermissionKey } from '@/types'
+
+interface PlatformServiceLite {
+  id: string
+  key: string
+  name: string
+  url: string
+  localPort: number | null
+  color: string
+  enabled: boolean
+}
+
+interface ServicesLiteResponse {
+  items: PlatformServiceLite[]
+}
 
 interface NavItem {
   view: AppView
@@ -133,6 +147,22 @@ export function Sidebar() {
     refetchInterval: 15_000,
   })
 
+  // Platform uygulamaları (yalnızca superadmin): Müşteri Sitesi, KaloriAI, Fruit Storm...
+  const isSuper = user?.role === 'superadmin'
+  const { data: servicesData } = useQuery({
+    queryKey: ['sidebar-services'],
+    queryFn: () => apiGet<ServicesLiteResponse>('/api/admin/services'),
+    enabled: isSuper,
+    staleTime: 60_000,
+  })
+  const platformServices = (servicesData?.items ?? []).filter((s) => s.enabled)
+
+  const openService = (s: PlatformServiceLite) => {
+    // Bu ortamda yerel port gateway üzerinden açılır; sunucuda URL kullanılır
+    const target = s.localPort ? `/?XTransformPort=${s.localPort}` : s.url
+    if (target) window.open(target, '_blank', 'noopener')
+  }
+
   const unreadCount = unreadData?.items?.length ?? 0
 
   if (!user) return null
@@ -216,6 +246,38 @@ export function Sidebar() {
             </div>
           </div>
         ))}
+
+        {/* Platform Uygulamaları — yalnızca program admini */}
+        {isSuper && platformServices.length > 0 && (
+          <div>
+            {!sidebarCollapsed && (
+              <div className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                Uygulamalar
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {platformServices.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => openService(s)}
+                  title={sidebarCollapsed ? s.name : undefined}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 group"
+                >
+                  <span
+                    className="w-[18px] h-[18px] shrink-0 rounded-[5px] flex items-center justify-center text-[10px] font-bold text-white"
+                    style={{ backgroundColor: s.color }}
+                  >
+                    {s.name.charAt(0).toLocaleUpperCase('tr')}
+                  </span>
+                  {!sidebarCollapsed && <span className="truncate">{s.name}</span>}
+                  {!sidebarCollapsed && (
+                    <ExternalLink className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-60 transition-opacity shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* Footer */}
