@@ -8403,3 +8403,22 @@ Work Log:
 Stage Summary:
 - origin/main = 8a783e6; artık sunucuda reset/pull canlı veriyi ASLA bozmaz
 - Kritik uyarı kullanıcıya: reset sırasında db/custom.db diskten silineceği için yedek/geri yükleme adımları komut bloğuna gömüldü
+
+---
+Task ID: user-fix-https-button
+Agent: main (Super Z)
+Task: sik-kuafor.gncinc.online HTTPS çalışmıyor + "Tüm işletmelere" butonu ana sayfaya atıyor
+
+Work Log:
+- Kök neden 1 (buton): index.ts renderDetail homeUrl = https://${BASE_DOMAIN} → bare domain (ana site) gidiyordu; notFound randevuHome ise randevu.${BASE_DOMAIN} üretiyordu (iki fonksiyon tutarsız kural)
+- Düzeltme: listHost() yardımcı fonksiyonu (BASE_DOMAIN randevu. ile başlıyorsa aynen, değilse randevu. öneki) → her iki bağlantı da tek kurala bağlandı
+- Kök neden 2 (HTTPS): sunucu nginx catch-all bloğu yalnızca listen 80 — işletme alt alan adlarında 443/sertifika yok (deploy dokümanı: certbot randevu için çalıştırılmış, wildcard/per-slug çalıştırılmamış)
+- KRİTİK ONARIM: sandbox'taki hasarlı git (48 cron UUID commit, remote yok, gerçek nesneler yok) kurtarıldı — deploy dokümanından repo URL bulundu (kaancetin3141/gnc-erp, public) → remote eklendi → anonim fetch OK → reset --hard origin/main (720afe7) → db/custom.db reset sırasında silindi (beklenen), yedekten geri kondu
+- Test: customer-page BASE_DOMAIN=gncinc.online ile yeniden başlatıldı; Host: sik-kuafor.gncinc.online ile curl → notFound VE detay sayfası butonları artık https://randevu.gncinc.online (3 bağlantı: logo+header+breadcrumb) ✓
+- Commit 6f8d862; push denendi → anonim push imkânsız, yeni PAT bekleniyor
+- guncelle-gnc.sh kontrolü: origin/main sürümünde BASE_DOMAIN=${BASE_DOMAIN:-gncinc.online} zaten var — env koruması hazır
+
+Stage Summary:
+- Buton düzeltmesi hazır ve lokalde doğrulandı (6f8d862); PUSH İÇİN YENİ PAT GEREKLİ
+- Git kimliği kurtarıldı: HEAD=720afe7 gerçek geçmiş; db/custom.db (1.306.624B) geri yüklendi
+- HTTPS çözümü sunucuda: certbot --nginx -d <isletme>.gncinc.online (per-slug) veya wildcard; kullanıcıya komut bloğu verildi
