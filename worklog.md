@@ -8091,3 +8091,27 @@ Stage Summary:
 - Kullanıcının kendi kurulum hattı (kurulum.sh) projede güvende; benim server-setup.sh da duruyor — sunucuda hangisiyle kurarsa onun tasarımı
 - Repo src'sindeki ekstra özellikler (pdf-lib fatura PDF, veresiye ekstresi, kazandı→fatura zinciri, closures) ayrı iş — istenirse tek tek taşınabilir
 - Klon /tmp/gnc-erp'de duruyor (takip işleri için); /tmp temizlenince kaybolur ama GitHub'da güvende
+
+---
+Task ID: 11
+Agent: main agent
+Task: "repoda olan ve burda olmayan şeyleri al" — gnc-erp repo içeriğini mevcut projeye taşıma + cron 433093
+
+Work Log:
+- Cron 433093: ensure-services.sh çalıştı → OK (tüm mini servisler ayakta)
+- DB yedeği: db/backups/custom-20261006-014258-before-port.db (1.5MB)
+- Fark envanteri (diff-inventory.sh): src'de repo-only dosya SAYISI 0 — mevcut proje üst küme; 66 differ dosya analiz edildi
+- Sandbox sync tespiti: çalışma ağacına başka bir hat içeriği malzemeleşti (+5 model: CafeReservation/CreditCustomer/CreditEntry/PortfolioProject/ProviderClosure, pdf-lib deps, cafe rezervasyon, market veresiye, closures API, portfolio API'leri) — yarım merge riski bulundu
+- Yarım merge'in açık ucunu kapattım: market-credit'in import ettiği downloadFile api-client'a eklendi (GET / 500 hatası çözüldü)
+- REPODAN PORT EDİLENLER: kanban kazandı→fatura zinciri; closure kümesi (calendar/time-off/availability x2/public book/appointments/staff-timeoff-dialog/lib findClosureConflict); canlı kur kümesi (invoice-utils useFxRates + customer-360 + invoice-aging + aging-report-card); complaints route iyileştirmesi
+- ELLE MERGE: invoice-utils (repo canlı kur + mevcut buildInvoiceDocMessage korundu), api-client (+downloadFile)
+- ATANANLAR (mevcut daha zengin, alınmadı): fatura/veresiye PDF (mevcut pdfkit+doc-loaders), residents (mevcut bcrypt > repo sha256), lead-mining (mevcut OSM), chat-view/send-dialog/login-screen/auth (mevcut zengin), news/weather widgets
+- prisma db push: "already in sync" (tablo zaten ekli) + client regenerate OK
+- E2E TEST (Şık Kuaför, admin@sikkuaför.com/1234): closure OLUŞTUR 10 Eki → personel müsaitliği slots:[] + closure label ✓ → PUBLIC müsaitlik de kapalı ✓ → kontrol 12 Eki Pazartesi dolu slot ✓ → DELETE → 10 Eki tekrar açık ✓; /api/fx canlı (USD 49.16/EUR 55.13/GBP 64.98, source:live) ✓; dashboard 200 ✓
+- NOT: ana dev server süreçleri bash oturumu bitince ölüyor — subshell deseniyle başlatıldı: (nohup bun run dev &)
+- Commit: 9b77bea (39+ dosya; sync'in getirdiği tüm untracked dahil)
+
+Stage Summary:
+- gnc-erp reposundaki TÜM eksik özellikler artık mevcut projede; iki hat tek çizgide birleşti
+- Kazandı→Fatura + İşletme Tatili (randevu engelli) + Canlı Kur (bekleyen tahsilat/yaşlandırma TRY hesapları) canlı ve test edilmiş
+- Şema 90 model; db yedeği alınmış durumda; tüm değişiklikler git'li (sandbox revert'e karşı korumalı)
