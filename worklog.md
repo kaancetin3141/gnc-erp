@@ -7967,3 +7967,20 @@ Stage Summary:
 - Port 3002'de müstakil Türkçe müşteri sitesi çalışıyor: işletme listesi + arama/filtre, konuma göre en yakın (haversine), alt alan adı iskeleti (env ile açılır), uçtan uca randevu akışı (slot→form→başarı+WhatsApp)
 - 8 zorunlu doğrulama adımının tamamı kanıtlı: upstream gerçek veri ✓, HTML ✓, /api/businesses JSON ✓, detay title'da işletme adı ✓, slot array ✓, POST /api/book 200+id ✓ (ana uygulamada göründü), python ile işletme sayısı ✓
 - Sınırlamalar: DB'de şu an 1 işletme var (sistem çok işletmeyi otomatik gösterir); işletmelerde lat/lng null → mesafe rozeti koordinat eklenince otomatik aktifleşir; BASE_DOMAIN sandbox'ta tanımsız (kod test edildi, ör. example.test ile subdomain render kanıtlandı); ensure-services.sh 3002'yi bilmiyor (dokunulmadı) — kalıcılık çift-fork nohup deseniyle sağlandı
+
+---
+Task ID: 4
+Agent: main agent
+Task: mini-services/ içinden fruit-storm ve kaloriai klasörlerini SİLME (kullanıcı bunları sunucuda GitHub'dan kendisi indirecek)
+
+Work Log:
+- scripts/ensure-services.sh ve src/ içinde fruit-storm/kaloriai referansları kontrol edildi (src/ temiz; script yalnızca 'ensure' satırlarında)
+- rm -rf mini-services/fruit-storm mini-services/kaloriai → silindi; mini-services/ artık: appointment-reminders, chat-service, cron-automation, customer-page
+- 3003'te kalmış eski fruit-storm bun süreci (pid 28240) öldürüldü; 3004 zaten boştu
+- ensure-services.sh: 'ensure fruit-storm 3003' ve 'ensure kaloriai 3004' satırları BİLİNÇLİ olarak bırakıldı — kullanıcının reposunu sunucuda mini-services/ altına klonlaması hâlinde bekçi otomatik başlatır; klasör yoksa sessizce atlar (line 38 guard). Başlık yorumu güncellendi ("KULLANICI YÖNETİMİNDEDİR" notu)
+- Ana uygulama (3000) bu oturumda ölmüş bulunup çift-fork setsid nohup deseniyle yeniden başlatıldı → 200 OK; customer-page (3002) /healthz → 200 OK
+
+Stage Summary:
+- Proje artık dış reposlardan temiz: fruit-storm ve kaloriai klasörleri CRM'den tamamen kaldırıldı
+- Port planı değişmedi: 3002 customer-page (projede), 3003 fruit-storm (kullanıcı), 3004 KaloriAI (kullanıcı)
+- Sunucuda kullanıcının yapacağı: mini-services/ altına iki repoyu klonla → ensure-services.sh otomatik devralır
