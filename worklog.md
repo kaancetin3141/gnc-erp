@@ -8388,3 +8388,18 @@ Work Log:
 Stage Summary:
 - Push engeli KALDIRILDI; repo origin/main = local main (160c9cf)
 - Kullanıcı sunucuda guncelle-gnc.sh çalıştırınca: randevu.gncinc.online ana liste (bug fix), Program Admini admin/314159, RBAC kısıtları canlı olacak
+
+---
+Task ID: 23
+Agent: Ana ajan (Super Z)
+Task: "değişiklikler uygulanmadı" — sunucu güncelleme başarısızlığı teşhisi + db güvenlik düzeltmesi
+
+Work Log:
+- Teşhis: kullanıcı büyük olasılıkla önceki sed el yamasını uygulamıştı → sunucuda mini-services/customer-page/index.ts değişmişti → guncelle-gnc.sh içindeki git pull --ff-only REDDEDİLDİ → script "(pull başarısız)" ile eski kodla devam etti → hiçbir değişiklik canlıya gitmedi
+- EK RİSK bulundu: repo db/custom.db + db/backups/*.db + db/.pdf-share-secret dosyalarını TAKİP EDİYORDU — sunucuda git reset --hard yapılırsa canlı veritabanı yerel geliştirme kopyasıyla EZİLECEKTİ
+- Düzeltme: db/ tamamıyla takipten çıkarıldı (git rm -r --cached db/) + .gitignore kuralları; commit 8a783e6 push'landı
+- Sunucuya güvenli güncelleme bloğu verildi: DB yedeği → fetch + reset --hard origin/main (el yaması temizlenir) → DB geri yükleme → guncelle-gnc.sh
+
+Stage Summary:
+- origin/main = 8a783e6; artık sunucuda reset/pull canlı veriyi ASLA bozmaz
+- Kritik uyarı kullanıcıya: reset sırasında db/custom.db diskten silineceği için yedek/geri yükleme adımları komut bloğuna gömüldü
