@@ -8223,3 +8223,25 @@ Stage Summary:
 - Proje net iki parça oldu: CRM ana site (3000) + müşteri randevu sitesi (3002); chat 3005, cron 3010/3011 iç servis
 - KaloriAI/Fruit Storm bu projede hiçbir yerde listelenmez; sunucuya yüklenince Admin → Servisler → "Yeni Servis" ile bağlantı eklenir (yönetim yeri hazır)
 - Bayat derleme cache belirtisi: kod doğru ama UI eski kalır → çözüm rm -rf .next + temiz restart
+
+---
+Task ID: 16
+Agent: main (Z.ai Code)
+Task: "ana-sitede index.html'de müşteri arayüzü görünmüyor + KaloriAI yeri yok — yer oluştur; sunucu işlemleri TEK komut; Hostinger'da bir şey gerekli mi; GitHub'dan sunucuya otomatik indirme kodları"
+
+Work Log:
+- Kullanıcının kastettiği "ana site" bulundu: ana-site/index.html (gncinc.online statik portfolyo, nginx /var/www/gncinc-ana'ya kopyalanıyor)
+- ana-site/index.html: Müşteri Randevu Sistemi kartı eklendi (🗓️ randevu.gncinc.online, CANLIDA, "Randevu Al" CTA, harita/alt alan adı özellikleri) + Kalori AI kartı eklendi (🥗 kaloriai.gncinc.online, YAKINDA, "🚧 Yayına Hazırlanıyor") + footer linkleri (Randevu, Kalori AI) + meta/og açıklamaları + "4+ Proje" istatistiği
+- /api/portfolio GET: TEK SEFERLİK backfill seed (SystemSetting işaretçisi portfolio_defaults_v1) — tablo boşsa 4 varsayılan proje; kayıt varsa yalnız eksik subdomain'ler eklenir (kullanıcı kayıtları ve panel silmeleri korunur). Yerel doğrulama: mevcut "GNC CRM" korundu + 3 proje eklendi
+- deploy/kurulum.sh v2.3 → v3.0 (TEK KOMUT): +Bun kurulumu, +customer-page pm2 (3002, BASE_DOMAIN), +nginx v3 blokları (randevu + {slug} catch-all regex → 3002; fruitstorm+meyvepatlat → 3003; kaloriai → 3004), +Fruit Storm otomasyonu (eski 3001 kurulumunu 3003'e taşır; yoksa GitHub'dan klonlar: kaancetin3141/fruit-storm), +KaloriAI otomasyonu (GitHub'dan klonlar: kaancetin3141/KaloriAI; KENDİ .env/db garantili; db/kaloriai-data-recovered.db ilk kurulumda otomatik yüklenir), +tüm port sağlık kontrolü, +rozet bandında Hostinger DNS/certbot/komut rehberi. set -e güvenli ( deploy başarısızsa uyarı verip devam)
+- deploy/guncelle-gnc.sh v3 → v4: +gnc-customer-page taze restart (BASE_DOMAIN'li), +3002/3003/3004 sağlık kontrolü
+- scripts/server-setup.sh: Caddy'li eski sürüm KALDIRILDI (nginx ile çakışıyordu + yabancı repoları mini-services'e klonluyordu = kapsam ihlali) → deploy/kurulum.sh v3 sarmalayıcısı
+- deploy/SUNUCU-KOMUTLARI-3002-3003-3004.md başına "v3.0 tek komut" uyarısı eklendi (elle adımlar yedek/teşhis olarak kaldı)
+- Doğrulama (agent-browser + curl): bash -n 4 script ✓; lint 0 hata ✓; CRM 3000 restart sonrası 200 ✓ (ölü bun run dev süreçleri temizlendi, .next cache silindi); ana-site statik: 5 kart (CRM | Müşteri Randevu | Fruit Storm | Kalori AI | Sıradaki Proje) ✓ ekran görüntüleri logs/verify-anasite-*.png; canlı senkron yolu: tarayıcıdan CORS'lu fetch → 4 proje ✓; dev.log temiz ✓
+
+Stage Summary:
+- Ana sitede (gncinc.online) artık 4 proje kartı var: CRM, Müşteri Randevu (canlı), Fruit Storm, Kalori AI (yakında) — statik fallback + CRM panelinden canlı liste ikisi de hazır
+- SUNUCUDA TEK KOMUT: cd /var/www/gnc-erp && git pull && bash deploy/kurulum.sh gncinc.online "TOKEN'li-repo-adresi" → CRM+Randevu+FruitStorm+KaloriAI+nginx+ana site hepsi otomatik
+- Hostinger'da TEK şey: DNS'e A @ / CNAME www / A * (yıldız) → VPS IP; hosting paketi GEREKMEZ
+- GitHub otomatik indirme: kurulum.sh her çalışmada pull/klor; güncelleme: guncelle-gnc.sh + sudo gnc-oyun <isim>
+- Kapsam kuralı korundu: repo = CRM + customer-page; KaloriAI/Fruit Storm yalnızca sunucuda /var/www/oyunlar/ altına, kendi repolarından iner
