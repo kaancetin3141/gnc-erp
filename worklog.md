@@ -8351,3 +8351,24 @@ Work Log:
 Stage Summary:
 - Değişen dosyalar: mini-services/customer-page/index.ts, mini-services/customer-page/views.ts, deploy/kurulum.sh (cron tarafından fc5c53a içinde commit'lenmişti).
 - Sunucuya uygulanış: cd /var/www/gnc-erp && git pull --ff-only && pm2 restart gnc-customer-page
+
+---
+Task ID: 21
+Agent: Ana ajan (Super Z)
+Task: "Super adminin butonunu sil" + "program admin kullanıcı adı: admin, şifre: 314159" + "genel haritadaki randevu şirketlerinin linki ne?"
+
+Work Log:
+- login-screen.tsx: 'Yönetim' demo grubu (Program Admini tek tık giriş) TAMAMEN kaldırıldı; 'Demo Girişi — Yönetici olarak gir' ana butonu artık CRM admin (demo@anadolu.com) hesabına giriyor (daha önce yanlışlıkla superadmin'e gidiyordu)
+- Login form input type=email → type=text + inputMode=email: kullanıcı adı (boş @'siz) yazılabiliyor; label 'E-posta veya kullanıcı adı'
+- api/auth POST: '@' içermeyen identifier otomatik @gnccrm.app'e tamamlanır → "admin" girişi admin@gnccrm.app hesabını açar
+- seed.ts: Program Admini email admin@gnccrm.app; seed sonunda şifresi bcrypt('314159') (demo 1234'ü almaz); employeeCode GNC-001 koruması yeni email'e güncellendi
+- scripts/update-program-admin.cjs (YENİ, CommonJS): mevcut DB'ler için idempotent geçiş — eski email'i admin@gnccrm.app'e taşır, şifreyi 314159 yapar, hesap yoksa platform tenant'ı altında oluşturur; .env fallback'li
+- deploy/guncelle-gnc.sh: 3/8 (prisma db push) sonrası geçişi otomatik çalıştırır
+- e2e-hr-tickets.sh: yeni kimlik bilgileri; eslint.config.mjs: scripts/**/*.cjs ignore
+- Doğrulama: node scripts/update-program-admin.cjs ✓ (hesap taşındı); T1 admin/314159→200 superadmin ✓; T2 admin@gnccrm.app/314159→200 ✓; T3 eski email/1234→401 ✓; T4 demo@anadolu/1234→200 + admin.access YOK ✓; lint ✓; agent-browser E2E: login ekranında superadmin girişi YOK ✓, admin/314159 UI girişi→tam yetkili dashboard ✓, demo listesinde Program Admini yok ✓
+
+Stage Summary:
+- Program Admini giriş: admin + 314159 (veya admin@gnccrm.app + 314159); eski program.admin@gnccrm.app/1234 ölü
+- Sunucu güncelleme: bash guncelle-gnc.sh (geçişi otomatik yapar) veya manuel: node scripts/update-program-admin.cjs && pm2 restart gnc-crm
+- Harita linki cevabı: randevu.gncinc.online genel haritasındaki her işletme kartı https://<slug>.gncinc.online'a gider (views.ts bizHref) — ör. sik-kuafor → https://sik-kuafor.gncinc.online; BASE_DOMAIN'siz (yerel) modda /isletme/<slug>
+- Push hâlâ engelli: GitHub PAT ölü — 8 commit beklemede (02b39ef dahil)
