@@ -14,7 +14,7 @@ rm -f "$JAR"
 
 # ─── 1. Superadmin login (Program Admini) ───
 R=$(curl -s -c "$JAR" -X POST "$BASE/api/auth" -H 'Content-Type: application/json' \
-  -d '{"email":"program.admin@gnccrm.app","password":"1234"}')
+  -d '{"email":"admin@gnccrm.app","password":"314159"}')
 check "superadmin-login" '"user"' "$R"
 
 # ─── 2. İK: boş liste + demo yükle ───

@@ -11,15 +11,11 @@ import { Label } from '@/components/ui/label'
 import { Building2, Shield, Database, MapPin, Mail, Lock, Eye, EyeOff, LogIn, Sparkles, AlertTriangle, Zap, ChevronDown } from 'lucide-react'
 import type { SessionUser } from '@/types'
 
-// Program Admini (superadmin) — tüm modülleri + Admin Paneli + Dağıtım Merkezi görür
-const PROGRAM_ADMIN = { email: 'program.admin@gnccrm.app', name: 'Program Admini', role: 'Süper Admin — Tüm Yetkiler', badge: 'violet' }
+// NOT: Program Admini (superadmin) demo listede YOK — e-posta/kullanıcı adı + şifre ile girilir.
+// Program Admini girişi: admin (veya admin@gnccrm.app) — şifre ayrıca verilmiştir.
 
 // Tek tıkla denenebilecek demo hesapları (şifre: 1234) — tüm modüller
 const DEMO_GROUPS: { label: string; accounts: { email: string; name: string; role: string; badge: string }[] }[] = [
-  {
-    label: 'Yönetim',
-    accounts: [PROGRAM_ADMIN],
-  },
   {
     label: 'CRM / ERP (Ana)',
     accounts: [
@@ -51,7 +47,7 @@ const BADGE_STYLES: Record<string, string> = {
 
 export function LoginScreen() {
   const setSession = useAppStore((s) => s.setSession)
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState('') // kullanıcı adı da kabul edilir (örn. "admin" → admin@gnccrm.app)
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -227,14 +223,18 @@ export function LoginScreen() {
           ) : (
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="login-email" className="text-xs">E-posta</Label>
+                <Label htmlFor="login-email" className="text-xs">E-posta veya kullanıcı adı</Label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <Input
                     id="login-email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="ornek@gncinc.com"
+                    type="text"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    autoComplete="username"
+                    placeholder="admin veya ornek@gncinc.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-9 h-11"

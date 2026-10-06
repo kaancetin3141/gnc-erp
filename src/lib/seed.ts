@@ -204,7 +204,8 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
   const programAdmin = await db.user.create({
     data: {
       tenantId: tenantPlatform.id,
-      email: 'program.admin@gnccrm.app',
+      // Program Admini giriş kimliği: admin (veya admin@gnccrm.app) — şifre: 314159
+      email: 'admin@gnccrm.app',
       name: 'Program Admini',
       role: 'superadmin',
       permissions: JSON.stringify(getRolePermissions('superadmin')),
@@ -2132,7 +2133,7 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
   let seq = 0
   for (const u of allUsers) {
     // Program Admini zaten 'GNC-001' koduna sahip — üzerine yazma
-    if (u.email === 'program.admin@gnccrm.app') continue
+    if (u.email === 'admin@gnccrm.app') continue
     seq++
     const code = generateEmployeeCode(u.tenantId, seq)
     await db.user.update({ where: { id: u.id }, data: { employeeCode: code } })
@@ -2143,6 +2144,10 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
   const { default: bcrypt } = await import('bcryptjs')
   const defaultHash = await bcrypt.hash('1234', 10)
   await db.user.updateMany({ where: { passwordHash: null }, data: { passwordHash: defaultHash } })
+
+  // Program Admini — varsayılan 1234 DEĞİL: ayrıcalıklı hesabın şifresi 314159
+  const adminHash = await bcrypt.hash('314159', 10)
+  await db.user.updateMany({ where: { email: 'admin@gnccrm.app' }, data: { passwordHash: adminHash } })
 
   const counts = {
     tenants: 6,

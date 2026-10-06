@@ -62,6 +62,12 @@ export async function POST(req: NextRequest) {
   }
   email = email.normalize('NFC')
 
+  // Kullanıcı adı ile giriş: "@" içermiyorsa platform admin alan adına tamamlanır
+  // (örn. "admin" → admin@gnccrm.app) — Program Admini kısa kullanıcı adıyla girer
+  if (!email.includes('@')) {
+    email = `${email}@gnccrm.app`
+  }
+
   if (!email || !password) {
     return err('E-posta ve şifre gerekli', 400)
   }
