@@ -7984,3 +7984,22 @@ Stage Summary:
 - Proje artık dış reposlardan temiz: fruit-storm ve kaloriai klasörleri CRM'den tamamen kaldırıldı
 - Port planı değişmedi: 3002 customer-page (projede), 3003 fruit-storm (kullanıcı), 3004 KaloriAI (kullanıcı)
 - Sunucuda kullanıcının yapacağı: mini-services/ altına iki repoyu klonla → ensure-services.sh otomatik devralır
+
+---
+Task ID: 5
+Agent: main agent
+Task: KRİTİK VERİ KURTARMA + port düzeni + şema onarımı (sandbox revert)
+
+Work Log:
+- SORUN TESPİTİ: db/custom.db üzerine KaloriAI'nın şeması yazılmış (AiAnalysis, MealLog, FastingLog... CRM tabloları YOKTU) — kullanıcı "ana site silindi" demişti, gerçek sebep buydu; tüm oturum sorguları 401 çöküyordu (Session.userAgent kolon yok hatası)
+- KURTARMA: db/backups/custom-20261005-163033.db (son sağlam yedek) bulundu ve doğrulandı (72 CRM modeli) → custom.db olarak geri yüklendi; bozuk (KaloriAI şemalı) dosya db/kaloriai-data-recovered.db olarak korundu (kullanıcının KaloriAI verisi — sunucuda kendi reposuyla kullanabilir)
+- İKİNCİ SORUN: sandbox resume prisma/schema.prisma'yı eski sürüme geri çekmiş (SystemSetting modeli + ServiceProvider.lat/lng/geoCheckedAt kayıptı ama domains/geocode + settings API'leri bunları kullanıyordu) → şema elle onarıldı, db:push ile sync (61ms), client yeniden üretildi
+- DOĞRULAMA (curl + agent-browser E2E): GET / 200; POST /api/auth program.admin@gnccrm.app/1234 → 200 superadmin; /api/admin/tenants → 7 tenant; /api/admin/domains → baseDomain + Şık Kuaför (slug sik-kuafor); admin panel UI: İşletmeler tab (7 işletme listesi + seçince bilgi/roller/plan düzenleme), Alan Adları tab; "Eksik Konumları Bul" → OSM Nominatim gerçek koordinat geldi (40.9824237, 29.0406884 = Kadıköy/İstanbul, geo: 06.10.2026)
+- customer-page (3002) /healthz ok, /api/businesses geri gelen veriyi servis ediyor; preview linkleri sırası: 3002 (2.) → 3003 (3.) → 3004 (4.) — domains-tab.tsx önizleme notu "senin GitHub repon + bekçi otomatik başlatır" notuyla güncellendi
+- Manuel yedek alındı: db/backups/custom-20261006-002919.db (1.32 MB)
+- ensure-services.sh port haritası doğrulandı: customer-page 3002 / fruit-storm 3003 (kullanıcı reposu) / kaloriai 3004 (kullanıcı reposu) / chat-service 3005 / cron-automation 3010 / appointment-reminders 3011
+
+Stage Summary:
+- CRM verisi TAM kurtarıldı: 7 tenant, 23 kullanıcı, 33 müşteri, 1 işletme, 19 randevu, 56 lead
+- KaloriAI verisi de kaybolmadı: db/kaloriai-data-recovered.db (sunucuya taşınabilir)
+- SUNUCU UYARISI (önemli): KaloriAI reposu sunucuda kesinlikle CRM'in DATABASE_URL'ini KULLANMAMALI — kendi .env'inde file:./db/kaloriai.db gibi AYRI bir yol olmalı; aksi hâlde CRM db'si yine üzerine yazılır!
