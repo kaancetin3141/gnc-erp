@@ -8299,6 +8299,20 @@ Stage Summary:
 - "deneme" işletmesinin CRM'de oluşturulması gerektiği belirtildi
 
 ---
+Task ID: Kullanıcı isteği turu (2/3/4) — 13:40 civarı
+Agent: Ana ajan (Super Z)
+Task: "Program admini olarak gir butonu kaldırma" + "yönetici/şirket admininden Admin Paneli + Dağıtım Merkezi gizleme" + "sik-kuafor müşteri sayfasını ben açmadım" + nginx grep çıktısı değerlendirme
+
+Work Log:
+- İstek 2 ve 3 ZATEN YAPILMIŞ (commit 2749cb7 — webDevReview cron'u): login ekranından 'Program Admini olarak gir' butonu kaldırıldı (login-screen.tsx:324 yorumu); 'admin.access' izni yalnızca superadmin'de (rbac.ts:29,46-49,155 — Şirket Admini/Müdür rollerinde YOK), sidebar menüleri permission'la gizleniyor, API tarafı da guard'lı
+- İstek 4 kök nedeni: seed.ts:1937 'Şık Kuaför & Berber Salonu' (slug: sik-kuafor) DEMO VERİSİ — kurulum.sh /api/seed + /api/seed-realistic çağırınca otomatik yükleniyor; nginx regex catch-all (*.gncinc.online) yüzünden sik-kuafor.gncinc.online gerçek işletme sayfası olarak açılıyor. Kullanıcı oluşturmamış — kurulum oluşturdu. Çözüm: CRM'den işletmeyi silmek (veya istenirse server seed'ini temiz moda almak)
+- nginx çıktısı değerlendirildi: catch-all ✓ yerinde; gnc dosyasındaki 144+ satırlardaki mükerrer server_name'ler certbot'un 443 blokları (normal); gnc-proje-fruitstorm/meyvepatlat eski yedek conf'lar (zararsız); regex bloğu (satır 73) hâlâ *.gncinc.online'ı randevu'ya yönlendiriyor (catch-all'dan ÖNCE eşleşir)
+- Push testi: yine BAŞARISIZ — remote URL'deki PAT ölü (401 doğrulanmıştı); origin/main..main arasında 5 commit bekliyor (c2745b4, fc5c53a, a4d1676, 8da2496, 2749cb7)
+
+Stage Summary:
+- Kod tarafında yapılacak bir şey kalmadı; engel: ölü PAT. Yeni token gelince: git push origin main → sunucuda guncelle-gnc.sh (build gerektiren RBAC/login değişiklikleri ancak öyle yayınlanır)
+
+---
 Task ID: 20
 Agent: Ana ajan (Super Z)
 Task: (2) "Program Admini olarak gir" butonunu kaldır + (3) Admin Paneli ve Dağıtım Merkezi'ni şirket adminleri/müdürlerden çek + (4) nginx subdomain davranışı açıklaması
