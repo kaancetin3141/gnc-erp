@@ -37,7 +37,22 @@ echo "3/8) veritabanı...";     npx prisma db push
 if [ -f scripts/update-program-admin.cjs ]; then
   node scripts/update-program-admin.cjs || echo "   ! program admin geçişi atlandı (yukarıdaki hataya bak)"
 fi
-echo "4/8) build...";          NODE_OPTIONS=--max-old-space-size=1536 npm run build
+# --- 4/8) BUILD — küçük RAM'li sunucu koruması --------------------------------
+SWAP_MB=$(free -m | awk '/^Swap:/{print $2}')
+if [ "${SWAP_MB:-0}" -lt 2000 ]; then
+  echo -e "${YELLOW}! Swap küçük (${SWAP_MB:-0}MB) — build takılırsa 4G ekleyin:${NC}"
+  echo "     sudo fallocate -l 4G /swapfile2 && sudo chmod 600 /swapfile2 && sudo mkswap /swapfile2 && sudo swapon /swapfile2"
+fi
+echo "4/8) build... (RAM boşaltmak için servisler GEÇİCİ durduruluyor — site birkaç dk kapalı)"
+pm2 stop all >/dev/null 2>&1 || true
+BUILD_OK=1
+NODE_OPTIONS=--max-old-space-size=1536 npm run build || BUILD_OK=0
+pm2 restart all >/dev/null 2>&1 || pm2 resurrect >/dev/null 2>&1 || true
+if [ "$BUILD_OK" != "1" ]; then
+  echo -e "${RED}! BUILD BAŞARISIZ — servisler eski .next ile yeniden başlatıldı${NC}"
+  echo "   Çözüm: swap büyütme (yukarıdaki komut) + 'pm2 delete gnc-customer-page' ile RAM boşalt + tekrar deneyin"
+  exit 1
+fi
 echo "5/8) pm2 restart (CRM + Randevu)..."
 pm2 restart gnc-crm 2>/dev/null || sudo pm2 restart gnc-crm 2>/dev/null \
   || echo "   ! pm2'de gnc-crm bulunamadı — kurulum.sh'ı çalıştırın"
