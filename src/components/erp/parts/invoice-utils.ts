@@ -6,6 +6,8 @@ import {
   Clock, CheckCircle2, AlertTriangle, Ban, Hash,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { apiGet } from '@/lib/api-client'
 
 export interface InvoiceStatusMeta {
   value: string
@@ -30,12 +32,32 @@ export function getInvoiceStatusMeta(status: string): InvoiceStatusMeta {
   return INVOICE_STATUSES.find((s) => s.value === status) ?? INVOICE_STATUSES[0]
 }
 
-// ----- TRY bazlı kur dönüşümü (demo sabit kur) -----
+// ----- TRY bazlı kur dönüşümü (CANLI KUR + akıllı fallback) -----
 // Bekleyen tahsilat, yaşlandırma ve trend hesaplarında ortak kullanılır.
+// Kurlar /api/fx üzerinden (open.er-api.com canlı veri) güncellenir;
+// servis erişilemezse bilinen son değerler kullanılır.
 export const FX_TO_TRY: Record<string, number> = { TRY: 1, USD: 42, EUR: 45, GBP: 52 }
+
+export function setFxRates(rates: Record<string, number>): void {
+  for (const [k, v] of Object.entries(rates)) {
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) FX_TO_TRY[k] = v
+  }
+}
 
 export function toTry(amount: number, currency: string): number {
   return amount * (FX_TO_TRY[currency] ?? 1)
+}
+
+// Kurları canlı servisten çeken mini hook — kur kullanan bileşenlerde
+// bir kez çağrılır; veri gelince FX_TO_TRY güncellenir ve bileşen yeniden
+// render olur (hesaplar canlı kurlarla döner).
+export function useFxRates() {
+  return useQuery({
+    queryKey: ['fx-rates'],
+    queryFn: () => apiGet<{ rates: Record<string, number>; source: string }>('/api/fx'),
+    staleTime: 60 * 60 * 1000,
+    retry: 1,
+  })
 }
 
 // Gecikme günü hesabı — vadesi geçmiş bekleyen faturalar için

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, err, safeJsonParse } from '@/lib/api-utils'
 import { upsertCustomerForAppointment } from '@/lib/appointment-customer-server'
-import { timeOffCoversRange } from '@/lib/appointment-timeoff'
+import { timeOffCoversRange, findClosureConflict, timeOffLabel } from '@/lib/appointment-timeoff'
 import {
   type WorkingHours,
   dayKeyFromDate,
@@ -99,6 +99,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const staffTimeOffs = await db.staffTimeOff.findMany({
       where: { providerId: id, staffId: { in: activeStaffIds } },
     })
+
+    // İŞLETME TATİLİ KONTROLÜ — bayram/resmi tatil: tüm personel kapalı
+    const dayClosures = await db.providerClosure.findMany({
+      where: {
+        providerId: id,
+        date: {
+          gte: new Date(startDate.getTime() - 24 * 60 * 60_000),
+          lte: new Date(startDate.getTime() + 24 * 60 * 60_000),
+        },
+      },
+    })
+    const closureHit = findClosureConflict(dayClosures, startDate.getTime(), endDate.getTime())
+    if (closureHit) {
+      return err('İşletme seçtiğiniz tarihte kapalı (tatil) — lütfen başka bir gün deneyin', 409)
+    }
+
     const availableCandidates = activeStaffIds.filter((sId) => {
       const onLeave = staffTimeOffs.some(
         (t) => t.staffId === sId && timeOffCoversRange(t, startDate.getTime(), endDate.getTime()),
@@ -134,6 +150,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Çakışma kontrolü (belirli staff seçildiyse)
   if (staffId && staffId !== 'any' && finalStaffId) {
+    // İŞLETME TATİLİ KONTROLÜ — işletme kapalıysa randevu açılamaz
+    const dayClosures = await db.providerClosure.findMany({
+      where: {
+        providerId: id,
+        date: {
+          gte: new Date(startDate.getTime() - 24 * 60 * 60_000),
+          lte: new Date(startDate.getTime() + 24 * 60 * 60_000),
+        },
+      },
+    })
+    const closureHit = findClosureConflict(dayClosures, startDate.getTime(), endDate.getTime())
+    if (closureHit) {
+      return err(`İşletme seçtiğiniz tarihte kapalı (tatil: ${timeOffLabel(closureHit)}) — lütfen başka bir gün deneyin`, 409)
+    }
+
     // İZİN KONTROLÜ — seçilen personel bu saatte izinliyse reddet
     const staffTimeOffs = await db.staffTimeOff.findMany({
       where: { providerId: id, staffId: finalStaffId },

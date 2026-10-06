@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err, safeJsonParse } from '@/lib/api-utils'
-import { timeOffCoversRange } from '@/lib/appointment-timeoff'
+import { timeOffCoversRange, findClosureConflict, timeOffLabel } from '@/lib/appointment-timeoff'
 import {
   type WorkingHours,
   type DaySchedule,
@@ -116,8 +116,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     where: { providerId: id, staffId: { in: staffIds.length > 0 ? staffIds : undefined } },
   })
 
+  // İŞLETME TATİLİ — tatil aralığındaki slot'lar üretilmez
+  const closureDayStart = new Date(dateStr + 'T00:00:00')
+  const closures = await db.providerClosure.findMany({
+    where: {
+      providerId: id,
+      date: {
+        gte: new Date(closureDayStart.getTime() - 24 * 60 * 60_000),
+        lte: new Date(closureDayStart.getTime() + 24 * 60 * 60_000),
+      },
+    },
+  })
+
   // Her slot için: en az bir personel müsait mi?
   const availableSlots: string[] = []
+  const slotClosureHit: { label: string } | null = (() => {
+    // Günün ilk ve son slot'ları tatille kesişiyorsa bilgi döndürmek için
+    const first = allSlots[0]
+    const last = allSlots[allSlots.length - 1]
+    if (!first || !last) return null
+    const probeStart = slotToDateTime(dateStr, first).getTime()
+    const probeEnd = slotToDateTime(dateStr, last).getTime() + serviceDuration * 60_000
+    const hit = findClosureConflict(closures, probeStart, probeEnd)
+    return hit ? { label: timeOffLabel(hit) } : null
+  })()
   for (const slot of allSlots) {
     const slotStartMin = timeToMinutes(slot)
     const slotEndMin = slotStartMin + serviceDuration
@@ -126,6 +148,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (slotEndMin > dayEndMin) continue
     // Geçmiş saat kontrolü
     if (isToday && slotStartMin < nowMinutes) continue
+
+    // İŞLETME TATİLİ — slot tatil aralığıyla kesişiyorsa üretilmez
+    const slotStartDt = slotToDateTime(dateStr, slot)
+    const slotEndDt = new Date(slotStartDt.getTime() + serviceDuration * 60_000)
+    if (findClosureConflict(closures, slotStartDt.getTime(), slotEndDt.getTime())) continue
 
     // Personel bazında: en az biri müsait mi?
     if (staffIds.length === 0) {
@@ -158,6 +185,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     slots: availableSlots,
     workingHours: daySched,
     dayKey,
+    closure: slotClosureHit,
     nextAvailable: availableSlots[0] ?? null,
     nextAvailableLabel: availableSlots[0] ? `${availableSlots[0]} (${minutesToTime(timeToMinutes(availableSlots[0]) + serviceDuration)} bitiş)` : null,
   })

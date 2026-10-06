@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err, safeJsonParse } from '@/lib/api-utils'
 import { upsertCustomerForAppointment } from '@/lib/appointment-customer-server'
-import { timeOffCoversRange, timeOffLabel } from '@/lib/appointment-timeoff'
+import { timeOffCoversRange, timeOffLabel, findClosureConflict } from '@/lib/appointment-timeoff'
 
 // GET — randevu listesi (tarih/staff/status filtreli)
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -139,6 +139,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (hit) {
       return err(`Personel bu saatte izinli (${timeOffLabel(hit)}) — başka bir personel seçin veya izin kaydını kaldırın`, 409)
     }
+  }
+
+  // İŞLETME TATİLİ KONTROLÜ — bayram/resmi tatil/tadilat: tüm personel kapalı (force bile aşamaz)
+  const closures = await db.providerClosure.findMany({
+    where: {
+      providerId: id,
+      date: {
+        gte: new Date(startTime.getTime() - 24 * 60 * 60_000),
+        lte: new Date(endTime.getTime() + 24 * 60 * 60_000),
+      },
+    },
+  })
+  const closureHit = findClosureConflict(closures, startTime.getTime(), endTime.getTime())
+  if (closureHit) {
+    return err(`İşletme bu saatte kapalı (${timeOffLabel(closureHit)}) — tatil kaydını kaldırın veya başka bir tarih seçin`, 409)
   }
 
   const appointment = await db.appointment.create({

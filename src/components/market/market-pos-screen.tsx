@@ -20,7 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   ScanLine, Search, Plus, Minus, Trash2, ShoppingCart,
-  Banknote, CreditCard, Wallet, X, Receipt, Play, Square, FileText, Printer, Star,
+  Banknote, CreditCard, Wallet, X, Receipt, Play, Square, FileText, Printer, NotebookPen, UserRound, Star,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCurrency, formatDateTime } from '@/lib/format'
@@ -113,6 +113,14 @@ interface SaleResponse {
   }>
 }
 
+interface CreditCustomerOption {
+  id: string
+  name: string
+  balance: number
+  creditLimit: number | null
+  isActive: boolean
+}
+
 interface LoyaltyLookup {
   items: Array<{ id: string; name: string; phone: string | null; points: number }>
 }
@@ -146,7 +154,7 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [discount, setDiscount] = useState(0)
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mixed'>('cash')
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mixed' | 'veresiye'>('cash')
   const [cashGiven, setCashGiven] = useState(0)
   const [cardAmount, setCardAmount] = useState(0)
   const [processing, setProcessing] = useState(false)
@@ -157,6 +165,15 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
   const [zReportOpen, setZReportOpen] = useState(false)
   const [lastClosedShift, setLastClosedShift] = useState<Shift | null>(null)
   const [customerName, setCustomerName] = useState('')
+  const [creditCustomerId, setCreditCustomerId] = useState('')
+  const [creditDueDate, setCreditDueDate] = useState('')
+
+  // Veresiye müşterileri (ödeme seçimi için)
+  const { data: creditData } = useQuery<{ items: CreditCustomerOption[] }>({
+    queryKey: ['market-credit-pos', marketId],
+    queryFn: () => apiGet(`/api/market/${marketId}/credit`),
+    staleTime: 30_000,
+  })
 
   // Sadakat puanı — müşteri adı yazıldıkça canlı arama (300ms debounce)
   const [debouncedCustomer, setDebouncedCustomer] = useState('')
@@ -180,6 +197,8 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
     const q = debouncedCustomer.toLowerCase()
     return (loyaltyData?.items ?? []).filter((a) => a.name.toLowerCase().includes(q)).slice(0, 2)
   }, [loyaltyData, loyaltyMatch, debouncedCustomer])
+  const creditCustomers = (creditData?.items ?? []).filter((c) => c.isActive)
+  const selectedCreditCustomer = creditCustomers.find((c) => c.id === creditCustomerId) ?? null
 
   const barcodeRef = useRef<HTMLInputElement>(null)
 
@@ -309,6 +328,10 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
       toast.error('Ödeme tutarı yetersiz')
       return
     }
+    if (paymentMethod === 'veresiye' && !creditCustomerId) {
+      toast.error('Veresiye için müşteri seçin')
+      return
+    }
 
     setProcessing(true)
     try {
@@ -323,15 +346,21 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
         cardAmount: paymentMethod === 'card' ? total : paymentMethod === 'mixed' ? cardAmount : 0,
         discount: discountAmount,
         customerName: customerName.trim() || undefined,
+        creditCustomerId: paymentMethod === 'veresiye' ? creditCustomerId : undefined,
+        creditDueDate: paymentMethod === 'veresiye' && creditDueDate ? new Date(creditDueDate + 'T23:59:59').toISOString() : undefined,
       })
 
       setLastSale(sale)
       setReceiptOpen(true)
       clearCart()
       setCustomerName('')
+      setCreditCustomerId('')
+      setCreditDueDate('')
       qc.invalidateQueries({ queryKey: ['market-shifts', marketId] })
       qc.invalidateQueries({ queryKey: ['market-sales', marketId] })
       qc.invalidateQueries({ queryKey: ['market-barcodes', marketId] })
+      qc.invalidateQueries({ queryKey: ['market-credit'] })
+      qc.invalidateQueries({ queryKey: ['market-credit-pos', marketId] })
       qc.invalidateQueries({ queryKey: ['loyalty-lookup'] })
       if (sale.earnedPoints > 0) {
         toast.success(`Satış tamamlandı: ${sale.number} — ${sale.customerName} +${sale.earnedPoints} puan kazandı ⭐`)
@@ -662,7 +691,7 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
               {/* Ödeme yöntemi */}
               <div className="space-y-2">
                 <Label className="text-xs">Ödeme Yöntemi</Label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-4 gap-1.5">
                   <button
                     onClick={() => setPaymentMethod('cash')}
                     className={cn(
@@ -699,7 +728,68 @@ export function MarketPosScreen({ marketId }: { marketId: string }) {
                     <Wallet className="w-5 h-5" />
                     <span className="text-xs font-medium">Karışık</span>
                   </button>
+                  <button
+                    onClick={() => setPaymentMethod('veresiye')}
+                    className={cn(
+                      'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all',
+                      paymentMethod === 'veresiye'
+                        ? 'border-orange-500 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400'
+                        : 'border-border hover:border-orange-300',
+                    )}
+                  >
+                    <NotebookPen className="w-5 h-5" />
+                    <span className="text-xs font-medium">Veresiye</span>
+                  </button>
                 </div>
+                {paymentMethod === 'veresiye' && (
+                  <div className="space-y-2">
+                    <div>
+                      <Label className="text-xs">Veresiye Müşterisi *</Label>
+                      {creditCustomers.length === 0 ? (
+                        <div className="mt-1 flex items-start gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                          <UserRound className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>Henüz veresiye müşterisi yok. Veresiye sekmesinden müşteri ekleyin.</span>
+                        </div>
+                      ) : (
+                        <Select value={creditCustomerId} onValueChange={setCreditCustomerId}>
+                          <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Müşteri seçin" /></SelectTrigger>
+                          <SelectContent>
+                            {creditCustomers.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.name}{c.balance > 0 ? ` · borç ${formatCurrency(c.balance)}` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                    {selectedCreditCustomer && (
+                      <div className="rounded-lg bg-orange-50 dark:bg-orange-950/30 p-2.5 text-xs space-y-0.5">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Mevcut borç</span>
+                          <span className="font-semibold tabular-nums">{formatCurrency(selectedCreditCustomer.balance)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Bu satışla birlikte</span>
+                          <span className="font-bold tabular-nums">{formatCurrency(selectedCreditCustomer.balance + total)}</span>
+                        </div>
+                        {selectedCreditCustomer.creditLimit != null && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Limit</span>
+                            <span className={cn('font-semibold tabular-nums', selectedCreditCustomer.balance + total > selectedCreditCustomer.creditLimit ? 'text-red-600' : 'text-emerald-600')}>
+                              {formatCurrency(selectedCreditCustomer.creditLimit)}
+                              {selectedCreditCustomer.balance + total > selectedCreditCustomer.creditLimit && ' ⚠ aşılıyor'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div>
+                      <Label className="text-xs">Vade Tarihi (opsiyonel)</Label>
+                      <Input type="date" value={creditDueDate} onChange={(e) => setCreditDueDate(e.target.value)} className="mt-1 h-10" />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Ödeme tutarları */}

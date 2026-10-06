@@ -65,3 +65,22 @@ export function findTimeOffConflict<T extends TimeOffLike & { staffId?: string |
   }
   return null
 }
+
+// ============================================================
+// İŞLETME TATİLİ (PROVIDER CLOSURE) YARDIMCILARI
+// Closure kaydı TimeOffLike ile aynı şekildedir (date, isFullDay,
+// startTime, endTime) — pencere hesaplayıcıları yeniden kullanılır.
+// StaffId filtresi YOKTUR: closure tüm işletmeyi kapatır.
+// ============================================================
+
+/** Verilen randevu aralığıyla kesişen İLK işletme tatilini bulur. */
+export function findClosureConflict<T extends TimeOffLike>(
+  closures: T[],
+  rangeStartMs: number,
+  rangeEndMs: number,
+): T | null {
+  for (const c of closures) {
+    if (timeOffCoversRange(c, rangeStartMs, rangeEndMs)) return c
+  }
+  return null
+}

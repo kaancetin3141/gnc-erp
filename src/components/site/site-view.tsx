@@ -21,10 +21,11 @@ import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate } from '@/lib/format'
 import {
   Building2, Plus, CheckCircle2, MessageCircle, Users, Megaphone,
-  AlertTriangle, Home, User, Phone, Pencil, Trash2, Calculator,
+  AlertTriangle, Home, User, Phone, Pencil, Trash2, Calculator, Printer,
 } from 'lucide-react'
 import { ApartmentFormDialog, type Apartment } from './apartment-form-dialog'
 import { BlockFormDialog, type Block } from './block-form-dialog'
+import { SiteComplaints, ComplaintCreateButton } from './site-complaints'
 
 interface SiteData {
   id: string; name: string; address: string | null; city: string | null; phone: string | null
@@ -42,6 +43,11 @@ interface DuesItem {
   currency: string
   dueDate: string
   status: string
+  month?: number
+  year?: number
+  paidDate?: string | null
+  paidAmount?: number | null
+  paymentMethod?: string | null
   lateFee?: number | null
   lateFeeAppliedAt?: string | null
   notes?: string | null
@@ -125,6 +131,55 @@ export function SiteView() {
   })
 
   // Şikayetler (API düz array döner) — overview & complaints tab'ında yüklenir
+  // Aidat makbuzu yazdır (yazıcı-dostu fiş)
+  const printDuesReceipt = (d: DuesItem) => {
+    const fee = (d.lateFee ?? 0) > 0 ? d.lateFee! : 0
+    const total = d.amount + fee
+    const win = window.open('', '_blank', 'width=420,height=640')
+    if (!win) { toast.error('Yazdırma penceresi açılamadı — pop-up engelleyiciyi kontrol edin'); return }
+    win.document.write(`<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><title>Aidat Makbuzu</title>
+      <style>
+        * { margin:0; padding:0; box-sizing:border-box; font-family: ui-sans-serif, system-ui, sans-serif; }
+        body { padding:24px; color:#111; }
+        .head { text-align:center; border-bottom:2px solid #111; padding-bottom:12px; margin-bottom:14px; }
+        .head h1 { font-size:18px; }
+        .head p { font-size:11px; color:#555; margin-top:2px; }
+        .row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px dashed #ddd; font-size:12px; }
+        .row span:first-child { color:#555; }
+        .row span:last-child { font-weight:600; }
+        .total { display:flex; justify-content:space-between; padding:10px 0; font-size:15px; font-weight:800; margin-top:8px; border-top:2px solid #111; }
+        .status { text-align:center; margin:14px 0; }
+        .badge { display:inline-block; padding:4px 14px; border-radius:9999px; font-size:11px; font-weight:700; border:1px solid; }
+        .ok { color:#047857; border-color:#6ee7b7; background:#ecfdf5; }
+        .late { color:#b91c1c; border-color:#fca5a5; background:#fef2f2; }
+        .unpaid { color:#b45309; border-color:#fcd34d; background:#fffbeb; }
+        .foot { text-align:center; font-size:10px; color:#777; margin-top:18px; }
+        @media print { body { padding:8px; } }
+      </style></head><body>
+      <div class="head">
+        <h1>${site?.name ?? 'Site Yönetimi'}</h1>
+        <p>${site?.address ?? ''} ${site?.phone ? '· ' + site.phone : ''}</p>
+      </div>
+      <div class="row"><span>Makbuz No</span><span>AKB-${d.id.slice(-8).toUpperCase()}</span></div>
+      <div class="row"><span>Tarih</span><span>${new Date().toLocaleDateString('tr-TR')}</span></div>
+      <div class="row"><span>Daire</span><span>${d.apartment?.block?.name ?? ''} ${d.apartment?.number ?? ''}</span></div>
+      <div class="row"><span>Sakin</span><span>${d.resident?.name ?? '—'}</span></div>
+      <div class="row"><span>Dönem</span><span>${String(d.month ?? 0).padStart(2,'0')}/${d.year ?? ''}</span></div>
+      <div class="row"><span>Aidat Tutarı</span><span>${formatCurrency(d.amount, d.currency)}</span></div>
+      ${fee > 0 ? `<div class="row"><span>Gecikme Zammı</span><span>+${formatCurrency(fee, d.currency)}</span></div>` : ''}
+      <div class="total"><span>TOPLAM</span><span>${formatCurrency(total, d.currency)}</span></div>
+      <div class="status">
+        <span class="badge ${d.status === 'odendi' ? 'ok' : d.status === 'gecikti' ? 'late' : 'unpaid'}">
+          ${d.status === 'odendi' ? 'ÖDENDİ' + (d.paidDate ? ` — ${new Date(d.paidDate).toLocaleDateString('tr-TR')}` : '') : d.status === 'gecikti' ? 'GECİKTİ' : 'ÖDENMEDİ'}
+        </span>
+      </div>
+      ${d.status === 'odendi' && d.paymentMethod ? `<div class="row"><span>Ödeme Yöntemi</span><span>${d.paymentMethod === 'cash' ? 'Nakit' : d.paymentMethod === 'bank' ? 'Banka' : 'Online'}</span></div>` : ''}
+      <div class="foot">Bu makbuz GNC CRM Site Yönetimi tarafından oluşturulmuştur.</div>
+      <script>window.onload = function() { window.print(); }</script>
+    </body></html>`)
+    win.document.close()
+  }
+
   const { data: complaintList = [] } = useQuery<ComplaintItem[]>({
     queryKey: ['complaints', siteId],
     queryFn: () => apiGet<ComplaintItem[]>(`/api/site/${siteId}/complaints`),
@@ -515,6 +570,10 @@ export function SiteView() {
                             )}
                           </>
                         )}
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" title="Makbuz Yazdır"
+                          onClick={() => printDuesReceipt(d)}>
+                          <Printer className="w-4 h-4" />
+                        </Button>
                         {d.status === 'gecikti' && (
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600" title="Ödendi (Gecikme ile)"
                             onClick={async () => { await apiPatch(`/api/site/${siteId}/dues/${d.id}`, { status: 'odendi', paidAmount: total }); qc.invalidateQueries({ queryKey: ['dues'] }); toast.success('Ödendi (gecikme zammı dahil)') }}>
@@ -578,29 +637,12 @@ export function SiteView() {
           </div>
         </TabsContent>
 
-        {/* Şikayetler */}
+        {/* Şikayetler — gelişmiş arıza/talep yönetimi */}
         <TabsContent value="complaints" className="mt-4">
-          <div className="space-y-2">
-            {complaintList.map(c => (
-              <Card key={c.id}><CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" className={cn('text-[10px]', c.status === 'cozuldu' ? 'text-emerald-600 bg-emerald-50' : c.status === 'acik' ? 'text-amber-600 bg-amber-50' : 'text-slate-600')}>
-                    {c.status === 'acik' ? 'Açık' : c.status === 'inceleniyor' ? 'İnceleniyor' : c.status === 'cozuldu' ? 'Çözüldü' : 'Reddedildi'}
-                  </Badge>
-                  <span className="font-medium text-sm">{c.title}</span>
-                </div>
-                <p className="text-sm text-muted-foreground">{c.description}</p>
-                <div className="text-xs text-muted-foreground mt-1">{c.resident?.name ?? 'Anonim'} · {formatDate(c.createdAt)}</div>
-                {c.response && <div className="mt-2 p-2 rounded-lg bg-muted/30 text-xs"><strong>Cevap:</strong> {c.response}</div>}
-              </CardContent></Card>
-            ))}
-            {complaintList.length === 0 && (
-              <Card><CardContent className="py-8 text-center">
-                <AlertTriangle className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">Şikayet yok</p>
-              </CardContent></Card>
-            )}
+          <div className="flex justify-end mb-2">
+            <ComplaintCreateButton siteId={siteId} />
           </div>
+          <SiteComplaints siteId={siteId} />
         </TabsContent>
       </Tabs>
 

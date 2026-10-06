@@ -14,7 +14,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { Invoice } from './types'
-import { toTry, overdueDays } from './invoice-utils'
+import { toTry, overdueDays, useFxRates } from './invoice-utils'
 
 export type AgingBucket = '__all__' | 'notdue' | 'd1_30' | 'd31_60' | 'd61p'
 
@@ -70,6 +70,8 @@ interface InvoiceAgingProps {
 }
 
 export function InvoiceAging({ invoices, activeBucket, onBucketChange }: InvoiceAgingProps) {
+  // Canlı döviz kuru — toTry hesapları bu veriyle güncellenir
+  useFxRates()
   const data = useMemo(() => {
     const now = Date.now()
     const pending = invoices.filter((i) => i.status === 'odeme_bekliyor' || i.status === 'gecikti')

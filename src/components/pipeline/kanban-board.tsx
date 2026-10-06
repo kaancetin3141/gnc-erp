@@ -1340,11 +1340,15 @@ export function KanbanBoard() {
   const [editingDeal, setEditingDeal] = React.useState<Deal | null>(null)
   const [lossDialogOpen, setLossDialogOpen] = React.useState(false)
   const [pendingLossDeal, setPendingLossDeal] = React.useState<Deal | null>(null)
+  const [wonInvoiceOpen, setWonInvoiceOpen] = React.useState(false)
+  const [pendingWonDeal, setPendingWonDeal] = React.useState<Deal | null>(null)
+  const [invoiceBusy, setInvoiceBusy] = React.useState(false)
 
   const [activeDeal, setActiveDeal] = React.useState<Deal | null>(null)
   const [dropTargetStage, setDropTargetStage] = React.useState<string | null>(null)
 
   const canManage = hasPermission(user, 'deals.manage')
+  const canInvoice = hasPermission(user, 'erp.manage')
 
   // Sensörler — pointer ile sürükleme, 8px aktivasyon mesafesi
   const sensors = useSensors(
@@ -1482,6 +1486,11 @@ export function KanbanBoard() {
           body: { stage: 'kazanıldı', probability: 100 },
         })
         toast.success('Fırsat kazanıldı olarak işaretlendi 🎉')
+        // KAZANDI→FATURA ZİNCİRİ: değeri olan fırsat için taslak fatura teklif et
+        if (canInvoice && deal.customerId && deal.value > 0) {
+          setPendingWonDeal(deal)
+          setWonInvoiceOpen(true)
+        }
       } catch (err) {
         toast.error(err instanceof ApiError ? err.message : 'Güncelleme başarısız')
       }
@@ -1545,6 +1554,38 @@ export function KanbanBoard() {
       setPendingLossDeal(null)
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Güncelleme başarısız')
+    }
+  }
+
+
+  // KAZANDI→FATURA: kazanılan fırsattan gerçek fatura üret (POST /api/invoices)
+  const createWonInvoice = async () => {
+    if (!pendingWonDeal) return
+    setInvoiceBusy(true)
+    try {
+      const inv = await apiPost<{ id: string; number: string; total: number }>('/api/invoices', {
+        customerId: pendingWonDeal.customerId,
+        currency: pendingWonDeal.currency,
+        lines: [{
+          description: pendingWonDeal.title + ' — kazanılan fırsat',
+          qty: 1,
+          unitPrice: pendingWonDeal.value,
+          taxRate: 20,
+        }],
+      })
+      toast.success('Fatura oluşturuldu: ' + inv.number, {
+        description: (pendingWonDeal.customer?.name ?? '') + ' · ' + formatCurrency(inv.total, pendingWonDeal.currency),
+      })
+      void queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      void queryClient.invalidateQueries({ queryKey: qk.dashboard })
+      setWonInvoiceOpen(false)
+      setPendingWonDeal(null)
+    } catch (err) {
+      toast.error('Fatura oluşturulamadı', {
+        description: err instanceof ApiError ? err.message : 'Bilinmeyen hata',
+      })
+    } finally {
+      setInvoiceBusy(false)
     }
   }
 
@@ -1813,6 +1854,38 @@ export function KanbanBoard() {
           deal={pendingLossDeal}
           onConfirm={handleLossConfirm}
         />
+
+        {/* KAZANDI → FATURA zinciri diyaloğu */}
+        <Dialog open={wonInvoiceOpen} onOpenChange={(v) => { setWonInvoiceOpen(v); if (!v) setPendingWonDeal(null) }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-500" />
+                Fırsat kazanıldı — fatura oluştur?
+              </DialogTitle>
+              <DialogDescription>
+                Kazanılan fırsat için değeri üzerinden otomatik taslak fatura oluşturulabilir.
+              </DialogDescription>
+            </DialogHeader>
+            {pendingWonDeal && (
+              <div className="rounded-lg border p-3 space-y-1.5 text-sm">
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Fırsat</span><span className="font-medium text-right">{pendingWonDeal.title}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Müşteri</span><span className="font-medium">{pendingWonDeal.customer?.name ?? '—'}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Tutar</span><span className="font-medium">{formatCurrency(pendingWonDeal.value, pendingWonDeal.currency)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">Kalem</span><span>1 × {pendingWonDeal.title}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-muted-foreground">KDV</span><span>%20 oranında hesaplanır</span></div>
+              </div>
+            )}
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => { setWonInvoiceOpen(false); setPendingWonDeal(null) }}>
+                Şimdi değil
+              </Button>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => void createWonInvoice()} disabled={invoiceBusy}>
+                {invoiceBusy ? 'Oluşturuluyor…' : 'Fatura Oluştur'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </TooltipProvider>
   )

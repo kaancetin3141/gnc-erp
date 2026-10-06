@@ -11,6 +11,7 @@ import { CafeMenuManager } from './cafe-menu-manager'
 import { CafeOrderScreen } from './cafe-order-screen'
 import { CafeBarScreen, CafeKitchenScreen } from './cafe-bar-screen'
 import { CafeKasaScreen } from './cafe-kasa-screen'
+import { CafeReservations } from './cafe-reservations'
 import { CafeReports } from './cafe-reports'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -112,6 +113,10 @@ export function CafeView() {
     // Kasa: kasa, admin
     if (hasPermission(u, 'cafe.manage')) {
       all.push({ key: 'kasa', label: 'Kasa' })
+    }
+    // Rezervasyon: admin (ve komi/garson masaya yerleştirme için)
+    if (hasPermission(u, 'cafe.orders') || hasPermission(u, 'cafe.manage')) {
+      all.push({ key: 'reservations', label: 'Rezervasyon' })
     }
     // Raporlar: kasa, admin
     if (hasPermission(u, 'cafe.manage')) {
@@ -262,6 +267,9 @@ export function CafeView() {
         </TabsContent>
         <TabsContent value="kasa" className="mt-4">
           <CafeKasaScreen cafeId={selectedCafe.id} />
+        </TabsContent>
+        <TabsContent value="reservations" className="mt-4">
+          <CafeReservations cafeId={selectedCafe.id} />
         </TabsContent>
         <TabsContent value="reports" className="mt-4">
           <CafeReports cafeId={selectedCafe.id} />

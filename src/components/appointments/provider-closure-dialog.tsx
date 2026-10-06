@@ -1,10 +1,11 @@
 'use client'
 
 // ============================================================
-// PERSONEL İZİN GÜNLERİ DİYALOĞU
-// · Mevcut izin kayıtları (yakınlar vurgulu, geçmişler soluk)
-// · Yeni izin: tam gün veya saat aralıklı + sebep
-// · İzinli personel bu aralıkta randevu alamaz (API tarafında da engelli)
+// İŞLETME TATİLİ / KAPANIŞ GÜNLERİ DİYALOĞU
+// · Mevcut tatil kayıtları (yakınlar vurgulu, geçmişler soluk)
+// · Yeni tatil: tam gün veya saat aralıklı + sebep
+// · Çakışan aktif randevu varsa 409 → "Yine de kapat" seçeneği sunar
+// · Tatilde tüm personel randevu alamaz (manuel + online + slot üretimi)
 // ============================================================
 
 import { useState } from 'react'
@@ -22,11 +23,10 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { describeTimeOff } from '@/lib/appointment-timeoff'
-import { Palmtree, Plus, Trash2, CalendarOff, Clock } from 'lucide-react'
+import { Building2, Plus, Trash2, CalendarOff, Clock, AlertTriangle } from 'lucide-react'
 
-interface TimeOffEntry {
+interface ClosureEntry {
   id: string
-  staffId: string
   date: string
   isFullDay: boolean
   startTime: string | null
@@ -34,24 +34,12 @@ interface TimeOffEntry {
   reason: string | null
 }
 
-interface MovedAppointment {
-  customerName: string
-  to: string
-  time: string
-}
-
-interface TimeOffPostResult extends TimeOffEntry {
-  movedAppointments?: MovedAppointment[]
-}
-
-export function StaffTimeOffDialog({
+export function ProviderClosureDialog({
   providerId,
-  staff,
   open,
   onOpenChange,
 }: {
   providerId: string
-  staff: { id: string; name: string; title?: string | null }
   open: boolean
   onOpenChange: (v: boolean) => void
 }) {
@@ -62,15 +50,22 @@ export function StaffTimeOffDialog({
   const [endTime, setEndTime] = useState('13:00')
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
+  const [forceMode, setForceMode] = useState(false)
+  const [lastConflictMsg, setLastConflictMsg] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [reassignOffer, setReassignOffer] = useState(false)
+
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ['appointment-closures', providerId] })
+    qc.invalidateQueries({ queryKey: ['appointment-closure-range', providerId] })
+    qc.invalidateQueries({ queryKey: ['appointment-appointments', providerId] })
+  }
 
   const { data, isLoading } = useQuery({
-    queryKey: ['appointment-timeoff', providerId, staff.id],
-    queryFn: () => apiGet<TimeOffEntry[]>(
-      `/api/appointments/providers/${providerId}/time-off?staffId=${staff.id}`,
+    queryKey: ['appointment-closures', providerId],
+    queryFn: () => apiGet<ClosureEntry[]>(
+      `/api/appointments/providers/${providerId}/closures`,
     ),
-    enabled: open && !!staff.id,
+    enabled: open,
   })
 
   const entries = Array.isArray(data) ? data : []
@@ -78,86 +73,58 @@ export function StaffTimeOffDialog({
   const upcoming = entries.filter((t) => new Date(t.date).toDateString() >= todayKey)
   const past = entries.filter((t) => new Date(t.date).toDateString() < todayKey)
 
-  async function handleAdd() {
-    if (!date) {
-      toast.error('Tarih seçin')
-      return
-    }
-    setReassignOffer(false)
+  async function submit(force: boolean) {
     setSaving(true)
     try {
-      const res = await apiPost<TimeOffPostResult>(
-        `/api/appointments/providers/${providerId}/time-off`, {
-        staffId: staff.id,
+      await apiPost(`/api/appointments/providers/${providerId}/closures`, {
         date,
         isFullDay,
         startTime: isFullDay ? undefined : startTime,
         endTime: isFullDay ? undefined : endTime,
         reason: reason || undefined,
+        force: force || undefined,
       })
-      const moved = res?.movedAppointments ?? []
-      if (moved.length > 0) {
-        toast.success(`İzin kaydı eklendi — ${moved.length} randevu otomatik dağıtıldı`, {
-          description: moved.map((m) => `${m.customerName} (${m.time}) → ${m.to}`).join(' · '),
-        })
-      } else {
-        toast.success('İzin kaydı eklendi', {
-          description: `${staff.name} bu tarihte randevu alamaz.`,
-        })
-      }
+      toast.success('İşletme tatili eklendi', {
+        description: 'Bu aralıkta yeni randevu alınamaz (manuel ve online dahil).',
+      })
       setDate('')
       setReason('')
       setIsFullDay(true)
-      qc.invalidateQueries({ queryKey: ['appointment-timeoff', providerId] })
-      qc.invalidateQueries({ queryKey: ['appointment-timeoff-range', providerId] })
-      qc.invalidateQueries({ queryKey: ['appointment-appointments', providerId] })
+      setForceMode(false)
+      setLastConflictMsg(null)
+      invalidate()
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'İzin kaydı eklenemedi'
-      if (msg.includes('aktif randevu var')) setReassignOffer(true)
+      const msg = e instanceof Error ? e.message : 'Tatil kaydı eklenemedi'
+      if (msg.includes('aktif randevu var')) {
+        setLastConflictMsg(msg)
+        setForceMode(true)
+      }
       toast.error(msg)
     } finally {
       setSaving(false)
     }
   }
 
-  async function handleAutoReassign() {
-    setSaving(true)
-    try {
-      const res = await apiPost<TimeOffPostResult>(
-        `/api/appointments/providers/${providerId}/time-off`, {
-        staffId: staff.id,
-        date,
-        isFullDay,
-        startTime: isFullDay ? undefined : startTime,
-        endTime: isFullDay ? undefined : endTime,
-        reason: reason || undefined,
-        autoReassign: true,
-      })
-      const moved = res?.movedAppointments ?? []
-      toast.success(`İzin eklendi — ${moved.length} randevu başka personele dağıtıldı`, {
-        description: moved.map((m) => `${m.customerName} (${m.time}) → ${m.to}`).join(' · ') || undefined,
-      })
-      setDate('')
-      setReason('')
-      setIsFullDay(true)
-      setReassignOffer(false)
-      qc.invalidateQueries({ queryKey: ['appointment-timeoff', providerId] })
-      qc.invalidateQueries({ queryKey: ['appointment-timeoff-range', providerId] })
-      qc.invalidateQueries({ queryKey: ['appointment-appointments', providerId] })
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Otomatik dağıtım başarısız')
-    } finally {
-      setSaving(false)
+  async function handleAdd() {
+    if (!date) {
+      toast.error('Tarih seçin')
+      return
     }
+    setForceMode(false)
+    setLastConflictMsg(null)
+    await submit(false)
+  }
+
+  async function handleForce() {
+    await submit(true)
   }
 
   async function handleDelete(id: string) {
     setDeletingId(id)
     try {
-      await apiDelete(`/api/appointments/providers/${providerId}/time-off/${id}`)
-      toast.success('İzin kaydı silindi')
-      qc.invalidateQueries({ queryKey: ['appointment-timeoff', providerId] })
-      qc.invalidateQueries({ queryKey: ['appointment-timeoff-range', providerId] })
+      await apiDelete(`/api/appointments/providers/${providerId}/closures/${id}`)
+      toast.success('Tatil kaydı silindi')
+      invalidate()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Silinemedi')
     } finally {
@@ -172,30 +139,53 @@ export function StaffTimeOffDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { setForceMode(false); setLastConflictMsg(null) } onOpenChange(o) }}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CalendarOff className="w-4 h-4 text-amber-600" />
-            İzin Günleri — {staff.name}
+            <Building2 className="w-4 h-4 text-rose-600" />
+            İşletme Tatili / Kapanış
           </DialogTitle>
           <DialogDescription>
-            İzinli personel bu aralıklarda randevu alamaz (manuel ve online randevu dahil).
+            Bayram, resmi tatil, tadilat... Tatil aralığında tüm personel için randevu alınamaz.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Yeni izin formu */}
+          {/* Çakışma uyarısı + force */}
+          {forceMode && lastConflictMsg && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/60 p-3 space-y-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-200">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                Tatil aralığında aktif randevular var
+              </div>
+              <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                Randevular korunur — sadece YENİ randevular engellenir. Mevcutları taşımak/iptal
+                etmek için takvimden yönetin.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full border-amber-400 text-amber-800 hover:bg-amber-100 dark:text-amber-200"
+                disabled={saving}
+                onClick={handleForce}
+              >
+                Yine de Kapat (randevular korunur)
+              </Button>
+            </div>
+          )}
+
+          {/* Yeni tatil formu */}
           <div className="rounded-lg border p-3 space-y-3 bg-muted/20">
             <div className="text-xs font-semibold flex items-center gap-1.5">
-              <Plus className="w-3.5 h-3.5 text-emerald-600" />
-              Yeni İzin Ekle
+              <Plus className="w-3.5 h-3.5 text-rose-600" />
+              Yeni Tatil Ekle
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="to-date" className="text-xs">Tarih *</Label>
+                <Label htmlFor="cl-date" className="text-xs">Tarih *</Label>
                 <Input
-                  id="to-date"
+                  id="cl-date"
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
@@ -203,8 +193,8 @@ export function StaffTimeOffDialog({
                 />
               </div>
               <div className="flex items-end gap-2 pb-1.5">
-                <Switch checked={isFullDay} onCheckedChange={setIsFullDay} id="to-fullday" />
-                <Label htmlFor="to-fullday" className="text-xs cursor-pointer">
+                <Switch checked={isFullDay} onCheckedChange={setIsFullDay} id="cl-fullday" />
+                <Label htmlFor="cl-fullday" className="text-xs cursor-pointer">
                   {isFullDay ? 'Tam gün' : 'Saat aralığı'}
                 </Label>
               </div>
@@ -212,9 +202,9 @@ export function StaffTimeOffDialog({
             {!isFullDay && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label htmlFor="to-start" className="text-xs">Başlangıç</Label>
+                  <Label htmlFor="cl-start" className="text-xs">Başlangıç</Label>
                   <Input
-                    id="to-start"
+                    id="cl-start"
                     type="time"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
@@ -222,9 +212,9 @@ export function StaffTimeOffDialog({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="to-end" className="text-xs">Bitiş</Label>
+                  <Label htmlFor="cl-end" className="text-xs">Bitiş</Label>
                   <Input
-                    id="to-end"
+                    id="cl-end"
                     type="time"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
@@ -234,59 +224,43 @@ export function StaffTimeOffDialog({
               </div>
             )}
             <div>
-              <Label htmlFor="to-reason" className="text-xs">Sebep (opsiyonel)</Label>
+              <Label htmlFor="cl-reason" className="text-xs">Sebep (opsiyonel)</Label>
               <Input
-                id="to-reason"
+                id="cl-reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Yıllık izin, hastalık, eğitim..."
+                placeholder="Bayram, resmi tatil, tadilat, düğün..."
                 className="mt-1 h-9 text-sm"
               />
             </div>
             <Button
               onClick={handleAdd}
               disabled={saving || !date}
-              className="w-full bg-amber-600 hover:bg-amber-700"
+              className="w-full bg-rose-600 hover:bg-rose-700"
               size="sm"
             >
-              {saving ? 'Ekleniyor...' : 'İzni Ekle'}
+              {saving ? 'Ekleniyor...' : 'Tatili Ekle'}
             </Button>
-            {reassignOffer && (
-              <div className="rounded-lg border border-sky-200 bg-sky-50 dark:bg-sky-950/30 dark:border-sky-900/60 p-2.5 space-y-1.5">
-                <div className="text-[11px] text-sky-800 dark:text-sky-200 leading-relaxed">
-                  İzin aralığındaki randevular, aynı hizmeti veren ve müsait olan başka
-                  personele otomatik olarak dağıtılabilir.
-                </div>
-                <Button
-                  size="sm"
-                  className="w-full bg-sky-600 hover:bg-sky-700"
-                  disabled={saving}
-                  onClick={handleAutoReassign}
-                >
-                  {saving ? 'Dağıtılıyor...' : '🔀 Randevuları Otomatik Dağıt'}
-                </Button>
-              </div>
-            )}
           </div>
 
-          {/* Mevcut izinler */}
+          {/* Mevcut tatiller */}
           <div>
             <div className="text-xs font-semibold mb-2 flex items-center gap-1.5">
-              <Palmtree className="w-3.5 h-3.5 text-amber-600" />
-              Yaklaşan İzinler ({upcoming.length})
+              <CalendarOff className="w-3.5 h-3.5 text-rose-600" />
+              Yaklaşan Tatiller ({upcoming.length})
             </div>
             {isLoading ? (
               <p className="text-xs text-muted-foreground py-2">Yükleniyor...</p>
             ) : upcoming.length === 0 ? (
               <p className="text-xs text-muted-foreground py-2 italic">
-                Yaklaşan izin yok — personel tüm günler müsait.
+                Yaklaşan tatil yok — işletme tüm günler açık.
               </p>
             ) : (
               <ul className="space-y-1.5">
                 {upcoming.map((t) => (
                   <li
                     key={t.id}
-                    className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/60 px-2.5 py-1.5"
+                    className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-900/60 px-2.5 py-1.5"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-medium">{formatDate(t.date)}</div>
@@ -296,7 +270,7 @@ export function StaffTimeOffDialog({
                         {t.reason && <span>· {t.reason}</span>}
                       </div>
                     </div>
-                    <Badge className="text-[9px] py-0 bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-900/50 dark:text-amber-200" variant="outline">
+                    <Badge className="text-[9px] py-0 bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-900/50 dark:text-rose-200" variant="outline">
                       {t.isFullDay ? 'Tam gün' : 'Kısmi'}
                     </Badge>
                     <Button
@@ -316,7 +290,7 @@ export function StaffTimeOffDialog({
             {past.length > 0 && (
               <details className="mt-2">
                 <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground">
-                  Geçmiş izinler ({past.length})
+                  Geçmiş tatiller ({past.length})
                 </summary>
                 <ul className="mt-1 space-y-1">
                   {past.map((t) => (

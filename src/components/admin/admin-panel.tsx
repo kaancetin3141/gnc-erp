@@ -42,7 +42,7 @@ import {
   Search, RefreshCw, Building2, MapPin, Mail, Phone, Globe,
   Eye, Edit3, BarChart3, ListTree, Activity, Clock, Hash,
   CircleUser, Layers, Coffee, Store,
-  History, Filter, ScrollText, ChevronLeft, Loader2, Download,
+  History, Filter, ScrollText, ChevronLeft, Loader2, Download, LayoutGrid,
 } from 'lucide-react'
 import { initials, formatRelative, formatDateTime, formatDate } from '@/lib/format'
 import {
@@ -51,6 +51,7 @@ import {
 } from './customer-type-badge'
 import { CustomerTypeDialog } from './customer-type-dialog'
 import { RoleAssignDialog } from './role-assign-dialog'
+import { PortfolioManager } from './portfolio-manager'
 import { TenantsTab } from './tenants-tab'
 import { DomainsTab } from './domains-tab'
 
@@ -1526,6 +1527,10 @@ export function AdminPanel() {
             <History className="w-3.5 h-3.5" />
             Denetim Kayıtları
           </TabsTrigger>
+          <TabsTrigger value="portfolio" className="text-xs gap-1.5">
+            <LayoutGrid className="w-3.5 h-3.5" />
+            Portfolyo
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="tenants" className="space-y-4">
@@ -1671,6 +1676,10 @@ export function AdminPanel() {
 
         <TabsContent value="audit" className="space-y-4">
           <AuditLogsTab />
+        </TabsContent>
+
+        <TabsContent value="portfolio" className="space-y-4">
+          <PortfolioManager user={user} />
         </TabsContent>
       </Tabs>
 

@@ -14,9 +14,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (status) where.status = status
   const complaints = await db.complaint.findMany({
     where,
-    include: { resident: { select: { name: true, phone: true } } },
-    orderBy: { createdAt: 'desc' },
+    include: {
+      resident: { select: { name: true, phone: true } },
+      assignedStaff: { select: { id: true, name: true, role: true, phone: true } },
+    },
+    orderBy: [
+      { priority: 'asc' }, // acil önce (alfabetik: acil < dusuk < inceleniyor... ama enum string) — aşağıda JS ile sıralanıyor
+      { createdAt: 'desc' },
+    ],
   })
+  // Öncelik sırası: acil > yuksek > normal > dusuk; sonra tarih
+  const prioRank: Record<string, number> = { acil: 0, yuksek: 1, normal: 2, dusuk: 3 }
+  complaints.sort((a, b) => (prioRank[a.priority] ?? 2) - (prioRank[b.priority] ?? 2))
   return ok(complaints)
 }
 
@@ -36,6 +45,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       description: body.description,
       category: body.category || 'diger',
       priority: body.priority || 'normal',
+      estimatedCost: body.estimatedCost != null && Number(body.estimatedCost) > 0 ? Number(body.estimatedCost) : null,
+      dueDate: body.dueDate ? new Date(body.dueDate) : null,
+      assignedStaffId: body.assignedStaffId || null,
+    },
+    include: {
+      resident: { select: { name: true, phone: true } },
+      assignedStaff: { select: { id: true, name: true, role: true, phone: true } },
     },
   })
   return ok(complaint)

@@ -45,8 +45,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 // POST — yeni satış (POS fiş kesme)
 // Body: {
 //   items: [{ barcode?, productId?, qty }],
-//   paymentMethod: 'cash' | 'card' | 'mixed',
+//   paymentMethod: 'cash' | 'card' | 'mixed' | 'veresiye',
 //   cashAmount?, cardAmount?,
+//   creditCustomerId?, creditDueDate?,   // veresiye için zorunlu
 //   discount?, customerName?, notes?, posShiftId?
 // }
 // ============================================================
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const {
     items, paymentMethod, cashAmount, cardAmount,
     discount, customerName, notes, posShiftId,
+    creditCustomerId, creditDueDate,
   } = body as {
     items?: Array<{ barcode?: string; productId?: string; qty?: number }>
     paymentMethod?: string
@@ -72,6 +74,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     customerName?: string
     notes?: string
     posShiftId?: string
+    creditCustomerId?: string
+    creditDueDate?: string
   }
 
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -158,6 +162,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Ödeme yöntemi kontrol
   let cashAmt = 0
   let cardAmt = 0
+  let creditCustomer: { id: string; name: string; creditLimit: number | null } | null = null
   if (payMethod === 'cash') {
     cashAmt = Number(cashAmount ?? total)
   } else if (payMethod === 'card') {
@@ -168,6 +173,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (cashAmt + cardAmt < total) {
       return err('Ödeme tutarı yetersiz', 400)
     }
+  } else if (payMethod === 'veresiye') {
+    // Veresiye: müşteri zorunlu + limit kontrolü
+    if (!creditCustomerId) return err('Veresiye satışı için müşteri seçin', 400)
+    const cc = await db.creditCustomer.findUnique({ where: { id: creditCustomerId } })
+    if (!cc || cc.marketId !== id) return err('Veresiye müşterisi bulunamadı', 404)
+    if (!cc.isActive) return err('Bu veresiye müşterisi pasif durumda', 409)
+    // mevcut bakiye + bu satış limiti aşıyor mu?
+    const entries = await db.creditEntry.findMany({ where: { customerId: cc.id } })
+    let balance = 0
+    for (const e of entries) balance += e.type === 'borc' ? e.amount : -e.amount
+    if (cc.creditLimit != null && balance + total > cc.creditLimit) {
+      return err(
+        `Kredi limiti aşılıyor (borç ${balance.toFixed(2)} + bu satış ${total.toFixed(2)} > limit ${cc.creditLimit.toFixed(2)})`,
+        409,
+      )
+    }
+    creditCustomer = { id: cc.id, name: cc.name, creditLimit: cc.creditLimit }
+  } else {
+    return err('Geçersiz ödeme yöntemi', 400)
   }
 
   // Fiş numarası: FIS-001
@@ -231,13 +255,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return sale
   })
 
+  // Veresiye satışı → cari hareket kaydı (satıştan sonra, limit kontrolleri önceden yapıldı)
+  if (creditCustomer) {
+    await db.creditEntry.create({
+      data: {
+        customerId: creditCustomer.id,
+        type: 'borc',
+        amount: total,
+        refSaleId: result.id,
+        dueDate: creditDueDate ? new Date(creditDueDate) : null,
+        note: `POS satış ${result.number}${customerName ? ` — ${customerName}` : ''}`,
+        createdById: user!.id,
+      },
+    })
+  }
+
   await writeAuditLog({
     tenantId: user!.tenantId,
     actorId: user!.id,
     action: 'create',
     entity: 'market_sale',
     entityId: result.id,
-    after: { number: result.number, total: result.total, paymentMethod: result.paymentMethod },
+    after: { number: result.number, total: result.total, paymentMethod: result.paymentMethod, creditCustomer: creditCustomer?.name ?? null },
   })
 
   // Sadakat puanı: müşteri belirtilmişse her 100 TL için 1 puan kazan

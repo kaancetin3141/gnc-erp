@@ -31,7 +31,7 @@ import {
   type WorkingHours, type DaySchedule, dayKeyFromDate, minutesToTime,
   timeToMinutes,
 } from '@/lib/appointment-utils'
-import { timeOffCoversRange, timeOffLabel } from '@/lib/appointment-timeoff'
+import { timeOffCoversRange, timeOffLabel, findClosureConflict } from '@/lib/appointment-timeoff'
 import { formatCurrency, whatsappLink, formatPhone } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { RejectDialog, type RejectTarget } from './reject-dialog'
@@ -39,11 +39,13 @@ import { CustomerHistoryDialog } from './customer-history-dialog'
 import { CustomerAutocomplete } from './customer-autocomplete'
 import { CustomerDetailDialog } from './customer-manager'
 import { WeekSummaryDialog } from './week-summary-dialog'
+import { ProviderClosureDialog } from './provider-closure-dialog'
+import { TodayPanelDialog } from './today-panel'
 import {
   ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus,
   Phone, MessageCircle, CheckCircle2, XCircle, Ban, History,
   UserX, Check, Clock, Trash2, Pencil, CalendarDays, AlertTriangle,
-  Users, Move, LayoutGrid, Palmtree, Cake, BarChart3,
+  Users, Move, LayoutGrid, Palmtree, Cake, BarChart3, Building2, ListChecks,
 } from 'lucide-react'
 
 // ============================================================
@@ -105,6 +107,15 @@ interface BirthdayEntry {
   daysUntil: number
   isToday: boolean
   appointmentCount: number
+}
+
+interface ClosureEntry {
+  id: string
+  date: string
+  isFullDay: boolean
+  startTime: string | null
+  endTime: string | null
+  reason: string | null
 }
 
 type ApptsResponse = Appointment[]
@@ -284,6 +295,27 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
     return map
   }, [timeOffs])
 
+  // ---------- İŞLETME TATİLİ (closure) ----------
+  const { data: closureData } = useQuery({
+    queryKey: ['appointment-closure-range', providerId, timeOffRangeStart.toISOString(), timeOffRangeEnd.toISOString()],
+    queryFn: () => apiGet<ClosureEntry[]>(
+      `/api/appointments/providers/${providerId}/closures?startDate=${timeOffRangeStart.toISOString()}&endDate=${timeOffRangeEnd.toISOString()}`,
+    ),
+    enabled: !!providerId,
+  })
+  const closures = useMemo(() => (Array.isArray(closureData) ? closureData : []), [closureData])
+
+  // Güne göre tatil kayıtları (başlık rozetleri için)
+  const closuresByDay = useMemo(() => {
+    const map = new Map<string, ClosureEntry[]>()
+    for (const c of closures) {
+      const dayKey = new Date(c.date).toDateString()
+      if (!map.has(dayKey)) map.set(dayKey, [])
+      map.get(dayKey)!.push(c)
+    }
+    return map
+  }, [closures])
+
   // ---------- Yaklaşan doğum günleri (7 gün) ----------
   const { data: birthdayData } = useQuery({
     queryKey: ['appointment-birthdays', providerId],
@@ -410,6 +442,8 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null)
   const [customerDetailId, setCustomerDetailId] = useState<string | null>(null)
   const [summaryOpen, setSummaryOpen] = useState(false)
+  const [closureOpen, setClosureOpen] = useState(false)
+  const [todayOpen, setTodayOpen] = useState(false)
 
   // ---------- Form çakışma uyarısı ----------
   const formConflicts = useMemo(() => {
@@ -447,6 +481,18 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
     const end = new Date(start.getTime() + (svc?.duration || 30) * 60_000)
     return timeOffs.filter((t) => t.staffId === form.staffId && timeOffCoversRange(t, start.getTime(), end.getTime()))
   }, [form, services, timeOffs])
+
+  // İŞLETME TATİLİ çakışması — personelden bağımsız (any dahil), force edilemez
+  const formClosureConflicts = useMemo(() => {
+    if (!form.date || !form.time) return []
+    const [y, m, d] = form.date.split('-').map(Number)
+    const [hh, mm] = form.time.split(':').map(Number)
+    if (!y || !m || !d || isNaN(hh) || isNaN(mm)) return []
+    const start = new Date(y, m - 1, d, hh, mm, 0, 0)
+    const svc = services.find((s) => s.id === form.serviceId)
+    const end = new Date(start.getTime() + (svc?.duration || 30) * 60_000)
+    return closures.filter((c) => findClosureConflict([c], start.getTime(), end.getTime()))
+  }, [form, services, closures])
 
   function prevPeriod() {
     const d = new Date(currentDate)
@@ -519,6 +565,13 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
     }
     setSaving(true)
     try {
+      if (formClosureConflicts.length > 0) {
+        toast.error('İşletme bu saatte kapalı', {
+          description: `${timeOffLabel(formClosureConflicts[0])} — tatil kaydını kaldırın veya başka bir tarih seçin.`,
+        })
+        setSaving(false)
+        return
+      }
       if (formTimeOffConflicts.length > 0) {
         toast.error('Personel bu saatte izinli', {
           description: `${timeOffLabel(formTimeOffConflicts[0])} — izni kaldırın veya başka personel seçin.`,
@@ -840,6 +893,25 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                 <BarChart3 className="w-3.5 h-3.5 sm:mr-1" />
                 <span className="hidden sm:inline">Özet</span>
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setTodayOpen(true)}
+                title="Bugünün birleşik özeti: randevular, doğum günleri, izinler"
+              >
+                <ListChecks className="w-3.5 h-3.5 sm:mr-1" />
+                <span className="hidden sm:inline">Bugün</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setClosureOpen(true)}
+                title="İşletme tatili / kapanış günleri"
+                className="border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-950/30"
+              >
+                <Building2 className="w-3.5 h-3.5 sm:mr-1" />
+                <span className="hidden sm:inline">Tatil</span>
+              </Button>
               <Button size="sm" onClick={() => openCreate()} className="bg-emerald-600 hover:bg-emerald-700">
                 <Plus className="w-4 h-4 mr-1" />
                 <span className="hidden sm:inline">Randevu</span>
@@ -903,6 +975,26 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
           </div>
         </div>
       )}
+
+      {/* İŞLETME TATİLİ bandı — görünür tek güne denk geliyorsa göster (gün/personel görünümü) */}
+      {view !== 'week' && (() => {
+        const dayClosures = closuresByDay.get(dateRange[0]?.toDateString() ?? '') ?? []
+        if (dayClosures.length === 0) return null
+        const label = dayClosures.map((c) => `${c.reason || 'Tatil'} (${c.isFullDay ? 'tam gün' : `${c.startTime}-${c.endTime}`})`).join(', ')
+        return (
+          <div className="rounded-lg border border-rose-300 bg-gradient-to-r from-rose-100 via-red-50 to-orange-50 dark:border-rose-900/70 dark:from-rose-950/40 dark:via-red-950/20 dark:to-orange-950/20 px-3 py-2 flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-800 dark:text-rose-200">
+              <Building2 className="w-4 h-4" />
+              İşletme Tatili
+            </div>
+            <span className="text-xs text-rose-700 dark:text-rose-300">{label}</span>
+            <span className="text-[10px] text-rose-600/80 dark:text-rose-400/80">— bu aralıkta yeni randevu alınamaz</span>
+            <Button size="sm" variant="ghost" className="ml-auto h-6 text-[10px] text-rose-700 hover:bg-rose-100 dark:text-rose-300" onClick={() => setClosureOpen(true)}>
+              Yönet
+            </Button>
+          </div>
+        )
+      })()}
 
       {/* Calendar Grid */}
       {view === 'staff' && staffColumns.length === 0 ? (
@@ -991,6 +1083,9 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                     const isClosed = !sched || sched.closed
                     const u = utilByDay.get(d.toDateString())
                     const dayOffCount = timeOffCountByDay.get(d.toDateString())?.size ?? 0
+                    const dayClosures = closuresByDay.get(d.toDateString()) ?? []
+                    const fullClosure = dayClosures.find((c) => c.isFullDay)
+                    const partClosure = dayClosures.find((c) => !c.isFullDay)
                     return (
                       <div
                         key={d.toISOString()}
@@ -998,6 +1093,7 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                           'border-b border-r p-2 text-center',
                           isToday && 'bg-emerald-50 dark:bg-emerald-950/20',
                           isClosed && 'bg-muted/20',
+                          fullClosure && 'bg-rose-50 dark:bg-rose-950/20',
                           view === 'week' && 'cursor-pointer hover:bg-accent/50 transition-colors',
                         )}
                         onClick={view === 'week'
@@ -1011,10 +1107,26 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                         <div className={cn('text-sm font-semibold', isToday && 'text-emerald-600')}>
                           {d.getDate()}
                         </div>
-                        {isClosed && (
+                        {fullClosure ? (
+                          <div
+                            className="text-[8px] font-medium text-rose-700 dark:text-rose-300 flex items-center justify-center gap-0.5"
+                            title={`İşletme tatili: ${fullClosure.reason || 'Tam gün'} — yeni randevu alınamaz`}
+                          >
+                            <Building2 className="w-2 h-2" />
+                            tatil
+                          </div>
+                        ) : partClosure ? (
+                          <div
+                            className="text-[8px] text-rose-700 dark:text-rose-300 flex items-center justify-center gap-0.5"
+                            title={`İşletme tatili: ${partClosure.reason || ''} (${partClosure.startTime}-${partClosure.endTime})`}
+                          >
+                            <Building2 className="w-2 h-2" />
+                            {partClosure.startTime}-{partClosure.endTime}
+                          </div>
+                        ) : isClosed ? (
                           <div className="text-[9px] text-muted-foreground">kapalı</div>
-                        )}
-                        {!isClosed && dayOffCount > 0 && (
+                        ) : null}
+                        {!isClosed && !fullClosure && dayOffCount > 0 && (
                           <div
                             className="text-[8px] text-amber-700 dark:text-amber-300 flex items-center justify-center gap-0.5"
                             title={`${dayOffCount} personel izinli`}
@@ -1079,6 +1191,8 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
           <span className="w-2.5 h-2.5 rounded-sm ring-2 ring-rose-400" /> çakışma
           <span className="mx-1">·</span>
           <Palmtree className="w-3 h-3 text-amber-600" /> personel izni
+          <span className="mx-1">·</span>
+          <Building2 className="w-3 h-3 text-rose-600" /> işletme tatili
         </span>
       </div>
 
@@ -1350,6 +1464,24 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                 </Select>
               </div>
             )}
+            {formClosureConflicts.length > 0 && (
+              <div className="rounded-lg border border-rose-300 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-900/60 p-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-rose-800 dark:text-rose-300">
+                  <Building2 className="w-3.5 h-3.5" />
+                  İşletme tatili — randevu oluşturulamaz:
+                </div>
+                <ul className="mt-1 space-y-0.5 text-[11px] text-rose-700 dark:text-rose-400">
+                  {formClosureConflicts.map((c) => (
+                    <li key={c.id}>
+                      • {c.reason || 'Tatil'} — {timeOffLabel(c)}
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-[10px] mt-1 text-rose-600 dark:text-rose-500">
+                  Başka bir tarih seçin veya araç çubuğundaki “Tatil” butonundan tatili kaldırın.
+                </div>
+              </div>
+            )}
             {formTimeOffConflicts.length > 0 && (
               <div className="rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-900/60 p-2.5">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-red-800 dark:text-red-300">
@@ -1409,22 +1541,26 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={saving || formTimeOffConflicts.length > 0}
+              disabled={saving || formTimeOffConflicts.length > 0 || formClosureConflicts.length > 0}
               className={cn(
-                formTimeOffConflicts.length > 0
-                  ? 'bg-red-400 hover:bg-red-500 cursor-not-allowed'
-                  : formConflicts.length > 0
-                    ? 'bg-amber-600 hover:bg-amber-700'
-                    : 'bg-emerald-600 hover:bg-emerald-700',
+                formClosureConflicts.length > 0
+                  ? 'bg-rose-400 hover:bg-rose-500 cursor-not-allowed'
+                  : formTimeOffConflicts.length > 0
+                    ? 'bg-red-400 hover:bg-red-500 cursor-not-allowed'
+                    : formConflicts.length > 0
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-emerald-600 hover:bg-emerald-700',
               )}
             >
-              {formTimeOffConflicts.length > 0
-                ? 'Personel İzinli'
-                : saving
-                  ? 'Kaydediliyor...'
-                  : formConflicts.length > 0
-                    ? 'Çakışmaya Rağmen Kaydet'
-                    : editAppt ? 'Güncelle' : 'Oluştur'}
+              {formClosureConflicts.length > 0
+                ? 'İşletme Kapalı'
+                : formTimeOffConflicts.length > 0
+                  ? 'Personel İzinli'
+                  : saving
+                    ? 'Kaydediliyor...'
+                    : formConflicts.length > 0
+                      ? 'Çakışmaya Rağmen Kaydet'
+                      : editAppt ? 'Güncelle' : 'Oluştur'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1480,6 +1616,20 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
       )}
 
       {/* Gün/Hafta özeti diyaloğu */}
+      <ProviderClosureDialog
+        providerId={providerId}
+        open={closureOpen}
+        onOpenChange={setClosureOpen}
+      />
+      <TodayPanelDialog
+        open={todayOpen}
+        onOpenChange={setTodayOpen}
+        appointments={appointments}
+        birthdays={birthdays}
+        staffList={staffList.map((s) => ({ id: s.id, name: s.name }))}
+        timeOffs={timeOffs}
+        closures={closures}
+      />
       <WeekSummaryDialog
         open={summaryOpen}
         onOpenChange={setSummaryOpen}

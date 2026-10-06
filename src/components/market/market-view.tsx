@@ -28,7 +28,8 @@ import {
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Store, Plus, MapPin, Phone, ScanLine, Package, ClipboardCheck, Truck, Layers, BarChart3, Settings, Star } from 'lucide-react'
+import { Store, Plus, MapPin, Phone, ScanLine, Package, ClipboardCheck, Truck, Layers, BarChart3, Settings, Star, NotebookPen } from 'lucide-react'
+import { MarketCredit } from './market-credit'
 import { LoyaltyTab } from '@/components/loyalty/loyalty-tab'
 import { toast } from 'sonner'
 
@@ -105,6 +106,10 @@ export function MarketView() {
     }
     if (hasPermission(u, 'market.stock') || hasPermission(u, 'market.manage')) {
       all.push({ key: 'shelves', label: 'Raflar', icon: Layers })
+    }
+    // Veresiye: kasiyer ve yönetici
+    if (hasPermission(u, 'market.pos') || hasPermission(u, 'market.manage')) {
+      all.push({ key: 'credit', label: 'Veresiye', icon: NotebookPen })
     }
     if (hasPermission(u, 'market.pos') || hasPermission(u, 'market.manage')) {
       all.push({ key: 'loyalty', label: 'Sadakat Puanı', icon: Star })
@@ -241,6 +246,9 @@ export function MarketView() {
         </TabsContent>
         <TabsContent value="sales" className="mt-4">
           <MarketSalesList marketId={selectedMarket.id} />
+        </TabsContent>
+        <TabsContent value="credit" className="mt-4">
+          <MarketCredit marketId={selectedMarket.id} />
         </TabsContent>
         <TabsContent value="loyalty" className="mt-4">
           <LoyaltyTab />
