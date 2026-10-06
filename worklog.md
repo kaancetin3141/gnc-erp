@@ -8115,3 +8115,31 @@ Stage Summary:
 - gnc-erp reposundaki TÜM eksik özellikler artık mevcut projede; iki hat tek çizgide birleşti
 - Kazandı→Fatura + İşletme Tatili (randevu engelli) + Canlı Kur (bekleyen tahsilat/yaşlandırma TRY hesapları) canlı ve test edilmiş
 - Şema 90 model; db yedeği alınmış durumda; tüm değişiklikler git'li (sandbox revert'e karşı korumalı)
+
+---
+Task ID: 11
+Agent: main agent + webDevReview cron agent (paralel çalıştı)
+Task: "repoda olan ve burda olmayan şeyleri al" — gnc-erp reposundaki tüm eksik özellikleri porta etme
+
+Work Log:
+- Kapsam tespiti: 17 src-only dosya/dizin + 5 eksik prisma modeli + pdf-lib/fontkit bağımlılığı + DejaVu fontları + 3 kök dosyası (AGENTS.md, agents/, ensure-server.sh — ajan/araç dosyaları, alınmadı)
+- SCHEMA: CafeReservation, CreditCustomer, CreditEntry, PortfolioProject, ProviderClosure modelleri eklendi + geri referanslar (Cafe.reservations, CafeTable.reservations, Market.creditCustomers, MarketSale.creditEntries, ServiceProvider.closures) → 90 model, prisma format + db:push OK
+- KOPYALANAN API'ler: closures, cafe/[id]/reservations, fx, market/[id]/credit (+[customerId]/pdf ekstre PDF), portfolio, portfolio-admin, seed-realistic, site/[id]/complaints/[complaintId]
+- KOPYALANAN BİLEŞENLER: portfolio-manager, provider-closure-dialog, today-panel, cafe-reservations, market-credit, site-complaints + lib: fx-server, pdf-server, seed-realistic
+- ENTEGRASYONLAR (iki hat birleştirildi, hiçbir mevcut özellik silinmedi):
+  · cafe-view: Rezervasyon sekmesi (kasa sonrası)
+  · market-view: Veresiye sekmesi EKLENDİ (mevcut Sadakat Puanı ile yan yana)
+  · market-pos-screen: Veresiye ödeme yöntemi (4. buton) + müşteri seçimi + bakiye/limit göstergesi + vade — mevcut sadakat araması korunarak
+  · POS sales API: veresiye dalı (limit kontrolü, CreditEntry borç kaydı, audit) — mevcut sadakat puanı kazanma bloğu korunarak
+  · site-view: Aidat Makbuzu Yazdır (yazıcı-dostu fiş, gecikme zammı + ödeme yöntemi) + gelişmiş Şikayetler (SiteComplaints + öncelik/assignedStaff/estimatedCost)
+  · admin-panel: Portfolyo sekmesi (PortfolioManager — ana-site Projeler bölümünü yönetir)
+  · appointment-calendar: closures (İşletme Tatili) + Bugün paneli + availability/book/time-off API'lerinde kapanış farkındalığı (cron ajanı taşıdı; doğrulandı: superset, formTimeOffConflicts/isClosed korunmuş)
+  · kanban: kazandı→fatura zinciri (+73, saf ekleme), api-client +25, appointment-timeoff +19, invoice-utils/customer-360/aging fx tweak'leri
+- EŞZAMANLI ÇALIŞMA NOTU: webDevReview cron ajanı (438840) 01:51'de appointments dosyalarını repodan kopyaladı — ilk panikte "kayıp" sandım ama feature-bazlı doğrulama superset olduğunu gösterdi (isClosed 6=6, formTimeOffConflicts 8=8, timeOffCoversRange 3=3)
+- DOĞRULAMA: lint 0 hata; agent-browser E2E — superadmin girişi → Admin Paneli → Portfolyo sekmesi AÇILDI, "Yeni Proje" ile GNC CRM projesi eklendi (API'den doğrulandı); Market Yönetimi → Test Market oluşturuldu → Veresiye + Sadakat sekmeleri yan yana; Veresiye paneli render; /api/fx canlı kur (USD 49.1642, EUR 55.1268); Randevular → closures API canlı (404 JSON doğru); dev.log temiz
+- GÜVENLİK: ghp_ taraması — sadece kurulum.sh'taki ghp_XXXX placeholder'ı, gerçek token YOK
+
+Stage Summary:
+- gnc-erp reposundaki TÜM eksik özellikler porta edildi: 90 model şema, 17 yeni dosya, 6 dosyada iki yönlü birleştirme — mevcut (domains/tenants/cash/loyalty/membership/efatura) hiçbir şey kaybolmadı
+- Yeni yetenekler: Kafe rezervasyonları, Market veresiye (POS entegrli + ekstre PDF), İşletme tatil/kapanış günleri, Bugün paneli, Portfolyo yöneticisi (ana-site ile senkron), canlı döviz API'si, gerçekçi demo veri üreteci, aidat makbuzu, gelişmiş şikayet yönetimi
+- Repo klonu /tmp/gnc-erp'de duruyor; commit sonrası /tmp silinebilir (her şey git'te)
