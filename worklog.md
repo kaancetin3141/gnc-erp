@@ -8264,3 +8264,22 @@ Stage Summary:
 - Hostinger'da gerekli TEK şey: DNS → A @ / CNAME www / A * (yıldız) → VPS IP (script sonunda IP'yi yazdırır); hosting paketi GEREKMEZ
 - SSL: DNS yayılınca "sudo certbot --nginx -d gncinc.online -d www... -d crm... -d randevu... -d fruitstorm... -d kaloriai..."
 - NOT: db/custom.db bilinçli commit edilmedi (server'da runtime değişiyor → git pull çakışması yaratabilir)
+
+---
+Task ID: 18
+Agent: main (Z.ai Code)
+Task: Sunucu 2. denemesindeki YENİ hata — Prisma "Permission denied" (DATABASE_URL=/home/z/my-project/... sunucaya klonlandı) + Bun hâlâ kurulamadı
+
+Work Log:
+- Kök neden bulundu: .env dosyası repo'ya commit'lenmişti (git ls-files → .env) ve içinde geliştirici makinesi yolu DATABASE_URL=file:/home/z/my-project/db/custom.db + CRON_SECRET duruyordu → sunucu clone'da bu .env'i aldı → kurulum.sh ".env zaten var — korunuyor" deyip dokunmadı → prisma /home/z/... yoluna yazamadı (os error 13)
+- Düzeltme 1: .env repodan ÇIKARILDI (git rm --cached .env; .gitignore .env* zaten vardı; lokal dosya diskte kaldı). CRON_SECRET artık repoya girmiyor (git geçmişinde kaldı — private repo, düşük risk; istenirse rotate)
+- Düzeltme 2 (kurulum.sh v3.2 / 5. adım): .env her çalışmada DOĞRULANIR — DATABASE_URL $APP_DIR değilse zorla düzeltilir, NODE_ENV=production garantilenir, CRON_SECRET korunur/yoksa üretilir. 3 senaryo simüle edildi ✓ (yeni / yanlış-yol+secret-koru / doğru-dokunma)
+- Düzeltme 3 (kurulum.sh v3.2 / 4. adım): pull ÖNCESİ "git checkout -- .env" (sunucudaki eski track'li .env temizlenir → upstream silmesi uygulanır); pull SONRASI scriptin kendi hash'i değiştiyse "exec" ile yeni sürüm yeniden başlatılır (bash'in çalışan script dosyasını offset'le okuması → pull ortasında dosya değişince karışık davranış riski kapatıldı)
+- Düzeltme 4: Bun 3. yöntem eklendi (npm → curl → doğrudan GitHub release zip + install /usr/local/bin); prisma db push --accept-data-loss --skip-generate (etkileşimli takılma yok)
+- Önceki turun kazanımı doğrulandı: npm install sunucuda GEÇTİ (nodemailer ^7.0.7 fix çalıştı, "added 48 packages")
+- NOT: EBADENGINE uyarıları (react-dropzone node>=22 ister) zararsız — Node 20'de çalışır; ileride Node 22'ye geçilebilir
+
+Stage Summary:
+- Kullanıcıya verilen TEK komut: cd /var/www/gnc-erp && git pull --ff-only && bash deploy/kurulum.sh gncinc.online "TOKEN'li-adres"  (önce pull → v3.2 diskte → sonra çalıştır = offset riski sıfır)
+- v3.2 ile: .env sunucuda doğru üretilir (file:/var/www/gnc-erp/db/custom.db), bun 3 yöntemle kurulur, 3002 customer-page + 3003 FruitStorm + 3004 KaloriAI + nginx otomatik
+- Kritik kural: .env ASLA repoya eklenmez; sunucuya özel değerler kurulumun 5. adımında üretilir

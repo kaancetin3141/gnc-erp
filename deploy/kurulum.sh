@@ -1,6 +1,14 @@
 #!/bin/bash
 # ============================================================
-#  GNC — TEK KOMUT KURULUM (v3.1 — tüm uygulamalar otomatik)
+#  GNC — TEK KOMUT KURULUM (v3.2 — tüm uygulamalar otomatik)
+#
+#  v3.2: (1) .env artık repoda TUTULMAZ (yanlış yol /home/z/my-project
+#            sunucaya klonlanıyordu → Prisma 'Permission denied').
+#            Kurulum her çalışmada DATABASE_URL'i $APP_DIR'e ZORLAR.
+#        (2) kurulum.sh kendi güncellendiyse (git pull) yeni sürümle
+#            exec ile yeniden başlar (bash offset kayması önlenir).
+#        (3) Bun 3. yöntem: doğrudan GitHub release ikilisi.
+#        (4) prisma db push --accept-data-loss (etkileşimli takılma yok).
 #
 #  v3.1: (1) Bun artık ÖNCE npm ile kurulur (npm sunucuda garantili çalışır),
 #            curl yükleyicisi yedek. (2) npm install peer-deps çakışmasında
@@ -98,6 +106,14 @@ fi
 if ! command -v bun >/dev/null 2>&1; then
   # YÖNTEM 2: resmi kurulum scripti (unzip ister — 1. adımda kuruldu)
   curl -fsSL https://bun.sh/install | bash >/dev/null 2>&1 \
+    || warn "curl yöntemi de başarısız — GitHub release denencek"
+fi
+if ! command -v bun >/dev/null 2>&1; then
+  # YÖNTEM 3: doğrudan GitHub release ikilisi (bun.sh erişilemezse bile çalışır)
+  info "GitHub release'ten doğrudan indiriliyor..."
+  curl -fsSL -o /tmp/bun.zip https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64.zip \
+    && unzip -oq /tmp/bun.zip -d /tmp/bunzip \
+    && $SUDO install -m 755 /tmp/bunzip/bun-linux-x64/bun /usr/local/bin/bun \
     || warn "Bun kurulamadı — customer-page atlanacak"
 fi
 export PATH="$HOME/.bun/bin:$PATH"
@@ -112,6 +128,7 @@ fi
 
 # ---- 4) CRM kodunu GitHub'dan al ----
 step "4/12 CRM kodu GitHub'dan alınıyor..."
+SELF_HASH_BEFORE="$(sha256sum "$(readlink -f "$0")" 2>/dev/null | cut -d' ' -f1)"
 # Sahiplik düzeltmesi — root'a ait .git ubuntu'nun güncellemesini bloklamasın
 if [ -d "$APP_DIR" ] && { [ ! -w "$APP_DIR" ] || [ ! -w "$APP_DIR/.git" ]; }; then
   info "Klasör sahipliği düzeltiliyor: sudo chown -R $(whoami) $APP_DIR"
@@ -123,6 +140,9 @@ fi
 if [ -d "$APP_DIR/.git" ]; then
   cd "$APP_DIR"
   git remote set-url origin "$REPO" 2>/dev/null || true
+  # .env repodan çıkarıldı: sunucudaki eski track'li kopya temiz kopyaya alınsın
+  # (pull'un .env silmesini uygulanabilir kılar; kullanıcıya ait izler bozulmaz)
+  git checkout -- .env 2>/dev/null || true
   git pull --ff-only || warn "git pull başarısız — mevcut kodla devam ediliyor"
 else
   $SUDO mkdir -p /var/www
@@ -130,21 +150,44 @@ else
   git clone "$REPO" "$APP_DIR" || die "Repo klonlanamadı: $REPO\n     Private repo için 2. parametreye TOKEN'li adres verin:\n     bash kurulum.sh $DOMAIN \"https://kaancetin3141:TOKEN@github.com/kaancetin3141/gnc-erp.git\""
   cd "$APP_DIR"
 fi
+# Kurulum scriptinin KENDİSİ güncellendiyse yeni sürümle yeniden başlat
+# (bash çalışırken değişen script dosyasını offset'le okur → karışık davranış riski)
+SELF_HASH_NOW="$(sha256sum "$(readlink -f "$0")" 2>/dev/null | cut -d' ' -f1)"
+if [ -n "${SELF_HASH_BEFORE:-}" ] && [ "$SELF_HASH_BEFORE" != "$SELF_HASH_NOW" ]; then
+  info "kurulum.sh güncellendi — yeni sürüm yeniden başlatılıyor..."
+  exec bash "$(readlink -f "$0")" "$@"
+fi
 [ -f package.json ] || die "$APP_DIR içinde proje kodu yok (package.json bulunamadı) — repo adresini kontrol edin"
 
 # ---- 5) .env + veritabanı klasörü ----
+# .env repo'da YOK. Var olan dosyanın yolu yanlışsa (farklı makineden kalmışsa)
+# ZORLA $APP_DIR'e çekilir — yoksa Prisma 'Permission denied' verir (v3.2 öncesi hata).
 step "5/12 Ortam dosyası (.env)..."
+mkdir -p db
+ENV_DURUM=""
 if [ ! -f .env ]; then
+  ENV_DURUM="yeni-olusturuldu"
+else
+  if grep -q "^DATABASE_URL=file:$APP_DIR/db/" .env && grep -q "^NODE_ENV=production" .env; then
+    info ".env doğru — korunuyor"
+  else
+    ENV_DURUM="yanlış-yol-düzeltildi"
+  fi
+fi
+if [ -n "$ENV_DURUM" ]; then
+  # CRON_SECRET'i koru (varsa); yoksa yeni üret
+  CRON_VAL="$(grep -m1 '^CRON_SECRET=' .env 2>/dev/null | cut -d= -f2- || true)"
+  if [ -z "$CRON_VAL" ]; then
+    CRON_VAL="$(openssl rand -hex 24 2>/dev/null || head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  fi
   cat > .env << ENVEOF
 DATABASE_URL=file:$APP_DIR/db/custom.db
 NODE_ENV=production
+CRON_SECRET=$CRON_VAL
 ENVEOF
   chmod 600 .env
-  info ".env oluşturuldu"
-else
-  info ".env zaten var — korunuyor"
+  info ".env $ENV_DURUM (DATABASE_URL=file:$APP_DIR/db/custom.db)"
 fi
-mkdir -p db
 
 # ---- 6-8) Bağımlılıklar + şema + derleme ----
 step "6/12 npm install (birkaç dk)..."
@@ -153,7 +196,7 @@ npm install \
        npm install --legacy-peer-deps; }
 step "7/12 Veritabanı şeması..."
 npx prisma generate
-npx prisma db push
+npx prisma db push --accept-data-loss --skip-generate
 step "8/12 Derleme: npm run build (2-5 dk, swap sayesinde güvenli)..."
 NODE_OPTIONS="--max-old-space-size=1536" npm run build
 
@@ -426,7 +469,7 @@ PUBLIC_IP=$(curl -s --max-time 5 https://checkip.amazonaws.com || curl -s --max-
 
 echo ""
 echo -e "${G}============================================================${N}"
-echo -e "${G}   KURULUM TAMAMLANDI! (v3.1 — tüm uygulamalar)${N}"
+echo -e "${G}   KURULUM TAMAMLANDI! (v3.2 — tüm uygulamalar)${N}"
 echo -e "${G}============================================================${N}"
 echo -e "  Sunucu IP'niz  : ${B}$PUBLIC_IP${N}   <- BUNU NOT ALIN"
 echo -e ""
