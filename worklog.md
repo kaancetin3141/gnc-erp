@@ -8181,3 +8181,25 @@ Stage Summary:
 - Müşteri sitesi artık haritalı: kişi konumunu paylaşınca en yakın işletme haritada ⭐ ile vurgulanıyor
 - Superadmin işletme yönetimi tam yetkili hale geldi (isSuperAdmin bug fix)
 - Sunucuda 3002/3003/3004 + alt alan adları için hazır komut dokümanı deploy/ altında
+
+---
+Task ID: 14
+Agent: main (Z.ai Code)
+Task: "ana sitede müşteri arayüzü sitesi görünmüyor, KaloriAI'ye yer yok — bunlar için yer oluştur" + "bu dosya yapısında sadece CRM ana site ve customer-page olacak, KaloriAI ile Fruit Storm'u buraya karıştırma"
+
+Work Log:
+- KAPSAM NETLEŞTİ: bu projede SADECE CRM (3000) + customer-page (3002) kalır; KaloriAI (3004) ve Fruit Storm (3003) kullanıcı tarafından sunucuya GitHub'dan AYRI yüklenir. /tmp kaloriai klonu projeye taşınmadan silindi.
+- Port çakışması giderildi: eski chat-service süreci 3003+3005 çift dinliyordu → temiz restart, artık yalnız 3005; 3003 Fruit Storm için serbest. ensure-services.sh kapsamı netleştirildi (fruit-storm/kaloriai satırları comment'lendi, klasör yoksa zaten atlanıyor).
+- PlatformService prisma modeli (key unique, name, description, url, localPort, icon, color, enabled, sortOrder) → db:push OK, 91 model.
+- GET /api/admin/services: tablo boşsa otomatik seed — base_domain SystemSetting'inden alt alan adı URL'leri üretir (randevu/kaloriai/oyun.gncinc.online); ?check=1 ile 127.0.0.1:port sondajı (alive durumu). POST + [id] PATCH/DELETE superadmin-only, audit log'lu.
+- Admin Paneli > SERVİSLER sekmesi (yalnızca superadmin): bilgi bandı (proje kapsamı açıklaması), servis kartları (ikon/renk, durum noktası çalışıyor/kapalı, görünürlük Switch, URL, Önizle → /?XTransformPort=port, Sunucuda Aç → url, Düzenle/Sil diyaloğu), Yeni Servis formu (icon seçici + renk).
+- Sidebar > UYGULAMALAR bölümü (yalnızca superadmin): renkli harf rozetli tek tık başlatıcı; şirket adminleri göremez.
+- CRITICAL FIX — customer-page önizleme paneli uyumu: gateway (Caddy :81) üzerinden ?XTransformPort=3002 ile açılınca göreli istekler (/api/businesses, /assets/*, /api/book, /isletme/x) CRM'e düşüyordu → sayfa sürekli "yükleniyor" kalıyordu. Çözüm: pageShell'e gwPort (statik asset+favicon URL'lerine param), index.ts fetch handler'da gwPort tespiti, home.js/detail.js'e gwq() yardımcısı (fetch+bizHref), renderDetail homeUrl param'lı, hata sayfaları dahil. Tüm pinler divIcon (emoji) olduğundan marker görselleri etkilenmiyor.
+- E2E (agent-browser, gateway üzerinden): sidebar UYGULAMALAR ✓, Servisler sekmesi 3 kart ✓ (3002 canlı/3003-3004 kapalı = doğru), ?XTransformPort=3002 → müşteri sitesi işletme listesi YÜKLENDİ (Şık Kuaför & Berber Salonu) ✓, /isletme detay + Çalışma Saatleri + 6 hizmet + Randevu Al formu ✓, ekran görüntüleri logs/verify-*.png, dev.log temiz, lint 0 hata.
+- curl API testi: seed → items[0].alive=true (3002), baseDomain=gncinc.online; PATCH OK.
+
+Stage Summary:
+- Ana sitede servislerin GÖRÜNÜR YERİ artık var: sidebar Uygulamalar bölümü + Admin Paneli Servisler sekmesi; kullanıcı önizleme panelinden Müşteri Randevu Sitesi'ni tek tıkla açabiliyor
+- KaloriAI/Fruit Storm bu projede YOK — bağlantıları panelden yönetiliyor (URL düzenlenebilir); sunucu kurulum komutları deploy/SUNUCU-KOMUTLARI-3002-3003-3004.md'de duruyor
+- customer-page önizleme panelinden tam çalışır hale geldi (gateway uyumu kalıcı fix)
+- Şema 91 model; tüm değişiklikler git'li
