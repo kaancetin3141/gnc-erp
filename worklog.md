@@ -8422,3 +8422,22 @@ Stage Summary:
 - Buton düzeltmesi hazır ve lokalde doğrulandı (6f8d862); PUSH İÇİN YENİ PAT GEREKLİ
 - Git kimliği kurtarıldı: HEAD=720afe7 gerçek geçmiş; db/custom.db (1.306.624B) geri yüklendi
 - HTTPS çözümü sunucuda: certbot --nginx -d <isletme>.gncinc.online (per-slug) veya wildcard; kullanıcıya komut bloğu verildi
+
+---
+Task ID: user-push-6f8d862
+Agent: main (Super Z)
+Task: Kullanıcı yeni PAT verdi → bekleyen 6f8d862 (buton düzeltmesi) push edilecek
+
+Work Log:
+- Ön kontrol: git log → 6f8d862 lokal geçmişte mevcut; working tree temiz; remote tanımlı (token yok); listHost() düzeltmesi index.ts'te doğrulandı
+- 6f8d862 üstünde 2 cron worklog commit'i vardı (555713b, beb5001) — bunlar da birlikte push edildi
+- Push: one-off URL yöntemi (token .git/config'e KAYDEDİLMEDİ, güvenlik için tek kullanımlık URL ile)
+- Çıktı sed ile maskelendi (ghp_ → ***)
+- Doğrulama: git ls-remote (anonim, repo public) = beb50013ecd... == lokal HEAD ✓
+- Remote main: 720afe7 → beb5001 (3 commit: 6f8d862 buton fix + 2 worklog)
+
+Stage Summary:
+- PUSH TAMAM: origin/main artık beb5001 — buton düzeltmesi (6f8d862) GitHub'da
+- Sunucu sıradaki adım: pm2 stop all → cp db/custom.db /tmp/ → git fetch origin → git reset --hard origin/main → DB geri → bash guncelle-gnc.sh → customer-page yeniden başlar
+- Ardından doğrulama: sik-kuafor detay sayfasında "Tüm işletmeler" → https://randevu.gncinc.online
+- Not: token classic (ghp_); işi bittikten sonra revoke önerilir; fine-grained (github_pat_) daha güvenli tercih
