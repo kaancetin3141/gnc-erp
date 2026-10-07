@@ -8441,3 +8441,19 @@ Stage Summary:
 - Sunucu sıradaki adım: pm2 stop all → cp db/custom.db /tmp/ → git fetch origin → git reset --hard origin/main → DB geri → bash guncelle-gnc.sh → customer-page yeniden başlar
 - Ardından doğrulama: sik-kuafor detay sayfasında "Tüm işletmeler" → https://randevu.gncinc.online
 - Not: token classic (ghp_); işi bittikten sonra revoke önerilir; fine-grained (github_pat_) daha güvenli tercih
+
+---
+Task ID: user-coolify-rehberi
+Agent: main (Super Z)
+Task: Kullanıcı "kolay yönetim + web/Play/App Store + kolay DB" istedi → Plesk sorusunun tam cevabı ve eylem planı
+
+Work Log:
+- Strateji kararı: Plesk yerine COOLIFY (ücretsiz self-hosted PaaS) — Plesk €10+/ay + ~1GB RAM ve bu kullanıcının tüm ihtiyacını Coolify ücretsiz karşılıyor
+- deploy/COOLIFY-REHBERI.md oluşturuldu (10 bölüm): Plesk karşılaştırma tablosu, hedef mimari şeması, 30 dk kurulum (Hetzner CX22 + wildcard DNS + tek komut kurulum), app ekleme (CRM/customer-page/monorepo notları), DB yönetimi (SQLite volume şimdi → Postgres tek tık sonra), mobil yayın (Play $25 / App $99, Codemagic ile Mac'siz iOS build, Apple 4.2 savunması, OneSignal push önerisi), günlük kullanım tablosu, geçiş planı, docker-compose taslağı, SSS + maliyet özeti
+- Kritik mimari uyarı belgeye işlendi: customer-page SQLite dosyasını CRM ile PAYLAŞMALI → tek Docker volume (crm-db:/app/db) şart; compose taslağı hazır ama Dockerfile'lar yazılıp test edilmeden canlıya alınmama uyarısı
+- Otomatik deploy akışı: GitHub App bağlanır → git push = otomatik deploy (mevcut guncelle-gnc.sh ihtiyacını ortadan kaldırır)
+
+Stage Summary:
+- Yeni belge: deploy/COOLIFY-REHBERI.md (kullanıcının tüm hedefi: web+mağaza+kolay yönetim tek planda)
+- Sonraki adım (kullanıcı "başla" derse): docker-compose + Dockerfile'lar repoya eklenecek, Coolify deploy'u birlikte yapılacak
+- Mevcut pm2 script'leri etkilenmedi — geçiş isteğe bağlı ve yeni sunucuda paralel yürütülür
