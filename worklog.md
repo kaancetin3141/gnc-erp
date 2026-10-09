@@ -8710,3 +8710,22 @@ Stage Summary:
 - Otomatik onay ayarı artık TÜM herkese açık randevu uçlarında geçerli: autoApprove=false → randevu 'beklemede' oluşur, işletme CRM'den onaylar; true → çalışma saatleri içinde anında 'onaylandi'
 - Müşteri başarı ekranı gerçek durumu doğru gösteriyor; bekleyen randevular için bekleme notu çıkıyor
 - commit 0e5dcd4 yerelde; PAT gelince push edilecek
+
+---
+Task ID: randevu-onay-fix-2
+Agent: Ana ajan (Super Z)
+Task: "otomatik onay kapalı olsada randevuları hemen onaylıyor" — doğrulama + veri düzeltme (fix sonrası kapanış) + Cron 439047
+
+Work Log:
+- CRON 439047: ensure-services.sh → "OK: tüm mini servisler çalışıyor" (3002/3005/3010/3011 ayakta) ✓
+- TESPİT: Bug daha önceki döngüde kökten çözülmüş (randevu-onay-fix-1, commit 0e5dcd4): /api/public/appointments artık autoApprove'i okuyor, mantık `provider.autoApprove && inWorkingHours ? 'onaylandi' : 'beklemede'`
+- DB KANITI: 2 adet 'onaylandi' randevu ("erer", "123123") fix'ten ÖNCE (11:31-11:32 UTC) kullanıcı test kayıtlarıymış; source=web, kurtköy berber (autoApprove=false)
+- CANLI E2E (3002 /api/book → 3000 upstream, çalışan sunucu): kurtkoy-berber + hizmet 'saç' + 10.10.2026 10:00 → status:"beklemede" ✓ (fix aktif)
+- TEMİZLİK: canlı test randevusu silindi (Canli Test Onay)
+- VERİ DÜZELTME: fix öncesi oluşan 2 test kaydı 'onaylandi' → 'beklemede' çekildi (updateMany, count:2); CRM'de artık onay kuyruğunda görünecekler
+- push denendi → PAT engeli sürüyor (13. kez hatırlatma: PAT revoke/yenile)
+
+Stage Summary:
+- Otomatik onay bug'ı KAPALI: fix commit 0e5dcd4 canlı sunucuda doğrulandı (autoApprove=false → beklemede)
+- Eski fix-öncesi test kayıtları yeni mantığa uyduruldu (2 adet beklemede)
+- Bu oturumda kod değişikliği yok; yerelde 0e5dcd4 + 6eb469e bekliyor, PAT gelince tek push
