@@ -8765,3 +8765,21 @@ Stage Summary:
 - 15 oturumluk push birikimi sıfırlandı; GitHub güncel
 - Cubiq bağımsız proje olarak /home/z/cubiq'ta canlı (3006); repo'dan tamamen ayrık
 - Not: token chat geçmişinde görünmüş durumda — istenirse ileride rotate edilebilir
+
+---
+Task ID: cubiq-sunucu-kod-1
+Agent: Ana ajan (Super Z)
+Task: "sunucu kodlarını ver — cubiq'i sunucuya yükleyeceğim, diğer uygulamalarda da güncelleme var"
+
+Work Log:
+- deploy/kurulum.sh v3.4: CUBIQ_PORT=3006 + CUBIQ_REPO değişkenleri; 10d/12 adımı (kuruluysa gnc-oyun cubiq ile günceller, değilse GitHub'dan kurar); nginx şablonuna cubiq.__DOMAIN__ server bloğu (__CUBPORT__); sed'e __CUBPORT__ eklendi; sağlık kontrol döngüsüne 3006; son bantta Cubiq adresi + certbot -d cubiq.$DOMAIN + 'sudo gnc-oyun cubiq' ipucu; "nginx hazır" satırı güncel
+- deploy/guncelle-gnc.sh v5: 6b/8 adımı — /var/www/oyunlar/cubiq/.gnc-oyun.conf varsa repodan güncelle, yoksa https://github.com/kaancetin3141/cubiq.git 3006 cubiq ile OTOMATİK kur; nginx'te cubiq bloğu yoksa /etc/nginx/sites-available/gnc-cubiq olarak ekler + reload (set -e güvenli zincir); sağlık kontrolüne 3006; final bant güncel
+- oyun-deploy.sh tip tespiti cubiq için uyumlu: package.json yok + index.html VAR → statik pm2 serve yolu
+- bash -n: iki script de temiz
+- push: 459d5ca..1a4a5c9 main→main (7942876 worklog commit'i de gitti)
+
+Stage Summary:
+- Sunucuda TEK komut yeterli: cd /var/www/gnc-erp && git pull && sudo cp deploy/guncelle-gnc.sh /usr/local/bin/ && guncelle-gnc.sh
+- Bu: CRM fix'leri + premium randevu + ana-site Cubiq kartı + portfolyo v2 + cubiq kurulumu (3006) + nginx + hepsi
+- Sonrasında: sudo certbot --nginx -d cubiq.gncinc.online (SSL), curl 127.0.0.1:3006 kontrol
+- DNS: wildcard * A kaydı varsa cubiq.gncinc.online otomatik çözülür; yoksa Hostinger'a A · cubiq · IP
