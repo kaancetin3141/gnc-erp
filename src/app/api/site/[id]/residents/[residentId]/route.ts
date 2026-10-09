@@ -7,7 +7,7 @@ import bcrypt from 'bcryptjs'
 async function checkResidentForUser(residentId: string, tenantId: string) {
   const r = await db.resident.findUnique({
     where: { id: residentId },
-    include: { site: true },
+    include: { site: true, apartment: { include: { block: true } } },
   })
   if (!r || r.tenantId !== tenantId) return null
   return r
@@ -47,12 +47,12 @@ export async function PATCH(
     if (existing) return err('Bu telefon ile kayıtlı başka sakin var', 400)
   }
 
-  // Daire değişimi
+  // Daire değişimi — FK Apartment tarafında (Apartment.residentId)
   if (apartmentId !== undefined) {
-    // Eski daireden temizle
-    if (resident.apartmentId) {
+    // Eski daireden temizle (sakinin ŞU ANKİ dairesi back-relation ile bulunur)
+    if (resident.apartment) {
       await db.apartment.update({
-        where: { id: resident.apartmentId },
+        where: { id: resident.apartment.id },
         data: { residentId: null },
       })
     }

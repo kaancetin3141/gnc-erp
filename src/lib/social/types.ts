@@ -99,6 +99,8 @@ export interface SocialInboxItem {
 export interface SocialCalendarItem {
   id: string
   scheduledAt: string
+  // Yayınlanan gönderilerde dolu (takvimde scheduledAt || publishedAt birleşimi)
+  publishedAt: string | null
   content: string
   platforms: PlatformKey[]
   status: string

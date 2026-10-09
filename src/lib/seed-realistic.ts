@@ -140,7 +140,7 @@ export async function runRealisticSeed(): Promise<{ message: string; created: Re
           probability: prob,
           expectedCloseDate: closeDate,
           ownerId: pick(reps).id,
-          ...(isLost ? { lossReason: pick(lossReasons), lossNote: chance(0.6) ? 'Müşteri tekrar dönüş için "yıl sonunda değerlendirelim" dedi.' : null } : {}),
+          ...(isLost ? { lossReason: pick(lossReasons), lossNote: chance(0.6) ? 'Müşteri tekrar dönüş için "yıl sonunda değerlendirelim" dedi.' : undefined } : {}),
           createdAt: dayAt(-ri(20, 90), ri(9, 18), ri(0, 59)),
           updatedAt: dayAt(-ri(0, 15), ri(9, 18), ri(0, 59)),
         })
@@ -254,7 +254,7 @@ export async function runRealisticSeed(): Promise<{ message: string; created: Re
     async function ensureCat(name: string, sort: number): Promise<string> {
       if (catByName.has(name)) return catByName.get(name)!
       const id = genId()
-      await db.menuCategory.create({ data: { id, cafeId: cafe.id, name, sortOrder: sort } })
+      await db.menuCategory.create({ data: { id, cafeId: cafe!.id, name, sortOrder: sort } })
       catByName.set(name, id)
       return id
     }
@@ -528,7 +528,7 @@ export async function runRealisticSeed(): Promise<{ message: string; created: Re
     created['market-satis'] = saleRows.length
 
     // --- 3b. Veresiye defteri — mahalle gerçekleri ---
-    const creditSpecs: [string, string, number | null, [string, number, number, string | null][], string][] = [
+    const creditSpecs: [string, string, number | null, [string, number, number, number | null][], string][] = [
       // [ad, not, limit, hareketler[type, tutar, günOfseti, vadeGünOfseti], telefon]
       ['Kemal Usta (Terzi)', 'Mahalle terzisi — haftada 2-3 alışveriş', 3000, [['borc', 620, -18, -3], ['borc', 340, -9, 5], ['odeme', 400, -6, null]], trPhone()],
       ['Ayşe Teyze (3. Blok)', 'Site sakinleri — kredi limiti düşük tutuldu', 2000, [['borc', 850, -21, -5], ['borc', 600, -11, 4], ['odeme', 700, -8, null]], trPhone()],
@@ -542,7 +542,7 @@ export async function runRealisticSeed(): Promise<{ message: string; created: Re
         await db.creditEntry.create({
           data: {
             customerId: cc.id, type, amount,
-            ...(type === 'odeme' ? { method: pick(['nakit', 'havale']) } : { dueDate: dayAt(due, 18) }),
+            ...(type === 'odeme' ? { method: pick(['nakit', 'havale']) } : { dueDate: dayAt(due ?? 0, 18) }),
             note: type === 'borc' ? 'POS veresiye satışı / manuel giriş' : null,
             createdAt: dayAt(d, ri(9, 20)),
           },
@@ -653,7 +653,7 @@ export async function runRealisticSeed(): Promise<{ message: string; created: Re
       const cust = await db.appointmentCustomer.findUnique({ where: { id: apptCustomers[custName] } })
       const date = dayAt(d, h, m)
       rows.push({
-        id: genId(), providerId: provider.id,
+        id: genId(), providerId: provider!.id,
         customerId: apptCustomers[custName], staffId: pair.staffId, serviceId: pair.serviceId,
         customerName: cust?.name ?? custName, customerPhone: cust?.phone ?? trPhone(),
         date, endTime: new Date(date.getTime() + pair.duration * 60000),

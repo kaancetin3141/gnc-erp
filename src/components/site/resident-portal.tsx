@@ -67,17 +67,17 @@ function ResidentDashboard({ session, resident }: { session: string; resident: a
 
   const { data: duesData } = useQuery({
     queryKey: ['resident-dues', session],
-    queryFn: () => apiGet<{ items: any[]; stats: { totalDebt: number; totalPaid: number } }>('/api/resident-portal/dues', { headers } as any),
+    queryFn: () => apiGet<{ items: any[]; stats: { totalDebt: number; totalPaid: number } }>('/api/resident-portal/dues', { headers }),
   })
 
   const { data: announcements = [] } = useQuery({
     queryKey: ['resident-announcements', session],
-    queryFn: () => apiGet<any[]>('/api/resident-portal/announcements', { headers } as any),
+    queryFn: () => apiGet<any[]>('/api/resident-portal/announcements', { headers }),
   })
 
   const { data: complaints = [] } = useQuery({
     queryKey: ['resident-complaints', session],
-    queryFn: () => apiGet<any[]>('/api/resident-portal/complaints', { headers } as any),
+    queryFn: () => apiGet<any[]>('/api/resident-portal/complaints', { headers }),
   })
 
   const dues = duesData?.items ?? []

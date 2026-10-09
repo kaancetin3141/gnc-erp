@@ -107,7 +107,7 @@ export function buildInvoiceWhatsAppMessage(input: {
     '',
     `${number} numaralı faturanızın bilgisi:`,
     `• Tutar: ${amountStr}`,
-    dueStr ? `• Vade Tarihi: ${dueStr}` : null,
+    dueStr ? `• Vade Tarihi: ${dueStr}` : '',
     '',
     'Ödeme için çalışmaya başlayabilirsiniz. Sorularınız için bize ulaşabilirsiniz.',
     '',
@@ -144,7 +144,7 @@ export function buildInvoiceDocMessage(input: {
     '',
     '🧾 Fatura Özeti:',
     `• Genel Toplam: ${amountStr}`,
-    dueStr ? `• Vade Tarihi: ${dueStr}` : null,
+    dueStr ? `• Vade Tarihi: ${dueStr}` : '',
   ]
 
   if (shareUrl) {

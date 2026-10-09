@@ -1048,8 +1048,8 @@ function ListView({
           bv = b.value
           break
         case 'stage':
-          av = STAGE_VALUES.indexOf(a.stage)
-          bv = STAGE_VALUES.indexOf(b.stage)
+          av = (STAGE_VALUES as readonly string[]).indexOf(a.stage)
+          bv = (STAGE_VALUES as readonly string[]).indexOf(b.stage)
           break
         case 'probability':
           av = a.probability
@@ -1404,7 +1404,7 @@ export function KanbanBoard() {
 
   // İstatistikler
   const stats = React.useMemo(() => {
-    const activeDeals = deals.filter((d) => ACTIVE_STAGES.includes(d.stage))
+    const activeDeals = deals.filter((d) => (ACTIVE_STAGES as readonly string[]).includes(d.stage))
     const totalPipeline = activeDeals.reduce((acc, d) => acc + d.value, 0)
     const wonThisMonth = deals.filter(
       (d) => d.stage === 'kazanıldı' && isThisMonth(d.updatedAt),
@@ -1468,7 +1468,7 @@ export function KanbanBoard() {
 
     // Hedef stage hesapla
     let targetStage: string | null = null
-    if (STAGE_VALUES.includes(String(over.id))) {
+    if ((STAGE_VALUES as readonly string[]).includes(String(over.id))) {
       targetStage = String(over.id)
     } else {
       // over.id bir deal.id olabilir → o deal'in stage'ini al
@@ -1527,7 +1527,7 @@ export function KanbanBoard() {
       return
     }
     let targetStage: string | null = null
-    if (STAGE_VALUES.includes(String(over.id))) {
+    if ((STAGE_VALUES as readonly string[]).includes(String(over.id))) {
       targetStage = String(over.id)
     } else {
       const overDeal = deals.find((d) => d.id === over.id)

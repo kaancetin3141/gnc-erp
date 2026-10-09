@@ -51,12 +51,14 @@ export async function publishToTwitter(params: PublishParams): Promise<PublishRe
   }
 
   // 1. Medya yükle (varsa)
-  let mediaIds: string[] = []
+  let mediaIds: (string | null)[] = []
   if (mediaUrls.length > 0 && mediaUrls.length <= 4) {
     mediaIds = await Promise.all(mediaUrls.slice(0, 4).map(uploadMediaToTwitter.bind(null, accessToken)))
     if (mediaIds.some((id) => !id)) {
       return { success: false, externalId: null, externalUrl: null, errorMessage: 'Medya yükleme başarısız' }
     }
+    // Erken dönüş sonrası tüm id'ler non-null → daralt (string[] bekleniyor)
+    mediaIds = mediaIds.filter((id): id is string => !!id)
   }
 
   // 2. Tweet at

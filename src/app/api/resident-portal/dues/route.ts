@@ -9,15 +9,16 @@ export async function GET(req: NextRequest) {
 
   const resident = await db.resident.findUnique({
     where: { id: residentId },
-    select: { id: true, siteId: true, apartmentId: true },
+    select: { id: true, siteId: true, apartment: { select: { id: true } } },
   })
   if (!resident) return err('Sakin bulunamadı', 404)
 
+  // Daire FK'sı Apartment tarafındadır (Apartment.residentId) → back-relation ile bulunur
   const dues = await db.dues.findMany({
     where: {
       OR: [
         { residentId: resident.id },
-        { apartmentId: resident.apartmentId || '' },
+        ...(resident.apartment ? [{ apartmentId: resident.apartment.id }] : []),
       ],
     },
     orderBy: [{ year: 'desc' }, { month: 'desc' }],

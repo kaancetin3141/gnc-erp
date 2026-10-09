@@ -8477,3 +8477,38 @@ Stage Summary:
 - Doğrulanmış çalışan özellikler: giriş akışları (3 tip), 5 sektör paneli, 9+ modül, müşteri CRUD, mini-servisler (3002/3005/3010/3011)
 - Düzeltilen: 4 bug + 1 altyapı + 5 önceden kayıp düzeltme geri kazanıldı
 - Sıradaki: sunucuda DB telefon onarımı (SQL aşağıda), Plesk/Coolify planı (COOLIFY-REHBERI.md) bekliyor
+
+---
+Task ID: user-qa-fix-improve-2
+Agent: main (Super Z)
+Task: "projedeki özellikleri kontrol et, bozukları düzelt, çalışanları mükemmelleştir" — devam: kalan 106 tip hatası + şema uyuşmazlıkları
+
+Work Log:
+- tsc denetimi: 152 src hatası → 0'a indirildi (kalan 8 hata uygulama dışı: skills/, mini-services Bun tipleri, capacitor config — build'e girmez)
+- GERÇEK runtime bug'ları düzeltildi:
+  * dashboard: `sector` anahtarının sectorData ile çakışması (TS2783) — silindi
+  * dashboard/trend: koşullu spread Promise.all pozisyon tiplerini bozuyordu → invoicesPromise ayrıldı
+  * social/posts: platforms JSON-string kolonuna `has` filtresi = Prisma runtime HATASI → tırnaklı contains
+  * social/inbox: created[] never-tipi + platform duplicate
+  * bulk-import: kvkkConsent 'true'/'1'/'evet'/'yes' string kabulü (CSV gerçekliği) + ok<T> generic
+  * customer-list: navigator.clip → navigator.clipboard (kopyalama SİLENT başarısızdı)
+  * resident-portal/dues + residents/[id]: resident.apartmentId yok (FK Apartment tarafında) → back-relation ile düzeltildi
+  * inbox-view: onSuccess'ta kapsam dışı `id` değişkeni (derleme kırığı) → variables.id
+  * einvoice: d.customer/d.company null guard (422) + tarih dönüşümleri
+  * twitter client: mediaIds null filtreleme
+  * market-purchase/kanban/invoice-detail/... UI daraltma hataları
+  * users-view + chat-view: Record<Role> eksik 5 rol (kasa/barmen/komi/kasiyer/depo_sorumlusu) → UI'da undefined etiket bug'ı
+- PRISMA ŞEMA TAMAMLANDI (kod-un- beklediği ama şemada olmayan alanlar = site şikayet modülü runtime 500 veriyordu):
+  * Complaint: +assignedStaffId, +assignedStaff(SiteStaff), +estimatedCost, +dueDate
+  * SiteStaff: +complaints back-relation
+  * Resident: +site relation (siteId zaten vardı); Site: +residents
+  * prisma db push OK (sandbox DB); sunucuda guncelle-gnc.sh zaten `prisma db push` çalıştırıyor → otomatik uygulanır
+- api-client: apiGet opsiyonel headers parametresi (resident portalı x-resident-session için)
+- api-utils: requireAuth/imza korunarak ok<T> generic eklendi
+- DOĞRULAMA: tsc --noEmit src/ = 0 hata; `next build` TAM BAŞARILI; duman testi: login ✓ dashboard ✓ trend ✓ social/posts+platform ✓ notifications ✓ (crm-3000 ensure ile restart edildi, root 200)
+- Not: bu oturumda önceki bölümün çekirdek düzeltmeleri (d3fa1c1 oturum cache sızıntısı vb.) zaten commitliydi; cron 89235a3 ara dosyaları almıştı
+
+Stage Summary:
+- src/ tam tip-temiz + production build geçer + tüm kritik API'ler 200
+- Şema genişletmesi sunucuda bir sonraki `bash guncelle-gnc.sh` ile otomatik uygulanacak (db push satırı mevcut)
+- 31 dosya değişti — bu commit ile push

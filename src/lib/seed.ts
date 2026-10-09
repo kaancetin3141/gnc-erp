@@ -260,7 +260,7 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
     },
   })
 
-  const t1Reps = []
+  const t1Reps: Awaited<ReturnType<typeof db.user.create>>[] = []
   const repNames1 = ['Zeynep Arslan', 'Ahmet Çelik', 'Elif Şahin', 'Burak Öztürk']
   const repTitles1 = ['Satış Temsilcisi', 'Kıdemli Satış Temsilcisi', 'Satış Temsilcisi', 'Satış Temsilcisi']
   for (let i = 0; i < repNames1.length; i++) {
@@ -309,7 +309,7 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
     },
   })
 
-  const t2Reps = []
+  const t2Reps: Awaited<ReturnType<typeof db.user.create>>[] = []
   const repNames2 = ['Okan Yıldırım', 'Deniz Aslan']
   for (const name of repNames2) {
     const u = await db.user.create({
@@ -1044,7 +1044,7 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
   const allRepsT1 = [t1Admin, t1Manager1, t1Manager2, ...t1Reps]
   const allRepsT2 = [t2Admin, t2Manager, ...t2Reps]
 
-  const customers = []
+  const customers: Awaited<ReturnType<typeof db.customer.create>>[] = []
   for (let i = 0; i < 20; i++) {
     const owner = rand(allRepsT1)
     const lastActivityDays = randInt(0, 60)

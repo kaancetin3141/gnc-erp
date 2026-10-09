@@ -1686,7 +1686,8 @@ export function AdminPanel() {
         </TabsContent>
 
         <TabsContent value="portfolio" className="space-y-4">
-          <PortfolioManager user={user} />
+          {/* Yalnızca oturum açıksa çizilir (AdminPanel zaten superadmin korumalı) */}
+          {user && <PortfolioManager user={user} />}
         </TabsContent>
 
         {isSuperAdmin(user?.role ?? '') && (

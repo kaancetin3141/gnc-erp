@@ -20,6 +20,8 @@ export interface DocPdfLine {
 }
 
 export interface DocPdfParty {
+  // Kaynak kaydın kimliği (activity log / müşteri güncelleme akışlarında kullanılır)
+  id?: string
   name: string
   address?: string | null
   city?: string | null

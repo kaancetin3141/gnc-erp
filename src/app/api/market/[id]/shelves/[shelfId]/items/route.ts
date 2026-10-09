@@ -64,10 +64,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: { shelfId, productId },
   })
   if (existing) {
+    const q = qty ?? 0
     const updated = await db.shelfItem.update({
       where: { id: existing.id },
       data: {
-        qty: (qty ?? 0) > 0 ? existing.qty + qty : existing.qty,
+        qty: q > 0 ? existing.qty + q : existing.qty,
         minDisplayQty: minDisplayQty ?? existing.minDisplayQty,
       },
     })

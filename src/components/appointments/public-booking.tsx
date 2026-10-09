@@ -270,7 +270,7 @@ export function PublicBooking({ providerId, onExit }: PublicBookingProps) {
       const d = new Date(today.getTime() + i * 86400000)
       const dk = dayKeyFromDate(d)
       const sched = workingHours[dk]
-      const isClosed = !sched || sched.closed
+      const isClosed = !sched || !!sched.closed
       dates.push({
         value: d.toISOString().slice(0, 10),
         label: d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }),

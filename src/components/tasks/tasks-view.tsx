@@ -752,7 +752,7 @@ function AutomationCard() {
   const enabled = autoStatus?.enabled ?? true
   const threshold = autoStatus?.thresholdDays ?? 30
 
-  const updateSetting = async (key: string, value: string | boolean) => {
+  const updateSetting = async (key: string, value: string | number | boolean) => {
     setSaving(true)
     try {
       await apiPatch('/api/settings', { key, value: String(value) })

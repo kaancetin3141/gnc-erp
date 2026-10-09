@@ -101,6 +101,11 @@ const ROLE_AVATAR_GRADIENT: Record<Role, string> = {
   rep: 'from-teal-500 to-cyan-600',
   readonly: 'from-slate-500 to-slate-600',
   stock: 'from-rose-500 to-pink-600',
+  kasa: 'from-lime-500 to-green-600',
+  barmen: 'from-fuchsia-500 to-pink-600',
+  komi: 'from-orange-500 to-amber-600',
+  kasiyer: 'from-cyan-500 to-teal-600',
+  depo_sorumlusu: 'from-stone-500 to-neutral-600',
 }
 
 const DOC_TYPE_ICON: Record<ChatDocumentType, LucideIcon> = {

@@ -644,7 +644,7 @@ export function InvoiceDetailDialog({
 
       {/* PDF Önizleme */}
       {pdfOpen && (
-        <InvoicePdfDialog invoice={invoice} detail={detail} onClose={() => setPdfOpen(false)} />
+        <InvoicePdfDialog invoice={invoice!} detail={detail ?? null} onClose={() => setPdfOpen(false)} />
       )}
 
       {/* Gönderme diyalogu — WhatsApp / e-posta (SMTP) / paylaşım linki */}

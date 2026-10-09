@@ -957,7 +957,7 @@ function CalendarPage({
       const d = new Date(today.getTime() + i * 86400000)
       const dk = dayKeyFromDate(d)
       const sched = workingHours[dk]
-      const isClosed = !sched || sched.closed
+      const isClosed = !sched || !!sched.closed
       const yyyy = d.getFullYear()
       const mm = String(d.getMonth() + 1).padStart(2, '0')
       const dd = String(d.getDate()).padStart(2, '0')

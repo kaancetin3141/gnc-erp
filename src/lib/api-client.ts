@@ -23,8 +23,14 @@ function getHeaders(): HeadersInit {
   return headers
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(path, { headers: getHeaders() })
+// Opsiyonel `init.headers` ile ek/özel başlık verilerek kullanılabilir
+// (ör. sakın portalı x-resident-session header'ı — getHeaders ile birleştirilir)
+export async function apiGet<T>(path: string, opts?: { headers?: HeadersInit }): Promise<T> {
+  const merged = {
+    ...(getHeaders() as Record<string, string>),
+    ...((opts?.headers ?? {}) as Record<string, string>),
+  }
+  const res = await fetch(path, { headers: merged })
   const data = await res.json()
   if (!res.ok) throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
   return data as T

@@ -59,6 +59,11 @@ const ROLE_BADGE_CLASS: Record<Role, string> = {
   rep: 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-900/50',
   readonly: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700',
   stock: 'bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/50',
+  kasa: 'bg-lime-100 text-lime-800 border-lime-200 dark:bg-lime-950/40 dark:text-lime-300 dark:border-lime-900/50',
+  barmen: 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200 dark:bg-fuchsia-950/40 dark:text-fuchsia-300 dark:border-fuchsia-900/50',
+  komi: 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-900/50',
+  kasiyer: 'bg-cyan-100 text-cyan-800 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-900/50',
+  depo_sorumlusu: 'bg-stone-100 text-stone-700 border-stone-200 dark:bg-stone-800/60 dark:text-stone-300 dark:border-stone-700',
 }
 
 const ROLE_AVATAR_GRADIENT: Record<Role, string> = {
@@ -68,6 +73,11 @@ const ROLE_AVATAR_GRADIENT: Record<Role, string> = {
   rep: 'from-teal-500 to-cyan-600',
   readonly: 'from-slate-500 to-slate-600',
   stock: 'from-rose-500 to-pink-600',
+  kasa: 'from-lime-500 to-green-600',
+  barmen: 'from-fuchsia-500 to-pink-600',
+  komi: 'from-orange-500 to-amber-600',
+  kasiyer: 'from-cyan-500 to-teal-600',
+  depo_sorumlusu: 'from-stone-500 to-neutral-600',
 }
 
 // ─── Tipler ───────────────────────────────────────────────────────

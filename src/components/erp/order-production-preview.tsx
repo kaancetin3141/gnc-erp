@@ -61,8 +61,9 @@ interface OrderLine {
 
 // Order detail API — quote/invoice lines'ı içerir
 interface OrderDetail extends Order {
-  quote?: { id: string; number: string; lines?: OrderLine[] } | null
-  invoice?: { id: string; number: string; lines?: OrderLine[] } | null
+  // Parent (Order) tipleriyle yapısal uyum: status/isProforma korunur, lines eklenir
+  quote?: { id: string; number: string; status?: string; isProforma?: boolean; lines?: OrderLine[] } | null
+  invoice?: { id: string; number: string; status: string; lines?: OrderLine[] } | null
 }
 
 // ============================================================

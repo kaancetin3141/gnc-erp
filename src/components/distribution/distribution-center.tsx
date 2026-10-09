@@ -24,7 +24,7 @@ function detectPlatform(): Platform {
   if (typeof window === 'undefined') return 'unknown'
   const ua = navigator.userAgent
   const isAndroid = /Android/.test(ua)
-  const isIOS = /iPhone|iPad|iPod/.test(ua) && !window.MSStream
+  const isIOS = /iPhone|iPad|iPod/.test(ua) && !('MSStream' in window)
   const isMac = /Macintosh/.test(ua)
   const isWindows = /Windows/.test(ua)
   const isLinux = /Linux/.test(ua) && !isAndroid

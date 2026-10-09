@@ -134,6 +134,9 @@ export interface Invoice {
   // Çeki listesi (packing list)
   packingListNo?: string | null
   packingListDate?: string | null
+  // İrsaliye bağlantısı (Prisma Invoice.dispatchNo/dispatchDate)
+  dispatchNo?: string | null
+  dispatchDate?: string | null
   // Sipariş bağlantısı
   orderId?: string | null
   order?: { id: string; number: string; status?: string } | null
@@ -142,6 +145,7 @@ export interface Invoice {
     name: string
     segment?: string
     status?: string
+    city?: string | null
     // Detay API'si ek alanlar döner (telefon/adres/VKN)
     phone?: string | null
     address?: string | null

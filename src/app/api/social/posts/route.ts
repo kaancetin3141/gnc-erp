@@ -19,12 +19,14 @@ export async function GET(req: NextRequest) {
   const platform = url.searchParams.get('platform') // PlatformKey
   const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
 
-  const where: { tenantId: string; status?: string; platforms?: { has: string } } = {
+  const where: { tenantId: string; status?: string; platforms?: { contains: string } } = {
     tenantId: user!.tenantId,
   }
   if (status) where.status = status
   if (platform && ALL_PLATFORMS.includes(platform as PlatformKey)) {
-    where.platforms = { has: platform }
+    // platforms kolonu JSON dizgidir (["twitter",...]) — `has` yalnızca dizi
+    // alanlarda geçerli; tırnaklı contains ile birebir platform eşleşmesi yapılır
+    where.platforms = { contains: `"${platform}"` }
   }
 
   const posts = await db.socialPost.findMany({

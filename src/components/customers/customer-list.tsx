@@ -1031,7 +1031,8 @@ export function CustomerList() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => {
-                                  navigator.clip?.writeText(c.id)
+                                  // clipboard API — yanlışlıkla `navigator.clip` yazılmıştı
+                                  navigator.clipboard?.writeText(c.id)
                                   toast.success('ID kopyalandı')
                                 }}
                               >

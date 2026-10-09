@@ -170,6 +170,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: {
       customer: { select: { id: true, name: true } },
       lines: { include: { product: { select: { id: true, name: true } } } },
+      order: { select: { id: true, number: true } },
     },
   })
 

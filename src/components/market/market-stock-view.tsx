@@ -78,7 +78,7 @@ export function MarketStockView({ marketId }: { marketId: string }) {
       )
     }
     if (lowOnly) {
-      list = list.filter((b) => b.product.stock <= (b.product as BarcodeRow['product'] & { minStock?: number }).minStock || 5)
+      list = list.filter((b) => b.product.stock <= ((b.product as BarcodeRow['product'] & { minStock?: number })?.minStock ?? 5))
     }
     return list
   }, [all, search, lowOnly])

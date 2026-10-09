@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     if (accounts.length === 0) return err('Önce hesap bağlayın', 400)
 
     // Her hesap için 1-3 mock mesaj üret
-    const created = []
+    const created: string[] = []
     for (const account of accounts) {
       const count = Math.floor(Math.random() * 3) + 1
       for (let i = 0; i < count; i++) {
@@ -93,8 +93,9 @@ export async function POST(req: NextRequest) {
           data: {
             tenantId: user!.tenantId,
             accountId: account.id,
-            platform: account.platform,
             ...mock,
+            // Hesap platformu esas alınır (mock'takini geçersiz kılar)
+            platform: account.platform,
             tags: mock.tags ? JSON.stringify(mock.tags) : null,
           },
         })

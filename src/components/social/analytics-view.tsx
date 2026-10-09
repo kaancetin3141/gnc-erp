@@ -109,7 +109,8 @@ export function AnalyticsView() {
     Beğeni: p.likes,
     Yorum: p.comments,
     Paylaşım: p.shares,
-    Etkileşim: p.engagement,
+    // toplam etkileşim = beğeni + yorum + paylaşım (API ayrı alan döndürmüyor)
+    Etkileşim: p.likes + p.comments + p.shares,
     Erişim: p.reach,
     engagementRate: p.engagementRate,
     platform: p.platform,

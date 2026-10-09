@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
           { city: { contains: q } },
         ],
       },
-      select: { id: true, name: true, sector: true, city: true, phone: true, status: true, segment: true, ownerId: true, owner: { select: { name: true } } },
+      select: { id: true, name: true, sector: true, city: true, phone: true, status: true, segment: true, ownerId: true, tags: true, owner: { select: { name: true } } },
       take: 8,
       orderBy: { updatedAt: 'desc' },
     }),

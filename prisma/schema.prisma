@@ -1294,6 +1294,7 @@ model Site {
   dues          Dues[]
   announcements Announcement[]
   complaints    Complaint[]
+  residents     Resident[]
 }
 
 // Blok (A Blok, B Blok, vb.)
@@ -1351,6 +1352,7 @@ model Resident {
   dues       Dues[]
   complaints Complaint[]
   messages   ResidentMessage[]
+  site       Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
 }
 
 // Aidat
@@ -1397,6 +1399,8 @@ model SiteStaff {
   isActive  Boolean   @default(true)
   notes     String?
   createdAt DateTime  @default(now())
+
+  complaints Complaint[]
 }
 
 // Duyuru
@@ -1428,6 +1432,11 @@ model Complaint {
   priority    String    @default("normal") // dusuk | normal | yuksek | acil
   response    String? // yönetim cevabı
   respondedAt DateTime?
+  // Görevlendirilen personel + tahmini maliyet (şikayet yönetimi)
+  assignedStaffId String?
+  assignedStaff   SiteStaff? @relation(fields: [assignedStaffId], references: [id], onDelete: SetNull)
+  estimatedCost   Float?
+  dueDate         DateTime? // planlanan çözüm tarihi (gecikme takibi)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
