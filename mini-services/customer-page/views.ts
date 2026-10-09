@@ -89,12 +89,14 @@ header.top{
   box-shadow:0 4px 26px rgba(70,26,36,.08);
 }
 .top-in{max-width:1200px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.logo{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:1.15rem;letter-spacing:-.022em;white-space:nowrap;text-decoration:none;color:#5a1f2e;background:linear-gradient(120deg,#7a2233 0%,#b03452 46%,#0f766e 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.logo{display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:1.15rem;letter-spacing:-.022em;white-space:nowrap;text-decoration:none;color:#5a1f2e;background:linear-gradient(120deg,#7a2233 0%,#b03452 46%,#0f766e 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.logo::before{content:"G";display:inline-flex;align-items:center;justify-content:center;flex:none;width:33px;height:33px;border-radius:11px;background:linear-gradient(135deg,#c2334d 0%,#8c2740 52%,#0f766e 100%);color:#fff;font-size:.95rem;font-weight:800;letter-spacing:0;-webkit-text-fill-color:#fff;box-shadow:0 5px 14px rgba(140,39,64,.38),inset 0 1px 0 rgba(255,255,255,.35)}
 .search{flex:1 1 240px;max-width:540px;min-width:200px;position:relative;margin-left:auto}
-.search input{width:100%;padding:13px 18px 13px 44px;border-radius:999px;border:1.5px solid rgba(255,255,255,.92);background:rgba(255,255,255,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font:inherit;font-size:.97rem;font-weight:500;transition:border-color .2s,box-shadow .2s,background .2s;color:var(--ink);box-shadow:0 10px 30px rgba(70,26,36,.16),inset 0 1px 0 rgba(255,255,255,.9)}
+.search input{width:100%;padding:13px 52px 13px 44px;border-radius:999px;border:1.5px solid rgba(255,255,255,.92);background:rgba(255,255,255,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font:inherit;font-size:.97rem;font-weight:500;transition:border-color .2s,box-shadow .2s,background .2s;color:var(--ink);box-shadow:0 10px 30px rgba(70,26,36,.16),inset 0 1px 0 rgba(255,255,255,.9)}
 .search input::placeholder{color:#a98a79;font-weight:500}
 .search input:focus{outline:none;border-color:rgba(194,51,77,.6);background:#fff;box-shadow:0 0 0 4px rgba(194,51,77,.16),0 12px 32px rgba(70,26,36,.2)}
 .search .s-ic{position:absolute;left:16px;top:50%;transform:translateY(-50%);opacity:.6;font-size:1.02rem;pointer-events:none}
+.s-kbd{position:absolute;right:16px;top:50%;transform:translateY(-50%);font:inherit;font-size:.68rem;font-weight:700;color:#a98a79;background:rgba(94,52,40,.07);border:1px solid rgba(94,52,40,.16);border-bottom-width:2px;border-radius:6px;padding:2px 8px;pointer-events:none}
 
 /* ---- hero: CRM panoları gibi koyu gradient + cam küreler ---- */
 .hero{
@@ -332,6 +334,7 @@ footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),r
   .hero{padding:28px 18px}
   .top-in{gap:8px}
   .search{order:3;flex:1 1 100%;max-width:none}
+  .s-kbd{display:none}
   .dbody,.book-card{padding:18px}
   .dates{grid-template-columns:repeat(4,1fr)}
   .biz-map{height:300px}
@@ -449,6 +452,7 @@ export function homePage(baseDomain: string, gwPort?: string | null): string {
     <div class="search">
       <span class="s-ic" aria-hidden="true">🔍</span>
       <input type="search" id="q" placeholder="İşletme, hizmet veya şehir ara…" aria-label="İşletme ara" autocomplete="off">
+      <kbd class="s-kbd" aria-hidden="true">/</kbd>
     </div>
   </div>
 </header>
@@ -763,6 +767,21 @@ export const HOME_JS = `
   function gwq(p) {
     if (!GWPORT) return p;
     return p + (p.indexOf('?') === -1 ? '?' : '&') + 'XTransformPort=' + encodeURIComponent(GWPORT);
+  }
+  // Arama kısayolu: '/' veya Ctrl/Cmd+K → odak; Esc → bırak (CRM topbar kbd ipucu muadili)
+  var qEl = document.getElementById('q');
+  if (qEl) {
+    document.addEventListener('keydown', function (e) {
+      var tag = (e.target && e.target.tagName || '').toLowerCase();
+      var typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+      if ((e.key === '/' && !typing) || ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K'))) {
+        e.preventDefault();
+        qEl.focus();
+        try { qEl.select(); } catch (_) {}
+      } else if (e.key === 'Escape' && e.target === qEl) {
+        qEl.blur();
+      }
+    });
   }
   var TYPE = {
     berber: { label: 'Berber', emoji: '💈' },

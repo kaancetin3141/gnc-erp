@@ -8653,3 +8653,33 @@ Stage Summary:
 - Sayfa premium seviyeye taşındı: gradyan tipografi, iç ışıklı cam yüzeyler, parlak kapak overlay'i, belirgin arama alanı
 - Cache-busting (?v=hash) ile gelecekteki tüm stil güncellemeleri kullanıcıya anında yansır
 - commit + push bu oturumla gider
+
+---
+Task ID: randevu-premium-2
+Agent: Ana ajan (Super Z)
+Task: "karpuz simgesini sil ve assetleri biraz daha premium yap; sağdaki arama çubuğunu biraz daha belirgin yap" + Cron 439047 servis kontrolü
+
+Work Log:
+- CRON 439047: ensure-services.sh → "OK: tüm mini servisler çalışıyor" (3002/3005/3010/3011) ✓
+- DURUM TESPİTİ: paralel webDevReview ajanı isteğin büyük kısmını commit'siz çalışma ağacında yapmıştı (66f67a3 sadece ekran görüntülerini içeriyordu):
+  * 🍉 her yerden kaldırılmış: favicon → "G" monogram SVG (bordo→teal gradient), logo/span.lg temizlendi, footer temizlendi
+  * Arama çubuğu belirginleştirilmiş: 540px'e genişletilmiş, %95 opak beyaz, güçlü gölge, odakta marka halkası
+  * Premium: gradient metin logo, dtitle gradient metni, hero içi highlight gölgeleri, kart örtüsü sheen (cover::after), koyu gradient footer, sayfa başına djb2 cache-busting (?v= hash)
+  * kbd ipucu elementi HTML'de hazırdı; CSS'i ve kısayol JS'i eksikti
+- BENİM EKLEMEKLERİM:
+  * .logo::before "G" monogram çipi (33px, brand gradient, iç highlight) — CRM giriş ekranındaki logo çipi düzenine uygun, favicon ile aynı kimlik
+  * .s-kbd stili + input sağ pad 52px; ≤520px'te gizlenir (paralel ajanın bıraktığı ÇİFT kayıt tekiline indirildi)
+  * HOME_JS'e global klavye kısayolu: '/' veya Ctrl/Cmd+K → aramaya odak+seç, Esc → bırak (giriş alanındayken '/' yazmayı bozmaz)
+- NOT: git diff çıktısında ".sumline[hidden]" gibi seçiciler ".sumlineidden]" gibi göründü — [h dizisi terminal çıktısı yutmuş; DOSYA SAĞLAM, bozulma yok (doğrudan Read ile teyit edildi)
+- DOĞRULAMA (agent-browser, gateway :81/?XTransformPort=3002):
+  * Ana sayfa desktop: G çipi + gradient logo ✓, belirgin arama (odak halkası) ✓, / ipucu ✓, karpuz yok ✓
+  * Kısayol testi: keydown '/' → arama odaklandı (activeElement === #q) ✓
+  * Mobil 390×844: arama tam genişlik, kbd gizli, çip dizilimi düzgün ✓
+  * Detay: form-err display:none (gizli davranışı doğru) ✓, book-card ✓, logo çipi ✓
+  * Konsol: 0 hata
+- commit + push: paralel ajanın yarım kalan premium işi + bu rötuşlar tek commit'te
+
+Stage Summary:
+- Randevu sayfası artık karpuzemoji'siz, "G" monogram kimlikli (favicon + logo çipi tutarlı), CRM topbar'ına benzeyen belirgin aramalı ve premium cam dilde
+- Cache-busting sayesinde sunucuda güncellemeden sonra eski CSS önbellekten gelmeyecek
+- push PAT engeli nedeniyle yerelde; PAT gelince tek push
