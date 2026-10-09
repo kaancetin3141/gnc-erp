@@ -8729,3 +8729,24 @@ Stage Summary:
 - Otomatik onay bug'ı KAPALI: fix commit 0e5dcd4 canlı sunucuda doğrulandı (autoApprove=false → beklemede)
 - Eski fix-öncesi test kayıtları yeni mantığa uyduruldu (2 adet beklemede)
 - Bu oturumda kod değişikliği yok; yerelde 0e5dcd4 + 6eb469e bekliyor, PAT gelince tek push
+
+---
+Task ID: cubiq-kurulum-1
+Agent: Ana ajan (Super Z)
+Task: ①push ②ana sayfada Cubiq bölümü ③github.com/kaancetin3141/cubiq'i sunucuda kurup hayata geçirme
+
+Work Log:
+- PUSH: yine "could not read Username" — makinede token/gh cli/credential YOK (remote düz https://github.com/kaancetin3141/gnc-erp.git). Kullanıcı PAT'i sandbox'a işledikten sonra tek push gerekli (14. hatırlatma)
+- CUBIQ KURULUM: repo /home/z/cubiq'a klonlandı (public, repo dışı — fruit-storm/kaloriai düzeni). node serve.js 3006 ile canlı; sıfır bağımlılık, package.json yok
+- GATEWAY SORUNU + ÇÖZÜM: gateway ?XTransformPort=3006 ile açılınca css/js alt kaynakları sorguyu taşımıyor → CRM'e düşüyor → sayfa stilsiz. Yerel klondaki serve.js'e gateway-modunda (yalnızca istek XTransformPort içerirse) göreli alt-kaynaklara sorgu enjeksiyonu eklendi; GitHub deposuna dokunulmadı, doğrudan erişim/subdomain etkilenmez
+- ENSURE-SERVICES: cubiq bloğu (3006, /home/z/cubiq varsa; yoksa atlanır) + ana-site statik önizleme bloğu (3007) eklendi; header yorumu güncellendi; bash -n OK
+- ANA SAYFA KARTI: ana-site/index.html'e Cubiq kartı (🧩 Canlıda, 4 özellik, 4 tech, ▶ OYUNA BAŞLA → cubiq.gncinc.online), meta/og description + footer linki, JS isGame regex'ine cubiq|blok
+- PORTFOLYO VERİSİ: tablo boştu → 5 proje seed edildi (crm/randevu/fruitstorm/kaloriai/cubiq; KaloriAI soon). route.ts defaults'a Cubiq eklendi + marker v1→v2 (deploy sonrası production CRM'e otomatik tamamlanır). Fruit Storm subdomain 'meyvepatlat'→'fruitstorm' düzeltildi
+- DOĞRULAMA: 3006 HTTP 200; gateway'den oyun tam stilinde + KLASİK mod tahta/tepsi/skor çalışıyor (cubiq-3006-styled.png, cubiq-3006-play.png); /api/portfolio 5 proje; ana sayfa canlı liste "5 proje" + Cubiq kartı Canlıda/▶ OYUNA BAŞLA (anasite-cubiq-card2.png); eslint + bash -n temiz
+- KANITLAR tool-results/ altında; commit bbe6aa3 (local)
+
+Stage Summary:
+- Cubiq artık sunucuda 3006 portunda canlı (gateway: :81/?XTransformPort=3006 — önizleme tam çalışıyor)
+- Ana sayfa (ana-site) hem statik hem CRM-canlı listede Cubiq kartına sahip; panelde yönetilebilir
+- Sunucuya geçişte yapılacaklar: cubiq.gncinc.online DNS + vhost → 3006; repo deploy edilince /api/portfolio v2 marker Cubiq'i production'a ekler; ensure-services cubiq'i otomatik bekçiler
+- push hâlâ PAT bekliyor (0e5dcd4, 6eb469e, 8ec7e24, bbe6aa3 birikti)
