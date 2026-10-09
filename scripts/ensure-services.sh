@@ -3,6 +3,7 @@
 # GNC CRM mini-service bekçisi — BU PROJEDE SADECE:
 #   CRM ana site (3000, ayrı yönetilir) + customer-page (3002)
 #   chat-service (3005), appointment-reminders (3011), cron-automation (3010)
+#   cubiq oyunu (3006, /home/z/cubiq — klasör varsa beklenir, yoksa atlanır)
 # fruit-storm (3003) ve kaloriai (3004) BU PROJEDE YOK:
 #   kullanıcı onları sunucuya GitHub'dan ayrı yükler; klasör olmadığından
 #   ensure() zaten sessizce atlar (genel yapı korunuyor).
@@ -56,6 +57,32 @@ ensure customer-page 3002
 ensure chat-service 3005
 ensure appointment-reminders 3011
 ensure cron-automation 3010
+
+# --- Cubiq oyunu (3006, /home/z/cubiq) ---
+# fruit-storm (3003) / kaloriai (3004) gibi kullanıcı projelerinden:
+# GitHub'dan ayrı klonlanır (repo dışı), klasör yoksa blok sessizce atlanır.
+# node serve.js 3006 — sıfır bağımlılık, package.json gerekmez.
+CUBIQ_DIR="/home/z/cubiq"
+if [ -d "$CUBIQ_DIR" ] && ! port_alive 3006; then
+  for attempt in 1 2 3; do
+    (cd "$CUBIQ_DIR" && nohup node serve.js 3006 > "$LOGDIR/cubiq-3006.log" 2>&1 &)
+    for i in $(seq 1 5); do
+      sleep 2
+      port_alive 3006 && { RESTARTED="$RESTARTED cubiq-3006(restart)"; break; }
+    done
+    port_alive 3006 && break
+  done
+  port_alive 3006 || RESTARTED="$RESTARTED cubiq-3006(SORUNLU)"
+fi
+
+# --- Ana site statik önizleme (3007, ana-site/) ---
+# Sandbox'ta gncinc.online web kökünün yerel önizlemesi (gateway ?XTransformPort=3007).
+# Sunucuda ana site Caddy webroot'undan servis edilir; bu blok orada no-op'a yakındır.
+if [ -d "/home/z/my-project/ana-site" ] && ! port_alive 3007; then
+  (cd /home/z/my-project/ana-site && nohup python3 -m http.server 3007 > "$LOGDIR/anasite-3007.log" 2>&1 &)
+  sleep 2
+  port_alive 3007 || RESTARTED="$RESTARTED anasite-3007(SORUNLU)"
+fi
 
 # --- CRM ana site (3000) ---
 # Sunucuda pm2 yönetir (port canlıysa bu blok hiç çalışmaz, no-op).

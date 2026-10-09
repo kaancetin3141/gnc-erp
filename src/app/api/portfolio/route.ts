@@ -20,12 +20,13 @@ export async function OPTIONS() {
 }
 
 // ------------------------------------------------------------
-// Varsayılan 4 proje — TEK SEFERLİK backfill (SystemSetting işaretçisi ile).
+// Varsayılan 5 proje — TEK SEFERLİK backfill (SystemSetting işaretçisi ile).
 // - Tablo boşsa hepsi eklenir (ana-site canlı liste hemen dolu görünsün)
 // - Tabloda kayıt varsa SADECE eksik subdomain'ler eklenir (kullanıcı
 //   kayıtları korunur; panelde silinen kart geri gelmez)
+// v2: Cubiq (cubiq.gncinc.online, port 3006) varsayılan listeye girdi
 // ------------------------------------------------------------
-const PORTFOLIO_MARKER = 'portfolio_defaults_v1'
+const PORTFOLIO_MARKER = 'portfolio_defaults_v2'
 
 async function seedDefaultsIfEmpty() {
   const marker = await db.systemSetting.findUnique({ where: { key: PORTFOLIO_MARKER } })
@@ -105,6 +106,24 @@ async function seedDefaultsIfEmpty() {
         'Kişisel hedefler ve haftalık raporlar',
       ]),
       sortOrder: 4,
+    },
+    {
+      title: 'Cubiq',
+      description:
+        'Blok patlatma bulmaca — parçayı yerleştir, çizgileri temizle, combo yap! Tarayıcıda anında oyna; telefona kurulabilen PWA ile çevrimdışı da çalışır.',
+      url: 'https://cubiq.gncinc.online',
+      subdomain: 'cubiq',
+      port: 3006,
+      status: 'live',
+      emoji: '🧩',
+      tech: JSON.stringify(['Vanilla JS', 'Canvas', 'PWA', 'Sıfır bağımlılık']),
+      features: JSON.stringify([
+        'Klasik, Günlük Görev ve Macera modları',
+        'XP & seviye, coin ekonomisi, 15 rozet',
+        'Çevrimdışı PWA — kurulum gerektirmez',
+        'Dokunmatik, fare ve klavye desteği',
+      ]),
+      sortOrder: 5,
     },
   ]
 
