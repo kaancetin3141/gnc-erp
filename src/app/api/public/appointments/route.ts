@@ -14,7 +14,7 @@ import { whatsappLink } from '@/lib/format'
 // Body: { providerSlug, serviceId, staffId?, date, time, customerName,
 //         customerPhone, customerEmail?, customerNote?, website? }
 // - "date" YYYY-MM-DD, "time" HH:mm formatında (URL'den gelen parametreler)
-// - Çalışma saatleri içindeyse 'onaylandi', değilse 'beklemede'
+// - autoApprove=true + çalışma saatleri içindeyse 'onaylandi', aksi halde 'beklemede'
 // - WhatsApp confirmation link döner (wa.me) — provider telefonuna
 // - Returns: { id, status, providerName, serviceName, date, time, whatsappLink }
 // ============================================================
@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
       isActive: true,
       tenantId: true,
       slug: true,
+      autoApprove: true,
     },
   })
   if (!provider) {
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
         isActive: true,
         tenantId: true,
         slug: true,
+        autoApprove: true,
       },
     })
     if (!provider) return err('İşletme bulunamadı', 404)
@@ -197,7 +199,11 @@ export async function POST(req: NextRequest) {
   const inWorkingHours = !!daySched && !daySched.closed && !!daySched.start && !!daySched.end &&
     startMin >= (daySched.start ? parseInt(daySched.start.split(':')[0]) * 60 + parseInt(daySched.start.split(':')[1] || '0') : 0) &&
     endMin <= (daySched.end ? parseInt(daySched.end.split(':')[0]) * 60 + parseInt(daySched.end.split(':')[1] || '0') : 24 * 60)
-  const status = inWorkingHours ? 'onaylandi' : 'beklemede'
+  // OTOMATİK ONAY ANAHTARI (işletme ayarı):
+  // · autoApprove=true  → çalışma saatleri içindeyse randevu anında onaylanır
+  // · autoApprove=false → randevu BEKLEMEDE oluşur; işletme onaylamadıkça
+  //   müşteriye WhatsApp bilgilendirmesi yapılmaz.
+  const status = provider.autoApprove && inWorkingHours ? 'onaylandi' : 'beklemede'
 
   // Telefon normalizasyonu (display için)
   const normalize = (p: string) => {

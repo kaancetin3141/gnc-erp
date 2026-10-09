@@ -679,7 +679,7 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
       <div class="success" id="success" hidden>
         <span class="okmark" aria-hidden="true">✅</span>
         <h2>Randevun oluşturuldu!</h2>
-        <p class="sub">İşletme randevunu aldı — <b id="s-status">Onaylandı</b>. Aşağıdaki özeti WhatsApp'tan da iletebilirsin.</p>
+        <p class="sub">İşletme randevunu aldı — durum: <b id="s-status">—</b></p>
         <div class="sumcard">
           <div class="sumrow"><span class="k">İşletme</span><span class="v" id="s-biz"></span></div>
           <div class="sumrow"><span class="k">Hizmet</span><span class="v" id="s-service"></span></div>
@@ -689,6 +689,7 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
           <div class="sumrow" id="s-price-row" hidden><span class="k">Fiyat</span><span class="v" id="s-price"></span></div>
           <div class="sumrow" id="s-code-row" hidden><span class="k">Randevu No</span><span class="v" id="s-code"></span></div>
         </div>
+        <p class="mini-note" id="s-pending-note" hidden>⏳ Randevun işletme onayı bekliyor — onaylandığında bilgilendirilirsin.</p>
         <div class="s-actions">
           <a class="btn btn-wa" id="wa-link" target="_blank" rel="noopener" href="#">💬 WhatsApp'tan Onay Gönder</a>
           <button type="button" class="btn btn-ghost" id="again-btn">➕ Yeni randevu al</button>
@@ -1383,8 +1384,11 @@ export const DETAIL_JS = `
       $('#s-code-row').hidden = false;
     }
     if (d.status) {
-      $('#s-status').textContent = d.status === 'onaylandi' ? 'Onaylandı' : d.status;
+      $('#s-status').textContent = d.status === 'onaylandi' ? 'Onaylandı ✅'
+        : d.status === 'beklemede' ? 'Onay bekliyor ⏳' : d.status;
     }
+    var pendNote = $('#s-pending-note');
+    if (pendNote) pendNote.hidden = d.status === 'onaylandi';
     var wa = $('#wa-link');
     if (d.whatsappLink) {
       wa.href = d.whatsappLink;
