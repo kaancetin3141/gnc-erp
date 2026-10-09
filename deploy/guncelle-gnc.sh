@@ -1,6 +1,9 @@
 #!/bin/bash
 # ============================================================
-#  GNC GUNCELLEME v4 — CRM + Müşteri Randevu Sitesi + izin self-heal + sağlık kontrolü
+#  GNC GUNCELLEME v5 — CRM + Müşteri Randevu Sitesi + Cubiq + izin self-heal + sağlık kontrolü
+#
+#  v5: Cubiq (port 3006) desteği — kuruluysa repodan günceller, kurulu
+#      değilse github.com/kaancetin3141/cubiq'tan OTOMATİK kurar.
 #
 #  Kullanım :  bash guncelle-gnc.sh        (veya sadece: guncelle-gnc.sh)
 #  Kurulumu :  kurulum.sh v3.0+ otomatik kurar (/usr/local/bin).
@@ -77,13 +80,64 @@ for t in "yeni-proje.sh gnc-proje" "oyun-deploy.sh gnc-oyun"; do
   fi
 done
 
+# --- 6b/8) CUBIQ (port 3006) — kuruluysa güncelle, değilse otomatik kur ---
+echo "6b/8) Cubiq (port 3006)..."
+CUBIQ_CONF="/var/www/oyunlar/cubiq/.gnc-oyun.conf"
+CUBIQ_REPO="https://github.com/kaancetin3141/cubiq.git"
+if [ -f "$CUBIQ_CONF" ]; then
+  sudo bash deploy/oyun-deploy.sh cubiq \
+    && echo "   cubiq repodan güncellendi" \
+    || echo "   ! cubiq güncellenemedi — elle: sudo gnc-oyun cubiq"
+else
+  echo "   cubiq kurulu değil — GitHub'dan kuruluyor (port 3006)..."
+  sudo bash deploy/oyun-deploy.sh "$CUBIQ_REPO" 3006 cubiq \
+    && echo "   cubiq kuruldu (port 3006)" \
+    || echo "   ! cubiq kurulamadı — elle: sudo gnc-oyun $CUBIQ_REPO 3006 cubiq"
+fi
+# nginx'te cubiq alt alan adı yoksa bağla (kurulum.sh v3.4+ zaten ekler)
+if ! grep -qs 'server_name[[:space:]]*.*\bcubiq\.' /etc/nginx/sites-available/* 2>/dev/null; then
+  CUB_DOMAIN="gncinc.online"
+  if [ -f /etc/nginx/sites-available/gnc ]; then
+    CUB_DOMAIN=$(grep -m1 -oE '[a-z0-9.-]+\.[a-z]{2,}' /etc/nginx/sites-available/gnc | head -1 || echo "gncinc.online")
+  fi
+  cat > /tmp/gnc.cubiq.nginx << CUBEOF
+# ============ CUBIQ — cubiq.__DOMAIN__ (port 3006) ============
+server {
+    listen 80;
+    server_name cubiq.__DOMAIN__;
+
+    location / {
+        proxy_pass http://127.0.0.1:3006;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+CUBEOF
+  sed -i "s/__DOMAIN__/$CUB_DOMAIN/g" /tmp/gnc.cubiq.nginx
+  if sudo nginx -t 2>/dev/null; then
+    { sudo cp /tmp/gnc.cubiq.nginx /etc/nginx/sites-available/gnc-cubiq \
+      && sudo ln -sf /etc/nginx/sites-available/gnc-cubiq /etc/nginx/sites-enabled/gnc-cubiq \
+      && sudo nginx -t && sudo systemctl reload nginx \
+      && echo "   nginx: cubiq.$CUB_DOMAIN bağlandı (SSL için: sudo certbot --nginx -d cubiq.$CUB_DOMAIN)"; } \
+      || echo "   ! cubiq nginx bloğu eklenemedi — elle: sudo gnc-proje cubiq 3006"
+  else
+    echo "   ! nginx config hatası — cubiq bloğu eklenemedi, elle kontrol edin"
+  fi
+  rm -f /tmp/gnc.cubiq.nginx
+fi
+
 echo "7/8) Sağlık kontrolü..."
 if curl -s -o /dev/null -m 5 "http://127.0.0.1:$APP_PORT"; then
   echo -e "   ${GREEN}CRM (port $APP_PORT): AYAKTA ✓${NC}"
 else
   echo -e "   ${RED}CRM (port $APP_PORT): YANIT YOK — pm2 logs gnc-crm${NC}"
 fi
-for p in 3002 3003 3004; do
+for p in 3002 3003 3004 3006; do
   C=$(curl -s -o /dev/null -w "%{http_code}" -m 4 "http://127.0.0.1:$p/" 2>/dev/null || echo "000")
   if [ "$C" != "000" ] && [ "$C" != "502" ]; then
     echo -e "   ${GREEN}port $p: AYAKTA ✓${NC}"
@@ -100,5 +154,5 @@ fi
 echo "   Hatırlatma: AWS Security Group'ta sadece TCP 22 + 80 + 443 açık olmalı;"
 echo "   uygulama portları (3000/3001/3002...) ASLA eklenmez."
 echo ""
-echo -e "${GREEN}GUNCELLEME TAMAM! — ana site + CRM + randevu güncel${NC}"
-echo "   Diğer uygulamalar: Fruit Storm → sudo gnc-oyun fruitstorm | KaloriAI → sudo gnc-oyun kaloriai"
+echo -e "${GREEN}GUNCELLEME TAMAM! — ana site + CRM + randevu + cubiq güncel${NC}"
+echo "   Diğer uygulamalar: Fruit Storm → sudo gnc-oyun fruitstorm | KaloriAI → sudo gnc-oyun kaloriai | Cubiq → sudo gnc-oyun cubiq"

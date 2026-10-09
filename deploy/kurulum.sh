@@ -1,6 +1,10 @@
 #!/bin/bash
 # ============================================================
-#  GNC — TEK KOMUT KURULUM (v3.3 — tüm uygulamalar otomatik)
+#  GNC — TEK KOMUT KURULUM (v3.4 — tüm uygulamalar otomatik)
+#
+#  v3.4: CUBIQ eklendi (port 3006) — github.com/kaancetin3141/cubiq,
+#            oyun-deploy.sh ile otomatik kurulur (statik oyun), nginx bloğu
+#            cubiq.__DOMAIN__ + sağlık kontrolü + certbot/banner güncel.
 #
 #  v3.3: (1) nginx ana site bloğu artık default_server — IP'den/boş Host'tan
 #            gelen trafik GARANTİ ana siteye gider (rastgele uygulama açılmaz).
@@ -29,6 +33,7 @@
 #              + HER işletme için {slug}.gncinc.online (sik-kuafor.gncinc.online gibi)
 #   FruitStorm: fruitstorm.gncinc.online -> port 3003  (repo: kaancetin3141/fruit-storm)
 #   KaloriAI : kaloriai.gncinc.online   -> port 3004  (repo: kaancetin3141/KaloriAI, AYRI veritabanı!)
+#   Cubiq    : cubiq.gncinc.online      -> port 3006  (repo: kaancetin3141/cubiq, statik blok oyunu)
 #
 #  Kullanım :  bash kurulum.sh [domain] [tokenli-repo-adresi]
 #  Örnek    :  bash kurulum.sh gncinc.online "https://kaancetin3141:ghp_XXXX@github.com/kaancetin3141/gnc-erp.git"
@@ -45,8 +50,10 @@ APP_PORT="3000"
 RANDEVU_PORT="3002"
 OYUN_PORT="3003"        # Fruit Storm (eski 3001'den buraya taşınır)
 KALORIAI_PORT="3004"
+CUBIQ_PORT="3006"       # Cubiq — Blok Ustası (statik oyun, sıfır bağımlılık)
 FRUITSTORM_REPO="https://github.com/kaancetin3141/fruit-storm.git"
 KALORIAI_REPO="https://github.com/kaancetin3141/KaloriAI.git"
+CUBIQ_REPO="https://github.com/kaancetin3141/cubiq.git"
 DOMAIN_RX="$(echo "$DOMAIN" | sed 's/\./\\./g')"
 
 # Git ASLA şifre sormasın (script kilitlenmesin)
@@ -352,14 +359,31 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+
+# ============ CUBIQ — cubiq.__DOMAIN__ (port __CUBPORT__) ============
+server {
+    listen 80;
+    server_name cubiq.__DOMAIN__;
+
+    location / {
+        proxy_pass http://127.0.0.1:__CUBPORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
 NGINXEOF
-sed -i "s/__DOMAINRX__/$DOMAIN_RX/g; s/__DOMAIN__/$DOMAIN/g; s/__WWW__/www.$DOMAIN/g; s/__APPPORT__/$APP_PORT/g; s/__CPPORT__/$RANDEVU_PORT/g; s/__OYUNPORT__/$OYUN_PORT/g; s/__KALPORT__/$KALORIAI_PORT/g; s|__ANA_DIR__|$ANA_DIR|g" /tmp/gnc.nginx
+sed -i "s/__DOMAINRX__/$DOMAIN_RX/g; s/__DOMAIN__/$DOMAIN/g; s/__WWW__/www.$DOMAIN/g; s/__APPPORT__/$APP_PORT/g; s/__CPPORT__/$RANDEVU_PORT/g; s/__OYUNPORT__/$OYUN_PORT/g; s/__KALPORT__/$KALORIAI_PORT/g; s/__CUBPORT__/$CUBIQ_PORT/g; s|__ANA_DIR__|$ANA_DIR|g" /tmp/gnc.nginx
 $SUDO mv /tmp/gnc.nginx /etc/nginx/sites-available/gnc
 $SUDO ln -sf /etc/nginx/sites-available/gnc /etc/nginx/sites-enabled/gnc
 $SUDO rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/gnc-crm
 $SUDO nginx -t
 $SUDO systemctl reload nginx
-info "nginx hazır: $DOMAIN | crm | randevu | {slug} | fruitstorm | kaloriai"
+info "nginx hazır: $DOMAIN | crm | randevu | {slug} | fruitstorm | kaloriai | cubiq"
 
 # ---- 10b) FRUIT STORM — GitHub'dan otomatik (port 3003) ----
 step "10b/12 Fruit Storm (port $OYUN_PORT)..."
@@ -417,6 +441,22 @@ if [ "$KAL_FRESH" = "evet" ] && [ -f "$APP_DIR/db/kaloriai-data-recovered.db" ];
   fi
 fi
 
+# ---- 10d) CUBIQ — GitHub'dan otomatik (port 3006, statik oyun) ----
+step "10d/12 Cubiq (port $CUBIQ_PORT)..."
+CUB_DIR="/var/www/oyunlar/cubiq"
+if [ -f "$CUB_DIR/.gnc-oyun.conf" ]; then
+  info "cubiq zaten kurulu — repodan güncelleniyor..."
+  $SUDO bash "$APP_DIR/deploy/oyun-deploy.sh" cubiq || warn "güncelleme başarısız — elle: sudo gnc-oyun cubiq"
+else
+  if [ -d "$CUB_DIR" ] && [ ! -d "$CUB_DIR/.git" ]; then
+    info "yarım kalmış cubiq klasörü temizleniyor..."
+    $SUDO rm -rf "$CUB_DIR"
+  fi
+  info "GitHub'dan indiriliyor: $CUBIQ_REPO"
+  $SUDO bash "$APP_DIR/deploy/oyun-deploy.sh" "$CUBIQ_REPO" "$CUBIQ_PORT" cubiq \
+    || warn "Cubiq kurulamadı (repo adresi yanlış olabilir). Sonra elle: sudo gnc-oyun $CUBIQ_REPO $CUBIQ_PORT cubiq"
+fi
+
 # ---- 11) Güvenlik duvarı ----
 $SUDO ufw allow OpenSSH >/dev/null 2>&1 || true
 $SUDO ufw allow 'Nginx Full' >/dev/null 2>&1 || true
@@ -463,7 +503,7 @@ fi
 
 # ---- SAĞLIK KONTROLÜ: tüm portlar ----
 info "Port sağlık kontrolü:"
-for p in $APP_PORT $RANDEVU_PORT $OYUN_PORT $KALORIAI_PORT; do
+for p in $APP_PORT $RANDEVU_PORT $OYUN_PORT $KALORIAI_PORT $CUBIQ_PORT; do
   C=$(curl -s -o /dev/null -w "%{http_code}" -m 4 "http://127.0.0.1:$p/" 2>/dev/null || echo "000")
   if [ "$C" != "000" ] && [ "$C" != "502" ]; then
     info "  port $p → HTTP $C AYAKTA ✓"
@@ -477,17 +517,18 @@ PUBLIC_IP=$(curl -s --max-time 5 https://checkip.amazonaws.com || curl -s --max-
 
 echo ""
 echo -e "${G}============================================================${N}"
-echo -e "${G}   KURULUM TAMAMLANDI! (v3.3 — tüm uygulamalar)${N}"
+echo -e "${G}   KURULUM TAMAMLANDI! (v3.4 — tüm uygulamalar)${N}"
 echo -e "${G}============================================================${N}"
 echo -e "  Sunucu IP'niz  : ${B}$PUBLIC_IP${N}   <- BUNU NOT ALIN"
 echo -e ""
 echo -e "  ${B}SİTE ADRESLERİNİZ (DNS sonrası):${N}"
-echo -e "   Ana Site        : ${B}http://$DOMAIN${N}  (portfolyo — Randevu/KaloriAI kartlı)"
+echo -e "   Ana Site        : ${B}http://$DOMAIN${N}  (portfolyo — Randevu/KaloriAI/Cubiq kartlı)"
 echo -e "   GNC CRM         : ${B}http://crm.$DOMAIN${N}"
 echo -e "   Müşteri Randevu : ${B}http://randevu.$DOMAIN${N}  ← YENİ"
 echo -e "   Her işletme     : ${B}http://{isletme}.$DOMAIN${N} → randevu sayfası"
 echo -e "   Fruit Storm     : ${B}http://fruitstorm.$DOMAIN${N}  (meyvepatlat da çalışır)"
 echo -e "   Kalori AI       : ${B}http://kaloriai.$DOMAIN${N}  ← YENİ"
+echo -e "   Cubiq           : ${B}http://cubiq.$DOMAIN${N}  ← YENİ (Blok Ustası)"
 echo -e ""
 echo -e "  ${Y}HOSTINGER'DA YAPILACAK TEK ŞEY — DNS (2 dakika):${N}"
 echo -e "   hPanel → Alan Adları → gncinc.online → DNS Bölgesi'ne ŞU 3 KAYIT:"
@@ -498,7 +539,7 @@ echo -e "   (yıldız istemezseniz ayrıca: A · crm · IP, A · randevu · IP, 
 echo -e "   ${B}Başka bir şey GEREKMEZ${N} — Hostinger'dan hosting paketi alınmaz, sunucu VPS'te."
 echo -e ""
 echo -e "  ${Y}SSL (DNS yayılınca 10-30 dk sonra, TEK komut):${N}"
-echo -e "        ${B}sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN -d crm.$DOMAIN -d randevu.$DOMAIN -d fruitstorm.$DOMAIN -d kaloriai.$DOMAIN${N}"
+echo -e "        ${B}sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN -d crm.$DOMAIN -d randevu.$DOMAIN -d fruitstorm.$DOMAIN -d kaloriai.$DOMAIN -d cubiq.$DOMAIN${N}"
 echo -e "   İşletme alt alan adları ({slug}.$DOMAIN) için wildcard SSL:"
 echo -e "        Cloudflare DNS kullanıyorsan: sudo apt-get install -y python3-certbot-dns-cloudflare"
 echo -e "                                        sudo certbot certonly --dns-cloudflare -d *.$DOMAIN -d $DOMAIN"
@@ -508,6 +549,7 @@ echo -e "  ${B}İLERİDE — GÜNCELLEME VE YENİ PROJE (tek komut):${N}"
 echo -e "   Tüm CRM güncellemesi : ${B}guncelle-gnc.sh${N}   (git pull + build + restart + ana site)"
 echo -e "   Fruit Storm güncelle : ${B}sudo gnc-oyun fruitstorm${N}"
 echo -e "   KaloriAI güncelle    : ${B}sudo gnc-oyun kaloriai${N}"
+echo -e "   Cubiq güncelle       : ${B}sudo gnc-oyun cubiq${N}"
 echo -e "   Yeni proje/alt alan  : ${B}sudo gnc-proje <altalanadi> <port>${N}"
 echo -e "   Teşhis               : ${B}sudo gnc-oyun liste${N} | ${B}sudo gnc-oyun doktor <isim>${N}"
 echo -e "   Durum                : ${B}pm2 status${N}   Loglar: ${B}pm2 logs gnc-crm${N}"
