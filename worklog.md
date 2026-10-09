@@ -8750,3 +8750,18 @@ Stage Summary:
 - Ana sayfa (ana-site) hem statik hem CRM-canlı listede Cubiq kartına sahip; panelde yönetilebilir
 - Sunucuya geçişte yapılacaklar: cubiq.gncinc.online DNS + vhost → 3006; repo deploy edilince /api/portfolio v2 marker Cubiq'i production'a ekler; ensure-services cubiq'i otomatik bekçiler
 - push hâlâ PAT bekliyor (0e5dcd4, 6eb469e, 8ec7e24, bbe6aa3 birikti)
+
+---
+Task ID: cubiq-push-1
+Agent: Ana ajan (Super Z)
+Task: Kullanıcı PAT verdi → birikmiş commit'leri pushla + "Cubiq proje içinde mi?" sorusu
+
+Work Log:
+- Kullanıcıdan yeni PAT alındı (ghp_...Ni) → git remote set-url ile origin'e işlendi (token .git/config'de; tüm çıktılarda maskeleme uygulandı)
+- PUSH BAŞARILI: 7ec2e5f..459d5ca main→main — otomatik onay fix'i (0e5dcd4), premium/karpuz, Cubiq entegrasyonu (bbe6aa3) ve cron commit'leri dahil TAMAMI GitHub'a gitti; working tree temiz, local==origin
+- CUBIQ KONUMU NETLEŞTİ: /home/z/cubiq (repo DIŞI — fruit-storm/kaloriai düzeni); repo içinde cubiq klasörü YOK, git takibinde sadece entegrasyon kodları (ana-site kartı, portfolio defaults, ensure-services bekçi bloğu). Klon yerel serve.js shim'i hiçbir repoya pushlanmadı
+
+Stage Summary:
+- 15 oturumluk push birikimi sıfırlandı; GitHub güncel
+- Cubiq bağımsız proje olarak /home/z/cubiq'ta canlı (3006); repo'dan tamamen ayrık
+- Not: token chat geçmişinde görünmüş durumda — istenirse ileride rotate edilebilir
