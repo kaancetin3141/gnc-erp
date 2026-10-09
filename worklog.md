@@ -8457,3 +8457,23 @@ Stage Summary:
 - Yeni belge: deploy/COOLIFY-REHBERI.md (kullanıcının tüm hedefi: web+mağaza+kolay yönetim tek planda)
 - Sonraki adım (kullanıcı "başla" derse): docker-compose + Dockerfile'lar repoya eklenecek, Coolify deploy'u birlikte yapılacak
 - Mevcut pm2 script'leri etkilenmedi — geçiş isteğe bağlı ve yeni sunucuda paralel yürütülür
+
+---
+Task ID: user-qa-fix-improve
+Agent: main (Super Z)
+Task: "Projedeki özellikleri kontrol et, bozuk olanları düzelt, çalışanları mükemmel seviyeye getir"
+
+Work Log:
+- agent-browser ile uçtan uca QA: login (admin/superadmin + demo + kuaför), dashboard (CRM + appointments sektör), Müşteriler/Fırsatlar/Görevler/Raporlar/Faturalar/Siparişler/Ürün modülleri, müşteri oluşturma akışı (KVKK onayı tasarımdan gereklidir), mini-servis sağlık kontrolleri
+- FIX 1 (GİZLİLİK): oturum değişiminde TanStack Query cache temizlenmiyordu → önceki kullanıcının panel verileri yeni kullanıcıya gösteriliyordu. src/lib/query-client.ts singleton + setSession/logout'ta queryClient.clear()
+- FIX 2 (CİDDİ): src/lib/format.ts normalizePhone '05551112233' → '+95551112233' üretiyordu ('+9' prefix hatası; doğrusu '+90') → tüm yerel format telefonlar bozuk E.164 kaydediliyordu (WhatsApp/SMS/hatırlatma zinciri kırık). Düzeltildi; dev DB'deki bozuk kayıt onarıldı (31 +9 numaradan 1'i bozuktu). SUNUCU DB'Sİ İÇİN de aynı onarım gerekiyor
+- FIX 3: NotificationCenter polling'e enabled:!!user (oturumsuzken 401 spam bitti)
+- FIX 4 (INFRA): ensure-services.sh artık CRM 3000 portunu da kolluyor — sandbox'ta dev sunucusu saatler içinde sessizce ölüyordu (süreç temizliği, logda iz yok); cron bekçisi artık toparlar. pm2'li sunucuda no-op (port canlı)
+- Önceki oturumdan kalan commitlenmemiş sağlamlaştırmalar da aynı commit'e alındı (auth tenant-guard, dashboard duplicate sector kaldırma, trend/admin/site/market düzeltmeleri)
+- Ortam notu: sunucu ölümü nedeniyle "POST gitmiyor/kuaför girişi çalışmıyor" sanılan 2 buluntu yanlış alarm çıktı — sağlıklı sunucuda her ikisi de doğrulandı ✓
+- Lint temiz; commit d3fa1c1 pushlandı (4fa7824→d3fa1c1)
+
+Stage Summary:
+- Doğrulanmış çalışan özellikler: giriş akışları (3 tip), 5 sektör paneli, 9+ modül, müşteri CRUD, mini-servisler (3002/3005/3010/3011)
+- Düzeltilen: 4 bug + 1 altyapı + 5 önceden kayıp düzeltme geri kazanıldı
+- Sıradaki: sunucuda DB telefon onarımı (SQL aşağıda), Plesk/Coolify planı (COOLIFY-REHBERI.md) bekliyor
