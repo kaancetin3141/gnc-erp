@@ -38,7 +38,7 @@ function typeMeta(type: string) {
 const FAVICON =
   "data:image/svg+xml," +
   encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍉</text></svg>'
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c2334d"/><stop offset=".55" stop-color="#8c2740"/><stop offset="1" stop-color="#0f766e"/></linearGradient></defs><rect width="100" height="100" rx="26" fill="url(#g)"/><text x="50" y="70" font-family="Arial,Helvetica,sans-serif" font-size="56" font-weight="800" fill="#fff" text-anchor="middle">G</text></svg>'
   );
 
 // ---------------------------------------------------------------- Ortak CSS
@@ -89,20 +89,19 @@ header.top{
   box-shadow:0 4px 26px rgba(70,26,36,.08);
 }
 .top-in{max-width:1200px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.logo{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:1.12rem;color:var(--ink);text-decoration:none;letter-spacing:-.01em;white-space:nowrap;text-shadow:0 1px 0 rgba(255,255,255,.6)}
-.logo .lg{font-size:1.45rem;transform:translateY(1px)}
-.search{flex:1 1 200px;max-width:430px;min-width:170px;position:relative;margin-left:auto}
-.search input{width:100%;padding:10px 14px 10px 38px;border-radius:999px;border:1.5px solid rgba(255,255,255,.78);background:rgba(255,255,255,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font:inherit;font-size:.93rem;transition:border-color .2s,box-shadow .2s,background .2s;color:var(--ink)}
-.search input::placeholder{color:#b08d7c}
-.search input:focus{outline:none;border-color:rgba(194,51,77,.55);background:rgba(255,255,255,.8);box-shadow:0 0 0 4px rgba(194,51,77,.14)}
-.search .s-ic{position:absolute;left:13px;top:50%;transform:translateY(-50%);opacity:.55;font-size:.95rem;pointer-events:none}
+.logo{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:1.15rem;letter-spacing:-.022em;white-space:nowrap;text-decoration:none;color:#5a1f2e;background:linear-gradient(120deg,#7a2233 0%,#b03452 46%,#0f766e 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.search{flex:1 1 240px;max-width:540px;min-width:200px;position:relative;margin-left:auto}
+.search input{width:100%;padding:13px 18px 13px 44px;border-radius:999px;border:1.5px solid rgba(255,255,255,.92);background:rgba(255,255,255,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font:inherit;font-size:.97rem;font-weight:500;transition:border-color .2s,box-shadow .2s,background .2s;color:var(--ink);box-shadow:0 10px 30px rgba(70,26,36,.16),inset 0 1px 0 rgba(255,255,255,.9)}
+.search input::placeholder{color:#a98a79;font-weight:500}
+.search input:focus{outline:none;border-color:rgba(194,51,77,.6);background:#fff;box-shadow:0 0 0 4px rgba(194,51,77,.16),0 12px 32px rgba(70,26,36,.2)}
+.search .s-ic{position:absolute;left:16px;top:50%;transform:translateY(-50%);opacity:.6;font-size:1.02rem;pointer-events:none}
 
 /* ---- hero: CRM panoları gibi koyu gradient + cam küreler ---- */
 .hero{
-  margin:22px 0 10px;padding:38px 28px;border-radius:26px;color:#fff;position:relative;overflow:hidden;
+  margin:22px 0 10px;padding:40px 30px;border-radius:26px;color:#fff;position:relative;overflow:hidden;
   background:linear-gradient(130deg,#380f1a 0%,#5b1424 42%,#123a33 100%);
-  border:1px solid rgba(255,255,255,.16);
-  box-shadow:0 22px 52px rgba(43,15,27,.38);
+  border:1px solid rgba(255,255,255,.18);
+  box-shadow:0 26px 60px rgba(43,15,27,.42),inset 0 1px 0 rgba(255,255,255,.22);
 }
 .hero::before{
   content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
@@ -113,7 +112,7 @@ header.top{
 }
 .hero::after{content:"📍";position:absolute;right:18px;bottom:-14px;font-size:6rem;opacity:.16;transform:rotate(-12deg);z-index:1}
 .hero>*{position:relative;z-index:2}
-.hero h1{font-size:clamp(1.5rem,4.2vw,2.35rem);font-weight:800;letter-spacing:-.02em;line-height:1.18;text-shadow:0 2px 14px rgba(0,0,0,.25)}
+.hero h1{font-size:clamp(1.5rem,4.2vw,2.35rem);font-weight:800;letter-spacing:-.025em;line-height:1.16;text-shadow:0 2px 14px rgba(0,0,0,.25);text-wrap:balance}
 .hero h1 em{font-style:normal;color:#ffb3c0}
 .hero p{margin-top:10px;color:rgba(255,255,255,.84);max-width:58ch;font-size:.98rem}
 .hero .btn-geo{margin-top:18px}
@@ -123,7 +122,8 @@ header.top{
   display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;
   background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  color:rgba(255,255,255,.94);font-size:.8rem;font-weight:700;letter-spacing:.01em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16);
+  color:rgba(255,255,255,.94);font-size:.8rem;font-weight:700;letter-spacing:.015em;
   transition:background .2s
 }
 .hero-chip:hover{background:rgba(255,255,255,.18)}
@@ -131,7 +131,7 @@ header.top{
 /* ---- butonlar ---- */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;font:inherit;font-weight:700;border-radius:999px;padding:12px 22px;transition:transform .15s ease,box-shadow .2s ease,background .2s ease,text-decoration:none;color:var(--ink)}
 .btn:active{transform:scale(.97)}
-.btn-geo{background:linear-gradient(120deg,var(--brand),#e8804f);color:#fff;box-shadow:0 8px 22px rgba(194,51,77,.38);font-size:1rem}
+.btn-geo{background:linear-gradient(120deg,var(--brand),#e8804f);color:#fff;box-shadow:0 10px 26px rgba(194,51,77,.4),inset 0 1px 0 rgba(255,255,255,.28);font-size:1rem;letter-spacing:.01em}
 .btn-geo:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(194,51,77,.48)}
 .btn-geo:disabled{opacity:.6;cursor:wait;transform:none}
 .btn-wa{background:linear-gradient(120deg,#0d8a63,#10b981);color:#fff;box-shadow:0 8px 20px rgba(13,138,99,.34)}
@@ -158,11 +158,12 @@ header.top{
   position:relative;display:flex;flex-direction:column;
   background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
   border:1px solid var(--glass-border);border-radius:var(--radius);overflow:hidden;
-  box-shadow:var(--shadow);transition:transform .2s ease,box-shadow .25s ease;animation:rise .4s ease both
+  box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.65);transition:transform .2s ease,box-shadow .25s ease;animation:rise .4s ease both
 }
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-.card:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg)}
+.card:hover{transform:translateY(-5px);box-shadow:var(--shadow-lg),inset 0 1px 0 rgba(255,255,255,.65)}
 .cover{position:relative;height:150px;flex:none}
+.cover::after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.16),transparent 42%)}
 .phb{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:3.2rem}
 .cphoto{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .ph-berber{background:linear-gradient(135deg,#5b3a21,#a06a33)}
@@ -208,7 +209,7 @@ header.top{
 .state-box p{color:#6d5647;margin-bottom:16px}
 
 /* ---- sticky footer: koyu buğu camı ---- */
-footer.ft{margin-top:auto;background:rgba(30,18,14,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#eeddcc;padding:22px 16px calc(22px + env(safe-area-inset-bottom,0px));border-top:1px solid rgba(255,255,255,.10)}
+footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),rgba(15,9,7,.95));backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#f0e0cd;padding:24px 16px calc(24px + env(safe-area-inset-bottom,0px));border-top:1px solid rgba(255,255,255,.12)}
 .ft-in{max-width:1200px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between;font-size:.88rem}
 .ft-in .fl{font-weight:700}
 .ft-in .fr{opacity:.75}
@@ -234,7 +235,7 @@ footer.ft{margin-top:auto;background:rgba(30,18,14,.88);backdrop-filter:blur(16p
 .dcard{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-border);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
 .dcover{position:relative;height:230px}
 .dbody{padding:24px;display:grid;gap:10px}
-.dtitle{font-size:clamp(1.35rem,3vw,1.85rem);font-weight:800;letter-spacing:-.015em;line-height:1.22}
+.dtitle{font-size:clamp(1.35rem,3vw,1.85rem);font-weight:800;letter-spacing:-.018em;line-height:1.22;background:linear-gradient(120deg,#241016,#5a1f2e 70%,#0d4a44);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .dloc{font-size:.92rem;color:#6d5647;font-weight:600}
 .daddr{font-size:.9rem;color:#8a7466}
 .dcontact{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
@@ -295,7 +296,7 @@ footer.ft{margin-top:auto;background:rgba(30,18,14,.88);backdrop-filter:blur(16p
 .sumline[hidden]{display:none}
 .form-err{background:rgba(194,51,77,.12);border:1px solid rgba(194,51,77,.16);color:var(--brand);font-weight:700;font-size:.88rem;padding:11px 14px;border-radius:12px}
 .form-err[hidden]{display:none}
-.btn-submit{width:100%;background:linear-gradient(120deg,var(--brand),#d97706);color:#fff;font-size:1rem;padding:14px;box-shadow:0 8px 22px rgba(194,51,77,.34)}
+.btn-submit{width:100%;background:linear-gradient(120deg,var(--brand),#d97706);color:#fff;font-size:1rem;padding:14px;letter-spacing:.01em;box-shadow:0 10px 26px rgba(194,51,77,.36),inset 0 1px 0 rgba(255,255,255,.26)}
 .btn-submit:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 28px rgba(194,51,77,.42)}
 .btn-submit:disabled{opacity:.65;cursor:wait;transform:none}
 
@@ -381,10 +382,18 @@ footer.ft{margin-top:auto;background:rgba(30,18,14,.88);backdrop-filter:blur(16p
 // ---------------------------------------------------------------- Ortak sayfa parçaları
 
 function pageShell(o: { title: string; desc: string; body: string; scripts?: string[]; extraCss?: string[]; gwPort?: string | null }): string {
+  // Sürüm parametresi: CSS/JS içeriğinin djb2 özeti — içerik değişince URL değişir,
+  // tarayıcı/heuristik önbellek eski stili servis edemez (cache-busting).
+  let _vh = 5381;
+  const _verSrc = STYLE_CSS + '\u0000' + HOME_JS + '\u0000' + DETAIL_JS;
+  for (let i = 0; i < _verSrc.length; i++) _vh = ((_vh << 5) + _vh + _verSrc.charCodeAt(i)) >>> 0;
+  const VER = _vh.toString(36);
   // Gateway (XTransformPort) ile açıldıysa göreli varlık URL'lerine param ekle —
   // aksi hâlde /assets/* istekleri gateway'den CRM'e düşer ve 404 olur.
-  const gw = (p: string) =>
-    o.gwPort ? p + (p.includes('?') ? '&' : '?') + 'XTransformPort=' + encodeURIComponent(o.gwPort) : p;
+  const gw = (p: string) => {
+    const withVer = p + (p.includes('?') ? '&' : '?') + 'v=' + VER;
+    return o.gwPort ? withVer + '&XTransformPort=' + encodeURIComponent(o.gwPort) : withVer;
+  };
   const scripts = (o.scripts || []).map((s) => `<script src="${gw(s)}" defer></script>`).join('\n  ');
   const extraCss = (o.extraCss || []).map((s) => `<link rel="stylesheet" href="${gw(s)}">`).join('\n  ');
   return `<!DOCTYPE html>
@@ -411,7 +420,7 @@ ${o.body}
 function siteFooter(): string {
   return `<footer class="ft">
   <div class="ft-in">
-    <span class="fl">🍉 GNC Randevu — tüm işletmeler tek yerde</span>
+    <span class="fl">GNC Randevu — tüm işletmeler tek yerde</span>
     <span class="fr">Randevun bir dokunuş uzağında · Türkçe · Mobil uyumlu</span>
   </div>
 </footer>`;
@@ -436,7 +445,7 @@ export function homePage(baseDomain: string, gwPort?: string | null): string {
 
   const body = `<header class="top">
   <div class="top-in">
-    <a class="logo" href="/"><span class="lg">🍉</span>GNC Randevu</a>
+    <a class="logo" href="/">GNC Randevu</a>
     <div class="search">
       <span class="s-ic" aria-hidden="true">🔍</span>
       <input type="search" id="q" placeholder="İşletme, hizmet veya şehir ara…" aria-label="İşletme ara" autocomplete="off">
@@ -565,7 +574,7 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
 
   const body = `<header class="top">
   <div class="top-in">
-    <a class="logo" href="${esc(a.homeUrl)}"><span class="lg">🍉</span>GNC Randevu</a>
+    <a class="logo" href="${esc(a.homeUrl)}">GNC Randevu</a>
     <a class="btn btn-ghost" style="padding:8px 16px;font-size:.85rem;margin-left:auto" href="${esc(a.homeUrl)}">← Tüm işletmeler</a>
   </div>
 </header>
@@ -711,7 +720,7 @@ export function notFoundPage(slug?: string, gwPort?: string | null, homeUrl?: st
     title: 'İşletme bulunamadı | GNC Randevu',
     desc: 'Aradığın işletme bulunamadı.',
     gwPort,
-    body: `<header class="top"><div class="top-in"><a class="logo" href="${esc(backHref)}"><span class="lg">🍉</span>GNC Randevu</a></div></header>
+    body: `<header class="top"><div class="top-in"><a class="logo" href="${esc(backHref)}">GNC Randevu</a></div></header>
 <main><div class="center-page"><div class="center-card">
   <span class="big" aria-hidden="true">🔍</span>
   <h1>Böyle bir işletme yok</h1>
@@ -728,7 +737,7 @@ export function serverErrorPage(msg: string, gwPort?: string | null): string {
     title: 'Bir sorun oluştu | GNC Randevu',
     desc: 'Beklenmeyen bir hata oluştu.',
     gwPort,
-    body: `<header class="top"><div class="top-in"><a class="logo" href="/"><span class="lg">🍉</span>GNC Randevu</a></div></header>
+    body: `<header class="top"><div class="top-in"><a class="logo" href="/">GNC Randevu</a></div></header>
 <main><div class="center-page"><div class="center-card">
   <span class="big" aria-hidden="true">🛠️</span>
   <h1>Bir şeyler ters gitti</h1>

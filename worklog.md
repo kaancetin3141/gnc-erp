@@ -8630,3 +8630,26 @@ Stage Summary:
 - Randevu sayfası artık ana CRM'in cam tasarım dilinde: koyu gradient pano hero'su + beyaz cam rozetler, buğulu sticky header, ambient renkli zemin üzerinde buğu camı kartlar/girişler; footer/toast koyu cam
 - Tek dosyalık merkezi değişiklik (views.ts): JS/HTML işlevselliği korunmuş, yalnızca hero'ya 3 rozet eklendi; @supports fallback ile eski tarayıcılar düz yüzeye düşüyor
 - commit + push bu oturumla gider (push PAT engeline takılırsa yerelde commitli kalır — önceki oturumdaki gibi)
+
+---
+Task ID: randevu-premium-2
+Agent: Ana ajan (Super Z)
+Task: "karpuz simgesini sil ve assetleri biraz daha premium yap, sağdaki arama çubuğunu biraz daha belirgin yap"
+
+Work Log:
+- 🍉 KALDIRMA (7 nokta): FAVICON premium "G" monogram SVG'ye çevrildi (marka gradient'li yuvarlak köşeli kare: #c2334d→#8c2740→#0f766e + beyaz G); 4 logo (ana/detay/404/hata), footer metni — hepsi temizlendi
+- PREMIUM DOKUNUŞLAR:
+  * .logo: gradyan metin (#7a2233→#b03452→#0f766e, background-clip:text) + sıkı harf aralığı; .dtitle da koyu gradyan metin
+  * Kartlara inset üst ışık (inset 0 1px 0 rgba(255,255,255,.65)) + hover derinleşmesi; .cover'a premium parlaklık overlay'i (::after sheen)
+  * .btn-geo/.btn-submit: inset iç ışık + harf aralığı; hero: inset üst çizgi + h1 text-wrap:balance; hero-chip iç ışık
+  * footer.ft: dikey koyu gradient (rgba(24,14,11,.92)→rgba(15,9,7,.95)) + daha sıcak metin
+- ARAMA ÇUBUĞU BELİRGİNLEŞTİRME: .search max-width 430→540px, flex-basis 240px; input padding 10→13px, font .93→.97rem, arka plan rgba .55→.95 (neredeyse beyaz), güçlü gölge (0 10px 30px) + inset üst ışık; odakta saf beyaz + 4px marka halkası; ikon 16px sola, 1.02rem
+- BUG DÜZELTME (kendim çıkardım): .logo kuralını yenilerken text-decoration:none düşürülmüş → altı çizili mor logo; düzeltildi
+- BUG DÜZELTME (kalıcı): tarayıcı style.css?XTransformPort=3002'yi heuristik önbellekten servis ediyordu (fromCache:true; sunucuda cache başlığı yok) → pageShell'e İÇERİK TABANLI cache-busting: CSS+JS djb2 hash'i ?v=<hash> parametresi olarak tüm varlık URL'lerine eklenir; içerik değişince URL değişir (şu an v=1r7xvvx → güncellendi)
+- DOĞRULAMA: 🍉 sayfa kaynağında 0; logoDeco=none + cssFromCache=false; desktop+mobil ekran görüntüleri ✓; konsol 0 hata; gateway :81 çalışıyor
+
+Stage Summary:
+- Karpuz marka kimliğinden tamamen çıktı (favicon dahil); yerine gradyan "G" monogramı geldi
+- Sayfa premium seviyeye taşındı: gradyan tipografi, iç ışıklı cam yüzeyler, parlak kapak overlay'i, belirgin arama alanı
+- Cache-busting (?v=hash) ile gelecekteki tüm stil güncellemeleri kullanıcıya anında yansır
+- commit + push bu oturumla gider
