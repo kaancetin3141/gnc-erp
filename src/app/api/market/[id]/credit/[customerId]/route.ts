@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id, customerId } = await params
   const market = await db.market.findUnique({ where: { id } })
-  if (!market || market.tenantId !== user!.tenantId) return err('Market bulunamadı', 404)
+  if (!market || market.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Market bulunamadı', 404)
 
   const customer = await db.creditCustomer.findUnique({
     where: { id: customerId },
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id, customerId } = await params
   const market = await db.market.findUnique({ where: { id } })
-  if (!market || market.tenantId !== user!.tenantId) return err('Market bulunamadı', 404)
+  if (!market || market.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Market bulunamadı', 404)
 
   const customer = await db.creditCustomer.findUnique({ where: { id: customerId } })
   if (!customer || customer.marketId !== id) return err('Veresiye müşterisi bulunamadı', 404)

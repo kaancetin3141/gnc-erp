@@ -34,7 +34,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     },
   })
   if (!doc) return err('Belge bulunamadı', 404)
-  if (doc.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (doc.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Mal kalemleri — fatura kalemleri varsa oradan, yoksa üretim listesinden
   const invoice = await db.invoice.findFirst({
@@ -107,7 +107,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const existing = await db.exportDoc.findUnique({ where: { id } })
   if (!existing) return err('Belge bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const VALID_STATUS = ['taslak', 'hazir', 'imzalandi', 'gonderildi', 'iptal']
   if (status && !VALID_STATUS.includes(status)) return err('Geçersiz durum', 400)
@@ -154,7 +154,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.exportDoc.findUnique({ where: { id } })
   if (!existing) return err('Belge bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   await db.exportDoc.delete({ where: { id } })
 

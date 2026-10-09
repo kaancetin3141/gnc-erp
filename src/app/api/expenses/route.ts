@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const endDate = url.searchParams.get('endDate') || ''
   const limit = parseInt(url.searchParams.get('limit') || '200')
 
-  const where: Record<string, unknown> = { tenantId: user!.tenantId }
+  const where: Record<string, unknown> = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (category) where.category = category
   if (status) where.status = status
   if (startDate || endDate) {

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const customer = await db.customer.findUnique({ where: { id }, select: { tenantId: true } })
-  if (!customer || customer.tenantId !== user!.tenantId) return err('Müşteri bulunamadı', 404)
+  if (!customer || customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Müşteri bulunamadı', 404)
 
   const attachments = await db.attachment.findMany({
     where: { customerId: id },
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params
   const customer = await db.customer.findUnique({ where: { id }, select: { tenantId: true } })
-  if (!customer || customer.tenantId !== user!.tenantId) return err('Müşteri bulunamadı', 404)
+  if (!customer || customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Müşteri bulunamadı', 404)
 
   const body = await req.json()
   const { fileName, fileType, fileSize, url } = body

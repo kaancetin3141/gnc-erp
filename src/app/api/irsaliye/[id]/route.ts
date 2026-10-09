@@ -43,7 +43,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   if (!irsaliye) return err('İrsaliye bulunamadı', 404)
-  if (irsaliye.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (irsaliye.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   return ok(irsaliye)
 }
@@ -62,7 +62,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { lines: true },
   })
   if (!existing) return err('İrsaliye bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
   if (existing.status === 'iptal') return err('İptal edilmiş irsaliye güncellenemez', 400)
 
   const body = await req.json()
@@ -89,7 +89,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (customerId && customerId !== existing.customerId) {
     const c = await db.customer.findUnique({ where: { id: customerId } })
     if (!c) return err('Müşteri bulunamadı', 404)
-    if (c.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+    if (c.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
     updateData.customerId = customerId
   }
 
@@ -97,7 +97,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (orderId) {
       const o = await db.order.findUnique({ where: { id: orderId } })
       if (!o) return err('Sipariş bulunamadı', 404)
-      if (o.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+      if (o.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
     }
     updateData.orderId = orderId || null
   }
@@ -297,7 +297,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.irsaliye.findUnique({ where: { id } })
   if (!existing) return err('İrsaliye bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
   if (existing.status === 'sevk_edildi' || existing.status === 'teslim_edildi') {
     return err('Sevk edilmiş veya teslim edilmiş irsaliye silinemez. İptal edin.', 400)
   }

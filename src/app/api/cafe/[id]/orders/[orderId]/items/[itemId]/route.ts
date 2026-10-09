@@ -18,7 +18,7 @@ export async function PATCH(
   const user = await getSession(req)
   const { id, orderId, itemId } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   // Yetki: barmen 'cafe.bar', komi/kasa 'cafe.kitchen', admin her ikisi de
   const hasBar = !!user && user.permissions.includes('cafe.bar')

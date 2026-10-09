@@ -17,7 +17,7 @@ export async function PATCH(
     where: { id: purchaseId },
     include: { market: true, items: true },
   })
-  if (!p || p.marketId !== id || p.market.tenantId !== user!.tenantId) {
+  if (!p || p.marketId !== id || p.market.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Mal kabul bulunamadı', 404)
   }
   if (p.status === 'kabul_edildi') return err('Kabul edilmiş mal kabul düzenlenemez', 400)

@@ -9,7 +9,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const customer = await db.customer.findUnique({ where: { id }, select: { tenantId: true } })
-  if (!customer || customer.tenantId !== user!.tenantId) return err('Müşteri bulunamadı', 404)
+  if (!customer || customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Müşteri bulunamadı', 404)
 
   const deals = await db.deal.findMany({
     where: { customerId: id },

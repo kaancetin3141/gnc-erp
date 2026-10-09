@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const q = url.searchParams.get('q') || ''
   const expiring = url.searchParams.get('expiring') === '1'
 
-  const where: Record<string, unknown> = { tenantId: user!.tenantId }
+  const where: Record<string, unknown> = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (status) where.status = status
   if (q) {
     where.OR = [

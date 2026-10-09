@@ -18,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       _count: { select: { dues: true, complaints: true } },
     },
   })
-  if (!site || site.tenantId !== user!.tenantId) return err('Site bulunamadı', 404)
+  if (!site || site.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Site bulunamadı', 404)
 
   // Aidat istatistikleri
   const currentMonth = new Date().getMonth() + 1
@@ -41,7 +41,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params
   const existing = await db.site.findUnique({ where: { id } })
-  if (!existing || existing.tenantId !== user!.tenantId) return err('Site bulunamadı', 404)
+  if (!existing || existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Site bulunamadı', 404)
 
   const body = await req.json()
   const allowed = ['name', 'address', 'city', 'district', 'phone', 'email', 'managerName', 'dueDay', 'defaultDueAmount', 'currency', 'isActive']
@@ -62,7 +62,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { id } = await params
   const existing = await db.site.findUnique({ where: { id } })
-  if (!existing || existing.tenantId !== user!.tenantId) return err('Site bulunamadı', 404)
+  if (!existing || existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Site bulunamadı', 404)
 
   await db.site.delete({ where: { id } })
   return ok({ success: true })

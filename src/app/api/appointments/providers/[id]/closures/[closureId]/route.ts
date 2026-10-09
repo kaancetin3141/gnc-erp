@@ -11,7 +11,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id, closureId } = await params
   const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
   if (!provider) return err('İşletme bulunamadı', 404)
-  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const closure = await db.providerClosure.findUnique({ where: { id: closureId } })
   if (!closure || closure.providerId !== id) return err('Tatil kaydı bulunamadı', 404)

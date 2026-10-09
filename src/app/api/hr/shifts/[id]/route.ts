@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params
   const shift = await db.hrShift.findUnique({ where: { id } })
-  if (!shift || shift.tenantId !== user!.tenantId) return err('Vardiya bulunamadı', 404)
+  if (!shift || shift.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Vardiya bulunamadı', 404)
 
   const body = await req.json().catch(() => ({}))
   const data: Record<string, unknown> = {}
@@ -56,7 +56,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { id } = await params
   const shift = await db.hrShift.findUnique({ where: { id } })
-  if (!shift || shift.tenantId !== user!.tenantId) return err('Vardiya bulunamadı', 404)
+  if (!shift || shift.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Vardiya bulunamadı', 404)
 
   await db.hrShift.delete({ where: { id } })
 

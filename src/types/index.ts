@@ -93,6 +93,7 @@ export interface Customer {
   segment: string
   ownerId: string | null
   owner?: { id: string; name: string } | null
+  tenant?: { id: string; name: string } | null
   source: string
   address: string | null
   city: string | null

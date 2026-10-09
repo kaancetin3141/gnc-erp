@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
   const limit = parseInt(url.searchParams.get('limit') || '200')
   const offset = parseInt(url.searchParams.get('offset') || '0')
 
-  const where: Record<string, unknown> = { tenantId: user!.tenantId }
+  const where: Record<string, unknown> = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (status) where.status = status
   if (customerId) where.customerId = customerId
   if (orderId) where.orderId = orderId
@@ -124,13 +124,13 @@ export async function POST(req: NextRequest) {
   // Müşteri tenant kontrolü
   const customer = await db.customer.findUnique({ where: { id: customerId } })
   if (!customer) return err('Müşteri bulunamadı', 404)
-  if (customer.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Sipariş kontrolü (opsiyonel)
   if (orderId) {
     const order = await db.order.findUnique({ where: { id: orderId } })
     if (!order) return err('Sipariş bulunamadı', 404)
-    if (order.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+    if (order.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
   }
 
   const finalStatus = status && IRS_STATUSES.includes(status) ? status : 'taslak'

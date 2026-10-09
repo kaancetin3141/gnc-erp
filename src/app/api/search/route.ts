@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { getSession, requireAuth, ok, getVisibilityFilter, safeJsonParse } from '@/lib/api-utils'
+import { getSession, requireAuth, ok, getVisibilityFilter, safeJsonParse, tenantScope } from '@/lib/api-utils'
 import { hasPermission } from '@/lib/rbac'
 
 // GET /api/search?q=query — global search across customers, deals, tasks, leads
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     hasPermission(user!, 'deals.manage')
       ? db.deal.findMany({
           where: {
-            tenantId: user!.tenantId,
+            ...tenantScope(user!),
             ...(visFilter.ownerId ? { ownerId: visFilter.ownerId } : {}),
             OR: [{ title: { contains: q } }, { customer: { name: { contains: q } } }],
           },
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     hasPermission(user!, 'tasks.view')
       ? db.task.findMany({
           where: {
-            tenantId: user!.tenantId,
+            ...tenantScope(user!),
             ...(visFilter.ownerId ? { assigneeId: visFilter.ownerId } : {}),
             OR: [{ title: { contains: q } }, { customer: { name: { contains: q } } }],
           },
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     hasPermission(user!, 'leads.view')
       ? db.lead.findMany({
           where: {
-            tenantId: user!.tenantId,
+            ...tenantScope(user!),
             ...(visFilter.ownerId ? { ownerId: visFilter.ownerId } : {}),
             OR: [{ name: { contains: q } }, { category: { contains: q } }, { city: { contains: q } }, { phone: { contains: q } }],
           },

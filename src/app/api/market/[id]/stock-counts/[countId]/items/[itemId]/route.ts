@@ -17,7 +17,7 @@ export async function PATCH(
     where: { id: countId },
     include: { market: true },
   })
-  if (!sc || sc.marketId !== id || sc.market.tenantId !== user!.tenantId) {
+  if (!sc || sc.marketId !== id || sc.market.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Sayım bulunamadı', 404)
   }
   if (sc.status === 'tamamlandi') return err('Tamamlanmış sayım düzenlenemez', 400)

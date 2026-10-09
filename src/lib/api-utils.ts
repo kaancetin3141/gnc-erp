@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server'
 import type { SessionUser, PermissionKey } from '@/types'
 import { getServerSessionFromRequest } from './auth'
-import { hasPermission, getViewScope, getVisibleUserIds } from './rbac'
+import { hasPermission, getViewScope, getVisibleUserIds, isSuperAdmin } from './rbac'
 import { db } from './db'
 
 // Generic: çağıranlar ok<BulkImportResponse>({...}) gibi yanıt tipini
@@ -32,8 +32,22 @@ export function requirePermission(user: SessionUser | null, perm: PermissionKey)
   return null
 }
 
+// Tenant okuma kapsamı — liste/detay sorgularında kullanılır.
+// SUPERADMIN (Program Admini): platform geneli — tenant kısıtlaması YOK.
+// Diğer roller: yalnız kendi tenantı. (Yazma işlemlerinde kullanmayın —
+// kayıt oluşturmada superadmin'in kendi tenantı atanmalıdır.)
+export function tenantScope(user: SessionUser): { tenantId?: string } {
+  return isSuperAdmin(user.role) ? {} : { tenantId: user.tenantId }
+}
+
 // Görünürlük filtresi — customerId veya ownerId alanına göre
-export async function getVisibilityFilter(user: SessionUser): Promise<{ ownerId?: { in: string[] }; tenantId: string }> {
+// SUPERADMIN (Program Admini): platform geneli — tüm tenantların verisini görür.
+// Dönen filtre boş olur → sorgular tenant kısıtlaması olmadan platform toplamını gösterir.
+export async function getVisibilityFilter(user: SessionUser): Promise<{ ownerId?: { in: string[] }; tenantId?: string }> {
+  // Program Admini platform işletenidir: tüm şirketleri görür
+  if (isSuperAdmin(user.role)) {
+    return {}
+  }
   const scope = getViewScope(user)
   if (scope === 'all') {
     return { tenantId: user.tenantId }

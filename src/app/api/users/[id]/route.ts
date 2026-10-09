@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const existing = await db.user.findUnique({ where: { id } })
   if (!existing) return err('Kullanıcı bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const body = await req.json()
   const { role, permissions, managerId, status, title, phone, name, email } = body
@@ -124,7 +124,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.user.findUnique({ where: { id } })
   if (!existing) return err('Kullanıcı bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
   if (existing.id === user!.id) return err('Kendinizi pasifleştiremezsiniz', 400)
 
   const updated = await db.user.update({

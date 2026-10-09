@@ -20,7 +20,7 @@ export async function POST(
 
   const { id, orderId } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   const order = await db.cafeOrder.findUnique({
     where: { id: orderId },

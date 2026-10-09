@@ -19,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       returns: true,
     },
   })
-  if (!sale || sale.marketId !== id || sale.market.tenantId !== user!.tenantId) {
+  if (!sale || sale.marketId !== id || sale.market.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Satış bulunamadı', 404)
   }
 

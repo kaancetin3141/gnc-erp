@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import {
   getSession, requireAuth, requirePermission, ok, err,
-  getVisibilityFilter, safeJsonParse,
+  getVisibilityFilter, safeJsonParse, tenantScope,
 } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
 import { normalizePhone } from '@/lib/format'
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   const visFilter = await getVisibilityFilter(user!)
 
   const where: Record<string, unknown> = {
-    tenantId: user!.tenantId,
+    ...tenantScope(user!),
   }
 
   if (canManage) {

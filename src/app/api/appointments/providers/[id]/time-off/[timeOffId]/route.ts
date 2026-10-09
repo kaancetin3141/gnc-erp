@@ -14,7 +14,7 @@ export async function DELETE(
   const { id, timeOffId } = await params
   const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
   if (!provider) return err('İşletme bulunamadı', 404)
-  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const existing = await db.staffTimeOff.findUnique({ where: { id: timeOffId } })
   if (!existing || existing.providerId !== id) return err('İzin kaydı bulunamadı', 404)

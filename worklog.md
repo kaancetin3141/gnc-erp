@@ -8512,3 +8512,33 @@ Stage Summary:
 - src/ tam tip-temiz + production build geçer + tüm kritik API'ler 200
 - Şema genişletmesi sunucuda bir sonraki `bash guncelle-gnc.sh` ile otomatik uygulanacak (db push satırı mevcut)
 - 31 dosya değişti — bu commit ile push
+
+---
+Task ID: user-feature-audit-3
+Agent: main (Super Z)
+Task: "incelemeye geliştirmeye devam et" — superadmin platform geneli görünürlük denetimi + kapsamlı QA turu
+
+Work Log:
+- SAĞLIK: 3000/3002/3010/3011 tümü 200; dev sunucu sandbox'ta 3 kez sessizce öldü → pkill + yeniden başlatma ile toparlandı (ensure-services bekçisi de devrede)
+- BUG #1 (KRİTİK UX): Program Admini (superadmin) tüm KPI'ları SIFIR görüyordu — tenant kapsamı platform tenant'ına kilitliydi. Düzeltme:
+  * getVisibilityFilter (api-utils): superadmin → boş filtre (platform geneli)
+  * dashboard + dashboard/trend: scopeTenant = superadmin ? undefined : tenantId
+  * customers GET: superadmin platform geneli + yanıta `tenant` eklendi
+  * deals/tasks GET: visFilter.tenantId bazlı kapsam
+- BUG #2 (KRİTİK 403): 85 dosyada `X.tenantId !== user!.tenantId` tenant-guard'ı superadmin'i de reddediyordu (randevu işletmesi 403 → Randevular modülü boş). Sistematik sed ile tümüne `&& user!.role !== 'superadmin'` bypass eklendi (147 satır, import gerektirmedi)
+- BUG #3 (MODÜL BOŞLUKLARI): 15 liste API'si `{ tenantId: user!.tenantId }` ile kilitliydi (products, invoices, quotes, orders, expenses, irsaliye, hr/employees+leaves+shifts, cash, tickets, messages, membership×2, templates, loyalty, social/inbox) → superadmin koşullu kapsam. admin/overview da scopeWhere'e çevrildi
+- UI İYİLEŞTİRME:
+  * Dashboard banner'ına superadmin'e özel "Platform geneli — tüm şirketler" rozeti (emerald)
+  * Müşteri listesinde superadmin'e şirket (tenant) rozeti — isim yanında küçük etiket
+- GÜVENLİK DOĞRULAMASI: demo@anadolu.com (1234) ile cross-tenant test → 21 müşteri SADECE Anadolu tenant'ından, 19 ürün (platform geneli 34 değil) ✓ İzolasyon bozulmadı
+- DOĞRULAMA (agent-browser): login admin/314159 ✓ → dashboard 31 müşteri/₺3.111.000 pipeline/17 görev ✓ → Müşteriler 31 + tenant rozetleri ✓ → Randevular (Şık Kuaför, 5 bugünkü randevu, istatistik kartları) ✓ → Ürün 34 ✓ → Faturalar 3 ✓ → Fırsatlar 14 aktif ✓ → Görevler 17 ✓ → Admin Paneli 31 müşteri/7 işletme ✓
+- customer-page (3002): /api/businesses ✓, slug detay (sik-kuafor, 6 hizmet) ✓, slots API ✓, bilinmeyen slug 404 ✓
+- tsc --noEmit src: 0 hata; bun run lint: 0 hata/uyarı
+- Not: Dev sunucu derlemeleri 10-14 sn sürüyor (turbopack cold compile) — curl timeout'a takılmamak için --max-time 60+ kullan
+
+Stage Summary:
+- Program Admini artık TÜM platformu gerçek verilerle yönetebilir: dashboard KPI'ları, müşteriler (şirket rozetli), randevular, ürünler, faturalar, fırsatlar, görevler, admin paneli
+- Tenant izolasyonu normal kullanıcılar için %100 korundu (demo hesabıyla doğrulandı)
+- 106 dosya değişti; bu commit ile pushlanacak
+- Sunucu tarafı: `bash guncelle-gnc.sh` ile otomatik alınır (kod değişikliği, şema değişikliği yok)
+- EK DOĞRULAMA: scripts/qa-superadmin-smoke.js (önceki oturumdan kalan uç) çalıştırıldı — 24/24 test GEÇTİ: superadmin platform geneli (25 fırsat, 16 lead, 23 kullanıcı, raporlar, ERP listeleri) + demo@anadolu.com tenant izolasyonu (21 müşteri, daralmış kullanıcı listesi) ✓

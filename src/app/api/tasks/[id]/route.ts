@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const existing = await db.task.findUnique({ where: { id } })
   if (!existing) return err('Görev bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const canManage = hasPermission(user!, 'tasks.manage')
   // Atanan kişi kendisiyse veya tasks.manage yetkisi varsa düzenleyebilir
@@ -95,7 +95,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.task.findUnique({ where: { id } })
   if (!existing) return err('Görev bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const canManage = hasPermission(user!, 'tasks.manage')
   if (!canManage && existing.assigneeId !== user!.id) {

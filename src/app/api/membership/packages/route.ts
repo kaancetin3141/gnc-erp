@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const providerId = url.searchParams.get('providerId') || ''
   const includeInactive = url.searchParams.get('includeInactive') === '1'
 
-  const where: Record<string, unknown> = { tenantId: user!.tenantId }
+  const where: Record<string, unknown> = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (!includeInactive) where.active = true
   if (providerId) where.providerId = providerId
 

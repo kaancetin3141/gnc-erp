@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { getSession, requireAuth, requirePermission, ok, err, getVisibilityFilter } from '@/lib/api-utils'
+import { getSession, requireAuth, requirePermission, ok, err, getVisibilityFilter, tenantScope } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
 import type { SessionUser } from '@/types'
 
@@ -12,8 +12,9 @@ import type { SessionUser } from '@/types'
 // Depo_sorumlusu rolü de tüm siparişlerin üretim kalemlerini görür (irsaliye yönetimi için).
 // Rep rolü: yalnızca kendi müşterilerinin siparişlerinden gelen kalemler.
 // Admin / manager / superadmin: görünürlük kapsamına göre (genelde tümü).
+// SUPERADMIN (Program Admini): platform geneli — tenant kısıtlaması yok (tenantScope).
 function buildTenantWhere(user: SessionUser, visFilter: { ownerId?: { in: string[] } }) {
-  const where: Record<string, unknown> = { tenantId: user.tenantId }
+  const where: Record<string, unknown> = { ...tenantScope(user) }
   if (user.role === 'stock' || user.role === 'depo_sorumlusu') {
     // Stock/Depo tüm siparişlerin üretim kalemlerini görür — fiyat yok.
     return where
@@ -152,7 +153,7 @@ export async function POST(req: NextRequest) {
   })
 
   if (!order) return err('Sipariş bulunamadı', 404)
-  if (order.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (order.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Aynı sipariş için zaten kalemler oluşturulmuş mu?
   const existingCount = await db.productionItem.count({

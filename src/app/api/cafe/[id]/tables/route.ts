@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   const tables = await db.cafeTable.findMany({
     where: { cafeId: id },
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   const body = await req.json()
   const { number, shape, x, y, width, height, capacity } = body as {

@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   if (!target) return err('Kullanıcı bulunamadı', 404)
 
   // Tenant izolasyonu
-  if (target.tenantId !== user!.tenantId) {
+  if (target.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Başka şirketin kullanıcısına erişemezsiniz', 403)
   }
   if (role === 'manager' && target.managerId !== user!.id) {

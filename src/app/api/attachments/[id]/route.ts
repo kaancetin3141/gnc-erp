@@ -15,7 +15,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     include: { customer: { select: { tenantId: true } } },
   })
   if (!attachment) return err('Dosya bulunamadı', 404)
-  if (attachment.customer.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (attachment.customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   await db.attachment.delete({ where: { id } })
 

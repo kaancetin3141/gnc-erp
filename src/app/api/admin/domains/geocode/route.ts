@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       select: { id: true, name: true, address: true, city: true, district: true, tenantId: true, lat: true, lng: true },
     })
     if (!p) return err('İşletme bulunamadı', 404)
-    if (!isSuper && p.tenantId !== user!.tenantId) {
+    if (!isSuper && p.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
       return err('Başka bir işletmenin konumunu düzenleme yetkiniz yok', 403)
     }
     providers = [p]

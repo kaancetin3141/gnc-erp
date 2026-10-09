@@ -115,20 +115,25 @@ export async function GET(req: NextRequest) {
 
   const visibleUserIds: string[] | undefined = visFilter?.ownerId?.in
 
+  // SUPERADMIN (Program Admini): platform geneli — tenant kısıtlaması yok.
+  // visFilter boş obje döner; kendi tenantının boş KPI'ları yerine tüm şirketlerin toplamını görür.
+  const isPlatformWide = visFilter !== null && visFilter.tenantId === undefined
+  const scopeTenant = isPlatformWide ? undefined : user!.tenantId
+
   const dealFilter = {
-    tenantId: user!.tenantId,
+    ...(scopeTenant ? { tenantId: scopeTenant } : {}),
     ...(visibleUserIds ? { ownerId: { in: visibleUserIds } } : {}),
   }
   const customerFilter = {
-    tenantId: user!.tenantId,
+    ...(scopeTenant ? { tenantId: scopeTenant } : {}),
     ...(visibleUserIds ? { ownerId: { in: visibleUserIds } } : {}),
   }
   const taskFilter = {
-    tenantId: user!.tenantId,
+    ...(scopeTenant ? { tenantId: scopeTenant } : {}),
     ...(visibleUserIds ? { assigneeId: { in: visibleUserIds } } : {}),
   }
   const activityFilter = {
-    tenantId: user!.tenantId,
+    ...(scopeTenant ? { tenantId: scopeTenant } : {}),
     ...(visibleUserIds ? { userId: { in: visibleUserIds } } : {}),
   }
 
@@ -220,7 +225,7 @@ export async function GET(req: NextRequest) {
     // GİZLİLİK: fatura göremeyen roller (depocu vb.) için tutar alanları dönmez
     db.order.findMany({
       where: {
-        tenantId: user!.tenantId,
+        ...(scopeTenant ? { tenantId: scopeTenant } : {}),
         status: { in: ['hazirlaniyor', 'onaylandi', 'uretimde'] },
       },
       select: {
@@ -238,7 +243,7 @@ export async function GET(req: NextRequest) {
     // 6 aylık trend — siparişler (aylık adet)
     db.order.findMany({
       where: {
-        tenantId: user!.tenantId,
+        ...(scopeTenant ? { tenantId: scopeTenant } : {}),
         orderDate: { gte: trendStart },
       },
       select: { orderDate: true },
@@ -246,7 +251,7 @@ export async function GET(req: NextRequest) {
     // 6 aylık trend — sevk edilen irsaliyeler (sevk_edildi + teslim_edildi)
     db.irsaliye.findMany({
       where: {
-        tenantId: user!.tenantId,
+        ...(scopeTenant ? { tenantId: scopeTenant } : {}),
         status: { in: ['sevk_edildi', 'teslim_edildi'] },
         date: { gte: trendStart },
       },
@@ -255,7 +260,7 @@ export async function GET(req: NextRequest) {
     // 6 aylık trend — fatura cirosu (yalnızca tutar görebilen roller)
     ...(canSeeAmounts ? [db.invoice.findMany({
       where: {
-        tenantId: user!.tenantId,
+        ...(scopeTenant ? { tenantId: scopeTenant } : {}),
         status: { not: 'iptal' },
         issueDate: { gte: trendStart },
       },

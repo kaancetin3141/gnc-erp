@@ -15,7 +15,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   })
   if (!barcode) return err('Barkod bulunamadı', 404)
   // tenant isolation: product.tenantId veya market.tenantId
-  if (barcode.product.tenantId !== user!.tenantId) return err('Yetkisiz', 403)
+  if (barcode.product.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Yetkisiz', 403)
   if (barcode.marketId && barcode.marketId !== id) return err('Barkod bu markete ait değil', 400)
 
   await db.barcode.delete({ where: { id: barcodeId } })

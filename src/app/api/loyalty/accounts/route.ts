@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const q = url.searchParams.get('q') || ''
 
-  const where: Record<string, unknown> = { tenantId: user!.tenantId }
+  const where: Record<string, unknown> = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (q) {
     where.OR = [
       { name: { contains: q } },

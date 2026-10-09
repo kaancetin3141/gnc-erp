@@ -12,12 +12,13 @@ export async function GET(req: NextRequest) {
   const permErr = requirePermission(user, 'users.manage')
   if (permErr) return permErr
 
-  const tenantId = user!.tenantId
+  // SUPERADMIN (Program Admini): platform geneli istatistikler
+  const scopeWhere = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
 
   // Müşteri türüne göre sayım
   const customerTypeCounts = await db.customer.groupBy({
     by: ['customerType'],
-    where: { tenantId },
+    where: scopeWhere,
     _count: { _all: true },
   })
 
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
   // Kullanıcı rolüne göre sayım
   const userRoleCounts = await db.user.groupBy({
     by: ['role'],
-    where: { tenantId },
+    where: scopeWhere,
     _count: { _all: true },
   })
 
@@ -69,19 +70,19 @@ export async function GET(req: NextRequest) {
     totalLeads,
     totalProducts,
   ] = await Promise.all([
-    db.customer.count({ where: { tenantId } }),
-    db.user.count({ where: { tenantId } }),
-    db.deal.count({ where: { tenantId } }),
-    db.order.count({ where: { tenantId } }),
-    db.invoice.count({ where: { tenantId } }),
-    db.task.count({ where: { tenantId } }),
-    db.lead.count({ where: { tenantId } }),
-    db.product.count({ where: { tenantId } }),
+    db.customer.count({ where: scopeWhere }),
+    db.user.count({ where: scopeWhere }),
+    db.deal.count({ where: scopeWhere }),
+    db.order.count({ where: scopeWhere }),
+    db.invoice.count({ where: scopeWhere }),
+    db.task.count({ where: scopeWhere }),
+    db.lead.count({ where: scopeWhere }),
+    db.product.count({ where: scopeWhere }),
   ])
 
   // Son aktiviteler (audit log)
   const recentAuditLogs = await db.auditLog.findMany({
-    where: { tenantId },
+    where: scopeWhere,
     include: {
       actor: { select: { id: true, name: true } },
     },
@@ -91,13 +92,13 @@ export async function GET(req: NextRequest) {
 
   // Aktif görevler
   const openTasks = await db.task.count({
-    where: { tenantId, status: 'acik' },
+    where: { ...scopeWhere, status: 'acik' },
   })
 
   // Açık fırsat değeri
   const openDeals = await db.deal.findMany({
     where: {
-      tenantId,
+      ...scopeWhere,
       stage: { notIn: ['kazanıldı', 'kaybedildi'] },
     },
     select: { value: true, currency: true },
@@ -106,7 +107,7 @@ export async function GET(req: NextRequest) {
 
   // Bekleyen ödemeler
   const pendingInvoices = await db.invoice.count({
-    where: { tenantId, status: 'odeme_bekliyor' },
+    where: { ...scopeWhere, status: 'odeme_bekliyor' },
   })
 
   return ok({

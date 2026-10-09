@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import {
   getSession, requireAuth, ok, err,
-  getVisibilityFilter, canAccessResource,
+  getVisibilityFilter, canAccessResource, tenantScope,
 } from '@/lib/api-utils'
 import { getViewScope } from '@/lib/rbac'
 
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     select: { id: true, tenantId: true, name: true, role: true, title: true, managerId: true },
   })
 
-  if (!targetUser || targetUser.tenantId !== user!.tenantId) {
+  if (!targetUser || targetUser.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Kullanıcı bulunamadı', 404)
   }
 
@@ -102,20 +102,20 @@ export async function GET(req: NextRequest) {
 
   // Filtre yardımcıları
   const activityWhere = {
-    tenantId: user!.tenantId,
+    ...tenantScope(user!),
     date: { gte: dayStart, lt: dayEnd },
     ...(userIds ? { userId: { in: userIds } } : {}),
   }
   const taskAssigneeFilter = {
-    tenantId: user!.tenantId,
+    ...tenantScope(user!),
     ...(userIds ? { assigneeId: { in: userIds } } : {}),
   }
   const dealOwnerFilter = {
-    tenantId: user!.tenantId,
+    ...tenantScope(user!),
     ...(userIds ? { ownerId: { in: userIds } } : {}),
   }
   const customerOwnerFilter = {
-    tenantId: user!.tenantId,
+    ...tenantScope(user!),
     ...(userIds ? { ownerId: { in: userIds } } : {}),
   }
 

@@ -21,7 +21,7 @@ export async function GET(
 
   const { id } = await params
   const template = await db.messageTemplate.findUnique({ where: { id } })
-  if (!template || template.tenantId !== user!.tenantId) {
+  if (!template || template.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Şablon bulunamadı', 404)
   }
   return ok(template)
@@ -40,7 +40,7 @@ export async function PATCH(
 
   const { id } = await params
   const existing = await db.messageTemplate.findUnique({ where: { id } })
-  if (!existing || existing.tenantId !== user!.tenantId) {
+  if (!existing || existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Şablon bulunamadı', 404)
   }
 
@@ -121,7 +121,7 @@ export async function DELETE(
 
   const { id } = await params
   const existing = await db.messageTemplate.findUnique({ where: { id } })
-  if (!existing || existing.tenantId !== user!.tenantId) {
+  if (!existing || existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Şablon bulunamadı', 404)
   }
 

@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   if (!lead) return err('Lead bulunamadı', 404)
-  if (lead.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (lead.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const canAccess = await canAccessResource(user!, lead.ownerId)
   if (!canAccess) return err('Bu leadı görüntüleme yetkiniz yok', 403)
@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const existing = await db.lead.findUnique({ where: { id } })
   if (!existing) return err('Lead bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const canAccess = await canAccessResource(user!, existing.ownerId)
   if (!canAccess) return err('Bu leadı düzenleme yetkiniz yok', 403)

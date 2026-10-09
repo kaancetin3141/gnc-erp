@@ -158,7 +158,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.productionItem.findUnique({ where: { id } })
   if (!existing) return err('Üretim kalemi bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   await db.productionItem.delete({ where: { id } })
 

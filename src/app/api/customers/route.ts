@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { getSession, requirePermission, requireAuth, ok, err, getVisibilityFilter } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
 import { normalizePhone } from '@/lib/format'
-import { hasPermission } from '@/lib/rbac'
+import { hasPermission, isSuperAdmin } from '@/lib/rbac'
 import { safeJsonParse } from '@/lib/api-utils'
 
 // GET — müşteri listesi (filtreli)
@@ -36,7 +36,8 @@ export async function GET(req: NextRequest) {
 
   // Depo rolü tüm müşterileri görebilir (irsaliye/sipariş yönetimi için)
   // CRM rolleri görünürlük filtresine tabi
-  let visFilter: { ownerId?: { in: string[] }; tenantId: string }
+  // SUPERADMIN: platform geneli — tüm şirketlerin müşterileri
+  let visFilter: { ownerId?: { in: string[] }; tenantId?: string }
   if (user!.role === 'depo_sorumlusu') {
     visFilter = { tenantId: user!.tenantId }
   } else {
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
   }
 
   const where: Record<string, unknown> = {
-    tenantId: user!.tenantId,
+    ...(visFilter.tenantId ? { tenantId: visFilter.tenantId } : isSuperAdmin(user!.role) ? {} : { tenantId: user!.tenantId }),
     ...(visFilter.ownerId ? { ownerId: visFilter.ownerId } : {}),
   }
 
@@ -89,6 +90,7 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         owner: { select: { id: true, name: true } },
+        tenant: { select: { id: true, name: true } },
         _count: { select: { contacts: true, activities: true, deals: true, tasks: true, notes: true } },
       },
       orderBy,

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import {
   getSession, requirePermission, ok, err,
-  getVisibilityFilter,
+  getVisibilityFilter, tenantScope,
 } from '@/lib/api-utils'
 import { getTenantSector } from '@/lib/tenant-sector'
 import {
@@ -103,19 +103,19 @@ async function getCrmReportsData(
 
   // Filter helpers — her varlık için uygun alan
   const dealFilter = {
-    tenantId: user.tenantId,
+    ...tenantScope(user),
     ...(visibleUserIds ? { ownerId: { in: visibleUserIds } } : {}),
   }
   const customerFilter = {
-    tenantId: user.tenantId,
+    ...tenantScope(user),
     ...(visibleUserIds ? { ownerId: { in: visibleUserIds } } : {}),
   }
   const leadFilter = {
-    tenantId: user.tenantId,
+    ...tenantScope(user),
     ...(visibleUserIds ? { ownerId: { in: visibleUserIds } } : {}),
   }
   const activityFilter = {
-    tenantId: user.tenantId,
+    ...tenantScope(user),
     ...(visibleUserIds ? { userId: { in: visibleUserIds } } : {}),
   }
 

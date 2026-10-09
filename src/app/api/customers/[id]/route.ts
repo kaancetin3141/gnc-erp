@@ -40,7 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   if (!customer) return err('Müşteri bulunamadı', 404)
-  if (customer.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const canAccess = await canAccessResource(user!, customer.ownerId)
   if (!canAccess) return err('Bu müşteriyi görüntüleme yetkiniz yok', 403)
@@ -62,7 +62,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const existing = await db.customer.findUnique({ where: { id } })
   if (!existing) return err('Müşteri bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const canAccess = await canAccessResource(user!, existing.ownerId)
   if (!canAccess) return err('Bu müşteriyi düzenleme yetkiniz yok', 403)
@@ -127,7 +127,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.customer.findUnique({ where: { id } })
   if (!existing) return err('Müşteri bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   await db.customer.delete({ where: { id } })
 

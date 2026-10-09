@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { getSession, requirePermission, ok, err, getVisibilityFilter, safeJsonParse } from '@/lib/api-utils'
+import { getSession, requirePermission, ok, err, getVisibilityFilter, safeJsonParse, tenantScope } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
 
 // ============================================================
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
   const visFilter = await getVisibilityFilter(user!)
 
   const where: Record<string, unknown> = {
-    tenantId: user!.tenantId,
+    ...tenantScope(user!),
     isProforma: true,
   }
 
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
 
   const customer = await db.customer.findUnique({ where: { id: customerId } })
   if (!customer) return err('Müşteri bulunamadı', 404)
-  if (customer.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const totals = calcTotals(lines)
   const number = await generateProformaNumber(user!.tenantId)

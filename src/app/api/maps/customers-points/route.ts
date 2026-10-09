@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { getSession, requireAuth, ok, getVisibilityFilter } from '@/lib/api-utils'
+import { getSession, requireAuth, ok, getVisibilityFilter, tenantScope } from '@/lib/api-utils'
 
 // GET — harita "Müşteri Katmanı" için konumlu müşteri noktaları (hafif, max 200)
 export async function GET(req: NextRequest) {
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   const customers = await db.customer.findMany({
     where: {
-      tenantId: user!.tenantId,
+      ...tenantScope(user!),
       lat: { not: null },
       lng: { not: null },
       ...(visFilter.ownerId ? { ownerId: visFilter.ownerId } : {}),

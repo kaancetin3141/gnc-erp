@@ -20,11 +20,11 @@ export async function GET(req: NextRequest) {
   const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
 
   const where: {
-    tenantId: string
+    tenantId?: string
     platform?: string
     type?: string
     isRead?: boolean
-  } = { tenantId: user!.tenantId }
+  } = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (platform && ALL_PLATFORMS.includes(platform as PlatformKey)) where.platform = platform
   if (type) where.type = type
   if (unreadOnly) where.isRead = false

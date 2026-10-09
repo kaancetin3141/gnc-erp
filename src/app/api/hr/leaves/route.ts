@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const status = url.searchParams.get('status') || ''
   const employeeId = url.searchParams.get('employeeId') || ''
 
-  const where: Record<string, unknown> = { tenantId: user!.tenantId }
+  const where: Record<string, unknown> = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (status) where.status = status
   if (employeeId) where.employeeId = employeeId
 

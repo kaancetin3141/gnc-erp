@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   if (!irsaliye) return err('İrsaliye bulunamadı', 404)
-  if (irsaliye.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (irsaliye.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Filtered payload (no sensitive data — no prices, no createdById)
   return ok({

@@ -16,7 +16,7 @@ export async function PATCH(
   const { id } = await params
   const message = await db.message.findUnique({ where: { id } })
   if (!message) return err('Mesaj bulunamadı', 404)
-  if (message.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (message.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Sadece alıcı okundu olarak işaretleyebilir
   if (message.receiverId !== user!.id) {
@@ -50,7 +50,7 @@ export async function DELETE(
   const { id } = await params
   const message = await db.message.findUnique({ where: { id } })
   if (!message) return err('Mesaj bulunamadı', 404)
-  if (message.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (message.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
   if (message.senderId !== user!.id) {
     return err('Sadece kendi gönderdiğiniz mesajları silebilirsiniz', 403)
   }

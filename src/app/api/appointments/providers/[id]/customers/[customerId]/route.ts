@@ -17,7 +17,7 @@ async function guard(req: NextRequest, providerId: string, customerId: string) {
 
   const provider = await db.serviceProvider.findUnique({ where: { id: providerId }, select: { tenantId: true } })
   if (!provider) return { authErr: err('İşletme bulunamadı', 404), customer: null, user: null }
-  if (provider.tenantId !== user!.tenantId) return { authErr: err('Erişim reddedildi', 403), customer: null, user: null }
+  if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return { authErr: err('Erişim reddedildi', 403), customer: null, user: null }
 
   const customer = await db.appointmentCustomer.findFirst({
     where: { id: customerId, providerId },

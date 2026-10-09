@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     select: { id: true, tenantId: true, name: true, role: true, managerId: true },
   })
 
-  if (!targetUser || targetUser.tenantId !== user!.tenantId) {
+  if (!targetUser || targetUser.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Kullanıcı bulunamadı', 404)
   }
 

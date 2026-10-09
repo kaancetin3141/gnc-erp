@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: { id: saleId },
     include: { market: true, items: true },
   })
-  if (!sale || sale.marketId !== id || sale.market.tenantId !== user!.tenantId) {
+  if (!sale || sale.marketId !== id || sale.market.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Satış bulunamadı', 404)
   }
 

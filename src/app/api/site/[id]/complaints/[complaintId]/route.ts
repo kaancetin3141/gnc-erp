@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id, complaintId } = await params
   const site = await db.site.findUnique({ where: { id } })
-  if (!site || site.tenantId !== user!.tenantId) return err('Site bulunamadı', 404)
+  if (!site || site.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Site bulunamadı', 404)
 
   const complaint = await db.complaint.findUnique({ where: { id: complaintId } })
   if (!complaint || complaint.siteId !== id) return err('Talep bulunamadı', 404)
@@ -94,7 +94,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { id, complaintId } = await params
   const site = await db.site.findUnique({ where: { id } })
-  if (!site || site.tenantId !== user!.tenantId) return err('Site bulunamadı', 404)
+  if (!site || site.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Site bulunamadı', 404)
 
   const complaint = await db.complaint.findUnique({ where: { id: complaintId } })
   if (!complaint || complaint.siteId !== id) return err('Talep bulunamadı', 404)

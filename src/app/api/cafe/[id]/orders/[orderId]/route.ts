@@ -18,7 +18,7 @@ export async function GET(
 
   const { id, orderId } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   const order = await db.cafeOrder.findUnique({
     where: { id: orderId },
@@ -52,7 +52,7 @@ export async function PATCH(
 
   const { id, orderId } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   const order = await db.cafeOrder.findUnique({
     where: { id: orderId },
@@ -119,7 +119,7 @@ export async function DELETE(
 
   const { id, orderId } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   const order = await db.cafeOrder.findUnique({ where: { id: orderId } })
   if (!order || order.cafeId !== id) return err('Sipariş bulunamadı', 404)

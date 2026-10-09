@@ -42,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   if (!invoice) return err('Fatura bulunamadı', 404)
-  if (invoice.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (invoice.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Depo rolü — fiyat alanlarını temizle (çeki listesi fiyat içermez)
   if (!canSeePrices) {
@@ -71,7 +71,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const existing = await db.invoice.findUnique({ where: { id } })
   if (!existing) return err('Fatura bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const body = await req.json()
   const { status, dueDate, paidDate, packingListNo, packingListDate, dispatchNo, dispatchDate, orderId } = body as {
@@ -219,7 +219,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.invoice.findUnique({ where: { id } })
   if (!existing) return err('Fatura bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Görünürlük kontrolü
   const visFilter = await getVisibilityFilter(user!)

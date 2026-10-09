@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
   const product = await db.product.findUnique({ where: { id }, select: { tenantId: true } })
   if (!product) return err('Ürün bulunamadı', 404)
-  if (product.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (product.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const url = new URL(req.url)
   const limit = parseInt(url.searchParams.get('limit') || '50')
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const product = await db.product.findUnique({ where: { id } })
   if (!product) return err('Ürün bulunamadı', 404)
-  if (product.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (product.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const body = await req.json()
   const { quantity, type, reason, refType, refId } = body

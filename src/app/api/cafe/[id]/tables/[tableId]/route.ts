@@ -24,7 +24,7 @@ export async function PATCH(
 
   const { id, tableId } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   const table = await db.cafeTable.findUnique({ where: { id: tableId } })
   if (!table || table.cafeId !== id) return err('Masa bulunamadı', 404)
@@ -92,7 +92,7 @@ export async function DELETE(
 
   const { id, tableId } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   const table = await db.cafeTable.findUnique({ where: { id: tableId } })
   if (!table || table.cafeId !== id) return err('Masa bulunamadı', 404)

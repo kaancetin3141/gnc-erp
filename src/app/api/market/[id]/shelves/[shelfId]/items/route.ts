@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     where: { id: shelfId },
     include: { market: true },
   })
-  if (!shelf || shelf.marketId !== id || shelf.market.tenantId !== user!.tenantId) {
+  if (!shelf || shelf.marketId !== id || shelf.market.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Raf bulunamadı', 404)
   }
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: { id: shelfId },
     include: { market: true },
   })
-  if (!shelf || shelf.marketId !== id || shelf.market.tenantId !== user!.tenantId) {
+  if (!shelf || shelf.marketId !== id || shelf.market.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
     return err('Raf bulunamadı', 404)
   }
 
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Ürün tenant'a mı ait?
   const product = await db.product.findUnique({ where: { id: productId } })
-  if (!product || product.tenantId !== user!.tenantId) return err('Ürün bulunamadı', 404)
+  if (!product || product.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Ürün bulunamadı', 404)
 
   // Aynı ürün aynı rafta varsa miktarı güncelle
   const existing = await db.shelfItem.findFirst({

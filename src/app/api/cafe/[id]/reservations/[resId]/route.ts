@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id, resId } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   const existing = await db.cafeReservation.findUnique({ where: { id: resId } })
   if (!existing || existing.cafeId !== id) return err('Rezervasyon bulunamadı', 404)
@@ -106,7 +106,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { id, resId } = await params
   const cafe = await db.cafe.findUnique({ where: { id } })
-  if (!cafe || cafe.tenantId !== user!.tenantId) return err('Kafe bulunamadı', 404)
+  if (!cafe || cafe.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Kafe bulunamadı', 404)
 
   const existing = await db.cafeReservation.findUnique({ where: { id: resId } })
   if (!existing || existing.cafeId !== id) return err('Rezervasyon bulunamadı', 404)

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok } from '@/lib/api-utils'
+import { isSuperAdmin } from '@/lib/rbac'
 
 // GET /api/dashboard/trend — Sevk & Sipariş Trendi (hafif, bağımsız uç)
 // · 12 aylık trend: aylık yeni sipariş adedi, sevk edilen irsaliye, TRY ciro
@@ -31,11 +32,14 @@ export async function GET(req: NextRequest) {
   const now = new Date()
   const trendStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
 
+  // SUPERADMIN (Program Admini): platform geneli — tüm şirketlerin trendi
+  const scopeTenant = isSuperAdmin(user!.role) ? undefined : user!.tenantId
+
   // Filtrelenen müşterinin bu tenant'a ait olduğunu doğrula
   let validCustomerId: string | undefined
   if (customerId) {
     const customer = await db.customer.findFirst({
-      where: { id: customerId, tenantId: user!.tenantId },
+      where: { id: customerId, ...(scopeTenant ? { tenantId: scopeTenant } : {}) },
       select: { id: true },
     })
     validCustomerId = customer?.id
@@ -50,7 +54,7 @@ export async function GET(req: NextRequest) {
     canSeeAmounts
       ? db.invoice.findMany({
           where: {
-            tenantId: user!.tenantId,
+            ...(scopeTenant ? { tenantId: scopeTenant } : {}),
             status: { not: 'iptal' },
             issueDate: { gte: trendStart },
             ...customerFilter,
@@ -63,7 +67,7 @@ export async function GET(req: NextRequest) {
     // Trend — siparişler (aylık adet)
     db.order.findMany({
       where: {
-        tenantId: user!.tenantId,
+        ...(scopeTenant ? { tenantId: scopeTenant } : {}),
         orderDate: { gte: trendStart },
         ...customerFilter,
       },
@@ -72,7 +76,7 @@ export async function GET(req: NextRequest) {
     // Trend — sevk edilen irsaliyeler
     db.irsaliye.findMany({
       where: {
-        tenantId: user!.tenantId,
+        ...(scopeTenant ? { tenantId: scopeTenant } : {}),
         status: { in: ['sevk_edildi', 'teslim_edildi'] },
         date: { gte: trendStart },
         ...customerFilter,
@@ -82,7 +86,7 @@ export async function GET(req: NextRequest) {
     // Filtre listesi — 12 ayda siparişi olan müşteriler (filtresiz)
     db.order.findMany({
       where: {
-        tenantId: user!.tenantId,
+        ...(scopeTenant ? { tenantId: scopeTenant } : {}),
         orderDate: { gte: trendStart },
       },
       select: {

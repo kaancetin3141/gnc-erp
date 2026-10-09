@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
   const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
   if (!provider) return err('İşletme bulunamadı', 404)
-  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const services = await db.service.findMany({
     where: { providerId: id },
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
   if (!provider) return err('İşletme bulunamadı', 404)
-  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const body = await req.json()
   const { name, description, duration, price, category, photo } = body

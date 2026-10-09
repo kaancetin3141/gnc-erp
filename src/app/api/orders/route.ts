@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
   // 'orders.view' yetkisi olanlar (müdür, depocu, admin) şirketin TÜM siparişlerini görür
   // — Belge Yönetimi sayfası şirket geneli belge erişimi gerektirir.
   // CRM rolleri (rep — yalnızca erp.manage olmadan) görünürlük filtresine tabi
-  let where: Record<string, unknown> = { tenantId: user.tenantId }
+  let where: Record<string, unknown> = user.role === 'superadmin' ? {} : { tenantId: user.tenantId }
 
   const hasCompanyWideOrders = hasView || isDepoRole // orders.view = şirket geneli belge erişimi
   if (!hasCompanyWideOrders) {
@@ -186,14 +186,14 @@ export async function POST(req: NextRequest) {
 
   const customer = await db.customer.findUnique({ where: { id: customerId } })
   if (!customer) return err('Müşteri bulunamadı', 404)
-  if (customer.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Opsiyonel: teklif bağla
   let quoteData: { total: number; currency: string; number: string } | null = null
   if (quoteId) {
     const quote = await db.quote.findUnique({ where: { id: quoteId } })
     if (!quote) return err('Teklif bulunamadı', 404)
-    if (quote.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+    if (quote.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
     quoteData = { total: quote.total, currency: quote.currency, number: quote.number }
   }
 

@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
   const onlyUnread = url.searchParams.get('unread') === '1'
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10) || 50, 200)
 
-  const where: Record<string, unknown> = { tenantId: user!.tenantId }
+  const where: Record<string, unknown> = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (otherUserId) {
     where.OR = [
       { senderId: user!.id, receiverId: otherUserId },

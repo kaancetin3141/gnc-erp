@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   if (!product) return err('Ürün bulunamadı', 404)
-  if (product.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (product.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   return ok(product)
 }
@@ -36,7 +36,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const existing = await db.product.findUnique({ where: { id } })
   if (!existing) return err('Ürün bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const body = await req.json()
   const updateData: Record<string, unknown> = {}
@@ -123,7 +123,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.product.findUnique({ where: { id } })
   if (!existing) return err('Ürün bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Referans kontrolü: teklif kalemlerinde kullanılıyorsa silmeyi engelle
   const refCount = await db.quoteLine.count({ where: { productId: id } })

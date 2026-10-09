@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { isSuperAdmin } from '@/lib/rbac'
 
 // GET — hizmet verenler listesi
 export async function GET(req: NextRequest) {
@@ -12,12 +13,16 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const type = url.searchParams.get('type') || ''
 
-  const where: Record<string, unknown> = { tenantId: user!.tenantId }
+  // SUPERADMIN: platform geneli — tüm şirketlerin işletmeleri
+  const where: Record<string, unknown> = isSuperAdmin(user!.role)
+    ? {}
+    : { tenantId: user!.tenantId }
   if (type) where.type = type
 
   const providers = await db.serviceProvider.findMany({
     where,
     include: {
+      tenant: { select: { id: true, name: true } },
       _count: { select: { staff: true, services: true, appointments: true } },
     },
     orderBy: { name: 'asc' },

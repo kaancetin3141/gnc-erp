@@ -463,6 +463,8 @@ function CustomerFormDialog({
 export function CustomerList() {
   const { user, openCustomer } = useAppStore()
   const qc = useQueryClient()
+  // SUPERADMIN: platform geneli — hangi şirkete ait olduğunu göster
+  const isPlatformWide = user?.role === 'superadmin'
 
   // Filtre state
   const [search, setSearch] = useState('')
@@ -888,7 +890,17 @@ export function CustomerList() {
                             </div>
                           )}
                           <div className="min-w-0">
-                            <div className="font-medium text-sm truncate max-w-[220px]">{c.name}</div>
+                            <div className="font-medium text-sm truncate max-w-[220px] flex items-center gap-1.5">
+                              <span className="truncate">{c.name}</span>
+                              {isPlatformWide && c.tenant && (
+                                <span
+                                  className="shrink-0 inline-flex items-center px-1.5 py-0 rounded text-[10px] border border-emerald-300/40 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800"
+                                  title="Şirket (tenant)"
+                                >
+                                  {c.tenant.name.replace(/\s*\(.*\)\s*$/, '').trim()}
+                                </span>
+                              )}
+                            </div>
                             {Array.isArray(c.tags) && c.tags.length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {c.tags.slice(0, 3).map((t, i) => (

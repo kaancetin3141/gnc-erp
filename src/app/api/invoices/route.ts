@@ -76,9 +76,9 @@ export async function GET(req: NextRequest) {
 
   const visFilter = await getVisibilityFilter(user!)
 
-  const where: Record<string, unknown> = {
-    tenantId: user!.tenantId,
-  }
+  const where: Record<string, unknown> = user!.role === 'superadmin'
+    ? {}
+    : { tenantId: user!.tenantId }
 
   // Görünürlük: müşteri sahibi üzerinden
   if (visFilter.ownerId) {
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
       include: { lines: true, customer: true },
     })
     if (!quote) return err('Teklif bulunamadı', 404)
-    if (quote.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+    if (quote.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
     if (quote.status === 'faturalandi' && quote.invoiceId) {
       return err('Bu teklif zaten faturalandırılmış', 400)
     }
@@ -228,7 +228,7 @@ export async function POST(req: NextRequest) {
 
   const customer = await db.customer.findUnique({ where: { id: customerId } })
   if (!customer) return err('Müşteri bulunamadı', 404)
-  if (customer.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const totals = calcTotals(lines)
   const number = await generateInvoiceNumber(user!.tenantId)

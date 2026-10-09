@@ -21,10 +21,10 @@ export async function GET(req: NextRequest) {
   const employeeId = (searchParams.get('employeeId') || '').trim()
 
   const where: {
-    tenantId: string
+    tenantId?: string
     date?: { gte?: Date; lte?: Date }
     employeeId?: string
-  } = { tenantId: user!.tenantId }
+  } = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (from && !Number.isNaN(new Date(from).getTime())) where.date = { ...where.date, gte: new Date(from) }
   if (to && !Number.isNaN(new Date(to).getTime())) {
     const toEnd = new Date(to)
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   if (!date || Number.isNaN(date.getTime())) return err('Geçerli bir tarih zorunludur', 400)
 
   const employee = await db.hrEmployee.findUnique({ where: { id: employeeId } })
-  if (!employee || employee.tenantId !== user!.tenantId) return err('Personel bulunamadı', 404)
+  if (!employee || employee.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Personel bulunamadı', 404)
 
   const shift = await db.hrShift.create({
     data: {

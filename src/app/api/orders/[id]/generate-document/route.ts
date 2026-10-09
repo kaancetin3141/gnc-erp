@@ -199,7 +199,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
   })
   if (!order) return err('Sipariş bulunamadı', 404)
-  if (order.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (order.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // ----------------------------------------------------------
   // İHRACAT BELGELERİ (ATR / EUR.1 / MENŞE / GÜMRÜK / KONŞİMENTO / SİGORTA)

@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
   const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
   if (!provider) return err('İşletme bulunamadı', 404)
-  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const url = new URL(req.url)
   const date = url.searchParams.get('date') // YYYY-MM-DD (tek gün)
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     select: { id: true, tenantId: true, autoApprove: true },
   })
   if (!provider) return err('İşletme bulunamadı', 404)
-  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Hizmet süresini al
   const service = serviceId ? await db.service.findUnique({ where: { id: serviceId } }) : null

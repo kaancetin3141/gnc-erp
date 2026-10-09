@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const q = url.searchParams.get('q') || ''
   const mine = url.searchParams.get('mine') === '1'
 
-  const where: Record<string, unknown> = { tenantId: user!.tenantId }
+  const where: Record<string, unknown> = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (status) where.status = status
   if (priority) where.priority = priority
   if (mine) where.assigneeId = user!.id

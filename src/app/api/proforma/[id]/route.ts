@@ -89,7 +89,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   if (!proforma) return err('Proforma bulunamadı', 404)
-  if (proforma.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (proforma.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
   if (!proforma.isProforma) return err('Bu kayıt bir proforma değil', 400)
 
   return ok(proforma)
@@ -110,7 +110,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { lines: true, order: true },
   })
   if (!existing) return err('Proforma bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
   if (!existing.isProforma) return err('Bu kayıt bir proforma değil', 400)
 
   const body = await req.json()
@@ -139,7 +139,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (customerId) {
     const cust = await db.customer.findUnique({ where: { id: customerId } })
-    if (!cust || cust.tenantId !== user!.tenantId) {
+    if (!cust || cust.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
       return err('Geçersiz müşteri', 400)
     }
     updateData.customerId = customerId
@@ -315,7 +315,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.quote.findUnique({ where: { id } })
   if (!existing) return err('Proforma bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
   if (!existing.isProforma) return err('Bu kayıt bir proforma değil', 400)
 
   const visFilter = await getVisibilityFilter(user!)

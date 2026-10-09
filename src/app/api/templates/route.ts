@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   const limit = parseInt(url.searchParams.get('limit') || '200')
   const offset = parseInt(url.searchParams.get('offset') || '0')
 
-  const where: Record<string, unknown> = { tenantId: user!.tenantId }
+  const where: Record<string, unknown> = user!.role === 'superadmin' ? {} : { tenantId: user!.tenantId }
   if (type && VALID_TYPES.includes(type)) where.type = type
   if (category && VALID_CATEGORIES.includes(category)) where.category = category
   if (isDefault === 'true') where.isDefault = true

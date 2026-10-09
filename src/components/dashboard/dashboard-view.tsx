@@ -276,6 +276,14 @@ function SectorWelcomeBanner({
             <span className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] font-medium">
               {sectorMeta.emoji} {sectorMeta.label}
             </span>
+            {user?.role === 'superadmin' && (
+              <span
+                className="px-1.5 py-0.5 rounded bg-emerald-400/20 text-emerald-200 text-[10px] font-medium border border-emerald-300/30"
+                title="Program Admini tüm şirketlerin verilerini görür"
+              >
+                Platform geneli — tüm şirketler
+              </span>
+            )}
           </div>
           <h2 className="text-2xl lg:text-3xl font-bold tracking-tight">
             Merhaba, {user?.name.split(' ')[0]} 👋

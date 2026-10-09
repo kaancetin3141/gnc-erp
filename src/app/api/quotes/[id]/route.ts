@@ -96,7 +96,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
 
   if (!quote) return err('Teklif bulunamadı', 404)
-  if (quote.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (quote.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   return ok(quote)
 }
@@ -115,7 +115,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { lines: true, order: true },
   })
   if (!existing) return err('Teklif bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const body = await req.json()
   const {
@@ -144,7 +144,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (customerId) {
     const cust = await db.customer.findUnique({ where: { id: customerId } })
-    if (!cust || cust.tenantId !== user!.tenantId) {
+    if (!cust || cust.tenantId !== user!.tenantId && user!.role !== 'superadmin') {
       return err('Geçersiz müşteri', 400)
     }
     updateData.customerId = customerId
@@ -315,7 +315,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.quote.findUnique({ where: { id } })
   if (!existing) return err('Teklif bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Silmeden önce görünürlük kontrolü
   const visFilter = await getVisibilityFilter(user!)

@@ -14,7 +14,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Tenant sahipliği kontrolü
   const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
   if (!provider) return err('İşletme bulunamadı', 404)
-  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const existing = await db.appointment.findUnique({ where: { id: appointmentId } })
   if (!existing || existing.providerId !== id) return err('Randevu bulunamadı', 404)
@@ -199,7 +199,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // Tenant sahipliği kontrolü
   const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
   if (!provider) return err('İşletme bulunamadı', 404)
-  if (provider.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const existing = await db.appointment.findUnique({ where: { id: appointmentId } })
   if (!existing || existing.providerId !== id) return err('Randevu bulunamadı', 404)

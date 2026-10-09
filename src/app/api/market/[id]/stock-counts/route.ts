@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const market = await db.market.findUnique({ where: { id } })
-  if (!market || market.tenantId !== user!.tenantId) return err('Market bulunamadı', 404)
+  if (!market || market.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Market bulunamadı', 404)
 
   const counts = await db.stockCount.findMany({
     where: { marketId: id },
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params
   const market = await db.market.findUnique({ where: { id } })
-  if (!market || market.tenantId !== user!.tenantId) return err('Market bulunamadı', 404)
+  if (!market || market.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Market bulunamadı', 404)
 
   const body = await req.json()
   const { notes } = body as { notes?: string }

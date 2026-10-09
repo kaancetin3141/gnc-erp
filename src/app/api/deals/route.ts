@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   const visFilter = await getVisibilityFilter(user!)
 
   const where: Record<string, unknown> = {
-    tenantId: user!.tenantId,
+    ...(visFilter.tenantId ? { tenantId: visFilter.tenantId } : {}),
     ...(visFilter.ownerId ? { ownerId: visFilter.ownerId } : {}),
   }
 

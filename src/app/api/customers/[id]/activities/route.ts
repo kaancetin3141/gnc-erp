@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const customer = await db.customer.findUnique({ where: { id }, select: { tenantId: true, ownerId: true } })
-  if (!customer || customer.tenantId !== user!.tenantId) return err('Müşteri bulunamadı', 404)
+  if (!customer || customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Müşteri bulunamadı', 404)
 
   const activities = await db.activity.findMany({
     where: { customerId: id },
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params
   const customer = await db.customer.findUnique({ where: { id }, select: { tenantId: true } })
-  if (!customer || customer.tenantId !== user!.tenantId) return err('Müşteri bulunamadı', 404)
+  if (!customer || customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Müşteri bulunamadı', 404)
 
   const body = await req.json()
   const { type, subject, detail, date, durationMin, outcome } = body

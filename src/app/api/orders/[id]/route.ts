@@ -106,7 +106,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { trackingSteps: true },
   })
   if (!existing) return err('Sipariş bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const body = await req.json()
   const { status, expectedDelivery, notes, note } = body as {
@@ -233,7 +233,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params
   const existing = await db.order.findUnique({ where: { id } })
   if (!existing) return err('Sipariş bulunamadı', 404)
-  if (existing.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const visFilter = await getVisibilityFilter(user!)
   if (visFilter.ownerId) {

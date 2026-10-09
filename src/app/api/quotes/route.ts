@@ -84,9 +84,9 @@ export async function GET(req: NextRequest) {
 
   const visFilter = await getVisibilityFilter(user!)
 
-  const where: Record<string, unknown> = {
-    tenantId: user!.tenantId,
-  }
+  const where: Record<string, unknown> = user!.role === 'superadmin'
+    ? {}
+    : { tenantId: user!.tenantId }
 
   // Görünürlük: müşteri sahibi üzerinden
   if (visFilter.ownerId) {
@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
   // Müşteri kontrolü + tenant izolasyonu
   const customer = await db.customer.findUnique({ where: { id: customerId } })
   if (!customer) return err('Müşteri bulunamadı', 404)
-  if (customer.tenantId !== user!.tenantId) return err('Erişim reddedildi', 403)
+  if (customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   // Hesaplamalar
   const totals = calcTotals(lines)
