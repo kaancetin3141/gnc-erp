@@ -8595,3 +8595,38 @@ Stage Summary:
 - Superadmin platform-geneli özelliği artık OKUMA + YAZMA + UI üç katmanda da uçtan uca doğrulanmış durumda
 - Tenant izolasyonu normal kullanıcılar için korundu (32/32 + 27/27 ana smoke + 5/5 E2E)
 - Repo: yerel = 2 yeni QA commit'i önde; PAT gelince tek push ile kapanır
+
+---
+Task ID: randevu-glassmorphism-1
+Agent: Ana ajan (Super Z)
+Task: "randevu sayfasını ana programın assetlerine benzer glassmorphism kullan" — customer-page (port 3002) arayüzünü CRM ana programının cam tasarım diline çevir
+
+Work Log:
+- İSTEK: randevu sayfası (mini-services/customer-page) ana programın (CRM) görsel diline uygun glassmorphism ile yeniden stillenecek
+- CRM referans dili çıkarıldı: topbar `bg-background/80 backdrop-blur-md` (topbar.tsx), pano kartları koyu gradient + `bg-white/10 border-white/20` cam rozetler (dashboard-view.tsx), giriş ekranı `bg-white/10` cam çipler (login-screen.tsx), public booking akışı `bg-white/20 backdrop-blur` (public-booking-flow.tsx)
+- KAPSAM TESPİTİ: tüm görünüm tek yerde — views.ts içindeki STYLE_CSS (/assets/style.css olarak servis ediliyor); JS yalnızca mevcut sınıfları açıp kapatıyor → dönüşüm %100 CSS katmanında yapılabildi
+- STYLE_CSS baştan yazıldı (satır 46-315 spliced; 271→~300 satır):
+  * ORTAM: body'ye fixed çok katmanlı ambient gradient (gül/kavun/turkuaz/yeşil ışık küreleri) — camın arkasında buğu görünecek zemin
+  * CAM JETONLARI: --glass (.58), --glass-strong, --glass-weak, --glass-border, --blur: blur(16px) saturate(170%)
+  * HEADER: rgba(255,255,255,.55) + blur(20px) saturate(180%) + beyaz çizgi (CRM topbar muadili)
+  * HERO: CRM pano kartları gibi KOYU gradient (380f1a→5b1424→123a33) + ::before 3 bulanık renk küresi (pembe/turkuaz/amber) + beyaz metin + #ffb3c0 vurgu
+  * KARTLAR: .card/.dcard/.book-card/.map-card/.state-box/.center-card/.sk hepsi buğu camı (yarı saydam beyaz + blur + beyaz kenar + yumuşak gölge)
+  * GİRİŞLER: search/field/date-btn/slot/chip/select cam; odak halkaları yarı saydam marka tonu
+  * ROZETLER: b-* ve dist yarı saydam rgba sürümlerine çevrildi
+  * FOOTER/TOAST: koyu buğu camı (rgba(30,18,14,.88) + blur + beyaz 1px çizgi)
+  * YENİ: .hero-chips/.hero-chip (hero içinde 3 beyaz cam rozet: ⚡ saniyeler/🪪 üyeliksiz/🧭 konum) — homePage hero HTML'ine eklendi
+  * SAĞLAMLIK: @supports not (backdrop-filter) fallback'i düz yüzeylere düşer; prefers-reduced-motion desteği eklendi
+  * DETAY: .crumb cam hap, .svc cam satır, .okmark cam halka, bugün satırı yarı saydam marka + köşe yumuşatma
+- DOĞRULAMA (agent-browser + curl):
+  * 3002 ve gateway (:81/?XTransformPort=3002) → 200, title doğru, varlıklar gateway'den yükleniyor
+  * Ana sayfa desktop: koyu gradient hero + cam rozetler + buğulu header + cam kartlar/harita/footer ✓
+  * Detay sayfası (/isletme/sik-kuafor): cam kartlar, cam hizmet satırları, cam tarih/slot butonları ✓; computed style backdrop-filter: blur(16px) saturate(1.7) AKTİF
+  * Etkileşim: tarih→slot seçimi çalışıyor (11 slot bugün), sumline "🧾 Manikür · 09.10.2026 12:30 · 200 ₺" ✓; Pazar günü slot=0 (kapalı — doğru davranış)
+  * Mobil 390×844: ana + detay düzgün, hero rozetleri dikey diziliyor ✓
+  * Konsol: 0 hata
+- CRON 430621 (bu oturum başında): backup-db.sh → custom-20261009-104818.db (1.277.952 B, kaynakla birebir), toplam 2 yedek (limit 20) ✓
+
+Stage Summary:
+- Randevu sayfası artık ana CRM'in cam tasarım dilinde: koyu gradient pano hero'su + beyaz cam rozetler, buğulu sticky header, ambient renkli zemin üzerinde buğu camı kartlar/girişler; footer/toast koyu cam
+- Tek dosyalık merkezi değişiklik (views.ts): JS/HTML işlevselliği korunmuş, yalnızca hero'ya 3 rozet eklendi; @supports fallback ile eski tarayıcılar düz yüzeye düşüyor
+- commit + push bu oturumla gider (push PAT engeline takılırsa yerelde commitli kalır — önceki oturumdaki gibi)
