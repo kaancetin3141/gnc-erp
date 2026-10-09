@@ -8683,3 +8683,30 @@ Stage Summary:
 - Randevu sayfası artık karpuzemoji'siz, "G" monogram kimlikli (favicon + logo çipi tutarlı), CRM topbar'ına benzeyen belirgin aramalı ve premium cam dilde
 - Cache-busting sayesinde sunucuda güncellemeden sonra eski CSS önbellekten gelmeyecek
 - push PAT engeli nedeniyle yerelde; PAT gelince tek push
+
+---
+Task ID: randevu-onay-fix-1
+Agent: Ana ajan (Super Z)
+Task: "otomatik onay kapalı olsada randevuları hemen onaylıyor" — bug raporu
+
+Work Log:
+- KÖK NEDEN: /api/public/appointments (slug-bazlı, customer-page 3002'nin kullandığı rota) provider.autoApprove'i HİÇ select etmiyor ve status'u sadece çalışma saatine göre belirliyordu: `const status = inWorkingHours ? 'onaylandi' : 'beklemede'` → autoApprove=false olan işletmelerde de randevu anında 'onaylandi' düşüyordu. ([id]/book rotası zaten doğruydu: `provider.autoApprove && inWorkingHours`)
+- FİX 1 (CRM): src/app/api/public/appointments/route.ts — iki provider select'ine autoApprove:true eklendi; status mantığı `provider.autoApprove && inWorkingHours ? 'onaylandi' : 'beklemede'` olarak değiştirildi + yorum blokları güncellendi
+- FİX 2 (customer-page views.ts): başarı ekranındaki sabit "Onaylandı" metni kaldırıldı → "durum: —" nötr varsayılan; JS artık 'onaylandi' → "Onaylandı ✅", 'beklemede' → "Onay bekliyor ⏳" gösteriyor; sumcard altına gizli bekleme notu eklendi ("⏳ Randevun işletme onayı bekliyor — onaylandığında bilgilendirilirsin."), sadece beklemede'de görünür
+- ORTAM: CRM (3000) sessizce ölmüştü (sandbox bilinen sorunu) → nohup bun run dev ile yeniden başlatıldı, /api/public/providers HTTP 200
+- E2E DOĞRULAMA (3002 /api/book üzerinden):
+  * kurtköy berber (autoApprove=false) bugün 14:00 → status:"beklemede" ✓
+  * Şık Kuaför (autoApprove=true) bugün 15:00 → status:"onaylandi" ✓
+  * DB'de ikisi de doğrulandı, test randevuları sonra silindi (2+1 adet, customerName='Onay Testi Musteri')
+- BROWSER DOĞRULAMA (agent-browser, gateway :81/isletme/kurtkoy-berber?XTransformPort=3002):
+  * Gerçek UI akışı: hizmet seç → 9 Eki → 14:00 slotu → form doldur → gönder
+  * Başarı ekranı: "durum: Onay bekliyor ⏳" + bekleme notu görünür (tool-results/randevu-beklemede-success.png)
+  * Konsol: 0 hata; DB'de oluşan randevu status:"beklemede" (ISFOMYJG), sonra temizlendi
+-Hatırlatma zinciri kontrolü: appointment-reminders zaten durum-duyarlı (sadece onaylılara hatırlatma; 2 saat+ bekleyenleri escalation listesine alıyor) — ek değişiklik gerekmedi
+- tsc: benim dosyalarımda hata yok (önceden var olan Bun/capacitor tipleri dışında); eslint: temiz
+- commit 0e5dcd4 (local) — push PAT engeli: "could not read Username for 'https://github.com'" (12. kez hatırlatma: PAT'i yenile/revoke et)
+
+Stage Summary:
+- Otomatik onay ayarı artık TÜM herkese açık randevu uçlarında geçerli: autoApprove=false → randevu 'beklemede' oluşur, işletme CRM'den onaylar; true → çalışma saatleri içinde anında 'onaylandi'
+- Müşteri başarı ekranı gerçek durumu doğru gösteriyor; bekleyen randevular için bekleme notu çıkıyor
+- commit 0e5dcd4 yerelde; PAT gelince push edilecek
