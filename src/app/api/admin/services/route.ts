@@ -165,8 +165,8 @@ export async function POST(req: NextRequest) {
   })
 
   await writeAuditLog({
-    tenantId: user.tenantId,
-    actorId: user.id,
+    tenantId: user!.tenantId,
+    actorId: user!.id,
     action: 'service.create',
     entity: 'PlatformService',
     entityId: created.id,

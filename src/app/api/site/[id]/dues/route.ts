@@ -109,8 +109,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     await writeAuditLog({
-      tenantId: user.tenantId,
-      actorId: user.id,
+      tenantId: user!.tenantId,
+      actorId: user!.id,
       action: 'create',
       entity: 'dues',
       entityId: id,
@@ -163,7 +163,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const user = await getSession(req)
   const authErr = requireAuth(user)
   if (authErr) return authErr
-  if (!user.permissions.includes('site.manage')) return err('Bu işlem için yetkiniz yok', 403)
+  if (!user!.permissions.includes('site.manage')) return err('Bu işlem için yetkiniz yok', 403)
 
   const { id } = await params
   const body = await req.json().catch(() => ({}))
@@ -216,8 +216,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   await writeAuditLog({
-    tenantId: user.tenantId,
-    actorId: user.id,
+    tenantId: user!.tenantId,
+    actorId: user!.id,
     action: 'update',
     entity: 'dues',
     entityId: id,

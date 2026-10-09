@@ -57,6 +57,23 @@ ensure chat-service 3005
 ensure appointment-reminders 3011
 ensure cron-automation 3010
 
+# --- CRM ana site (3000) ---
+# Sunucuda pm2 yönetir (port canlıysa bu blok hiç çalışmaz, no-op).
+# Sandbox'ta süreç bekçisi yok; port ölmüşse root'tan dev başlatılır.
+# Not: .next/standalone + server.log varsa PRODUCTION sunucusu demektir →
+# pm2'ye karışmayalım (port_alive zaten true dönecektir).
+if ! port_alive 3000; then
+  for attempt in 1 2 3; do
+    (cd /home/z/my-project && nohup bun run dev > "$LOGDIR/crm-3000.log" 2>&1 &)
+    for i in $(seq 1 15); do
+      sleep 2
+      port_alive 3000 && { RESTARTED="$RESTARTED crm-3000(restart)"; break; }
+    done
+    port_alive 3000 && break
+  done
+  port_alive 3000 || RESTARTED="$RESTARTED crm-3000(SORUNLU)"
+fi
+
 if [ -n "$RESTARTED" ]; then
   echo "OK: yeniden başlatıldı:$RESTARTED"
 else

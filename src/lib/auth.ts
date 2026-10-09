@@ -125,6 +125,13 @@ function buildSessionUser(user: {
   } | null
 }): SessionUser | null {
   if (!user || user.status !== 'active') return null
+  // Tenant ilişkisi olmayan aktif kullanıcı = veri tutarlılığı hatası;
+  // oturum kurulamaz (SessionUser.tenant null-olamaz). Kayıt loglanıp null
+  // dönerek API 500 yerine temiz 401 üretir.
+  if (!user.tenant) {
+    console.error(`[auth] tenant bulunamadı — kullanıcı: ${user.email} (id: ${user.id})`)
+    return null
+  }
   const permissions = JSON.parse(user.permissions || '[]') as string[]
   // Rolün varsayılan yetkileri yoksa ekle (minimum garanti)
   const rolePerms = getRolePermissions(user.role as SessionUser['role'])

@@ -100,18 +100,20 @@ export function MarketPurchase({ marketId }: { marketId: string }) {
     try {
       const res = await apiPost<LookupResponse>(`/api/market/${marketId}/barcodes/lookup`, { code })
       if (res.found && res.product) {
+        // Closure içinde property narrowing kaybolur → local sabite al
+        const p = res.product
         setNewItems((prev) => [
           ...prev,
           {
             barcode: res.barcode?.code ?? code,
-            productId: res.product.id,
-            name: res.product.name,
+            productId: p.id,
+            name: p.name,
             qty: 1,
-            unitPrice: res.product.price,
+            unitPrice: p.price,
           },
         ])
         setBarcodeInput('')
-        toast.success(`${res.product.name} eklendi`)
+        toast.success(`${p.name} eklendi`)
       } else {
         // Barkod bulunamadı: manuel ekle
         setNewItems((prev) => [

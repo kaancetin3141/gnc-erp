@@ -20,6 +20,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const d = loaded.data
+  // e-Fatura/e-Arşiv XML'i için müşteri verisi ZORUNLU (GİB UBL alıcı alanları)
+  if (!d.customer) {
+    return NextResponse.json(
+      { error: 'Faturada müşteri kaydı yok — e-Arşiv XML üretilemez' },
+      { status: 422 },
+    )
+  }
   const efatura: EfaturaInvoice = {
     number: d.number,
     issueDate: d.issueDate,

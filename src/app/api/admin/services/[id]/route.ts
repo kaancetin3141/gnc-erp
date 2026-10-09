@@ -65,8 +65,8 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   })
 
   await writeAuditLog({
-    tenantId: user.tenantId,
-    actorId: user.id,
+    tenantId: user!.tenantId,
+    actorId: user!.id,
     action: 'service.update',
     entity: 'PlatformService',
     entityId: id,
@@ -93,8 +93,8 @@ export async function DELETE(req: NextRequest, ctx: RouteContext) {
 
   await db.platformService.delete({ where: { id } })
   await writeAuditLog({
-    tenantId: user.tenantId,
-    actorId: user.id,
+    tenantId: user!.tenantId,
+    actorId: user!.id,
     action: 'service.delete',
     entity: 'PlatformService',
     entityId: id,

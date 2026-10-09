@@ -266,9 +266,9 @@ export async function GET(req: NextRequest) {
   const [sectorData, crmResults] = await Promise.all([sectorDataPromise, crmQueries])
 
   // Eğer CRM dışı sektör ise — sektör verisini döndür, CRM alanları sıfır
+  // NOT: sectorData zaten `sector` alanını içerir (cafe/market/site/appointments)
   if (sectorData && sector !== 'crm') {
     return ok({
-      sector,
       range: rangeLabel,
       customers: { total: 0, newThisMonth: 0, staleCount: 0 },
       deals: { activeCount: 0, totalPipelineValue: 0, wonThisMonth: 0, revenueThisMonth: 0 },

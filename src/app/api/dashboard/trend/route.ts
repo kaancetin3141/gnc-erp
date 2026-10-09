@@ -43,7 +43,23 @@ export async function GET(req: NextRequest) {
 
   const customerFilter = validCustomerId ? { customerId: validCustomerId } : {}
 
-  const [orders, irsaliyes, invoices, filterCustomers] = await Promise.all([
+  // Fatura sorgusu ayrı tutulur: koşullu spread `Promise.all` içinde pozisyon
+  // tiplerini bozar ve union tipler çıkarır — bu yüzden bağımsız promise olarak
+  // yazıldı (tutar görmeyen roller boş dizi alır).
+  const invoicesPromise: Promise<{ issueDate: Date; total: number; currency: string }[]> =
+    canSeeAmounts
+      ? db.invoice.findMany({
+          where: {
+            tenantId: user!.tenantId,
+            status: { not: 'iptal' },
+            issueDate: { gte: trendStart },
+            ...customerFilter,
+          },
+          select: { issueDate: true, total: true, currency: true },
+        })
+      : Promise.resolve([])
+
+  const [orders, irsaliyes, filterCustomers, invoices] = await Promise.all([
     // Trend — siparişler (aylık adet)
     db.order.findMany({
       where: {
@@ -63,16 +79,6 @@ export async function GET(req: NextRequest) {
       },
       select: { date: true },
     }),
-    // Trend — fatura cirosu (yalnızca tutar gören roller)
-    ...(canSeeAmounts ? [db.invoice.findMany({
-      where: {
-        tenantId: user!.tenantId,
-        status: { not: 'iptal' },
-        issueDate: { gte: trendStart },
-        ...customerFilter,
-      },
-      select: { issueDate: true, total: true, currency: true },
-    })] : [[] as { issueDate: Date; total: number; currency: string }[]]),
     // Filtre listesi — 12 ayda siparişi olan müşteriler (filtresiz)
     db.order.findMany({
       where: {
@@ -85,6 +91,7 @@ export async function GET(req: NextRequest) {
       },
       distinct: ['customerId'],
     }),
+    invoicesPromise,
   ])
 
   // 12 aylık bucket'lar

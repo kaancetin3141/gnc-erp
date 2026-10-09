@@ -87,7 +87,8 @@ export function normalizePhone(phone: string | null | undefined): string | null 
   if (!phone) return null
   let cleaned = phone.replace(/[\s\-()]/g, '')
   if (cleaned.startsWith('00')) cleaned = '+' + cleaned.slice(2)
-  if (cleaned.startsWith('0') && !cleaned.startsWith('+')) cleaned = '+9' + cleaned.slice(1)
+  // Yerel biçim "0555..." → E.164 "+90 555..." (ülke kodu 90, baştaki 0 düşer)
+  if (cleaned.startsWith('0') && !cleaned.startsWith('+')) cleaned = '+90' + cleaned.slice(1)
   if (!cleaned.startsWith('+')) cleaned = '+90' + cleaned
   // Basit validasyon
   if (!/^\+\d{10,15}$/.test(cleaned)) return null

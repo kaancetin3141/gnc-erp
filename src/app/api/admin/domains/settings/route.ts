@@ -32,8 +32,8 @@ export async function PUT(req: NextRequest) {
   if (value === '') {
     await db.systemSetting.deleteMany({ where: { key: BASE_DOMAIN_KEY } })
     await writeAuditLog({
-      tenantId: user.tenantId,
-      actorId: user.id,
+      tenantId: user!.tenantId,
+      actorId: user!.id,
       action: 'domain.settings',
       entity: 'SystemSetting',
       entityId: BASE_DOMAIN_KEY,
@@ -54,8 +54,8 @@ export async function PUT(req: NextRequest) {
   })
 
   await writeAuditLog({
-    tenantId: user.tenantId,
-    actorId: user.id,
+    tenantId: user!.tenantId,
+    actorId: user!.id,
     action: 'domain.settings',
     entity: 'SystemSetting',
     entityId: BASE_DOMAIN_KEY,

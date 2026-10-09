@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { SessionUser } from '@/types'
+import { queryClient } from '@/lib/query-client'
 
 export type AppView =
   | 'dashboard'
@@ -79,8 +80,17 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       user: null,
       sessionId: null,
-      setSession: (user, sessionId) => set({ user, sessionId }),
-      logout: () => set({ user: null, sessionId: null, view: 'dashboard', selectedCustomerId: null }),
+      setSession: (user, sessionId) => {
+        // Oturum değişiminde tüm sorgu önbelleğini temizle:
+        // önceki kullanıcının (farklı tenant olabilir) verileri yeni
+        // kullanıcıya bir anlığına gösterilmemeli (gizlilik).
+        queryClient.clear()
+        set({ user, sessionId })
+      },
+      logout: () => {
+        queryClient.clear()
+        set({ user: null, sessionId: null, view: 'dashboard', selectedCustomerId: null, selectedLeadId: null })
+      },
 
       view: 'dashboard',
       setView: (view) => set({ view }),

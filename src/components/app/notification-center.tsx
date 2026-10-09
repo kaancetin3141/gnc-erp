@@ -83,7 +83,7 @@ function saveReadIds(ids: Set<string>) {
 }
 
 export function NotificationCenter() {
-  const { openCustomer, setView } = useAppStore()
+  const { openCustomer, setView, user } = useAppStore()
   const [open, setOpen] = useState(false)
   const [readIds, setReadIds] = useState<Set<string>>(() => {
     // Lazy initializer — runs once on mount, no effect needed
@@ -95,6 +95,8 @@ export function NotificationCenter() {
     queryKey: ['notifications'],
     queryFn: () => apiGet<NotificationData>('/api/notifications'),
     refetchInterval: 60_000,
+    // Oturum yokken sunucuyu 401 ile meşgul etme
+    enabled: !!user,
   })
 
   const notifications = data?.notifications ?? []
