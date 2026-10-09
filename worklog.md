@@ -8574,3 +8574,24 @@ Stage Summary:
 - Normal kullanıcılar için sıfır davranış değişikliği (guard eşitliği invariant'ı korundu)
 - tenantScope helper'ı ile yeni uçlarda tek satırla kapsam uygulanabilir
 - commit + push: bu oturumla gider
+
+---
+Task ID: qa-modules-verify-5
+Agent: Ana ajan (Super Z)
+Task: "incelemeye geliştirmeye devam et" — kapsam açılan modüllerin uçtan uca doğrulaması (user-feature-audit-3/4 devamı)
+
+Work Log:
+- DURUM KONTROLÜ: 5 mini servis sağlıklı (3000/3002=200, 3005=400 WS-root normal, 3010/3011=200). git fetch sonrası origin/main = 7ec2e5f = yerel HEAD (önceki oturum özeti geride kalmıştı; push zaten yapılmış, yeni push gerekmedi)
+- YENİ TEST scripts/qa-modules-smoke.js: 0063a7b'de superadmin kapsamı açılan ama uçtan uca doğrulanmamış 16 uç (products, expenses, irsaliye, hr/employees+leaves+shifts, cash/accounts+transactions, tickets, messages, membership/packages+subscriptions, templates, loyalty/accounts, social/inbox, admin/overview) × 2 rol (superadmin + demo izolasyon) = 32/32 GEÇTİ
+  * İzolasyon regresyonu anlamlı olanlarda doğrulandı: ürün demo=19 ≤ admin=34 ✓
+  * Bulgu: sandbox'ta söz konusu modüllerde 0 kayıt var (izolasyon kontrolü trivial geçiyor; anlamlı veri sadece ürün/müşteri/fırsat/lead/kullanıcı/harita uçlarında)
+  * /api/cash ve /api/loyalty kök yol YOK → gerçek uçlar cash/accounts, cash/transactions, loyalty/accounts (404 HTML dönerdi, test yolu düzeltildi — kod bug'ı değil)
+  * admin/overview'daki "demo=10" sızıntı DEĞİL: gövde list değil, pickArray yardımcısı recentActivity (take:10) dizisini yakalamış; kodda scopeWhere doğru
+- UI DOĞRULAMA (agent-browser, superadmin): Destek Masası ✓ (istatistik kartları + Talep Aç), Personel & İK ✓ (4 kart + Personel/İzin sekmeleri), Sosyal Medya ✓ (6 sekme + Akış), Giderler ✓ (Giderler/Kasa & Banka sekmeleri) — hepsi render ediyor, 0 JS hatası
+- ÇAPRAZ-TENANT YAZMA E2E (scripts/qa-cross-tenant-write-e2e.js, 7ec2e5f düzeltmesinin doğrulaması): superadmin, Ege Ticaret Ltd.'in müşterisi "Pamukkale Holding"e aktivite ekledi → POST 200 ✓, DB'de activity.tenantId = MÜŞTERİNİN tenant'ı (superadmin tenant'ı DEĞİL) ✓, listede okunuyor ✓, test kaydı otomatik temizlendi ✓ — 5/5 GEÇTİ
+- PUSH ENGELİ: origin'e token gömülü değil + credential helper yok → anonim push imkânsız. 2 yeni QA scripti yerelde commitli (test(qa) mesajı); YENİ PAT verilince `git push origin main` yeterli
+
+Stage Summary:
+- Superadmin platform-geneli özelliği artık OKUMA + YAZMA + UI üç katmanda da uçtan uca doğrulanmış durumda
+- Tenant izolasyonu normal kullanıcılar için korundu (32/32 + 27/27 ana smoke + 5/5 E2E)
+- Repo: yerel = 2 yeni QA commit'i önde; PAT gelince tek push ile kapanır
