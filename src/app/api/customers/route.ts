@@ -1,10 +1,9 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { getSession, requirePermission, requireAuth, ok, err, getVisibilityFilter } from '@/lib/api-utils'
+import { getSession, requirePermission, requireAuth, ok, err, getVisibilityFilter, tenantScope, safeJsonParse } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
 import { normalizePhone } from '@/lib/format'
-import { hasPermission, isSuperAdmin } from '@/lib/rbac'
-import { safeJsonParse } from '@/lib/api-utils'
+import { hasPermission } from '@/lib/rbac'
 
 // GET — müşteri listesi (filtreli)
 export async function GET(req: NextRequest) {
@@ -45,7 +44,7 @@ export async function GET(req: NextRequest) {
   }
 
   const where: Record<string, unknown> = {
-    ...(visFilter.tenantId ? { tenantId: visFilter.tenantId } : isSuperAdmin(user!.role) ? {} : { tenantId: user!.tenantId }),
+    ...tenantScope(user!),
     ...(visFilter.ownerId ? { ownerId: visFilter.ownerId } : {}),
   }
 
