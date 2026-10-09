@@ -27,6 +27,7 @@ interface RoleGroup {
   icon: typeof Crown
   color: string
   roles: Role[]
+  emoji?: string // grup başlığında ikon emoji (opsiyonel)
 }
 
 const ROLE_GROUPS: RoleGroup[] = [

@@ -99,10 +99,11 @@ export function InboxView() {
   const replyMutation = useMutation({
     mutationFn: ({ id, text }: { id: string; text: string }) =>
       apiPatch(`/api/social/inbox/${id}`, { replyText: text }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success('Yanıt gönderildi')
       qc.invalidateQueries({ queryKey: ['social-inbox'] })
-      setReplyText((p) => ({ ...p, ['_' + id]: '' }))
+      // `id` yalnızca mutationFn kapsamındaydı — onSuccess değişkenlerinden alındı
+      setReplyText((p) => ({ ...p, ['_' + variables.id]: '' }))
     },
     onError: (e: Error) => toast.error('Yanıt başarısız', { description: e.message }),
   })
@@ -130,7 +131,7 @@ export function InboxView() {
 
   // Generate mock messages
   const mockMutation = useMutation({
-    mutationFn: () => apiPost('/api/social/inbox', { action: 'generate-mock' }),
+    mutationFn: () => apiPost<{ generated?: number }>('/api/social/inbox', { action: 'generate-mock' }),
     onSuccess: (r: { generated?: number }) => {
       toast.success(`${r.generated ?? 0} mock mesaj üretildi`)
       qc.invalidateQueries({ queryKey: ['social-inbox'] })

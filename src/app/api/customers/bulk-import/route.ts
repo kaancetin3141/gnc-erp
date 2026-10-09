@@ -30,7 +30,8 @@ export interface CustomerImportRow {
   customerType?: string | null
   status?: string | null
   tags?: string[] | null
-  kvkkConsent?: boolean | null
+  // CSV/Excel'den gelen verilerde "true"/"1" gibi dizgiler görülebilir — geniş tip
+  kvkkConsent?: boolean | string | null
   annualRevenue?: number | null
   employeeCount?: number | null
 }
@@ -196,7 +197,12 @@ export async function POST(req: NextRequest) {
     const lng =
       typeof raw.lng === 'number' && !Number.isNaN(raw.lng) ? raw.lng : null
 
-    const kvkkConsent = raw.kvkkConsent === true || raw.kvkkConsent === 'true'
+    // KVKK rızası: boolean true + yaygın dizgi karşılıkları kabul edilir
+    const kvkkRaw = raw.kvkkConsent
+    const kvkkConsent =
+      kvkkRaw === true ||
+      (typeof kvkkRaw === 'string' &&
+        ['true', '1', 'evet', 'yes'].includes(kvkkRaw.trim().toLowerCase()))
 
     const tagsParsed: string[] = Array.isArray(raw.tags)
       ? raw.tags.filter((t): t is string => typeof t === 'string')

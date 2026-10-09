@@ -6,7 +6,9 @@ import { getServerSessionFromRequest } from './auth'
 import { hasPermission, getViewScope, getVisibleUserIds } from './rbac'
 import { db } from './db'
 
-export function ok(data: unknown, status = 200) {
+// Generic: çağıranlar ok<BulkImportResponse>({...}) gibi yanıt tipini
+// derleme zamanında doğrulayabilir (data: unknown kaybını önler)
+export function ok<T = unknown>(data: T, status = 200) {
   return NextResponse.json(data, { status })
 }
 

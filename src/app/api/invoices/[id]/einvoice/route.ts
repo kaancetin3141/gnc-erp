@@ -20,17 +20,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const d = loaded.data
-  // e-Fatura/e-Arşiv XML'i için müşteri verisi ZORUNLU (GİB UBL alıcı alanları)
+  // e-Fatura/e-Arşiv XML'i için müşteri + şirket verisi ZORUNLU (GİB UBL alanları)
   if (!d.customer) {
     return NextResponse.json(
       { error: 'Faturada müşteri kaydı yok — e-Arşiv XML üretilemez' },
       { status: 422 },
     )
   }
+  if (!d.company) {
+    return NextResponse.json(
+      { error: 'Faturada şirket (gönderen) kaydı yok — e-Arşiv XML üretilemez' },
+      { status: 422 },
+    )
+  }
   const efatura: EfaturaInvoice = {
     number: d.number,
-    issueDate: d.issueDate,
-    dueDate: d.dueDate,
+    // Loader tarihleri string|Date dönebilir — UBL şeması Date bekler
+    issueDate: new Date(d.issueDate),
+    dueDate: d.dueDate ? new Date(d.dueDate) : null,
     currency: d.currency,
     subtotal: d.subtotal,
     taxTotal: d.taxTotal,

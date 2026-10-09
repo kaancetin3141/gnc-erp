@@ -61,7 +61,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   // Hizmet + tarih — bitiş zamanı ve fiyat yeniden hesaplanır
-  let service = null
+  // Tip: `let service = null` yerine Prisma dönen gerçek tip (never tuzağını önler)
+  let service: Awaited<ReturnType<typeof db.service.findUnique>> = null
   if (serviceId !== undefined) {
     if (!serviceId) {
       updateData.serviceId = null
