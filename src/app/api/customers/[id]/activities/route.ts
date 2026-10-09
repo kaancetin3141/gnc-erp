@@ -39,7 +39,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const activity = await db.activity.create({
     data: {
-      tenantId: user!.tenantId,
+      // SUPERADMIN çapraz-tenant yazımında kayıt, müşterinin tenantına ait olmalı
+      tenantId: customer.tenantId,
       customerId: id,
       type,
       subject,

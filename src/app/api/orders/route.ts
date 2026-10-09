@@ -201,11 +201,12 @@ export async function POST(req: NextRequest) {
   const finalAmount = totalAmount !== undefined ? Number(totalAmount) : (quoteData?.total ?? 0)
   const finalCurrency = currency || quoteData?.currency || user!.tenant.defaultCurrency || 'TRY'
 
-  const number = await generateOrderNumber(user!.tenantId)
+  const number = await generateOrderNumber(customer.tenantId)
 
   const order = await db.order.create({
     data: {
-      tenantId: user!.tenantId,
+      // SUPERADMIN çapraz-tenant yazımında sipariş, müşterinin tenantına ait olmalı
+      tenantId: customer.tenantId,
       customerId,
       quoteId: quoteId || null,
       number,

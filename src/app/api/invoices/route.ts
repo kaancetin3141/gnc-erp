@@ -142,10 +142,11 @@ export async function POST(req: NextRequest) {
       return err('Bu teklif zaten faturalandırılmış', 400)
     }
 
-    const number = await generateInvoiceNumber(user!.tenantId)
+    const number = await generateInvoiceNumber(quote.tenantId)
     const invoice = await db.invoice.create({
       data: {
-        tenantId: user!.tenantId,
+        // SUPERADMIN çapraz-tenant yazımında fatura, teklifin tenantına ait olmalı
+        tenantId: quote.tenantId,
         customerId: quote.customerId,
         number,
         status: 'odeme_bekliyor',
@@ -231,7 +232,7 @@ export async function POST(req: NextRequest) {
   if (customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const totals = calcTotals(lines)
-  const number = await generateInvoiceNumber(user!.tenantId)
+  const number = await generateInvoiceNumber(customer.tenantId)
 
   // Satır hesaplamaları (lineTotal + ağırlık dahil — F4)
   const linesWithTotals = lines.map((l) => {
@@ -263,7 +264,8 @@ export async function POST(req: NextRequest) {
 
   const invoice = await db.invoice.create({
     data: {
-      tenantId: user!.tenantId,
+      // SUPERADMIN çapraz-tenant yazımında fatura, müşterinin tenantına ait olmalı
+      tenantId: customer.tenantId,
       customerId,
       number,
       status: 'odeme_bekliyor',

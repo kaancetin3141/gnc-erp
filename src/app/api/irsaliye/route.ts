@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
   }
 
   const finalStatus = status && IRS_STATUSES.includes(status) ? status : 'taslak'
-  const number = await generateIrsaliyeNumber(user!.tenantId)
+  const number = await generateIrsaliyeNumber(customer.tenantId)
   const palletWeightVal = palletWeight ?? 20
 
   // Ürünleri topla — packagingWeight için (Product.packagingWeight alanı yoksa 0)
@@ -164,7 +164,8 @@ export async function POST(req: NextRequest) {
 
   const irsaliye = await db.irsaliye.create({
     data: {
-      tenantId: user!.tenantId,
+      // SUPERADMIN çapraz-tenant yazımında kayıt, müşterinin tenantına ait olmalı
+      tenantId: customer.tenantId,
       customerId,
       orderId: orderId || null,
       number,

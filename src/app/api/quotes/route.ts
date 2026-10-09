@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
 
   // VARSAYILAN: her yeni kayıt PROFORMA olarak oluşur.
   // Gönderildikten sonra (status=gonderildi) otomatik olarak TEKLİFE dönüşür.
-  const number = await generateProformaNumber(user!.tenantId)
+  const number = await generateProformaNumber(customer.tenantId)
 
   // Data hazırla — ağırlık alanları dahil (F4)
   const lineData = lines.map((l) => {
@@ -182,7 +182,8 @@ export async function POST(req: NextRequest) {
 
   const quote = await db.quote.create({
     data: {
-      tenantId: user!.tenantId,
+      // SUPERADMIN çapraz-tenant yazımında kayıt, müşterinin tenantına ait olmalı
+      tenantId: customer.tenantId,
       customerId,
       number,
       status: 'taslak',

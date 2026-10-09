@@ -134,7 +134,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // isProforma=false olur ve yeni TKL- numarası alır.
     if (status === 'gonderildi' && existing.isProforma) {
       updateData.isProforma = false
-      updateData.number = await generateQuoteNumber(user!.tenantId)
+      updateData.number = await generateQuoteNumber(existing.tenantId)
     }
   }
   if (customerId) {
@@ -143,6 +143,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return err('Geçersiz müşteri', 400)
     }
     updateData.customerId = customerId
+    // SUPERADMIN: müşteri başka tenanttaysa kayıt da o tenanta geçmeli
+    if (cust.tenantId !== existing.tenantId) updateData.tenantId = cust.tenantId
   }
   if (currency) updateData.currency = currency
   if (issueDate) updateData.issueDate = new Date(issueDate)
@@ -216,10 +218,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     !existing.order &&
     !updated.order
   ) {
-    const orderNumber = await generateOrderNumber(user!.tenantId)
+    const orderNumber = await generateOrderNumber(existing.tenantId)
     const order = await db.order.create({
       data: {
-        tenantId: user!.tenantId,
+        // SUPERADMIN: sipariş proformanın tenantına ait olmalı (çapraz-tenant tutarlılığı)
+        tenantId: existing.tenantId,
         customerId: updated.customerId,
         quoteId: updated.id,
         number: orderNumber,
@@ -253,10 +256,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     createdOrder = order
 
     // Otomatik fatura oluştur (proforma onayınınca faturaya geç)
-    const invoiceNumber = `FAT-${new Date().getFullYear()}-${String(await db.invoice.count({ where: { tenantId: user!.tenantId } }) + 1).padStart(3, '0')}`
+    const invoiceNumber = `FAT-${new Date().getFullYear()}-${String(await db.invoice.count({ where: { tenantId: existing.tenantId } }) + 1).padStart(3, '0')}`
     const invoice = await db.invoice.create({
       data: {
-        tenantId: user!.tenantId,
+        // SUPERADMIN: fatura proformanın tenantına ait olmalı (çapraz-tenant tutarlılığı)
+        tenantId: existing.tenantId,
         customerId: updated.customerId,
         number: invoiceNumber,
         status: 'odeme_bekliyor',

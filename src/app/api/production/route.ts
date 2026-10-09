@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
 
   // Aynı sipariş için zaten kalemler oluşturulmuş mu?
   const existingCount = await db.productionItem.count({
-    where: { orderId: order.id, tenantId: user!.tenantId },
+    where: { orderId: order.id, tenantId: order.tenantId },
   })
   if (existingCount > 0) {
     return err('Bu sipariş için üretim kalemleri zaten oluşturulmuş', 400)
@@ -178,7 +178,8 @@ export async function POST(req: NextRequest) {
     sourceLines.map((line) =>
       db.productionItem.create({
         data: {
-          tenantId: user!.tenantId,
+          // SUPERADMIN: kalem siparişin tenantına ait olmalı (çapraz-tenant tutarlılığı)
+          tenantId: order.tenantId,
           orderId: order.id,
           productId: line.productId,
           description: line.description,

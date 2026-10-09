@@ -139,7 +139,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // isProforma=false olur ve yeni TKL- numarası alır.
     if (status === 'gonderildi' && existing.isProforma) {
       updateData.isProforma = false
-      updateData.number = await generateQuoteNumber(user!.tenantId)
+      updateData.number = await generateQuoteNumber(existing.tenantId)
     }
   }
   if (customerId) {
@@ -148,6 +148,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return err('Geçersiz müşteri', 400)
     }
     updateData.customerId = customerId
+    // SUPERADMIN: müşteri başka tenanttaysa kayıt da o tenanta geçmeli
+    if (cust.tenantId !== existing.tenantId) updateData.tenantId = cust.tenantId
   }
   if (currency) updateData.currency = currency
   if (issueDate) updateData.issueDate = new Date(issueDate)
@@ -223,10 +225,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     !existing.order &&
     !updated.order
   ) {
-    const orderNumber = await generateOrderNumber(user!.tenantId)
+    const orderNumber = await generateOrderNumber(existing.tenantId)
     const order = await db.order.create({
       data: {
-        tenantId: user!.tenantId,
+        // SUPERADMIN: sipariş teklifin tenantına ait olmalı (çapraz-tenant tutarlılığı)
+        tenantId: existing.tenantId,
         customerId: updated.customerId,
         quoteId: updated.id,
         number: orderNumber,
@@ -259,12 +262,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Opsiyonel: teklifi faturaya dönüştür
   let createdInvoice: unknown = null
   if (createInvoice && updated.status === 'faturalandi') {
-    const number = await generateInvoiceNumber(user!.tenantId)
+    const number = await generateInvoiceNumber(existing.tenantId)
     // Teklif satırlarını da çek (ağırlık dahil)
     const quoteLines = await db.quoteLine.findMany({ where: { quoteId: id } })
     const invoice = await db.invoice.create({
       data: {
-        tenantId: user!.tenantId,
+        // SUPERADMIN: fatura teklifin tenantına ait olmalı (çapraz-tenant tutarlılığı)
+        tenantId: existing.tenantId,
         customerId: updated.customerId,
         number,
         status: 'odeme_bekliyor',

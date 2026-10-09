@@ -208,7 +208,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const meta = EXPORT_DOC_META[type]
     // Idempotent — bu siparişin bu tür belgesi varsa döndür
     const existingDoc = await db.exportDoc.findFirst({
-      where: { tenantId: user!.tenantId, orderId: order.id, type },
+      where: { tenantId: order.tenantId, orderId: order.id, type },
     })
     if (existingDoc) {
       return ok({ type, created: false, document: existingDoc, documentType: 'export_doc' })
@@ -219,10 +219,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       ? order.customer.country
       : 'DE' // demo varsayılan — Almanya ihracat
 
-    const number = await generateExportDocNumber(user!.tenantId, meta.prefix)
+    const number = await generateExportDocNumber(order.tenantId, meta.prefix)
     const doc = await db.exportDoc.create({
       data: {
-        tenantId: user!.tenantId,
+        // SUPERADMIN: belge siparişin tenantına ait olmalı (çapraz-tenant tutarlılığı)
+        tenantId: order.tenantId,
         orderId: order.id,
         customerId: order.customerId,
         type,
@@ -261,11 +262,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const lines = await buildOrderLines(order.id)
       const subtotal = Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100
       const taxTotal = Math.round(lines.reduce((s, l) => s + l.lineTotal * (l.taxRate / 100), 0) * 100) / 100
-      const number = await generateInvoiceNumber(user!.tenantId)
+      const number = await generateInvoiceNumber(order.tenantId)
 
       invoice = await db.invoice.create({
         data: {
-          tenantId: user!.tenantId,
+          // SUPERADMIN: fatura siparişin tenantına ait olmalı (çapraz-tenant tutarlılığı)
+          tenantId: order.tenantId,
           customerId: order.customerId,
           orderId: order.id,
           number,

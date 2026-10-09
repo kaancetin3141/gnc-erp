@@ -65,7 +65,8 @@ export async function POST(req: NextRequest) {
 
   const shift = await db.hrShift.create({
     data: {
-      tenantId: user!.tenantId,
+      // SUPERADMIN çapraz-tenant yazımında kayıt, personelin tenantına ait olmalı
+      tenantId: employee.tenantId,
       employeeId,
       date,
       startTime,

@@ -8542,3 +8542,35 @@ Stage Summary:
 - 106 dosya değişti; bu commit ile pushlanacak
 - Sunucu tarafı: `bash guncelle-gnc.sh` ile otomatik alınır (kod değişikliği, şema değişikliği yok)
 - EK DOĞRULAMA: scripts/qa-superadmin-smoke.js (önceki oturumdan kalan uç) çalıştırıldı — 24/24 test GEÇTİ: superadmin platform geneli (25 fırsat, 16 lead, 23 kullanıcı, raporlar, ERP listeleri) + demo@anadolu.com tenant izolasyonu (21 müşteri, daralmış kullanıcı listesi) ✓
+
+---
+Task ID: user-feature-audit-4
+Agent: main (Super Z)
+Task: "incelemeye geliştirmeye devam et" — superadmin çapraz-tenant YAZMA tutarlılığı (user-feature-audit-3'ün devamı)
+
+Work Log:
+- ÖNCEKİ DURUM: user-feature-audit-3 superadmin okuma kapsamını platform geneline açtı + 85 dosyada tenant-guard bypass'ı ekledi. ANCAK guard'ı açılan YAZMA (POST/PATCH) yollarında create/update hâlâ `tenantId: user!.tenantId` (superadmin'in kendi platform tenant'ı) kullanıyordu → superadmin başka şirketin kaydına alt kayıt açarsa (fatura, irsaliye, üretim kalemi, aktivite, vardiya...) kayıt YANLIŞ tenant'a yazılıyordu (çapraz-tenant veri bozulması + fatura numarası çakışması riski)
+- scripts/scan-cross-tenant-writes.sh ile sistematik tarama: 21 aday dosya bulundu, tek tek incelendi
+- GERÇEK DÜZELTMELER (create/lookup `tenantId: user!.tenantId` → guard'lanan parent'ın tenantId'si; normal rollerde guard eşitliği garanti ettiği için davranış DEĞİŞMEZ):
+  * customers/[id]/activities: aktivite → müşterinin tenantı
+  * hr/shifts: vardiya → personelin tenantı
+  * invoices: tekliften→fatura + müşteriden→fatura + generateInvoiceNumber(quote/customer.tenantId)
+  * irsaliye: → müşteri tenantı + numara üretimi
+  * orders: → müşteri tenantı + generateOrderNumber
+  * orders/[id]: üretim kalemleri (3 nokta) + count → sipariş tenantı
+  * orders/[id]/generate-document: exportDoc + fatura + numaralar → sipariş tenantı
+  * production: üretim kalemleri + count → sipariş tenantı
+  * quotes + quotes/[id]: teklif/proforma → müşteri tenantı; onay→sipariş, →fatura dönüşümleri; proforma→teklif dönüşüm numarası; müşteri değişiminde kayıt tenant göçü (updateData.tenantId)
+  * proforma + proforma/[id]: aynı set
+- FALSE POSITIVE olarak temiz çıkanlar (relation-scoped, tenantId alanı yok): attachments, cafe menu×2, market credit×2, market POS, admin/services, stockMovement, orderTrackingStep
+- Tasarım gereği own-tenant kalan (çapraz-tenant girdi yok): ai/auto-assign, automation/stale-customer-tasks (müşteri sorguları own-tenant) — tutarlı, güvenli
+- KİŞİSEL uçlar bilinçli own-tenant bırakıldı: notifications, messages, widgets (analitik değil kişisel araçlar)
+- MERKEZİ YENİLİK: api-utils'a `tenantScope(user)` helper'ı (superadmin → {}, diğer → {tenantId}) — leads, search, maps/customers-points, reports, reports/daily, users, proforma, production + customers'taki karmaşık ternary sadeleştirildi
+- DOĞRULAMA: tsc src=0 hata; eslint src=0; npm run build BAŞARILI; scripts/qa-superadmin-smoke.js 27/27 GEÇTİ (superadmin 31 müşteri/25 fırsat/23 kullanıcı/16 lead platform geneli + demo@anadolu.com izolasyonu 21 müşteri korunmuş)
+- Bulgu notu: sandbox DB'de 31 müşterinin 0'ının koordinatı var (16 lead'in hepsi koordinatlı); lead→müşteri dönüşümü lat/lng ZATEN taşıyor — harita boşluğu kod bug'ı değil, sandbox veri gerçekliği
+
+Stage Summary:
+- Superadmin platform-geneli özelliği artık OKUMA ve YAZMA'da tutarlı: çapraz-tenant yazımlarda kayıtlar doğru tenant'a sahipleniliyor
+- Normal kullanıcılar için sıfır davranış değişikliği (guard eşitliği invariant'ı korundu)
+- tenantScope helper'ı ile yeni uçlarda tek satırla kapsam uygulanabilir
+- commit + push: bu oturumla gider

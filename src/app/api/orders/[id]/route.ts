@@ -162,7 +162,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Eğer bağlı fatura/teklif yoksa, sipariş için tek bir genel üretim kalemi oluştur.
     if (trackingStep.step === 'uretimde') {
       const existingProdCount = await db.productionItem.count({
-        where: { orderId: id, tenantId: user!.tenantId },
+        where: { orderId: id, tenantId: existing.tenantId },
       })
       if (existingProdCount === 0) {
         const orderWithLines = await db.order.findUnique({
@@ -182,7 +182,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             sourceLines.map((line) =>
               db.productionItem.create({
                 data: {
-                  tenantId: user!.tenantId,
+                  // SUPERADMIN: siparişin tenantı kullanılır (çapraz-tenant tutarlılığı)
+                  tenantId: existing.tenantId,
                   orderId: id,
                   productId: line.productId,
                   description: line.description,
@@ -196,7 +197,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           // Manuel sipariş — bağlı fatura/teklif yoksa genel üretim kalemi oluştur
           await db.productionItem.create({
             data: {
-              tenantId: user!.tenantId,
+              // SUPERADMIN: siparişin tenantı kullanılır (çapraz-tenant tutarlılığı)
+              tenantId: existing.tenantId,
               orderId: id,
               productId: null,
               description: `Sipariş ${orderWithLines?.number ?? id} - Üretim`,

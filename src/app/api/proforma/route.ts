@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
   if (customer.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
   const totals = calcTotals(lines)
-  const number = await generateProformaNumber(user!.tenantId)
+  const number = await generateProformaNumber(customer.tenantId)
 
   const lineData = lines.map((l) => {
     const qty = toNum(l.qty, 1)
@@ -161,7 +161,8 @@ export async function POST(req: NextRequest) {
 
   const proforma = await db.quote.create({
     data: {
-      tenantId: user!.tenantId,
+      // SUPERADMIN çapraz-tenant yazımında kayıt, müşterinin tenantına ait olmalı
+      tenantId: customer.tenantId,
       customerId,
       number,
       status: 'taslak',
