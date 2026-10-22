@@ -1166,7 +1166,14 @@ export const HOME_JS = `
   }
 
   function bizHref(slug) {
-    if (CFG.baseDomain) return 'https://' + slug + '.' + CFG.baseDomain;
+    var bd = CFG.baseDomain || '';
+    var host = (typeof location !== 'undefined' && location.hostname) || '';
+    // Gerçek subdomain dağıtımında (host = apex veya *.baseDomain) absolute link;
+    // gateway/önizleme ortamında (host ≠ baseDomain) relative kal — yoksa
+    // sandbox/preview'da çözülemeyen https://<slug>.<bd> linkleri oluşur.
+    if (bd && (host === bd || host.indexOf('.' + bd) !== -1)) {
+      return 'https://' + slug + '.' + bd;
+    }
     return gwq('/isletme/' + encodeURIComponent(slug));
   }
 
@@ -1968,7 +1975,11 @@ export const MEMBER_JS = `
     var base = (document.getElementById('page-cfg') || {}).textContent;
     var bd = '';
     try { bd = base ? (JSON.parse(base).baseDomain || '') : ''; } catch (_) {}
-    if (bd) return 'https://' + slug + '.' + bd;
+    var host = location.hostname || '';
+    // absolute yalnız gerçek subdomain dağıtımında; gateway/önizlemede relative
+    if (bd && (host === bd || host.indexOf('.' + bd) !== -1)) {
+      return 'https://' + slug + '.' + bd;
+    }
     return gwq('/isletme/' + encodeURIComponent(slug));
   }
 

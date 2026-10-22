@@ -9143,3 +9143,52 @@ Stage Summary:
 - Raporlar modülü görselleşti (4 grafik + özet çipleri) — "gerçek çalışan program" görünümü
 - PWA bandı kalıcı kapatma + mobil sidebar backdrop erişilebilirlik dahil tamamlandı
 - SONRAKİ TUR ÖNERİLERİ: randevu sonrası değerlendirme/puanlama (review), embed widget kodu (admin panel "siteye göm"), hatırlatıcı ayarları UI (3011 entegrasyonu), 404 sayfasında hizmet bazlı arama, gün bucket'larını TR yerel saate alma (rapor), üye telefon display formatı (normalize "9005..." görüntü düzeltmesi)
+---
+Task ID: verify-ux
+Agent: general-purpose subagent
+Task: feat-ux doğrulama (sidebar backdrop + tekrar planla E2E)
+
+Work Log:
+- worklog.md son 60 satır okundu (feat-veri + feat-rapor; ayrıca fix-cust/genealogy için BASE_DOMAIN=gncinc.online bağlamı ve ana ajanın "arastirma-gelistirme-turu" temizlik notu kontrol edildi). Kod yazma YOK — yalnız test verisi + browser doğrulama.
+- OPS: CRM 3000 doğrulama başında ölmüş (bilinen OOM) → görevdeki komutla nohup bun run dev restart; /api/public/providers 200 (6sn). Restart sonrası 1 kez ChunkLoadError + 1 kez offline-fallback görüldü → warm-up curl + fresh open ile çözüldü (bilinen stale-chunk patolojisi)
+- agent-browser OTURUM NOTU: başlangıçta kalıntı "featux" session'ı aktifti (eski 3002 sekmeleri + eski üye localStorage'ı göründü) → `close --all` + temiz session ile devam edildi; viewport 390x844 set edildi (ilk `set viewport` browser restartında sıfırlandığı için open sonrası tekrar set edildi)
+- T1 — Mobil sidebar backdrop (CRM, admin/314159, 390x844) PASS:
+  · Login → dashboard; mobilde sidebar varsayılan AÇIK geliyor (app-store sidebarCollapsed:false) → backdrop button[aria-label="Menüyü kapat"] görünür: position:fixed, z-40, bg oklab(0 0 0/0.4) ≡ bg-black/40 ✓, body overflow:hidden (scroll kilidi) ✓ (verify-ux-01)
+  · Backdrop'a gerçek mouse click (340,422 — sidebar dışı; NOT: element-merkez click x=195 sidebar içine düşüyor, Playwright covering-element reddi normal — insan dokunuşu sidebar dışına gelir) → sidebar kapandı: backdrop DOM'dan kalktı, aside translate -100% + w 240→68px, body overflow'' ✓ (verify-ux-02)
+  · Hamburger (topbar Menu, lg:hidden) → tekrar açıldı: backdrop geri geldi + aside 240px + scroll lock ✓ (verify-ux-03); 2. backdrop click → yine kapandı (verify-ux-04) — tam döngü 2x doğrulandı
+- T2 — Tekrar planla (customer-page 3002, üye akışı):
+  · Üye kaydı API: POST /api/public/member/register → {token, member{id,phone}} (yanıt yapısı teyitli). 1. üye (QA TekrarPlanla 045329 / 0534 973 591 247) akış boyunca kullanıldı
+  · /uyelik browser login (l-phone/l-pass) → profil kartı "QA TekrarPlanla" ✓; detay formu üye prefill (ad+tel otomatik) ✓
+  · Randevu 1: Şık Kuaför (autoApprove) Manikür 22.10 11:00 → "Randevun oluşturuldu! — durum: Onaylandı ✅" (verify-ux-06) + sunucu /api/public/member/appointments status=onaylandi (memberId FK bağlandı) ✓
+  · Randevularım → İptal Et → native confirm ("Randevu No ... iptal edilsin mi?") dialog accept → kart "🚫 İptal edildi" + "🔁 Tekrar planla" BUTONU GÖRÜNÜR (data-slug=sik-kuafor, data-svc=<serviceId>; localStorage gnc_cancelled_appts'e yazıldı) ✓ (verify-ux-05/07)
+  · BUTON TIKLAMA BULGUSU: click → https://sik-kuafor.gncinc.online/isletme/sik-kuafor?tekrar=1&service=<id> (views.ts:1967-1974 bizHref baseDomain dalı; fix-cust'tan beri 3002 BASE_DOMAIN=gncinc.online ile çalışıyor) → sandbox'ta host erişilemez → Chrome "Privacy error" (hata sayfası hedef host'u kanıtlıyor). Bu, replan'a özgü DEĞİL — /uyelik ve home'daki TÜM işletme linkleri aynı davranıyor (prod'da wildcard DNS+TLS ile çalışır tasarm). Kod tarafı doğru: URL path+param yapısı spec'e birebir (?tekrar=1&service=<id>)
+  · AKIŞIN KENDİSİ dev host'ta browser'da doğrulandı: 127.0.0.1:3002/isletme/sik-kuafor?tekrar=1&service=cmviuvv2l... → form açık, HİZMET ÖNCEDEN SEÇİLİ (Manikür, value eşleşiyor), TARİH BOŞ (0 adet .date-btn.on; buildDates isReplan'da seçmiyor — views.ts:1501-1505), slots'ta rehber "🔁 Tekrar planlama: Manikür seçili — tarih ve saat seç." ✓ (verify-ux-08)
+  · Yeni tarih 23.10 + saat 14:00 seç → submit → "#success": "✅ Randevun oluşturuldu! — durum: Onaylandı ✅ — 23.10.2026 14:00" (verify-ux-09) + sunucu: kod 7BY3OH39 status=onaylandi ✓
+  · TEMİZLİK: randevu 2 API ile iptal (status=iptal teyitli; randevu 1 zaten iptalli) → DELETE /api/public/member/me {"password":"qatekrar123"} + Bearer → 200 {"ok":true,"deletedAppointments":2} → login (3000 direkt + 3002 proxy) 401 "Geçersiz telefon veya şifre" ✓, eski token /member/me 401 ✓ → DB: Member 0, telefon/memberId ile Appointment 0, APPT_TOTAL=8 (test öncesi baseline, yalnız seed) ✓; browser localStorage clear (gnc_member + gnc_cancelled_appts) ✓; /tmp geçici scriptler silindi
+- OPS BULGU (kapsam dışı ama raporlanır): 1. üye + 1. randevu oluşturduktan sonra DB DIŞ MÜDAHALEYLE eski haline döndü (member 0 / appt 8 / audit son kayıt 04:49:52 — kayıtlarım audit'te yok; db/backups/custom-20261022-043147.db ile uyumlu durum). Paralel ana ajan temizliği veya backup/restore süreci ihtimali — T2 yeniden koşuldu (2. üye QA TekrarPlanla 051147), ikinci koşuda veri kaybı olmadı. İsim çakışması riskine dikkat: "QA TekrarPlanla" prefix'li deleteMany benzeri temizlik çalışıyorsa canlı test verisini yutabilir
+- Ekran görüntüleri: tool-results/verify-ux-01-backdrop-visible, 02-backdrop-click-collapsed, 03-re-expanded-backdrop, 04-collapsed-2nd-cycle, 05-iptal-karti-replan-butonu, 06-randevu-onaylandi, 07-iptal-karti-replan, 08-tekrar-planla-form-acik, 09-tekrar-planla-yeni-randevu-basari (.png)
+
+Stage Summary:
+- T1 PASS: mobil (390x844) sidebar backdrop bg-black/40 görünür, tıklayınca sidebar kapanıyor, hamburger ile tekrar açılıyor; scroll kilidi + aria-label + Escape handler'lı button semantiği çalışıyor — 2 tam döngü kanıtlı
+- T2 PASS (1 çevresel notla): iptal kartında "🔁 Tekrar planla" görünüyor; ?tekrar=1&service=<id> akışında hizmet önceden seçili + tarih boş + rehber metni; yeni tarih/saat ile randevu Onaylandı. NOT: buton bizHref baseDomain yüzünden https://<slug>.gncinc.online'a navige ediyor — sandbox'ta Privacy error; prod'da çalışır ama DEV ortamında buton (ve /uyelik'teki tüm işletme linkleri) host dışına çıkar; düzeltme istenirse bizHref'e "mevcut host ≠ baseDomain ise relative kalsın" koşulu eklenebilir (views.ts:1967-1974 + 1168-1172)
+- Temizlik teyitli: 2/2 test randevusu iptal → KVKK self-silme (deletedAppointments:2) → login 401 → DB üye 0 / randevu 8 (baseline) / kendi kayıtlarımdan 0 kalıntı; browser localStorage boş
+- Test sırasındaki dış DB sıfırlaması (paralel aktör) yüzünden akış 2 kez koşuldu; sonraki doğrulama görevlerinde canlı test verisi için benzersiz isim prefix'i önerilir
+---
+
+---
+Task ID: arastirma-gelistirme-turu
+Agent: Z.ai Code (ana ajan) + 4 alt ajan
+Task: Araştırma ve geliştirme devam turu — veri modeli, UX turu 2, rapor grafikleri
+
+Work Log:
+- feat-veri: Appointment.memberId FK (SetNull, @@index) + db:push (veri kaybı 0: randevu 10→10, üye 3→3) + backfill (2 randevu telefonla bağlandı, script silindi) + üye token'lı randevuda otomatik memberId + admin members API (GET arama/sayfalama + DELETE cascade transaction, tenantScope) + admin panel "Üyeler" sekmesi (arama + sil). E2E: token'lı randevu FK dolu, misafir null, başka tenant admin'i 0/404, UI sil→login 401. Kalıntı SIFIR
+- feat-rapor: GET /api/reports/summary (auth + requirePermission + tenantScope, days 1..90 clamp, superadmin ?tenantId filtresi; appointmentsByDay/statusDistribution/topServices/topStaff/özet çipleri; admin days=90 → 22-52ms) + UI appointment-summary-cards.tsx (recharts zaten vardı — alan grafiği + donut + yatay barlar + 7/30/90 seçici + skeleton + boş durum, mobil tek kolon; emerald/stone teması). 24 "QA Grafik" test randevusu oluşturuldu→doğrulandı→tümü silindi (DB 0)
+- feat-ux (ajan zaman aşımı oldu, kodlar tamamlanmıştı; ana ajan doğruladı): PWA bandı KALICI kapatma (pwa-banner-dismissed + legacy anahtarlar) + mobil sidebar backdrop (bg-black/40, aria-label, body scroll kilidi, tıkla→daral, Escape) + 404 hizmet bazlı arama (?q= manikür → Şık Kuaför önerisi, path+host modu) + "🔁 Tekrar planla" (iptal kartından form'a hizmet önden seçili)
+- verify-ux (dar doğrulama ajanı): T1 backdrop PASS (2x döngü, scroll kilidi), T2 tekrar planla PASS (üye kaydı→randevu→iptal→replan→yeni randevu onaylı; KVKK self-silme ile temizlik, DB baseline 8 randevu/0 test üyesi)
+- ANA AJAN FIX: views.ts'te 2× bizHref — sandbox/gateway'de absolute https://<slug>.gncinc.online linkler Privacy error veriyordu; host baseDomain ile eşleşmezse relative /isletme/<slug> (prod subdomain davranışı korunur). Browser kanıtı: ana sayfa linkleri artık "/isletme/sik-kuafor"
+- LINT: 7 hata = baseline (0 yeni); tmp scriptler (scripts/_tmp-*.ts) silindi
+
+Stage Summary:
+- Bu turda eklenenler: üye-randevu kalıcı FK ilişkisi + admin üye yönetimi, gerçek grafikli rapor modülü, PWA kalıcı kapatma, mobil sidebar UX, 404'te hizmet araması, tekrar planlama, preview-safe linkler
+- Sistem durumu: 5/5 servis 200, markalı 404 canlı, DB temiz (yalnız gerçek/seed veri)
+- Bilinen eksikler (sonraki tur adayları): üyelerin tenant bağlantısı (Member modelinde tenant yok → totalMembers telefon eşleşmesi bazlı), rapor gün bucket'ları UTC, cron-automation için prod service account, dış inválid üye token'ı temizliği
