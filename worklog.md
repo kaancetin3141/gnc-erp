@@ -8817,3 +8817,22 @@ Stage Summary:
 - Sanal personel modu E2E tamamen YEŞİL: personelsiz işletme randevu alabiliyor, availability çakışmayı gösteriyor, çift rezervasyon 409 ile engelleniyor, üyelik giriş/liste/iptal akışı çalışıyor
 - Test scripti kalıcı: /tmp/fixup-test.sh (yeniden koşturulabilir; idempotent, kendi artıklarını siliyor)
 - Not: task senaryosundaki "409 Seçilen zaman dolu" mesajı yalnız personelsiz hizmette (sanal mod) dönüyor; personelli hizmette any-path 409 "müsait personel yok" dönüyor — ikisi de doğru davranış
+
+---
+Task ID: 6-ui
+Agent: general-purpose subagent
+Task: GNC Randevu customer site (127.0.0.1:3002) agent-browser E2E doğrulama (10 adım)
+
+Work Log:
+- 9/10 adım ilk koşuda PASS; 1 GERÇEK BUG bulundu ve fix'lendi: üye "İptal Et" → POST /api/member/appointments/:id/cancel gövdesiz gidiyordu, 3002 proxy'si req.json() ile 400 "İstek gövdesi okunamadı." dönüyordu → iptal akışı tamamen çalışmıyordu
+- FIX 1 (views.ts ~1859): cancelAppointment fetch'ine 'content-type: application/json' + body:'{}' eklendi
+- FIX 2 (index.ts ~300, savunmacı): /api/member/* POST proxy gövdesi req.text()+trim ile okuyor; boş gövde {} kabul ediliyor (gövdesiz POST cancel artık 400 değil)
+- bun --hot otomatik reload; reload sonrası İptal Et → toast "Randevu iptal edildi.", liste boş duruma döndü, GET /api/member/appointments → items:[] (FIX doğrulandı)
+- Doğrulanan akışlar: HOME (#member-btn + hero üyelik metni + 1 işletme kartı — DB'de tek provider), Kayıt (Browser Test Uye / 0555 777 66 55 → profil kartı + "Henüz randevun yok"), Çıkış+Giriş (aynı üye geri geldi), Detay prefill (#member-btn "👤 Browser", form ad/telefon dolu, yeşil mini-note "Browser Test Uye olarak randevu alıyorsun"), Randevu oluşturma (Manikür, 22 Eki 11:00 → "Randevun oluşturuldu! durum: Onaylandı ✅", No:7SRNBNEY), Randevularım'da kayıt + ✅ badge, markalı 404 (HTTP 404 + arama formu + "Belki şunları arıyorsun?" kartı + "Tüm işletmelere göz at"), mobil 390x844 (overflow yok, #member-btn görünür; /uyelik'te header butonu tasarım gereği "← Tüm işletmeler" ile değişiyor — bug değil)
+- Console/page error: 0 (tek non-200'ler: fix öncesi cancel 400 — test ederek bulunan bug, ve bilinçli 404 testi)
+- Cleanup: scripts/_cleanup-browser-member.ts koşuldu (members deleted:1) sonra dosya silindi; NOT: script'in customerPhone contains '05557776655' filtresi boşluklu saklanan "0555 777 66 55" telefonuna denk gelmedi → kalan iptal randevusu customerName='Browser Test Uye' ile ayrıca silindi (deleted:1); final kontrol appointments:0 members:0
+- Ekran görüntüleri: /home/z/my-project/tool-results/01-home.png, 02-kayit-profil.png, 03-giris-profil.png, 04-detay-prefill.png, 05-randevu-basarili.png, 06-randevularim-liste.png, 06b-iptal-sonrasi.png, 07-404.png, 08-mobil-home.png, 08-mobil-uyelik.png
+
+Stage Summary:
+- Customer UI E2E YEŞİL: kayıt/giriş/prefill/randevu/liste/404/mobil tamam; iptal akışı prevalent bug yakalandı → 2 satırlık fix (client body + proxy boş gövde toleransı) ile çalışır hale geldi
+- Deploy notu: fix mini-services/customer-page/views.ts + index.ts içinde — sunucuya guncelle-gnc.sh ile taşınınca 3002'de de geçerli olacak
