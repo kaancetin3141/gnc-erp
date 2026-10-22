@@ -135,13 +135,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     }
   }
 
-  // Gün içindeki mevcut randevular (bu personellerin)
+  // SANAL PERSONEL MODU:
+  // Yeni açılan işletmelerde genellikle personel kaydı yoktur ya da hizmet-
+  // personel bağlantısı (StaffService) yapılmamıştır. Bu hâlde personel
+  // filtresi boş kalır ve TÜM saatler "dolu" görünerek randevu alınamazdı.
+  // Çözüm: işletmeyi TEK kaynak (sanal personel) olarak ele al — çakışma
+  // kontrolü işletme genelindeki aktif randevularla yapılır.
+  const virtualMode = staffIds.length === 0
+
+  // Gün içindeki mevcut randevular (personel varsa personel bazlı; sanal modda işletme bazlı)
   const dayStart = slotToDateTime(dateStr, daySched.start)
   const dayEnd = slotToDateTime(dateStr, daySched.end)
   const appointments = await db.appointment.findMany({
     where: {
       providerId: provider.id,
-      staffId: { in: staffIds.length > 0 ? staffIds : undefined },
+      ...(virtualMode ? {} : { staffId: { in: staffIds } }),
       status: { notIn: ['iptal', 'reddedildi', 'gelmedi'] },
       date: { gte: dayStart, lte: dayEnd },
     },
@@ -153,13 +161,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     const slotEndMin = slotStartMin + serviceDuration
     if (slotEndMin > dayEndMin) return { time: slot, available: false }
     if (isToday && slotStartMin < nowMinutes) return { time: slot, available: false }
-    if (staffIds.length === 0) return { time: slot, available: false }
+    if (staffIds.length === 0 && !virtualMode) return { time: slot, available: false }
+
+    const slotStart = slotToDateTime(dateStr, slot)
+    const slotEnd = new Date(slotStart.getTime() + serviceDuration * 60_000)
+
+    // Sanal mod: işletme tek kaynak — herhangi bir çakışan randevu slotu doldurur
+    if (virtualMode) {
+      const conflict = appointments.some((a) => {
+        const aEnd = a.endTime ? new Date(a.endTime) : new Date(a.date.getTime() + 30 * 60_000)
+        return a.date < slotEnd && slotStart < aEnd
+      })
+      return { time: slot, available: !conflict }
+    }
 
     let anyAvailable = false
     for (const sId of staffIds) {
       const staffAppts = appointments.filter((a) => a.staffId === sId)
-      const slotStart = slotToDateTime(dateStr, slot)
-      const slotEnd = new Date(slotStart.getTime() + serviceDuration * 60_000)
       const conflict = staffAppts.some((a) => {
         const aEnd = a.endTime ? new Date(a.endTime) : new Date(a.date.getTime() + 30 * 60_000)
         return a.date < slotEnd && slotStart < aEnd

@@ -123,6 +123,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Staff çözümle
+  // SANAL PERSONEL MODU: yeni açılan işletmelerde personel kaydı ya da
+  // hizmet-personel bağlantısı olmayabilir — bu hâlde hata vermek yerine
+  // işletmeyi tek kaynak (staffId=null) olarak ele alıp rezervasyonu oluştur.
   let finalStaffId: string | null = null
   const isAny = !staffId || staffId === 'any'
   if (!isAny) {
@@ -145,8 +148,9 @@ export async function POST(req: NextRequest) {
       .filter((c) => c.staff.isActive)
       .map((c) => c.staff.id)
     if (activeStaffIds.length === 0) {
-      return err('Bu hizmeti verebilecek personel yok', 400)
-    }
+      // Sanal personel modu — aşağıdaki işletme bazlı çakışma kontrolü devreye girer
+      finalStaffId = null
+    } else {
 
     // Çakışmayan birini bul
     const dayStartQ = new Date(startDate.getTime() - 24 * 60 * 60_000)
@@ -168,10 +172,29 @@ export async function POST(req: NextRequest) {
     })
     if (!freeStaff) return err('Seçilen zaman için müsait personel yok', 409)
     finalStaffId = freeStaff
+    }
   }
 
-  // Çakışma kontrolü (belirli staff seçildiyse)
-  if (!isAny && finalStaffId) {
+  // Çakışma kontrolü — belirli personel SEÇİLDİYSE personel bazlı;
+  // sanal personel modunda (staffId=null) işletme genelinde kontrol:
+  if (finalStaffId === null) {
+    const providerAppts = await db.appointment.findMany({
+      where: {
+        providerId: provider.id,
+        status: { notIn: ['iptal', 'reddedildi', 'gelmedi'] },
+        date: {
+          gte: new Date(startDate.getTime() - 24 * 60 * 60_000),
+          lte: new Date(startDate.getTime() + 24 * 60 * 60_000),
+        },
+      },
+      select: { date: true, endTime: true },
+    })
+    const conflict = providerAppts.some((c) => {
+      const cEnd = c.endTime ? new Date(c.endTime) : new Date(c.date.getTime() + service.duration * 60_000)
+      return rangesOverlap(startDate, endDate, c.date, cEnd)
+    })
+    if (conflict) return err('Seçilen zaman dolu, lütfen başka saat deneyin', 409)
+  } else if (!isAny && finalStaffId) {
     const candidates = await db.appointment.findMany({
       where: {
         staffId: finalStaffId,

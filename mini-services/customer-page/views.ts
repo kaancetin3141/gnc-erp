@@ -380,7 +380,53 @@ footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),r
   .sk{background:#f7efe9}
   .search input,.field input,.field select,.field textarea,.chip,.city-wrap select,.date-btn,.slot,.svc,.sumcard,.tel-btn,.open-chip,.map-toggle,.dir-links a,.sumline,.form-err,.btn-ghost,.crumb{background:#ffffff}
   #toast{background:#2b211b}
-}`;
+}
+
+/* ---- üyelik (Giriş / Kayıt + Randevularım) ---- */
+.member-btn{white-space:nowrap}
+.member-btn.logged{border-color:rgba(13,138,99,.45);color:var(--green);background:var(--green-soft)}
+.mem-hero{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-border);border-radius:var(--radius);padding:26px 24px;margin:18px 0;box-shadow:var(--shadow);text-align:center}
+.mem-hero h1{font-size:1.5rem;font-weight:800;letter-spacing:-.4px;margin:4px 0 6px}
+.mem-hero p{color:var(--muted);font-size:.92rem;max-width:520px;margin:0 auto}
+.mem-card{background:var(--glass-strong);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-border);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow);margin:16px 0}
+.mem-tabs{display:flex;gap:8px;background:rgba(255,255,255,.5);border:1px solid var(--glass-border-soft);border-radius:999px;padding:4px;margin:0 auto 18px;max-width:340px}
+.mem-tab{flex:1;border:none;background:transparent;color:var(--muted);font-weight:700;font-size:.9rem;padding:9px 10px;border-radius:999px;cursor:pointer;transition:all .18s}
+.mem-tab.on{background:#fff;color:var(--brand);box-shadow:0 2px 10px rgba(70,26,36,.12)}
+.mem-wrap{max-width:440px;margin:0 auto}
+.mem-profile{display:flex;align-items:center;gap:14px}
+.mem-avatar{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--brand),#e8804f);color:#fff;display:grid;place-items:center;font-size:1.3rem;font-weight:800;flex:none;box-shadow:0 4px 14px rgba(194,51,77,.35)}
+.mem-id{min-width:0}
+.mem-id .n{font-weight:800;font-size:1.05rem}
+.mem-id .p{color:var(--muted);font-size:.85rem;overflow:hidden;text-overflow:ellipsis}
+.mem-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.appt{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-border);border-radius:16px;padding:14px 16px;margin:10px 0;box-shadow:var(--shadow);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.appt-main{flex:1;min-width:200px}
+.appt-biz{font-weight:800;font-size:.98rem}
+.appt-svc{color:var(--muted);font-size:.84rem;margin:2px 0}
+.appt-when{font-weight:700;font-size:.86rem;color:#5d4436}
+.st-badge{display:inline-block;font-size:.74rem;font-weight:800;padding:4px 11px;border-radius:999px;white-space:nowrap}
+.st-beklemede{background:var(--amber-soft);color:var(--amber)}
+.st-onaylandi{background:var(--green-soft);color:var(--green)}
+.st-tamamlandi{background:var(--teal-soft);color:var(--teal)}
+.st-gelmedi{background:rgba(120,120,120,.14);color:#6b6b6b}
+.appt-cancel{border:1.5px solid rgba(194,51,77,.4);background:rgba(255,255,255,.6);color:var(--brand);border-radius:999px;padding:7px 14px;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s}
+.appt-cancel:hover{background:var(--brand-soft)}
+.appt-code{font-size:.72rem;color:var(--muted);font-family:ui-monospace,monospace}
+.empty-box{text-align:center;padding:26px 18px;color:var(--muted)}
+
+/* ---- 404: hata sayfası arama + öneriler ---- */
+.nf-search{display:flex;gap:8px;max-width:420px;margin:16px auto 4px}
+.nf-search input{flex:1;min-width:0;border:1.5px solid var(--glass-border);background:rgba(255,255,255,.75);border-radius:999px;padding:10px 16px;font-size:.9rem;color:var(--ink)}
+.nf-search input:focus{outline:none;border-color:rgba(194,51,77,.5)}
+.nf-sub{font-size:.8rem;color:#8a7160;margin-top:10px}
+.nf-sugg{margin-top:20px;text-align:left}
+.nf-sugg h2{font-size:.95rem;color:var(--ink);margin:0 0 10px;text-align:center}
+.nf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.nf-item{display:flex;gap:9px;align-items:center;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-border);border-radius:14px;padding:10px 12px;text-decoration:none;transition:all .15s;box-shadow:0 3px 12px rgba(70,26,36,.08)}
+.nf-item:hover{transform:translateY(-2px);background:rgba(255,255,255,.85);box-shadow:var(--shadow)}
+.nf-ic{font-size:1.25rem;flex:none}
+.nf-nm{font-weight:700;font-size:.84rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nf-loc{font-size:.72rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}`;
 
 // ---------------------------------------------------------------- Ortak sayfa parçaları
 
@@ -454,15 +500,17 @@ export function homePage(baseDomain: string, gwPort?: string | null): string {
       <input type="search" id="q" placeholder="İşletme, hizmet veya şehir ara…" aria-label="İşletme ara" autocomplete="off">
       <kbd class="s-kbd" aria-hidden="true">/</kbd>
     </div>
+    <a class="btn btn-ghost member-btn" style="padding:8px 16px;font-size:.85rem;flex:none" id="member-btn" href="${gwPort ? '/uyelik?XTransformPort=' + encodeURIComponent(gwPort) : '/uyelik'}">👤 Giriş / Kayıt</a>
   </div>
 </header>
 <main>
   <section class="hero" aria-label="Tanıtım">
     <h1>Berberden dişçiye, kuaförden spaya — <em>yakınındaki tüm işletmeler</em> burada</h1>
-    <p>Konumunu paylaş, en yakın işletmeyi bul; hizmeti seç, uygun saati yakala, randevunu saniyeler içinde oluştur. Üye olmana bile gerek yok.</p>
+    <p>Konumunu paylaş, en yakın işletmeyi bul; hizmeti seç, uygun saati yakala, randevunu saniyeler içinde oluştur. Üyeliksiz de olur — üye olursan randevuların tek ekranda.</p>
     <div class="hero-chips" aria-hidden="true">
       <span class="hero-chip">⚡ Saniyeler içinde randevu</span>
-      <span class="hero-chip">🪪 Üyelik gerekmez</span>
+      <span class="hero-chip">🪪 Üyeliksiz de mümkün</span>
+      <span class="hero-chip">👤 Üye ol — randevuların cebinde</span>
       <span class="hero-chip">🧭 Konuma göre en yakın</span>
     </div>
     <button type="button" class="btn btn-geo" id="geo-btn">📍 Konumuma göre en yakını bul</button>
@@ -579,7 +627,8 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
   const body = `<header class="top">
   <div class="top-in">
     <a class="logo" href="${esc(a.homeUrl)}">GNC Randevu</a>
-    <a class="btn btn-ghost" style="padding:8px 16px;font-size:.85rem;margin-left:auto" href="${esc(a.homeUrl)}">← Tüm işletmeler</a>
+    <a class="btn btn-ghost member-btn" style="padding:8px 16px;font-size:.85rem;margin-left:auto" id="member-btn" href="${a.gwPort ? '/uyelik?XTransformPort=' + encodeURIComponent(a.gwPort) : '/uyelik'}">👤 Giriş / Kayıt</a>
+    <a class="btn btn-ghost" style="padding:8px 16px;font-size:.85rem" href="${esc(a.homeUrl)}">← Tüm işletmeler</a>
   </div>
 </header>
 <main>
@@ -671,6 +720,7 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
           </div>
           <input class="hp" id="f-web" name="website" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
           <p class="form-err" id="form-err" hidden></p>
+          <p class="mini-note" id="member-note" hidden style="text-align:center;background:var(--green-soft);border-radius:10px;padding:8px 12px;color:var(--green);font-weight:700"></p>
           <button type="submit" class="btn btn-submit" id="submit-btn">✅ Randevuyu Onayla</button>
           <p class="mini-note" style="text-align:center">Üyeliksiz · Onay sonrası WhatsApp'tan iletebilirsin</p>
         </div>
@@ -718,20 +768,56 @@ ${siteFooter()}`;
 
 // ---------------------------------------------------------------- HATA SAYFALARI
 
-export function notFoundPage(slug?: string, gwPort?: string | null, homeUrl?: string | null): string {
+export function notFoundPage(
+  slug?: string,
+  gwPort?: string | null,
+  homeUrl?: string | null,
+  suggestions: Json[] = [],
+  baseDomain?: string
+): string {
   const backHref = homeUrl || '/';
-  const backLabel = homeUrl ? '🔍 Tüm işletmelere göz at' : '← Tüm işletmelere dön';
+  const gwHidden = gwPort ? `<input type="hidden" name="XTransformPort" value="${esc(gwPort)}">` : '';
+  const suggHtml = suggestions.length
+    ? `<div class="nf-sugg">
+  <h2>Belki şunları arıyorsun? 👀</h2>
+  <div class="nf-grid">
+    ${suggestions
+      .map((b) => {
+        const meta = typeMeta(String(b.type || ''));
+        const loc = [b.district, b.city].filter(Boolean).join(' · ');
+        const href = baseDomain
+          ? `https://${esc(b.slug)}.${esc(baseDomain)}`
+          : gwPort
+            ? `/isletme/${encodeURIComponent(String(b.slug))}?XTransformPort=${encodeURIComponent(gwPort)}`
+            : `/isletme/${encodeURIComponent(String(b.slug))}`;
+        return `<a class="nf-item" href="${href}">
+      <span class="nf-ic" aria-hidden="true">${meta.emoji}</span>
+      <span style="min-width:0"><span class="nf-nm">${esc(b.name)}</span>${loc ? `<span class="nf-loc" style="display:block">📍 ${esc(loc)}</span>` : ''}</span>
+    </a>`;
+      })
+      .join('')}
+  </div>
+</div>`
+    : '';
   return pageShell({
     title: 'İşletme bulunamadı | GNC Randevu',
     desc: 'Aradığın işletme bulunamadı.',
     gwPort,
     body: `<header class="top"><div class="top-in"><a class="logo" href="${esc(backHref)}">GNC Randevu</a></div></header>
-<main><div class="center-page"><div class="center-card">
-  <span class="big" aria-hidden="true">🔍</span>
-  <h1>Böyle bir işletme yok</h1>
-  <p>${slug ? `"<b>${esc(slug)}</b>" adında kayıtlı bir işletme bulamadık — henüz eklenmemiş ya da kaldırılmış olabilir.` : 'Aradığın sayfa mevcut değil.'}</p>
-  <p style="font-size:12.5px;color:#7b869c;margin-top:8px">Not: <b>işletme-adi</b> biçimindeki alt alan adları GNC Randevu sistemine ayrılmıştır; henüz işletme atanmamış adreslerde bu sayfa görünür.</p>
-  <a class="btn btn-geo" href="${esc(backHref)}">${backLabel}</a>
+<main><div class="center-page"><div class="center-card" style="max-width:560px">
+  <span class="big" aria-hidden="true">🧭</span>
+  <h1>Aradığın işletmeyi bulamadık</h1>
+  <p>${slug ? `"<b>${esc(slug)}</b>" adında kayıtlı bir işletme yok — adres yanlış yazılmış, işletme kaldırılmış ya da henüz eklenmemiş olabilir.` : 'Aradığın sayfa mevcut değil.'}</p>
+  <form class="nf-search" action="${esc(backHref)}" method="get" role="search">
+    ${gwHidden}
+    <input type="search" name="q" placeholder="İşletme, hizmet veya şehir ara…" aria-label="İşletme ara">
+    <button type="submit" class="btn btn-geo" style="padding:10px 18px">🔍 Ara</button>
+  </form>
+  <p class="nf-sub">💡 Not: <b>işletme-adi</b> biçimindeki alt alan adları GNC Randevu sistemine ayrılmıştır; henüz işletme atanmamış adreslerde bu sayfa görünür.</p>
+  ${suggHtml}
+  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px">
+    <a class="btn btn-geo" href="${esc(backHref)}">🏠 Tüm işletmelere göz at</a>
+  </div>
 </div></div></main>
 ${siteFooter()}`,
   });
@@ -754,6 +840,104 @@ export function serverErrorPage(msg: string, gwPort?: string | null): string {
 </div></div></main>
 ${siteFooter()}`,
   });
+}
+
+// ---------------------------------------------------------------- ÜYELİK SAYFASI
+
+export function memberPage(baseDomain: string, gwPort?: string | null): string {
+  const body = `<header class="top">
+  <div class="top-in">
+    <a class="logo" href="/">GNC Randevu</a>
+    <a class="btn btn-ghost" style="padding:8px 16px;font-size:.85rem;margin-left:auto" href="/">← Tüm işletmeler</a>
+  </div>
+</header>
+<main>
+  <section class="mem-hero">
+    <h1>👤 Üyelik</h1>
+    <p>Üye ol; tüm işletmelerdeki randevularını tek ekrandan takip et, istediğinde iptal et. Üyeliksiz de randevu alabilirsin — üyelik isteğe bağlıdır.</p>
+  </section>
+
+  <div class="mem-wrap" id="mem-auth" hidden>
+    <div class="mem-card">
+      <div class="mem-tabs" role="tablist" aria-label="Giriş veya kayıt">
+        <button type="button" class="mem-tab on" id="tab-login" role="tab" aria-selected="true">🔑 Giriş Yap</button>
+        <button type="button" class="mem-tab" id="tab-register" role="tab" aria-selected="false">✨ Kayıt Ol</button>
+      </div>
+
+      <form id="login-form" novalidate>
+        <div style="display:grid;gap:14px">
+          <div class="field">
+            <label class="f-label" for="l-phone">Telefon</label>
+            <input id="l-phone" type="tel" required placeholder="0555 111 22 33" autocomplete="tel" inputmode="tel">
+          </div>
+          <div class="field">
+            <label class="f-label" for="l-pass">Şifre</label>
+            <input id="l-pass" type="password" required placeholder="••••••" autocomplete="current-password">
+          </div>
+          <p class="form-err" id="l-err" hidden></p>
+          <button type="submit" class="btn btn-submit">🔑 Giriş Yap</button>
+          <p class="mini-note" style="text-align:center">Hesabın yok mu? <b>Kayıt Ol</b> sekmesine geç.</p>
+        </div>
+      </form>
+
+      <form id="register-form" hidden novalidate>
+        <div style="display:grid;gap:14px">
+          <div class="field">
+            <label class="f-label" for="r-name">Ad Soyad</label>
+            <input id="r-name" type="text" required minlength="2" placeholder="Örn. Ayşe Yılmaz" autocomplete="name">
+          </div>
+          <div class="field">
+            <label class="f-label" for="r-phone">Telefon</label>
+            <input id="r-phone" type="tel" required placeholder="0555 111 22 33" autocomplete="tel" inputmode="tel">
+          </div>
+          <div class="field">
+            <label class="f-label" for="r-email">E-posta (opsiyonel)</label>
+            <input id="r-email" type="email" placeholder="ornek@posta.com" autocomplete="email">
+          </div>
+          <div class="field">
+            <label class="f-label" for="r-pass">Şifre <span class="mini-note">(en az 6 karakter)</span></label>
+            <input id="r-pass" type="password" required minlength="6" placeholder="••••••" autocomplete="new-password">
+          </div>
+          <p class="form-err" id="r-err" hidden></p>
+          <button type="submit" class="btn btn-submit">✨ Üye Ol</button>
+          <p class="mini-note" style="text-align:center">Üyelikle randevuların profilinde saklanır — her işletmede ayrı ayrı bilgi girmenize gerek kalmaz.</p>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="mem-wrap" id="mem-logged" hidden>
+    <div class="mem-card">
+      <div class="mem-profile">
+        <span class="mem-avatar" id="m-avatar" aria-hidden="true">A</span>
+        <div class="mem-id" style="flex:1">
+          <div class="n" id="m-name">—</div>
+          <div class="p" id="m-phone">—</div>
+          <div class="p" id="m-email" hidden></div>
+        </div>
+        <span class="st-badge st-onaylandi">Üye</span>
+      </div>
+      <div class="mem-actions">
+        <button type="button" class="btn btn-ghost" id="logout-btn">🚪 Çıkış Yap</button>
+        <a class="btn btn-geo" href="/">🏠 Randevu Al</a>
+      </div>
+    </div>
+
+    <h2 class="section-title" style="margin:22px 2px 6px">📅 Randevularım</h2>
+    <div id="appt-list" aria-live="polite"><div class="mem-card" style="text-align:center;color:var(--muted)"><span class="spin dark"></span> Randevuların yükleniyor…</div></div>
+  </div>
+</main>
+${siteFooter()}`;
+
+  const shell = pageShell({
+    title: 'Üyelik — Randevularım | GNC Randevu',
+    desc: 'GNC Randevu üyeliği: tüm işletmelerdeki randevularını tek ekrandan takip et, iptal et.',
+    body,
+    scripts: ['/assets/member.js'],
+    gwPort,
+  });
+  const cfg = jsonIsland({ baseDomain });
+  return shell.replace('</main>', `<script id="page-cfg" type="application/json">${cfg}</script>\n</main>`);
 }
 
 // ---------------------------------------------------------------- İSTEMCİ JS: ANA SAYFA
@@ -1101,6 +1285,27 @@ export const HOME_JS = `
     toast('Konum izni olmadan mesafe hesaplanamıyor.', 'warn');
   }
 
+  // ---- üyelik butonu etiketi (girişliyse üye adını göster)
+  (function () {
+    var btn = document.getElementById('member-btn');
+    if (!btn) return;
+    var a = null;
+    try { a = JSON.parse(localStorage.getItem('gnc_member') || 'null'); } catch (_) {}
+    if (!a || !a.token) return;
+    fetch(gwq('/api/member/me'), { headers: { accept: 'application/json', authorization: 'Bearer ' + a.token } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        if (x.ok && x.j && x.j.member) {
+          btn.textContent = '👤 ' + String(x.j.member.name || '').trim().split(/\s+/)[0];
+          btn.classList.add('logged');
+          btn.setAttribute('aria-label', 'Üyelik — ' + x.j.member.name);
+        } else {
+          try { localStorage.removeItem('gnc_member'); } catch (_) {}
+        }
+      })
+      .catch(function () {});
+  })();
+
   load();
 })();
 `;
@@ -1440,5 +1645,321 @@ export const DETAIL_JS = `
     dM.openPopup();
     setTimeout(function () { dMap.invalidateSize(); }, 120);
   }
+
+  // ---- üye prefill: girişli üyenin adı/telefonu forma otomatik dolar
+  function fmtPhoneMem(d) {
+    d = String(d || '').replace(/\\D/g, '');
+    if (d.length === 12 && d.slice(0, 2) === '90') d = '0' + d.slice(2);
+    if (d.length === 11) return d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7, 9) + ' ' + d.slice(9);
+    return d;
+  }
+  function onMember(m) {
+    var n = document.getElementById('f-name'), p = document.getElementById('f-phone');
+    if (n && !n.value) n.value = m.name || '';
+    if (p && !p.value) p.value = fmtPhoneMem(m.phone);
+    var note = document.getElementById('member-note');
+    if (note) {
+      note.textContent = '👤 ' + (m.name || '') + ' olarak randevu alıyorsun — üyeliksiz de devam edebilirsin.';
+      note.hidden = false;
+    }
+  }
+
+  // ---- üyelik butonu etiketi (girişliyse üye adını göster + prefill)
+  (function () {
+    var btn = document.getElementById('member-btn');
+    var a = null;
+    try { a = JSON.parse(localStorage.getItem('gnc_member') || 'null'); } catch (_) {}
+    if (!a || !a.token) return;
+    fetch(gwq('/api/member/me'), { headers: { accept: 'application/json', authorization: 'Bearer ' + a.token } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        if (x.ok && x.j && x.j.member) {
+          if (btn) {
+            btn.textContent = '👤 ' + String(x.j.member.name || '').trim().split(/\\s+/)[0];
+            btn.classList.add('logged');
+            btn.setAttribute('aria-label', 'Üyelik — ' + x.j.member.name);
+          }
+          onMember(x.j.member);
+        } else {
+          try { localStorage.removeItem('gnc_member'); } catch (_) {}
+        }
+      })
+      .catch(function () {});
+  })();
+})();
+`;
+
+// ---------------------------------------------------------------- İSTEMCİ JS: ÜYELİK
+
+export const MEMBER_JS = `
+(function () {
+  'use strict';
+  var GWPORT = new URLSearchParams(location.search).get('XTransformPort');
+  function gwq(p) {
+    if (!GWPORT) return p;
+    return p + (p.indexOf('?') === -1 ? '?' : '&') + 'XTransformPort=' + encodeURIComponent(GWPORT);
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  var MON_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function fmtPhone(d) {
+    d = String(d || '').replace(/\\D/g, '');
+    if (d.length === 12 && d.slice(0, 2) === '90') d = '0' + d.slice(2);
+    if (d.length === 11) return d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7, 9) + ' ' + d.slice(9);
+    return d;
+  }
+  function fmtWhen(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso || '');
+    return d.getDate() + ' ' + MON_TR[d.getMonth()] + ' ' + d.getFullYear() + ' · ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function fmtPrice(price, cur) {
+    if (typeof price !== 'number') return '';
+    var n = new Intl.NumberFormat('tr-TR').format(price);
+    return cur && cur !== 'TRY' ? n + ' ' + cur : n + ' \\u20BA';
+  }
+  var toastTimer = null;
+  function toast(msg, kind) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'show' + (kind ? ' ' + kind : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.className = ''; }, 4200);
+  }
+
+  var LS_KEY = 'gnc_member';
+  function readAuth() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (!raw) return null;
+      var v = JSON.parse(raw);
+      return v && v.token ? v : null;
+    } catch (_) { return null; }
+  }
+  function saveAuth(v) { try { localStorage.setItem(LS_KEY, JSON.stringify(v)); } catch (_) {} }
+  function clearAuth() { try { localStorage.removeItem(LS_KEY); } catch (_) {} }
+
+  var authEl = document.getElementById('mem-auth');
+  var loggedEl = document.getElementById('mem-logged');
+  var listEl = document.getElementById('appt-list');
+
+  function showTab(which) {
+    var tL = document.getElementById('tab-login'), tR = document.getElementById('tab-register');
+    var fL = document.getElementById('login-form'), fR = document.getElementById('register-form');
+    var isLogin = which === 'login';
+    tL.classList.toggle('on', isLogin); tR.classList.toggle('on', !isLogin);
+    tL.setAttribute('aria-selected', String(isLogin)); tR.setAttribute('aria-selected', String(!isLogin));
+    fL.hidden = !isLogin; fR.hidden = isLogin;
+  }
+  document.getElementById('tab-login').addEventListener('click', function () { showTab('login'); });
+  document.getElementById('tab-register').addEventListener('click', function () { showTab('register'); });
+
+  function showErr(id, msg) {
+    var el = document.getElementById(id);
+    el.textContent = msg; el.hidden = false;
+  }
+  function hideErr(id) { document.getElementById(id).hidden = true; }
+
+  function setBusy(btn, busy, label) {
+    btn.disabled = busy;
+    btn.innerHTML = busy ? '<span class="spin"></span> ' + label : label;
+  }
+
+  // ---- durum render
+  function renderLogged(member) {
+    authEl.hidden = true;
+    loggedEl.hidden = false;
+    document.getElementById('m-avatar').textContent = (member.name || 'A').trim().charAt(0).toLocaleUpperCase('tr');
+    document.getElementById('m-name').textContent = member.name || '';
+    document.getElementById('m-phone').textContent = '📞 ' + fmtPhone(member.phone);
+    var em = document.getElementById('m-email');
+    if (member.email) { em.textContent = '✉️ ' + member.email; em.hidden = false; } else { em.hidden = true; }
+    loadAppointments();
+  }
+  function renderAuth() {
+    loggedEl.hidden = true;
+    authEl.hidden = false;
+    showTab('login');
+  }
+
+  // ---- randevularım
+  var ST = {
+    beklemede: { label: '⏳ Onay bekliyor', cls: 'st-beklemede' },
+    onaylandi: { label: '✅ Onaylandı', cls: 'st-onaylandi' },
+    tamamlandi: { label: '🏁 Tamamlandı', cls: 'st-tamamlandi' },
+    gelmedi: { label: '💤 Gelmedi', cls: 'st-gelmedi' }
+  };
+  function loadAppointments() {
+    listEl.innerHTML = '<div class="mem-card" style="text-align:center;color:var(--muted)"><span class="spin dark"></span> Randevuların yükleniyor…</div>';
+    var a = readAuth();
+    if (!a) { renderAuth(); return; }
+    fetch(gwq('/api/member/appointments'), { headers: { accept: 'application/json', authorization: 'Bearer ' + a.token } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        if (x.status === 401 || (x.j && x.j.error && String(x.j.error).indexOf('Oturum') === 0)) { clearAuth(); renderAuth(); return; }
+        if (!x.ok) {
+          listEl.innerHTML = '<div class="mem-card empty-box">📡 ' + esc((x.j && x.j.error) || 'Randevular yüklenemedi.') + '<br><button type="button" class="btn btn-ghost" id="appt-retry" style="margin-top:10px">🔄 Tekrar dene</button></div>';
+          var rb = document.getElementById('appt-retry');
+          if (rb) rb.addEventListener('click', loadAppointments);
+          return;
+        }
+        renderAppointments(x.j.items || []);
+      })
+      .catch(function () {
+        listEl.innerHTML = '<div class="mem-card empty-box">📡 Bağlantı hatası — internetini kontrol et.<br><button type="button" class="btn btn-ghost" id="appt-retry" style="margin-top:10px">🔄 Tekrar dene</button></div>';
+        var rb2 = document.getElementById('appt-retry');
+        if (rb2) rb2.addEventListener('click', loadAppointments);
+      });
+  }
+
+  function bizHref(slug) {
+    var base = (document.getElementById('page-cfg') || {}).textContent;
+    var bd = '';
+    try { bd = base ? (JSON.parse(base).baseDomain || '') : ''; } catch (_) {}
+    if (bd) return 'https://' + slug + '.' + bd;
+    return gwq('/isletme/' + encodeURIComponent(slug));
+  }
+
+  function renderAppointments(items) {
+    if (!items.length) {
+      listEl.innerHTML = '<div class="mem-card empty-box">📭 Henüz randevun yok.<br><span style="font-size:.85rem">Bir işletme seçip saniyeler içinde randevu alabilirsin.</span><br><a class="btn btn-geo" style="margin-top:12px" href="/">🏠 İşletmelere göz at</a></div>';
+      return;
+    }
+    var now = Date.now();
+    listEl.innerHTML = items.map(function (it) {
+      var st = ST[it.status] || { label: it.status, cls: 'st-gelmedi' };
+      var cancellable = (it.status === 'beklemede' || it.status === 'onaylandi') && new Date(it.date).getTime() > now;
+      return '<div class="appt">' +
+        '<div class="appt-main">' +
+        '<div class="appt-biz"><a href="' + esc(bizHref(it.providerSlug || '')) + '" style="color:inherit;text-decoration:none">' + esc(it.providerName) + '</a></div>' +
+        '<div class="appt-svc">' + esc(it.serviceName || 'Hizmet') + (it.staffName ? ' · 👤 ' + esc(it.staffName) : '') + (typeof it.price === 'number' && it.price > 0 ? ' · ' + esc(fmtPrice(it.price, it.currency)) : '') + '</div>' +
+        '<div class="appt-when">📅 ' + esc(fmtWhen(it.date)) + '</div>' +
+        '<div class="appt-code" style="margin-top:3px">No: ' + esc(it.code) + '</div>' +
+        '</div>' +
+        '<div style="display:grid;gap:8px;justify-items:end">' +
+        '<span class="st-badge ' + st.cls + '">' + esc(st.label) + '</span>' +
+        (cancellable ? '<button type="button" class="appt-cancel" data-id="' + esc(it.id) + '" data-code="' + esc(it.code) + '">İptal Et</button>' : '') +
+        '</div></div>';
+    }).join('');
+    listEl.querySelectorAll('.appt-cancel').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var code = b.getAttribute('data-code');
+        if (!confirm('Randevu No ' + code + ' iptal edilsin mi? Bu işlem geri alınamaz.')) return;
+        b.disabled = true; b.textContent = 'İptal ediliyor…';
+        cancelAppointment(b.getAttribute('data-id'));
+      });
+    });
+  }
+
+  function cancelAppointment(id) {
+    var a = readAuth();
+    if (!a) { renderAuth(); return; }
+    fetch(gwq('/api/member/appointments/' + encodeURIComponent(id) + '/cancel'), {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json', authorization: 'Bearer ' + a.token },
+      body: '{}'
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        if (x.ok) {
+          toast('Randevu iptal edildi.', 'ok');
+          loadAppointments();
+        } else {
+          toast((x.j && x.j.error) || 'İptal edilemedi.', 'err');
+          loadAppointments();
+        }
+      })
+      .catch(function () {
+        toast('Bağlantı hatası — tekrar dene.', 'err');
+        loadAppointments();
+      });
+  }
+
+  // ---- giriş
+  document.getElementById('login-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    hideErr('l-err');
+    var phone = document.getElementById('l-phone').value.trim();
+    var pass = document.getElementById('l-pass').value;
+    if (phone.replace(/\\D/g, '').length < 10) return showErr('l-err', 'Geçerli bir telefon numarası gir.');
+    if (!pass) return showErr('l-err', 'Şifreni gir.');
+    var btn = this.querySelector('button[type="submit"]');
+    setBusy(btn, true, 'Giriliyor…');
+    fetch(gwq('/api/member/login'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: phone, password: pass })
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        setBusy(btn, false, '🔑 Giriş Yap');
+        if (x.ok && x.j && x.j.token) {
+          saveAuth({ token: x.j.token, member: x.j.member });
+          toast('Hoş geldin, ' + (x.j.member.name || '') + '! 👋', 'ok');
+          renderLogged(x.j.member);
+        } else {
+          showErr('l-err', (x.j && x.j.error) || 'Giriş yapılamadı.');
+        }
+      })
+      .catch(function () { setBusy(btn, false, '🔑 Giriş Yap'); showErr('l-err', 'Bağlantı hatası — tekrar dene.'); });
+  });
+
+  // ---- kayıt
+  document.getElementById('register-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    hideErr('r-err');
+    var name = document.getElementById('r-name').value.trim();
+    var phone = document.getElementById('r-phone').value.trim();
+    var email = document.getElementById('r-email').value.trim();
+    var pass = document.getElementById('r-pass').value;
+    if (name.length < 2) return showErr('r-err', 'Adını yaz (en az 2 harf).');
+    if (phone.replace(/\\D/g, '').length < 10) return showErr('r-err', 'Geçerli bir telefon numarası gir.');
+    if (pass.length < 6) return showErr('r-err', 'Şifre en az 6 karakter olmalı.');
+    var btn = this.querySelector('button[type="submit"]');
+    setBusy(btn, true, 'Kaydediliyor…');
+    fetch(gwq('/api/member/register'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: name, phone: phone, email: email, password: pass })
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        setBusy(btn, false, '✨ Üye Ol');
+        if (x.ok && x.j && x.j.token) {
+          saveAuth({ token: x.j.token, member: x.j.member });
+          toast('Üyeliğin oluşturuldu! 🎉', 'ok');
+          renderLogged(x.j.member);
+        } else {
+          showErr('r-err', (x.j && x.j.error) || 'Kayıt oluşturulamadı.');
+        }
+      })
+      .catch(function () { setBusy(btn, false, '✨ Üye Ol'); showErr('r-err', 'Bağlantı hatası — tekrar dene.'); });
+  });
+
+  // ---- çıkış
+  document.getElementById('logout-btn').addEventListener('click', function () {
+    clearAuth();
+    toast('Çıkış yapıldı. Görüşürüz! 👋', 'ok');
+    renderAuth();
+  });
+
+  // ---- başlat: token varsa profil yoksa auth göster
+  (function init() {
+    var a = readAuth();
+    if (!a) { renderAuth(); return; }
+    fetch(gwq('/api/member/me'), { headers: { accept: 'application/json', authorization: 'Bearer ' + a.token } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        if (x.ok && x.j && x.j.member) {
+          renderLogged(x.j.member);
+        } else {
+          clearAuth();
+          renderAuth();
+        }
+      })
+      .catch(function () { renderAuth(); });
+  })();
 })();
 `;

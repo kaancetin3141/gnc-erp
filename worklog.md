@@ -8783,3 +8783,37 @@ Stage Summary:
 - Bu: CRM fix'leri + premium randevu + ana-site Cubiq kartı + portfolyo v2 + cubiq kurulumu (3006) + nginx + hepsi
 - Sonrasında: sudo certbot --nginx -d cubiq.gncinc.online (SSL), curl 127.0.0.1:3006 kontrol
 - DNS: wildcard * A kaydı varsa cubiq.gncinc.online otomatik çözülür; yoksa Hostinger'a A · cubiq · IP
+
+---
+Task ID: 2-ssl
+Agent: general-purpose subagent
+Task: deploy/otomatik-sertifika.sh — yeni işletmeler için otomatik SSL/vhost provisioning
+
+Work Log:
+- deploy/otomatik-sertifika.sh oluşturuldu (verbatim, 177 satır): CRM API'den (127.0.0.1:3000/api/public/providers) slug listesi çeker, her slug için /etc/nginx/sites-available/gnc-isletme-<slug> vhost'u (80 → 127.0.0.1:3002) yoksa yazar, nginx -t başarılıysa sites-enabled'a symlink + reload yapar
+- SSL akışı: has_cert ile /etc/letsencrypt/live/<fqdn>/fullchain.pem kontrolü; DNS çözümlenmiyorsa (dig +short A) certbot DENENMEZ → Let's Encrypt rate-limit koruması; cert yoksa certbot --nginx -d <slug>.DOMAIN --keep-until-expiring --redirect (idempotent); certbot çıktısı ayrı log dosyasına (/var/log/otomatik-sertifika-certbot.log)
+- Güvenlik/koruma: flock (/run/otomatik-sertifika.lock) ile eşzamanlı çalışma engeli; slug regex doğrulaması (^[a-z0-9][a-z0-9-]{1,60}$); rezerve alt alan adları atlanır (randevu|www|crm|app|admin|api|ana|panel|mail|ftp|fruitstorm|meyvepatlat|kaloriai|cubiq); nginx -t başarısız olursa symlink geri silinip reload ile servis korunur
+- randevu.<DOMAIN> ana liste vhost'u da otomatik kurulur (gnc-randevu); ortam değişkenleriyle özelleştirilebilir: DOMAIN, CRM_API, RANDEVU_PORT, ADMIN_EMAIL; başlıkta cron kurulum talimatı (/etc/cron.d/otomatik-sertifika, saatte bir :17)
+- Doğrulama: chmod +x uygulandı (-rwxrwxr-x), bash -n TEMİZ → SYNTAX-OK; içeriğe dokunulmadı (düzeltme gerekmedi)
+
+Stage Summary:
+- Yeni işletme açılınca manuel vhost/SSL işi kalmıyor: script cron'la slug'ları keşfeder, vhost + Let's Encrypt sertifikasını otomatik üretir (DNS hazır olanlar için)
+- Sunucuya geçişte tek seferlik kurulum: sudo cp deploy/otomatik-sertifika.sh /usr/local/bin/ + cron.d kaydı (başlıktaki 3 komut)
+- guncelle-gnc.sh / kurulum.sh akışlarıyla uyumlu: 3002 randevu portu ve {slug}.gncinc.online düzeni korunuyor; certbot logu ayrı tutuluyor
+
+---
+Task ID: 4-fix
+Agent: Sub ajan (E2E fixup)
+Task: Sanal personel modu (staffId=null) + üyelik + çakışma koruması E2E testi (/tmp/fixup-test.sh)
+
+Work Log:
+- /tmp/fixup-test.sh (v2) yazıldı ve koşuldu → PASS=14 FAIL=0
+- Adım 1-8: CRM 200; üye girişi (05559998877/test1234) token OK; sik-kuafor ilk hizmet Manikür; +1..+10 gün döngüsü → 2026-10-23 09:00 (16 boş slot); randevu staffId=null ile 200/onaylandi (code=419BWUK0); booked slot availability'de False (16→14 boş — 45dk hizmet 2 slot kapatıyor); üye listesinde göründü (code eşleşti); cancel → {"id":...,"status":"iptal"}
+- BULGU 1 (test altyapısı): bun scripti /tmp'den çalışınca ".prisma/client/default" bulunamıyor (global bun cache'i @prisma/client@7.10.1 ile proje client'ı uyuşmuyor; modül çözümü dosya konumuna göredir). FIX: script önce projeye kopyalanıp oradan çalıştırılıyor (run_in_proj) → deleteMany çalışıyor
+- BULGU 2 (davranış): sik-kuafor'un 3 personeli VAR; Manikür'ün 1 staffService bağlantısı (Ayşe Hanım) → staffId=null "any" yolunu tetikliyor, randevu Ayşe'ye atanıyor; aynı saat 2. istek 409 "Seçilen zaman için müsait personel yok" (tek personel). Sanal yol yine de doğrulandı: staffService bağlantısı OLMAYAN tmp hizmet ("E2E Sanal Hizmet (tmp)") ile staffId=null → staffId=null kayıt + availability'de slot False + 2. istek 409 "Seçilen zaman dolu, lütfen başka saat deneyin" (beklenen sanal mesaj)
+- Cleanup: 3 test adı (Sanal Test Musteri / Sanal Cakisma Testi / Sanal Virtual Musteri) deleteMany → 0 artık; tmp hizmet silindi; DB doğrulaması "temiz"
+
+Stage Summary:
+- Sanal personel modu E2E tamamen YEŞİL: personelsiz işletme randevu alabiliyor, availability çakışmayı gösteriyor, çift rezervasyon 409 ile engelleniyor, üyelik giriş/liste/iptal akışı çalışıyor
+- Test scripti kalıcı: /tmp/fixup-test.sh (yeniden koşturulabilir; idempotent, kendi artıklarını siliyor)
+- Not: task senaryosundaki "409 Seçilen zaman dolu" mesajı yalnız personelsiz hizmette (sanal mod) dönüyor; personelli hizmette any-path 409 "müsait personel yok" dönüyor — ikisi de doğru davranış

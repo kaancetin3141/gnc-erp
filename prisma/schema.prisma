@@ -1267,6 +1267,23 @@ model AppointmentCustomer {
 }
 
 // ============================================================
+// ÜYELİK — GNC Randevu müşteri sitesi (3002) uç kullanıcı hesapları.
+// Müşteri telefon+şifre ile üye olur; "Randevularım" ekranından TÜM
+// işletmelerdeki randevularını görüntüler/iptal eder. Telefon tekil
+// kimliktir (normalleştirilmiş rakamlar: 905xxxxxxxxx).
+// ============================================================
+model Member {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String   @unique // normalleştirilmiş: 905xxxxxxxxx (giriş/kimlik anahtarı)
+  email        String?
+  passwordHash String   // bcrypt (bcryptjs)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ============================================================
 // SİTE YÖNETİMİ — Aidat Takip, Site Sakini, Kapıcı, Şikayet
 // ============================================================
 

@@ -13,8 +13,10 @@ import {
   STYLE_CSS,
   HOME_JS,
   DETAIL_JS,
+  MEMBER_JS,
   homePage,
   detailPage,
+  memberPage,
   notFoundPage,
   serverErrorPage,
   type Json,
@@ -166,7 +168,15 @@ async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | 
   if (r.status === 404) {
     // Alt alan adı modunda "tüm işletmelere dön" hedefi: randevu.ANA_DOMAIN ana liste
     const randevuHome = subdomain && BASE_DOMAIN ? `https://${listHost()}` : null;
-    return { body: notFoundPage(slug, gwPort, randevuHome), status: 404 };
+    // Hata sayfasını zenginleştir: en popüler işletmelerden öneriler göster
+    let sugg: Json[] = [];
+    try {
+      const all = await getBusinesses();
+      sugg = all.filter((b) => b.slug !== slug).slice(0, 6);
+    } catch {
+      // liste alınamadıysa önerisiz 404 gösterilir
+    }
+    return { body: notFoundPage(slug, gwPort, randevuHome, sugg, subdomain && BASE_DOMAIN ? BASE_DOMAIN : undefined), status: 404 };
   }
   if (!r.ok || !r.data || !r.data.provider) {
     throw new UpstreamError('İşletme bilgileri şu anda alınamıyor — ana uygulama yanıt vermiyor olabilir.');
@@ -273,6 +283,36 @@ Bun.serve({
         return json(out);
       }
 
+      // --- API: üyelik proxy'si (CRM /api/public/member/* uçlarını aynı-origin yapar)
+      const mMember = path.match(/^\/api\/member\/(.+)$/);
+      if (mMember) {
+        const rest = mMember[1].replace(/\/+$/, '');
+        const auth = req.headers.get('authorization');
+        const headers: Record<string, string> = { accept: 'application/json' };
+        if (auth) headers['authorization'] = auth;
+        if (method === 'GET' || method === 'HEAD') {
+          const r = await upstream('/api/public/member/' + rest, { headers });
+          if (r.data) return json(r.data, r.ok ? 200 : r.status);
+          return json({ error: 'Üyelik servisi şu anda yanıt vermiyor. Birazdan tekrar dene.' }, 502);
+        }
+        if (method !== 'POST') return json({ error: 'Bu uç için GET veya POST kullan.' }, 405);
+        let mbody: Json;
+        try {
+          const raw = await req.text();
+          mbody = (raw.trim() ? JSON.parse(raw) : {}) as Json; // gövdesiz POST (ör. cancel) kabul edilir
+        } catch {
+          return json({ error: 'İstek gövdesi okunamadı.' }, 400);
+        }
+        const r = await upstream('/api/public/member/' + rest, {
+          method: 'POST',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify(mbody),
+          timeoutMs: 12000,
+        });
+        if (r.data) return json(r.data, r.ok ? 200 : r.status);
+        return json({ error: 'Üyelik servisi şu anda yanıt vermiyor. Birazdan tekrar dene.' }, 502);
+      }
+
       // --- API: randevu oluştur (upstream'e ilet)
       if (path === '/api/book') {
         if (method !== 'POST') return json({ success: false, error: 'Bu uç için POST kullan.' }, 405);
@@ -306,6 +346,7 @@ Bun.serve({
 
       // --- sayfalar
       if (path === '/' && method === 'GET') return htmlRes(homePage(BASE_DOMAIN, gwPort));
+      if (path === '/uyelik' && method === 'GET') return htmlRes(memberPage(BASE_DOMAIN, gwPort));
 
       const mDetail = path.match(/^\/isletme\/([^/]+)$/);
       if (mDetail && method === 'GET') {
@@ -318,12 +359,20 @@ Bun.serve({
       if (path === '/assets/style.css' && method === 'GET') return assetRes(STYLE_CSS, 'text/css');
       if (path === '/assets/home.js' && method === 'GET') return assetRes(HOME_JS, 'text/javascript');
       if (path === '/assets/detail.js' && method === 'GET') return assetRes(DETAIL_JS, 'text/javascript');
+      if (path === '/assets/member.js' && method === 'GET') return assetRes(MEMBER_JS, 'text/javascript');
 
       // --- leaflet varlıkları (self-hosted harita kütüphanesi)
       const lf = LEAFLET_FILES[path];
       if (lf && (method === 'GET' || method === 'HEAD')) return leafletRes(lf);
 
-      return htmlRes(notFoundPage(undefined, gwPort), 404);
+      // Bilinmeyen sayfa: önerili 404
+      let sugg: Json[] = [];
+      try {
+        sugg = (await getBusinesses()).slice(0, 6);
+      } catch {
+        // öneri alınamadı
+      }
+      return htmlRes(notFoundPage(undefined, gwPort, null, sugg, subSlug && BASE_DOMAIN ? BASE_DOMAIN : undefined), 404);
     } catch (e: any) {
       const isUp = e instanceof UpstreamError;
       console.error(`[customer-page] ${method} ${path} →`, isUp ? e.message : e?.message || e);
