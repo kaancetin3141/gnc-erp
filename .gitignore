@@ -57,3 +57,7 @@ db/custom.db
 db/*.db
 db/.pdf-share-secret
 db/backups/
+
+# Üyelik auth HMAC secret — asla repoya girmez (görev 8-sec: untrack + rotate)
+db/.member-secret
+db/*.db-journal
