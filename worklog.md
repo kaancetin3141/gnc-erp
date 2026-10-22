@@ -8920,3 +8920,19 @@ Stage Summary:
 - Dikkat: member token'lar secret rotate nedeniyle sıfırlandı (kullanıcılar tek sefer yeniden giriş yapar)
 
 Report: tail -30 output.
+
+---
+Task ID: install-superpowers
+Agent: Z.ai Code (main)
+Task: https://github.com/obra/superpowers kurulumu ve fayda değerlendirmesi
+
+Work Log:
+- Repo incelendi (shallow clone /tmp/superpowers): Claude Code/Codex/Cursor vb. için skill-tabanlı yazılım geliştirme metodolojisi (15 skill + hooks)
+- Ortamda /plugin CLI ve ~/.claude olmadığı için resmi plugin kurulumu MÜMKÜN DEĞİL (skill kayıtı platform-managed)
+- Alternatif kurulum: skills/ → /home/z/my-project/.agent-skills/superpowers/ (playbook kütüphanesi, 716K, 15 SKILL.md)
+- Kullanım kılavuzu: .agent-skills/superpowers/README.md (skill haritası + subagent prompt şablonu)
+
+Stage Summary:
+- Superpowers artık yerel playbook olarak kurulu; ana agent ve subagent'lar "Önce .agent-skills/superpowers/<skill>/SKILL.md oku ve uygula" talimatıyla kullanabilir
+- Öncelikli: systematic-debugging (yeni işletme randevu bug'ı), brainstorming (kayıt olma özelliği spec'i), verification-before-completion
+- Sınırlar: hooks/session-start otomasyonu çalışmaz (Claude Code'a özel); TDD skill'i bu projedeki "test kodu yazma yasağı" nedeniyle yalnızca ilke düzeyinde uygulanır
