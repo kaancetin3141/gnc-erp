@@ -133,6 +133,36 @@ async function getBusinesses(): Promise<Json[]> {
   return items;
 }
 
+// 404 öneri sıralaması: arama terimi işletme ADI yanında HİZMET adı/etiketinde de
+// aranır; hizmet eşleşmesi en güçlü sinyaldir ("manik" → Manikür hizmetli kuaför).
+// Eşleşen hizmet adı _svcMatch alanına yazılır (arayüzde chip olarak gösterilir).
+function rankSuggestions(items: Json[], q: string, excludeSlug?: string, limit = 6): Json[] {
+  const term = trLower(q).trim().slice(0, 64);
+  const pool = excludeSlug ? items.filter((b) => b.slug !== excludeSlug) : items;
+  if (!term) return pool.slice(0, limit);
+  const scored = pool.map((b) => {
+    let score = 0;
+    let svcMatch = '';
+    const services = Array.isArray(b.services) ? (b.services as Json[]) : [];
+    for (const sv of services) {
+      const nm = trLower(sv.name);
+      const cat = trLower(sv.category);
+      if (nm === term) { score = Math.max(score, 100); svcMatch = String(sv.name || ''); break; }
+      if (nm.includes(term)) { score = Math.max(score, 60); if (!svcMatch) svcMatch = String(sv.name || ''); }
+      else if (cat && (cat === term || cat.includes(term))) { score = Math.max(score, 40); if (!svcMatch) svcMatch = String(sv.category || ''); }
+    }
+    if (trLower(b.name).includes(term)) score += 30;
+    const hay = trLower([b.address, b.district, b.city, b.type].join(' '));
+    if (hay.includes(term)) score += 10;
+    return { b, score, svcMatch };
+  });
+  scored.sort((x, y) => y.score - x.score);
+  return scored
+    .filter((x) => x.score > 0)
+    .slice(0, limit)
+    .map((x) => (x.svcMatch ? { ...x.b, _svcMatch: x.svcMatch } : x.b));
+}
+
 // ---------------------------------------------------------------- yanıtlar
 
 const json = (data: unknown, status = 200) =>
@@ -163,20 +193,20 @@ const leafletRes = (f: { data: string | Uint8Array; type: string }) =>
 
 // ---------------------------------------------------------------- sayfa render
 
-async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | null): Promise<{ body: string; status: number }> {
+async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | null, q?: string): Promise<{ body: string; status: number }> {
   const r = await upstream(`/api/public/providers/${encodeURIComponent(slug)}`);
   if (r.status === 404) {
     // Alt alan adı modunda "tüm işletmelere dön" hedefi: randevu.ANA_DOMAIN ana liste
     const randevuHome = subdomain && BASE_DOMAIN ? `https://${listHost()}` : null;
-    // Hata sayfasını zenginleştir: en popüler işletmelerden öneriler göster
+    // Hata sayfasını zenginleştir: terim hizmet adlarında da aranır (hizmet eşleşmesi öne çıkar)
     let sugg: Json[] = [];
     try {
       const all = await getBusinesses();
-      sugg = all.filter((b) => b.slug !== slug).slice(0, 6);
+      sugg = rankSuggestions(all, q || '', slug);
     } catch {
       // liste alınamadıysa önerisiz 404 gösterilir
     }
-    return { body: notFoundPage(slug, gwPort, randevuHome, sugg, subdomain && BASE_DOMAIN ? BASE_DOMAIN : undefined), status: 404 };
+    return { body: notFoundPage(slug, gwPort, randevuHome, sugg, subdomain && BASE_DOMAIN ? BASE_DOMAIN : undefined, q), status: 404 };
   }
   if (!r.ok || !r.data || !r.data.provider) {
     throw new UpstreamError('İşletme bilgileri şu anda alınamıyor — ana uygulama yanıt vermiyor olabilir.');
@@ -226,7 +256,7 @@ Bun.serve({
 
       // --- alt alan adı kökü: {slug}.BASE_DOMAIN/ → o işletmenin detay sayfası
       if (subSlug && path === '/') {
-        const page = await renderDetail(subSlug, true, gwPort);
+        const page = await renderDetail(subSlug, true, gwPort, url.searchParams.get('q') || undefined);
         return htmlRes(page.body, page.status);
       }
 
@@ -355,7 +385,7 @@ Bun.serve({
       const mDetail = path.match(/^\/isletme\/([^/]+)$/);
       if (mDetail && method === 'GET') {
         const slug = safeDecode(mDetail[1]);
-        const page = await renderDetail(slug, false, gwPort);
+        const page = await renderDetail(slug, false, gwPort, url.searchParams.get('q') || undefined);
         return htmlRes(page.body, page.status);
       }
 
@@ -369,14 +399,15 @@ Bun.serve({
       const lf = LEAFLET_FILES[path];
       if (lf && (method === 'GET' || method === 'HEAD')) return leafletRes(lf);
 
-      // Bilinmeyen sayfa: önerili 404
+      // Bilinmeyen sayfa: önerili 404 — ?q= terimi hizmet adlarında da aranır
+      const nfq = (url.searchParams.get('q') || '').trim();
       let sugg: Json[] = [];
       try {
-        sugg = (await getBusinesses()).slice(0, 6);
+        sugg = rankSuggestions(await getBusinesses(), nfq);
       } catch {
         // öneri alınamadı
       }
-      return htmlRes(notFoundPage(undefined, gwPort, null, sugg, subSlug && BASE_DOMAIN ? BASE_DOMAIN : undefined), 404);
+      return htmlRes(notFoundPage(undefined, gwPort, null, sugg, subSlug && BASE_DOMAIN ? BASE_DOMAIN : undefined, nfq || undefined), 404);
     } catch (e: any) {
       const isUp = e instanceof UpstreamError;
       console.error(`[customer-page] ${method} ${path} →`, isUp ? e.message : e?.message || e);

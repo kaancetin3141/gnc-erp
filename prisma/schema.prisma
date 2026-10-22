@@ -1218,6 +1218,10 @@ model Appointment {
   provider      ServiceProvider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
   customerId    String?
   customer      AppointmentCustomer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  // Üyelik bağlantısı — GNC Randevu üyesi (opsiyonel: misafir randevularda null).
+  // Üye telefon değiştirse bile geçmişi memberId üzerinden takip edilir.
+  memberId      String?
+  member        Member?              @relation(fields: [memberId], references: [id], onDelete: SetNull)
   staffId       String?
   staff         Staff?               @relation(fields: [staffId], references: [id], onDelete: SetNull)
   serviceId     String?
@@ -1240,6 +1244,7 @@ model Appointment {
   @@index([staffId, date])
   @@index([status])
   @@index([customerId])
+  @@index([memberId])
 }
 
 // Kalıcı müşteri kayıt defteri — işletme bazlı müşteri profilleri.
@@ -1281,6 +1286,8 @@ model Member {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  appointments Appointment[]
 }
 
 // ============================================================

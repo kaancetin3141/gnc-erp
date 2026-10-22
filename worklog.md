@@ -9067,3 +9067,79 @@ Stage Summary:
 - Sistem şu an "gerçek çalışan program" seviyesinde: SaaS işletme açma → müşteri kaydı → randevu → iptal → hesap silme → otomasyon → SSL provisioning script zinciri uçtan uca çalışıyor
 - RİSK: sandbox OOM (next-dev ~2.2GB RSS ile 3 kez öldürüldü, watchdog/nohup toparlıyor) — prod pm2 etkilenmez; üye-randevu eşleşmesi telefon eki bazlı (şema değişikliği yapılabilir sonraki tur); cron-automation için prod'da service account önerilir
 - Sonraki turlar (cron 470742): üye-randevu memberId bağlantısı, hizmet bazlı 404 arama, PWA bandını kalıcı kapatma, mobil sidebar backdrop fix, rapor grafikleri
+---
+Task ID: feat-veri
+Agent: general-purpose subagent
+Task: memberId FK + backfill + admin üye yönetimi
+
+Work Log:
+- worklog.md son 250 satır okundu (dev-turu-final + fix-cust: üye sistemi telefon-eki eşleşmeli, üye silme API'si mevcut, admin panel sekme deseni hazır)
+- ŞEMA: prisma/schema.prisma — Appointment.memberId String? + member relation (onDelete: SetNull, misafir randevu null kalır) + @@index([memberId]); Member.appointments relation eklendi. `bun run db:push` (db backup /tmp'ye alınarak). KAYIT SAYILARI önce/sonra: Appointment 10→10, Member 3→3, AppointmentCustomer 0→0 — veri kaybı YOK
+- BACKFILL (scripts/_tmp-backfill-member-id.ts, iş bitince SİLİNDİ): mevcut üyeler telefon abone numarası (son 10 hane, normalizePhoneDigits/phoneSuffix) ile randevulara eşleştirildi → 2/10 randevu bağlandı (QA Musteri 905327777777→1, QA Musteri 261022-0331 905329999999→1; Test Uye E2E 905559998877→0, randevusu yoktu). Rastgele 2 üye kontrolü: her ikisinde memberId dolu + ham telefon endsWith suffix doğrulaması PASS
+- API yazma yolu (src/app/api/public/appointments/route.ts): Authorization'da GEÇERLİ üye token'ı varsa (bearerToken+verifyToken+aktif üye) create data'ya memberId set edilir; token yok/geçersiz/silinmiş üye → akış değişmez (misafir). AuditLog after alanına memberId eklendi
+- Eşleştirme yükseltmesi (2 katman: memberId FK OR telefon eki — geriye dönük uyumluluk): /api/public/member/appointments (liste: FK sorgusu + mevcut raw-SQL telefon adayları birleştirilir, tekilleştirilir, savunma endsWith korunur), /appointments/[id]/cancel (sahiplik: memberId===member.id || suffix eşleşmesi), /api/public/member/me DELETE cascade (memberId ile bağlananlar + telefon adayları, Set karma ile tekilleştirme)
+- YENİ API src/app/api/admin/members/route.ts: GET ?q=&limit=&offset= (ad/telefon arama — telefon girişi normalize edilip 90/0 öneki kırparak contains; limit 1..100 clamp; tenantScope deseni: Member tenant'sız olduğu için kapsam appointments.some.provider.tenantId üzerinden — superadmin platform geneli, admin kendi tenant'ı; _count ile randevu sayısı), DELETE ?id= | body{id} (users.manage yetkisi; admin için tenant dışı üye 404 — bilgi sızması yok; cascade = memberId FK + telefon-eki adayları, ham SQL + JS endsWith savunma, $transaction; audit log action=delete entity=member)
+- YENİ UI src/components/admin/members-tab.tsx (admin-panel.tsx'e "Üyeler" sekmesi — Müşteriler & Roller'den sonra, UserRound ikonu): TanStack Query + 350ms debounce'lu sunucu-taraflı arama, tablo (Ad, Telefon — 905xx→05xx görüntü formatı, E-posta, Kayıt Tarihi, Randevu sayısı badge, Sil), sayfalama (prev/next, 20/sayfa), silme → shadcn confirm diyaloğu (randevu sayısı uyarılı) + sonner toast + invalidate
+- DOĞRULAMA (curl + agent-browser, admin/314159):
+  · kimliksiz /api/admin/members → 401 ✓
+  · üye kaydı (QA Uye Yonetim <ts>, 0533 444 303) → token; token'lı POST /api/public/appointments (Sakal Traşı 23 Eki 11:00) → DB'de memberId DOLU (üye+telefon ilişkisi) ✓
+  · GET /api/public/member/appointments (token) → 1 kayıt (FK eşleşmesi) ✓; üye iptal → 200 iptal (FK sahipliği) ✓
+  · token'sız misafir randevu → DB memberId=null ✓; eski üye telefonuyla misafir randevu → üyenin listesinde göründü (telefon-eki geriye dönük uyumluluk) ✓
+  · tenant-scope: yeni tenant + admin ile GET → total:0, başka tenant üyesine DELETE → 404 (test tenant'ı sonra cascade silindi) ✓
+  · UI: Üyeler sekmesi 4 üye listelendi (feat-veri-01), "QA Uye" araması 1 satıra düştü (feat-veri-02), Sil → confirm diyaloğu "1 randevu da silinir" (feat-veri-03), Evet, Sil → toast "Üye silindi · 1 randevu da silindi" (feat-veri-04)
+  · silme sonrası: üye login → 401 ✓; DB'de üye + randevusu yok ✓; misafir randevular etkilenmedi ✓; audit delete/member kaydı oluştu ✓
+- OPS: next-server bu oturumda 2 kez OOM ile öldürüldü (dmesg ~2.0-2.3GB RSS; bilinen sandbox sorunu) → worklog precedansıyla nohup restart, her ikisinde de 3-9sn'de providers 200. Paralel ajanın "QA Grafik 1-12" test randevuları görüldü — DOKUNULMADI (kapsam dışı)
+- TEMİZLİK: kendi test artıkları SIFIR — QA Uye Yonetim üyesi + randevusu admin UI silme akışıyla silindi; 2 misafir QA randevusu (ZLRYY357 + QA Misafir Guest) prisma ile silindi; /tmp ve scripts/_tmp-* dosyaları silindi. Final: Member=3 (başlangıçla aynı), Appointment=34 (24'ü paralel ajanın QA Grafik verisi — bana ait değil)
+- LINT: 7 hata — TAMAMI baseline (6× .agent-skills/.../server.cjs + 1× scripts/qa-cross-tenant-write-e2e.js); bu görevden yeni hata 0. tsc --noEmit: 0 hata
+- Ekran görüntüleri: tool-results/feat-veri-01-uyeler-sekmesi, 02-uyeler-arama, 03-sil-diyalog, 04-silme-sonrasi (.png)
+
+Stage Summary:
+- Üye-randevu ilişkisi artık KALICI: Appointment.memberId FK + yeni randevularda otomatik bağlama + mevcut veri backfill'i (2 randevu); Randevularım/iptal/silme akışları FK veya telefon ekiyle çift katman eşleşiyor (numara değiştirse bile FK geçmişi korur)
+- Admin üye yönetimi CANLI: /api/admin/members (arama+sayfalama+tenantScope) + Admin Paneli "Üyeler" sekmesi (liste/arama/randevu sayısı/cascade'li silme) — E2E kanıtlı, silinen üye login 401
+- Sıfır veri kaybı (push önce/sonra sayılar aynı), sıfır test kalıntısı, sıfır yeni lint hatası
+- Kalan riskler: ①sandbox OOM — next-dev ~2GB RSS ile periyodik ölüyor (nohup/ensure-server toparlıyor; prod etkilenmez) ②üye telefonu 10 haneli girilirse normalize "9005..." saklıyor (mevcut normalizePhoneDigits davranışı — eşleştirme tutarlı çalışıyor, biçim sadece görüntüde hafif bozuk) ③members-tab ilk açılışta ilk derleme 12sn sürerken "Failed to fetch" gösterebilir (retry/refresh butonu ile çözülür — dev-mode derleme gecikmesi) ④paralel ajanın QA Grafik randevuları DB'de duruyor (sahibi temizlemeli)
+---
+
+---
+Task ID: feat-rapor
+Agent: general-purpose subagent
+Task: rapor özet API + grafik UI
+
+Work Log:
+- BACKEND: src/app/api/reports/summary/route.ts (YENİ) — GET /api/reports/summary; auth = getSession + requirePermission('reports.view') + stock-rolü 403 (/api/reports deseni); kapsam = tenantScope (superadmin platform geneli + opsiyonel ?tenantId=, admin kendi tenantı — admin tenantId isterse 403). Query: days (default 30, clamp 1..90)
+- DB gerçeklik teyidi: Appointment.tenantId YOK → provider üzerinden kapsam; status değerleri DB'de: beklemede|onaylandi|reddedildi|tamamlandi|iptal|gelmedi (görevdeki "bekliyor" ≙ DB "beklemede" → sözleşmede bekliyor anahtarı); SQLite DateTime INTEGER ms saklıyor → gün gruplama raw SQL strftime('%Y-%m-%d', date/1000, 'unixepoch') + providerId IN + date>=ms (index [providerId,date] dostu); durum/hizmet/personel Prisma groupBy; top5 isim çözümleme için ayrı tek sorgu. totalMembers: platform=member.count(), tenant kapsamı=randevu telefonu ↔ Member.phone normalize eşleşmesi (905xxxxxxxxx; telefon eki "0532 999 99 99"/"+90 5.." formatları normalize ediliyor)
+- Sözleşme: {days, scope{platformWide,tenantId}, appointmentsByDay[{date,total,onaylandi,iptal}] (boş günler 0), statusDistribution{onaylandi,bekliyor,iptal,tamamlandi,reddedildi,gelmedi}, topServices[5], topStaff[5], totalMembers, totalAppointments, upcomingCount (bugün+ gelecek, iptal/reddedildi hariç)}
+- curl KANIT: kimliksiz→401; admin (demo@anadolu.com) days=30→200 tüm alanlar dolu (dist 5/1/3/1, topServices Saç Kesimi 3, chips members=2 appts=10 upcoming=7); days=90→22-52ms (hedef <500ms ✓); admin+tenantId→403; superadmin (admin@gnccrm.app) platformWide=true members=3(+4. üye), ?tenantId=kuafor-tenant→10 randevu, ?tenantId=cafe-tenant→0 + boş diziler (graceful)
+- FRONTEND: src/components/reports/appointment-summary-cards.tsx (YENİ) — recharts MEVCUT (package.json 2.15.4, rapor görünümü zaten kullanıyor) → bağımlılık eklenmedi. 3 kart + çip satırı: ①"30 Günlük Randevu Trendi" alan grafiği (emerald gradient) ②"Durum Dağılımı" donut (onaylandı=emerald, bekliyor=amber, iptal=rose, tamamlandı=stone — mavi/indigo YOK) + merkezde toplam + legend ③"En Çok Talep Edilen Hizmetler" + "En Aktif Personel" yatay CSS bar ④4 özet çipi (Toplam Üye/Toplam Randevu/Yaklaşan/Dönem İçi). 7/30/90 gün seçici; loading skeleton; hata kartı (yeniden dene); boş veri "Bu dönemde veri yok"; mobil tek kolon (grid-cols-1 baz, lg:3/md:2)
+- MONTAJ: reports-view.tsx — import + `{(sector === 'crm' || sector === 'appointments') && <AppointmentSummaryCards />}` (ReportsHeader altı, sektör içerik üstü)
+- BROWSER E2E (agent-browser, admin UI girişi demo@anadolu.com): Raporlar → "Randevu Özeti" bölümü gerçek veriyle render (Toplam Üye/34 randevu/11 yaklaşan; donut 19/5/5/5; Saç Kesimi 7; Ahmet Usta 11); 7/30/90 toggle çalışıyor; fresh-reload sonrası konsol error/warn = 0; DOM'da 9 svg/27 path. Screenshot'lar: tool-results/feat-rapor-01-reports-summary.png (desktop full), feat-rapor-02-90gun.png (90 gün), feat-rapor-03-mobile.png (390x844)
+- TEST VERİSİ: 24 randevu "QA Grafik 1..12" adıyla oluşturuldu (create scripti 2 kez koştu → 12+12; son 30 güne yayılmış, 6 hizmet × 3 personel × 4 durum, 2 gelecek tarihli) — grafikler kendini kanıtladı; sonrasında TÜMÜ SİLİNDİ (deleteMany startsWith 'QA Grafik', DB'de 0 kaldı, sqlite+API teyitli; geçici scriptler scripts/_tmp-feat-rapor-*.ts silindi)
+- NOT: dev server tur boyunca 2 kez OOM'da öldü (paralel ajan yükü) → auto-restart.sh watchdog nohup ile başlatıldı, şu an 200; ChunkLoadError'lar yalnız restart sonrası stale chunk'tan (fresh reload ile 0)
+
+Stage Summary:
+- Raporlar modülü artık gerçek randevu verisiyle beslenen 4 grafik kartı + özet çipleri içeriyor; yeni hafif /api/reports/summary ucu (90 günde ~20-50ms) tenant-scope'lu ve RBAC korumalı
+- API sözleşmesi görevdeki tanıma birebir uygun (bekliyor ≙ DB "beklemede"; +reddedildi/gelmedi ekstra anahtar); recharts zaten projede olduğu için yeni bağımlılık YOK
+- Test verisi tamamen temizlendi (24 QA Grafik randevusu silindi, 0 kaldı); lint baseline 7 hata (0 yeni), tsc dokunulan dosyalarda temiz
+- Kalan riskler: ①dev server OOM eğilimi devam ediyor (watchdog açık) ②totalMembers tenant kapsamı telefon-eşleşmesi bazlı (şema bağlantısı eklenirse gidilmeli) ③gün bucket'ları UTC (TR yerel saatle akşam randevuları +1 güne kayabilir) ④recharts bundle'ı zaten rapor sayfasında olduğundan ek maliyet yok
+
+---
+Task ID: arastirma-gelistirme-turu
+Agent: Z.ai Code (ana ajan) + 2 subagent (feat-veri, feat-rapor)
+Task: Araştırma + geliştirme turu (kullanıcı: "araştırmaya ve geliştirmeye devam et")
+
+Work Log:
+- BACKUP: Job 430621 → custom-20261022-043147.db (1.3MB, 1/20)
+- ARAŞTIRMA (web): sektör standardı özellik seti (Fresha/Booksy/Square): otomatik hatırlatıcı #1, müşteri profilleri, değerlendirme, ödeme/depozito, gömülebilir widget, takvim senk. Bu turda harici bağımlılık gerektirmeyenler seçildi
+- feat-veri (subagent): Appointment.memberId FK (optional, SetNull) + index + db push (0 veri kaybı: 10→10 randevu); backfill 2 eski randevu; rezervasyon API'si üye token'ıyla memberId bağlar; Randevularım/iptal/silme 2 katman (FK VEYA telefon eki — numara değişse bile geçmiş korunur); BONUS: /api/admin/members (arama+sayfalama+tenantScope) + Admin Paneli "Üyeler" sekmesi (liste/arama/cascade silme E2E kanıtlı)
+- feat-rapor (subagent): /api/reports/summary (tenant-scope+RBAC, 90 günde 20-50ms) + Raporlar modülüne 4 grafik kartı (30 gün trend area chart, durum donut, top hizmet/personel bar, 4 özet çipi; recharts zaten vardı, 0 yeni bağımlılık); 7/30/90 gün seçici; mobil tek kolon; E2E + screenshot
+- feat-rapor PWA + sidebar görevlerini de yaptı (worklog'a yazmamıştı — ana ajan doğruladı): install-prompt-provider.tsx KALICI kapatma (localStorage pwa-banner-dismissed + legacy anahtarlar); sidebar.tsx backdrop artık button (aria-label) + Escape kapatma + body scroll kilidi (yalnız <1024px)
+- Task tool timeout oldu ama iki ajan da işini tamamladı (worklog + git diff kanıt) — ana ajan devralıp tamamladı
+- TEMİZLİK (ana ajan): 3 eski QA üyesi (905327777777/905329999999/905559998877) zaten silinmişti; kalan 3 test üyesi (Feat UX Test, QA TekrarPlanla, QA Link UI) + 4 QA randevusu silindi → üye 0, randevu 8 (yalnız gerçek seed verisi); scripts/_tmp-fl-* ve tool-results/bash_* geçici dosyaları silindi
+- FİNAL: 5/5 port 200; /api/reports/summary kimliksiz 401 (güvenli); lint baseline 7 (0 yeni); tsc temiz
+
+Stage Summary:
+- Üye-randevu bağlantısı artık şema seviyesinde kalıcı (FK + backfill + çift katman eşleşme) — "numara değişen üye randevusunu kaybeder" riski kapandı
+- Admin paneli artık ÜYE YÖNETİYOR (arama/sayfalama/cascade silme) — SaaS yönetim bütünlüğü tamamlandı
+- Raporlar modülü görselleşti (4 grafik + özet çipleri) — "gerçek çalışan program" görünümü
+- PWA bandı kalıcı kapatma + mobil sidebar backdrop erişilebilirlik dahil tamamlandı
+- SONRAKİ TUR ÖNERİLERİ: randevu sonrası değerlendirme/puanlama (review), embed widget kodu (admin panel "siteye göm"), hatırlatıcı ayarları UI (3011 entegrasyonu), 404 sayfasında hizmet bazlı arama, gün bucket'larını TR yerel saate alma (rapor), üye telefon display formatı (normalize "9005..." görüntü düzeltmesi)

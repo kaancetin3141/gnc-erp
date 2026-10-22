@@ -409,8 +409,11 @@ footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),r
 .st-onaylandi{background:var(--green-soft);color:var(--green)}
 .st-tamamlandi{background:var(--teal-soft);color:var(--teal)}
 .st-gelmedi{background:rgba(120,120,120,.14);color:#6b6b6b}
+.st-iptal{background:var(--brand-soft);color:var(--brand)}
 .appt-cancel{border:1.5px solid rgba(194,51,77,.4);background:rgba(255,255,255,.6);color:var(--brand);border-radius:999px;padding:7px 14px;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s}
 .appt-cancel:hover{background:var(--brand-soft)}
+.appt-replan{border:1.5px solid rgba(13,138,99,.4);background:rgba(255,255,255,.6);color:var(--green);border-radius:999px;padding:7px 14px;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s}
+.appt-replan:hover{background:var(--green-soft);transform:translateY(-1px)}
 .appt-code{font-size:.72rem;color:var(--muted);font-family:ui-monospace,monospace}
 .empty-box{text-align:center;padding:26px 18px;color:var(--muted)}
 
@@ -446,6 +449,7 @@ footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),r
 .nf-item:hover{transform:translateY(-2px);background:rgba(255,255,255,.85);box-shadow:var(--shadow)}
 .nf-ic{font-size:1.25rem;flex:none}
 .nf-nm{font-weight:700;font-size:.84rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nf-svc{display:inline-block;margin-top:3px;font-size:.7rem;font-weight:800;color:var(--green);background:var(--green-soft);border-radius:999px;padding:2px 8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nf-loc{font-size:.72rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}`;
 
 // ---------------------------------------------------------------- Ortak sayfa parçaları
@@ -795,18 +799,23 @@ export function notFoundPage(
   gwPort?: string | null,
   homeUrl?: string | null,
   suggestions: Json[] = [],
-  baseDomain?: string
+  baseDomain?: string,
+  q?: string
 ): string {
   const backHref = homeUrl || '/';
   const gwHidden = gwPort ? `<input type="hidden" name="XTransformPort" value="${esc(gwPort)}">` : '';
+  const term = String(q || '').trim();
+  const svcMatched = suggestions.some((b) => b._svcMatch);
   const suggHtml = suggestions.length
     ? `<div class="nf-sugg">
-  <h2>Belki şunları arıyorsun? 👀</h2>
+  <h2>${term && svcMatched ? `“${esc(term)}” için hizmet eşleşmeleri 👀` : 'Belki şunları arıyorsun? 👀'}</h2>
+  ${term && svcMatched ? `<p class="nf-sub" style="margin:-4px 0 10px">🔎 Aradığın terim bir <b>hizmet</b> adında geçiyor — o hizmeti veren işletmeleri öne çıkardık.</p>` : ''}
   <div class="nf-grid">
     ${suggestions
       .map((b) => {
         const meta = typeMeta(String(b.type || ''));
         const loc = [b.district, b.city].filter(Boolean).join(' · ');
+        const svcChip = b._svcMatch ? `<span class="nf-svc">${meta.emoji} ${esc(b._svcMatch)} hizmeti var</span>` : '';
         const href = baseDomain
           ? `https://${esc(b.slug)}.${esc(baseDomain)}`
           : gwPort
@@ -814,7 +823,7 @@ export function notFoundPage(
             : `/isletme/${encodeURIComponent(String(b.slug))}`;
         return `<a class="nf-item" href="${href}">
       <span class="nf-ic" aria-hidden="true">${meta.emoji}</span>
-      <span style="min-width:0"><span class="nf-nm">${esc(b.name)}</span>${loc ? `<span class="nf-loc" style="display:block">📍 ${esc(loc)}</span>` : ''}</span>
+      <span style="min-width:0"><span class="nf-nm">${esc(b.name)}</span>${svcChip}${loc ? `<span class="nf-loc" style="display:block">📍 ${esc(loc)}</span>` : ''}</span>
     </a>`;
       })
       .join('')}
@@ -832,7 +841,7 @@ export function notFoundPage(
   <p>${slug ? `"<b>${esc(slug)}</b>" adında kayıtlı bir işletme yok — adres yanlış yazılmış, işletme kaldırılmış ya da henüz eklenmemiş olabilir.` : 'Aradığın sayfa mevcut değil.'}</p>
   <form class="nf-search" action="${esc(backHref)}" method="get" role="search">
     ${gwHidden}
-    <input type="search" name="q" placeholder="İşletme, hizmet veya şehir ara…" aria-label="İşletme ara">
+    <input type="search" name="q" placeholder="İşletme veya hizmet ara…" aria-label="İşletme veya hizmet ara"${term ? ` value="${esc(term)}"` : ''}>
     <button type="submit" class="btn btn-geo" style="padding:10px 18px">🔍 Ara</button>
   </form>
   <p class="nf-sub">💡 Not: <b>işletme-adi</b> biçimindeki alt alan adları GNC Randevu sistemine ayrılmıştır; henüz işletme atanmamış adreslerde bu sayfa görünür.</p>
@@ -1349,6 +1358,13 @@ export const HOME_JS = `
       .catch(function () {});
   })();
 
+  // ?q= ile gelindiyse (örn. 404 arama formu → /?q=manikür) arama kutusunu doldurup filtreli başlat
+  var urlQ = new URLSearchParams(location.search).get('q');
+  if (urlQ && urlQ.trim()) {
+    state.q = urlQ.trim();
+    if (qInput) qInput.value = state.q;
+  }
+
   load();
 })();
 `;
@@ -1370,6 +1386,11 @@ export const DETAIL_JS = `
   }
   var $ = function (s) { return document.querySelector(s); };
   var state = { serviceId: SVCS.length ? SVCS[0].id : null, date: null, time: null };
+  // 🔁 Tekrar planlama (Randevularım → "Tekrar planla"): ?tekrar=1&service=<id>
+  // Hizmet önceden seçilir, tarih/saat BOŞ başlar (kullanıcı yeni tarihi seçer)
+  var URLP = new URLSearchParams(location.search);
+  var replanSvc = URLP.get('service') || '';
+  var isReplan = URLP.get('tekrar') === '1';
 
   // ---- telefon görüntü maskeleme: "05329999999" → "0532 999 99 99"
   // Yalnızca input görüntüsü; gönderilen değer sunucu tarafında normalize edilir.
@@ -1460,7 +1481,10 @@ export const DETAIL_JS = `
       var lbl = s.name + ' · ' + s.duration + ' dk · ' + fmtPrice(s.price, s.currency);
       return '<option value="' + esc(s.id) + '">' + esc(lbl) + '</option>';
     }).join('');
+    // tekrar planlama: URL'deki hizmet geçerliyse onu önceden seç
+    if (isReplan && replanSvc && svcById(replanSvc)) state.serviceId = replanSvc;
     selSvc.value = state.serviceId;
+    if (isReplan && state.serviceId !== replanSvc) isReplan = false; // geçersiz hizmet → normal akış
   }
 
   // ---- 14 günlük tarih gridı
@@ -1472,11 +1496,13 @@ export const DETAIL_JS = `
       var d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
       var iso = isoOf(d);
       if (i === 0) firstIso = iso;
-      html += '<button type="button" class="date-btn' + (i === 0 ? ' on' : '') + '" data-date="' + iso + '" aria-pressed="' + (i === 0 ? 'true' : 'false') + '">' +
+      // tekrar planlamada tarih otomatik seçilmez — kullanıcı seçer
+      var on = (!isReplan && i === 0);
+      html += '<button type="button" class="date-btn' + (on ? ' on' : '') + '" data-date="' + iso + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
         '<span class="dw">' + DAYS_TR[d.getDay()] + '</span><span class="dn">' + d.getDate() + ' ' + MON_TR[d.getMonth()] + '</span></button>';
     }
     datesEl.innerHTML = html;
-    state.date = firstIso;
+    state.date = isReplan ? null : firstIso;
     datesEl.addEventListener('click', function (e) {
       var b = e.target.closest('.date-btn');
       if (!b) return;
@@ -1617,6 +1643,7 @@ export const DETAIL_JS = `
     var hp = $('#f-web').value; // honeypot — boş kalmalı
 
     if (!SVCS.length) return showErr('Bu işletmede seçilebilir hizmet yok.');
+    if (!state.date) return showErr('Lütfen bir tarih seç.');
     if (!state.time) return showErr('Lütfen bir saat seç.');
     if (name.length < 2) return showErr('Lütfen adını yaz (en az 2 harf).');
     if (phone.replace(/\\D/g, '').length < 10) return showErr('Geçerli bir telefon numarası gir (örn. 0555 111 22 33).');
@@ -1624,6 +1651,11 @@ export const DETAIL_JS = `
     var btn = $('#submit-btn');
     btn.disabled = true;
     btn.innerHTML = '<span class="spin"></span> Gönderiliyor…';
+
+    // üye girişliyse randevuyu hesaba bağla: token gövdede taşınır
+    // (backend memberToken → memberId FK yazar; misafirde alan yok, akış aynı)
+    var mtok = null;
+    try { mtok = (JSON.parse(localStorage.getItem('gnc_member') || 'null') || {}).token || null; } catch (_) {}
 
     fetch(gwq('/api/book'), {
       method: 'POST',
@@ -1638,7 +1670,8 @@ export const DETAIL_JS = `
         customerPhone: phone,
         customerEmail: '',
         customerNote: note,
-        website: hp
+        website: hp,
+        memberToken: mtok || undefined
       })
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -1714,7 +1747,16 @@ export const DETAIL_JS = `
 
   if (SVCS.length) {
     buildDates();
-    loadSlots();
+    if (isReplan) {
+      // 🔁 tekrar planlama: saatler henüz yüklenmez (tarih yok) — kullanıcıya rehber göster
+      var rs = svcById(state.serviceId) || {};
+      slotsEl.innerHTML = '<p class="hint">🔁 Tekrar planlama: <b>' + esc(rs.name || 'Hizmet') + '</b> seçili — tarih ve saat seç.</p>';
+      var replanTarget = document.getElementById('randevu');
+      if (replanTarget) replanTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast('Tekrar planlama — hizmet hazır: ' + (rs.name || '') + '. Tarih ve saat seç.', 'ok');
+    } else {
+      loadSlots();
+    }
   } else {
     slotsEl.innerHTML = '<p class="hint">Bu işletme henüz hizmet eklememiş.</p>';
   }
@@ -1896,7 +1938,8 @@ export const MEMBER_JS = `
     beklemede: { label: '⏳ Onay bekliyor', cls: 'st-beklemede' },
     onaylandi: { label: '✅ Onaylandı', cls: 'st-onaylandi' },
     tamamlandi: { label: '🏁 Tamamlandı', cls: 'st-tamamlandi' },
-    gelmedi: { label: '💤 Gelmedi', cls: 'st-gelmedi' }
+    gelmedi: { label: '💤 Gelmedi', cls: 'st-gelmedi' },
+    iptal: { label: '🚫 İptal edildi', cls: 'st-iptal' }
   };
   function loadAppointments() {
     listEl.innerHTML = '<div class="mem-card" style="text-align:center;color:var(--muted)"><span class="spin dark"></span> Randevuların yükleniyor…</div>';
@@ -1929,27 +1972,77 @@ export const MEMBER_JS = `
     return gwq('/isletme/' + encodeURIComponent(slug));
   }
 
+  // href sonuna query param ekler (XTransformPort zaten varsa & ile, yoksa ? ile)
+  function withParams(href, extra) {
+    return href + (href.indexOf('?') === -1 ? '?' : '&') + extra;
+  }
+
+  // ---- iptal edilen randevuların kısa süreli yerel kaydı ----
+  // API aktif randevuları döndürür (iptal olanlar sunucuda filtrelenir); iptal
+  // edilenler 30 gün boyunca burada tutulur ki "🔁 Tekrar planla" kısayolu
+  // kart üzerinde görünsün. Aynı işletme+hizmete yeni randevu alınca kayıt düşer.
+  var CANCELLED_KEY = 'gnc_cancelled_appts';
+  var CANCELLED_TTL = 30 * 24 * 3600 * 1000;
+  function loadCancelled() {
+    try {
+      var v = JSON.parse(localStorage.getItem(CANCELLED_KEY) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch (_) { return []; }
+  }
+  function saveCancelled(v) {
+    try { localStorage.setItem(CANCELLED_KEY, JSON.stringify(v.slice(0, 20))); } catch (_) {}
+  }
+  function rememberCancelled(item) {
+    if (!item || !item.id || !item.providerSlug) return; // işletme bilgisi yoksa kart bağlanamaz — kaydetme
+    var list = loadCancelled().filter(function (c) { return c.id !== item.id; });
+    list.unshift({
+      id: item.id, code: item.code, providerName: item.providerName, providerSlug: item.providerSlug,
+      serviceId: item.serviceId, serviceName: item.serviceName, staffName: item.staffName,
+      price: item.price, currency: item.currency, date: item.date, cancelledAt: Date.now()
+    });
+    saveCancelled(list);
+  }
+
+  var lastItems = [];
+
+  function apptCard(it, cancelledMode) {
+    var st = cancelledMode ? ST.iptal : (ST[it.status] || { label: it.status, cls: 'st-gelmedi' });
+    var cancellable = !cancelledMode && (it.status === 'beklemede' || it.status === 'onaylandi') && new Date(it.date).getTime() > Date.now();
+    // İptal edilen randevu → aynı işletme/hizmete tekrar planlama kısayolu
+    var replan = '';
+    if (cancelledMode && it.providerSlug) {
+      replan = '<button type="button" class="appt-replan" data-slug="' + esc(it.providerSlug) + '" data-svc="' + esc(it.serviceId || '') + '" aria-label="' + esc(it.providerName || '') + ' — ' + esc(it.serviceName || 'aynı hizmet') + ' için yeni randevu al">🔁 Tekrar planla</button>';
+    }
+    return '<div class="appt">' +
+      '<div class="appt-main">' +
+      '<div class="appt-biz"><a href="' + esc(bizHref(it.providerSlug || '')) + '" style="color:inherit;text-decoration:none">' + esc(it.providerName) + '</a></div>' +
+      '<div class="appt-svc">' + esc(it.serviceName || 'Hizmet') + (it.staffName ? ' · 👤 ' + esc(it.staffName) : '') + (!cancelledMode && typeof it.price === 'number' && it.price > 0 ? ' · ' + esc(fmtPrice(it.price, it.currency)) : '') + '</div>' +
+      '<div class="appt-when">📅 ' + esc(fmtWhen(it.date)) + (cancelledMode ? ' <span style="color:var(--muted);font-weight:400">(iptal edildi)</span>' : '') + '</div>' +
+      '<div class="appt-code" style="margin-top:3px">No: ' + esc(it.code) + '</div>' +
+      '</div>' +
+      '<div style="display:grid;gap:8px;justify-items:end">' +
+      '<span class="st-badge ' + st.cls + '">' + esc(st.label) + '</span>' +
+      (cancellable ? '<button type="button" class="appt-cancel" data-id="' + esc(it.id) + '" data-code="' + esc(it.code) + '">İptal Et</button>' : '') +
+      replan +
+      '</div></div>';
+  }
+
   function renderAppointments(items) {
-    if (!items.length) {
+    if (!items.length && !loadCancelled().length) {
       listEl.innerHTML = '<div class="mem-card empty-box">📭 Henüz randevun yok.<br><span style="font-size:.85rem">Bir işletme seçip saniyeler içinde randevu alabilirsin.</span><br><a class="btn btn-geo" style="margin-top:12px" href="/">🏠 İşletmelere göz at</a></div>';
       return;
     }
-    var now = Date.now();
-    listEl.innerHTML = items.map(function (it) {
-      var st = ST[it.status] || { label: it.status, cls: 'st-gelmedi' };
-      var cancellable = (it.status === 'beklemede' || it.status === 'onaylandi') && new Date(it.date).getTime() > now;
-      return '<div class="appt">' +
-        '<div class="appt-main">' +
-        '<div class="appt-biz"><a href="' + esc(bizHref(it.providerSlug || '')) + '" style="color:inherit;text-decoration:none">' + esc(it.providerName) + '</a></div>' +
-        '<div class="appt-svc">' + esc(it.serviceName || 'Hizmet') + (it.staffName ? ' · 👤 ' + esc(it.staffName) : '') + (typeof it.price === 'number' && it.price > 0 ? ' · ' + esc(fmtPrice(it.price, it.currency)) : '') + '</div>' +
-        '<div class="appt-when">📅 ' + esc(fmtWhen(it.date)) + '</div>' +
-        '<div class="appt-code" style="margin-top:3px">No: ' + esc(it.code) + '</div>' +
-        '</div>' +
-        '<div style="display:grid;gap:8px;justify-items:end">' +
-        '<span class="st-badge ' + st.cls + '">' + esc(st.label) + '</span>' +
-        (cancellable ? '<button type="button" class="appt-cancel" data-id="' + esc(it.id) + '" data-code="' + esc(it.code) + '">İptal Et</button>' : '') +
-        '</div></div>';
-    }).join('');
+    // iptal kayıtlarını tazele: süresi geçen ve yeniden planlananları at
+    var cancelled = loadCancelled().filter(function (c) {
+      if (!c.cancelledAt || Date.now() - c.cancelledAt > CANCELLED_TTL) return false;
+      var rebooked = items.some(function (it) { return it.providerSlug === c.providerSlug && it.serviceId === c.serviceId; });
+      return !rebooked;
+    });
+    saveCancelled(cancelled);
+    lastItems = items;
+    listEl.innerHTML = items.map(function (it) { return apptCard(it, false); })
+      .concat(cancelled.slice(0, 5).map(function (c) { return apptCard(c, true); }))
+      .join('');
     listEl.querySelectorAll('.appt-cancel').forEach(function (b) {
       b.addEventListener('click', function () {
         var code = b.getAttribute('data-code');
@@ -1958,11 +2051,24 @@ export const MEMBER_JS = `
         cancelAppointment(b.getAttribute('data-id'));
       });
     });
+    // 🔁 Tekrar planla: aynı işletmenin randevu formuna taşı, hizmeti önceden seç
+    // (tarih boş bırakılır — kullanıcı yeni tarihi/saati kendisi seçer)
+    listEl.querySelectorAll('.appt-replan').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var slug = b.getAttribute('data-slug');
+        var svc = b.getAttribute('data-svc');
+        if (!slug) return;
+        var extra = 'tekrar=1' + (svc ? '&service=' + encodeURIComponent(svc) : '');
+        location.href = withParams(bizHref(slug), extra);
+      });
+    });
   }
 
   function cancelAppointment(id) {
     var a = readAuth();
     if (!a) { renderAuth(); return; }
+    var item = null;
+    for (var i = 0; i < lastItems.length; i++) { if (lastItems[i].id === id) { item = lastItems[i]; break; } }
     fetch(gwq('/api/member/appointments/' + encodeURIComponent(id) + '/cancel'), {
       method: 'POST',
       headers: { accept: 'application/json', 'content-type': 'application/json', authorization: 'Bearer ' + a.token },
@@ -1971,7 +2077,8 @@ export const MEMBER_JS = `
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (x) {
         if (x.ok) {
-          toast('Randevu iptal edildi.', 'ok');
+          rememberCancelled(item || { id: id });
+          toast('Randevu iptal edildi. Tekrar planlamak ister misin? 🔁', 'ok');
           loadAppointments();
         } else {
           toast((x.j && x.j.error) || 'İptal edilemedi.', 'err');

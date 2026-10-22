@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore, type AppView } from '@/store/app-store'
 import { hasPermission, isCafeRole, isMarketRole } from '@/lib/rbac'
@@ -139,6 +140,35 @@ const NAV_ITEMS: { group: string; items: NavItem[] }[] = [
 export function Sidebar() {
   const { user, view, setView, sidebarCollapsed, toggleSidebar } = useAppStore()
 
+  // Mobil overlay: Escape ile kapatma (yalnızca sidebar'ın fixed overlay olduğu <1024px)
+  useEffect(() => {
+    if (sidebarCollapsed) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (window.matchMedia('(min-width: 1024px)').matches) return // masaüstünde sidebar normalde açıktır
+      e.preventDefault()
+      toggleSidebar()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sidebarCollapsed, toggleSidebar])
+
+  // Mobil genişleme modunda body scroll kilidi — backdrop varken arka planın
+  // kaymasını engeller. Yalnızca <1024px'te etkin; masaüstü (lg+) hiç etkilenmez.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const apply = () => {
+      const lock = !sidebarCollapsed && !mq.matches
+      document.body.style.overflow = lock ? 'hidden' : ''
+    }
+    apply()
+    mq.addEventListener('change', apply)
+    return () => {
+      mq.removeEventListener('change', apply)
+      document.body.style.overflow = ''
+    }
+  }, [sidebarCollapsed])
+
   // Unread message count for badge
   const { data: unreadData } = useQuery({
     queryKey: ['unread-messages'],
@@ -177,10 +207,17 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile overlay backdrop */}
+      {/* Mobil overlay backdrop — genişletilmiş durumda arka planı kaplar;
+          tıklayınca sidebar daralır. Buton semantiği + aria-label (erişilebilirlik).
+          Not: breakpoint olarak sidebar'ın lg:relative olduğu yere uyacak şekilde
+          lg:hidden kullanılır (md:hidden olsaydı 768–1023px tabletlerde overlay
+         backsiz kalırdı). Klavye erişimi için Escape de kapatır. */}
       {!sidebarCollapsed && (
-        <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+        <button
+          type="button"
+          aria-label="Menüyü kapat"
+          tabIndex={-1}
+          className="lg:hidden fixed inset-0 bg-black/40 z-40 cursor-default"
           onClick={toggleSidebar}
         />
       )}

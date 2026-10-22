@@ -38,6 +38,7 @@ import {
   daysSince,
 } from '@/lib/format'
 import { AgingReportCard } from './aging-report-card'
+import { AppointmentSummaryCards } from './appointment-summary-cards'
 import {
   DEAL_STAGES, ACTIVITY_TYPES, LOSS_REASONS,
   getLabel,
@@ -310,6 +311,10 @@ export function ReportsView() {
         onOpenDailyReport={sector === 'crm' ? () => setDailyReportOpen(true) : undefined}
         onExportAll={sector === 'crm' ? () => exportXLSX(buildFullReport(data), 'rapor-tamami.xls', 'Tüm rapor') : undefined}
       />
+
+      {/* Randevu özeti — gerçek grafikler (trend, durum dağılımı, hizmetler, personel).
+          Randevu modülünün anlamlı olduğu sektörlerde gösterilir. */}
+      {(sector === 'crm' || sector === 'appointments') && <AppointmentSummaryCards />}
 
       {/* Sektör bazlı içerik */}
       {sector === 'crm' && <CrmReports data={data} openCustomer={openCustomer} />}

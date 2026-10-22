@@ -14,18 +14,50 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-const DISMISS_KEY = 'gnc-pwa-install-dismissed'
-const DISMISS_DURATION = 1000 * 60 * 60 * 24 * 7 // 7 gün
+const DISMISS_KEY = 'pwa-banner-dismissed'
+// Eski anahtarlar (önceki 7/30 günlük dönemlerden kalma) — geriye dönük uyumluluk
+// için okunur: eski flag'i olan kullanıcı yeniden bandı görmez
+const LEGACY_DISMISS_KEYS = ['gnc-pwa-dismissed', 'gnc-pwa-install-dismissed']
+
+// "Sonra"/kapat ile bandın kalıcı olarak görmezden gelindiği ts — KALICI kapatma:
+// flag bir kez yazıldıysa bu cihazda bir daha gösterilmez (süre sınırlı değil).
+// (mount'ta ve her gösterim koşulunda kontrol edilir)
+function readDismissedAt(): number | null {
+  try {
+    const raw =
+      localStorage.getItem(DISMISS_KEY) ??
+      LEGACY_DISMISS_KEYS.map((k) => localStorage.getItem(k)).find(Boolean) ??
+      null
+    if (!raw) return null
+    const ts = parseInt(raw, 10)
+    if (!Number.isFinite(ts) || ts <= 0) return null
+    return ts
+  } catch {
+    return null
+  }
+}
+
+function isDismissedPermanently(): boolean {
+  return readDismissedAt() !== null
+}
 
 export function InstallPromptProvider({ children }: { children: React.ReactNode }) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [showPrompt, setShowPrompt] = useState(false)
+  // Mount'ta localStorage'dan okunur — bir kez "Sonra" denildiyse bandı bir daha gösterme (kalıcı)
+  const [dismissed, setDismissed] = useState(true) // SSR/hidrasyon güvenli varsayım; effect'te gerçek değer
+  const [dismissChecked, setDismissChecked] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
   const [platform, setPlatform] = useState<'ios' | 'android' | 'desktop' | 'other'>('other')
+  const [showIosHint, setShowIosHint] = useState(false)
   // Giriş ekranındaki kartları KAPATMAMASI için banner yalnızca oturum açıldıktan sonra gösterilir
   const user = useAppStore((s) => s.user)
 
   useEffect(() => {
+    // Kalıcı kapatma kontrolü (mount): daha önce dismiss edildiyse bir daha gösterme
+    setDismissed(isDismissedPermanently())
+    setDismissChecked(true)
+
     // Standalone modda (zaten kurulmuş) gösterme
     const standalone = window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as unknown as { standalone?: boolean }).standalone === true
@@ -41,12 +73,18 @@ export function InstallPromptProvider({ children }: { children: React.ReactNode 
     const handler = (e: Event) => {
       e.preventDefault()
       const evt = e as BeforeInstallPromptEvent
-      // 7 gün içinde dismiss edildiyse gösterme
-      const dismissed = localStorage.getItem(DISMISS_KEY)
-      if (dismissed && Date.now() - parseInt(dismissed, 10) < DISMISS_DURATION) return
+      // Daha önce dismiss edildiyse gösterme (mount + event anında çifte kontrol)
+      if (isDismissedPermanently()) {
+        setDismissed(true)
+        return
+      }
       setDeferredPrompt(evt)
       // 3 saniye sonra göster (sayfanın yüklenmesini bekle)
-      setTimeout(() => setShowPrompt(true), 3000)
+      setTimeout(() => {
+        // Gösterim anında da tekrar kontrol et — bu arada "Sonra" denmiş olabilir
+        if (isDismissedPermanently()) return
+        setShowPrompt(true)
+      }, 3000)
     }
     window.addEventListener('beforeinstallprompt', handler)
 
@@ -70,24 +108,35 @@ export function InstallPromptProvider({ children }: { children: React.ReactNode 
     const choice = await deferredPrompt.userChoice
     if (choice.outcome === 'dismissed') {
       localStorage.setItem(DISMISS_KEY, Date.now().toString())
+      setDismissed(true)
     }
     setDeferredPrompt(null)
     setShowPrompt(false)
   }, [deferredPrompt])
 
   const handleDismiss = useCallback(() => {
-    localStorage.setItem(DISMISS_KEY, Date.now().toString())
+    // Kalıcı kapatma: bu cihazda bir daha gösterme (süre sınırlı değil)
+    try {
+      localStorage.setItem(DISMISS_KEY, Date.now().toString())
+    } catch {}
+    setDismissed(true)
     setShowPrompt(false)
+    setShowIosHint(false)
   }, [])
 
   // iOS için talimat (iOS Safari beforeinstallprompt vermez)
-  const [showIosHint, setShowIosHint] = useState(false)
   useEffect(() => {
     if (platform === 'ios' && !isStandalone) {
-      const dismissed = localStorage.getItem(DISMISS_KEY)
-      if (dismissed && Date.now() - parseInt(dismissed, 10) < DISMISS_DURATION) return
+      // Daha önce dismiss edildiyse gösterme (kalıcı kapatma)
+      if (isDismissedPermanently()) {
+        setDismissed(true)
+        return
+      }
       // 5 saniye sonra iOS talimatı göster
-      const t = setTimeout(() => setShowIosHint(true), 5000)
+      const t = setTimeout(() => {
+        if (isDismissedPermanently()) return
+        setShowIosHint(true)
+      }, 5000)
       return () => clearTimeout(t)
     }
   }, [platform, isStandalone])
@@ -100,8 +149,9 @@ export function InstallPromptProvider({ children }: { children: React.ReactNode 
     <>
       {children}
 
-      {/* Chrome/Edge/Android install prompt — yalnızca oturum açıldıktan sonra */}
-      {showPrompt && deferredPrompt && user && (
+      {/* Chrome/Edge/Android install prompt — yalnızca oturum açıldıktan sonra,
+          kalıcı kapatma aktifken asla */}
+      {showPrompt && deferredPrompt && user && !dismissed && dismissChecked && (
         <InstallBanner
           icon={platform === 'desktop' ? Monitor : Smartphone}
           title="GNC CRM'i Uygulama Olarak Yükle"
@@ -112,8 +162,9 @@ export function InstallPromptProvider({ children }: { children: React.ReactNode 
         />
       )}
 
-      {/* iOS talimat (Paylaş → Ana Ekrana Ekle) — yalnızca oturum açıldıktan sonra */}
-      {showIosHint && user && (
+      {/* iOS talimat (Paylaş → Ana Ekrana Ekle) — yalnızca oturum açıldıktan sonra,
+          kalıcı kapatma aktifken asla */}
+      {showIosHint && user && !dismissed && dismissChecked && (
         <InstallBanner
           icon={Smartphone}
           title="iPhone'una Kur"

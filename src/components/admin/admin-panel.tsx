@@ -41,7 +41,7 @@ import {
   ShieldCheck, Users, Crown, Briefcase, Package, ChevronRight, ChevronDown,
   Search, RefreshCw, Building2, MapPin, Mail, Phone, Globe,
   Eye, Edit3, BarChart3, ListTree, Activity, Clock, Hash,
-  CircleUser, Layers, Coffee, Store, Blocks,
+  CircleUser, Layers, Coffee, Store, Blocks, UserRound,
   History, Filter, ScrollText, ChevronLeft, Loader2, Download, LayoutGrid,
 } from 'lucide-react'
 import { initials, formatRelative, formatDateTime, formatDate } from '@/lib/format'
@@ -53,6 +53,7 @@ import { CustomerTypeDialog } from './customer-type-dialog'
 import { RoleAssignDialog } from './role-assign-dialog'
 import { PortfolioManager } from './portfolio-manager'
 import { TenantsTab } from './tenants-tab'
+import { MembersTab } from './members-tab'
 import { DomainsTab } from './domains-tab'
 import { ServicesTab } from './services-tab'
 
@@ -1520,6 +1521,10 @@ export function AdminPanel() {
             <Users className="w-3.5 h-3.5" />
             Müşteriler &amp; Roller
           </TabsTrigger>
+          <TabsTrigger value="members" className="text-xs gap-1.5">
+            <UserRound className="w-3.5 h-3.5" />
+            Üyeler
+          </TabsTrigger>
           <TabsTrigger value="domains" className="text-xs gap-1.5">
             <Globe className="w-3.5 h-3.5" />
             Alan Adları
@@ -1675,6 +1680,10 @@ export function AdminPanel() {
           <RecentActivity activities={overview?.recentActivity ?? []} />
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="members" className="space-y-4">
+          <MembersTab />
         </TabsContent>
 
         <TabsContent value="domains" className="space-y-4">

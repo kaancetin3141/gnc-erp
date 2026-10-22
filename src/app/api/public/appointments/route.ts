@@ -8,12 +8,17 @@ import {
   rangesOverlap,
 } from '@/lib/appointment-utils'
 import { whatsappLink } from '@/lib/format'
+import { bearerToken, verifyToken } from '@/lib/member-auth'
 
 // ============================================================
 // PUBLIC (auth gerektirmez) — müşteri randevu oluşturma (slug-bazlı)
 // Body: { providerSlug, serviceId, staffId?, date, time, customerName,
-//         customerPhone, customerEmail?, customerNote?, website? }
+//         customerPhone, customerEmail?, customerNote?, website?,
+//         memberToken? }
 // - "date" YYYY-MM-DD, "time" HH:mm formatında (URL'den gelen parametreler)
+// - ÜYE BAĞLAMA: gövdedeki memberToken (ya da Authorization Bearer) ile GEÇERLİ
+//   üye token'ı varsa randevu üyeye kalıcı bağlanır (memberId FK); token
+//   yoksa/geçersizse akış değişmez (misafir randevu, memberId=null)
 // - autoApprove=true + çalışma saatleri içindeyse 'onaylandi', aksi halde 'beklemede'
 // - WhatsApp confirmation link döner (wa.me) — provider telefonuna
 // - Returns: { id, status, providerName, serviceName, date, time, whatsappLink }
@@ -30,6 +35,7 @@ interface BookBody {
   customerEmail?: string
   customerNote?: string
   website?: string // honeypot
+  memberToken?: string // opsiyonel üye token'ı (girişli üye randevusu)
 }
 
 export async function POST(req: NextRequest) {
@@ -238,6 +244,25 @@ export async function POST(req: NextRequest) {
   }
   const customerPhoneNorm = normalize(customerPhone!.trim())
 
+  // Üye bağlama — gövdedeki memberToken (ya da Authorization Bearer başlığı)
+  // GEÇERLİ üye token'ı ise randevu o üyeye kalıcı olarak bağlanır (memberId FK
+  // üzerinden Randevularım'da da görünür). Token yok, süresi dolmuş ya da üye
+  // silinmişse misafir akışı aynen devam eder.
+  let memberId: string | null = null
+  const memberToken =
+    (typeof body.memberToken === 'string' && body.memberToken.trim()) ||
+    bearerToken(req)
+  if (memberToken) {
+    const mid = verifyToken(memberToken)
+    if (mid) {
+      const m = await db.member.findUnique({
+        where: { id: mid },
+        select: { id: true, isActive: true },
+      })
+      if (m?.isActive) memberId = m.id
+    }
+  }
+
   // Oluştur
   const appointment = await db.appointment.create({
     data: {
@@ -248,6 +273,7 @@ export async function POST(req: NextRequest) {
       customerPhone: customerPhone!.trim(),
       customerEmail: customerEmail?.trim() || null,
       customerNote: customerNote?.trim() || null,
+      memberId,
       date: startDate,
       endTime: endDate,
       status,
@@ -288,6 +314,7 @@ export async function POST(req: NextRequest) {
         after: JSON.stringify({
           customerName: appointment.customerName,
           customerPhone: appointment.customerPhone,
+          memberId: appointment.memberId,
           date: appointment.date.toISOString(),
           staffId: appointment.staffId,
           serviceId: appointment.serviceId,

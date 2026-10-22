@@ -7,7 +7,8 @@ import { bearerToken, verifyToken, phoneSuffix, rawPhoneDigits } from '@/lib/mem
 // PUBLIC (Bearer token) — RANDEVU İPTALİ (üye kendi randevusunu iptal eder)
 // POST /api/public/member/appointments/[id]/cancel
 // Kurallar:
-// · Randevu üyenin telefonuna ait olmalı (abone numarası eşleşmesi)
+// · Randevu üyeye ait olmalı — memberId FK bağlantısı YA DA telefon abone
+//   numarası eşleşmesi (geriye dönük uyumluluk: misafirken alınanlar)
 // · Sadece 'beklemede' ve 'onaylandi' durumundaki randevular iptal edilebilir
 // · Geçmiş randevular iptal edilemez
 // ============================================================
@@ -27,9 +28,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   })
   if (!appointment) return err('Randevu bulunamadı', 404)
 
-  // Başka birinin randevusunu iptal etmeye çalışıyorsa sessizce 404 (bilgi sızması yok)
+  // Başka birinin randevusunu iptal etmeye çalışıyorsa sessizce 404 (bilgi sızması yok).
+  // Sahiplik: memberId FK bağlantısı YA DA telefon abone numarası eşleşmesi.
   const suffix = phoneSuffix(member.phone)
-  if (!rawPhoneDigits(appointment.customerPhone).endsWith(suffix)) {
+  const owns = appointment.memberId === member.id ||
+    (suffix.length >= 10 && rawPhoneDigits(appointment.customerPhone).endsWith(suffix))
+  if (!owns) {
     return err('Randevu bulunamadı', 404)
   }
 

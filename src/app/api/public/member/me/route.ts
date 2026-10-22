@@ -12,9 +12,9 @@ import {
 // GET    → { member: { id, name, phone, email, createdAt } }
 // DELETE → KVKK self-servis hesap silme:
 //          gövdede { password } şifre teyidi ister; bcrypt karşılaştırması
-//          başarılıysa üye + telefonuyla eşleşen TÜM randevuları
-//          (iptal edilenler dahil) kalıcı olarak siler → { ok: true }
-//          Şifre yanlışsa 401.
+//          başarılıysa üye + üyeye bağlı TÜM randevuları (memberId FK ya da
+//          telefon-eki eşleşmesi; iptal edilenler dahil) kalıcı olarak siler
+//          → { ok: true }. Şifre yanlışsa 401.
 // ============================================================
 
 export async function GET(req: NextRequest) {
@@ -56,12 +56,20 @@ export async function DELETE(req: NextRequest) {
   const passwordOk = await bcrypt.compare(password, member.passwordHash)
   if (!passwordOk) return err('Şifre doğrulanamadı — hesap silinmedi.', 401)
 
-  // Üyenin telefonuyla alınmış TÜM randevular (iptal/reddedilenler dahil).
-  // Eşleştirme Randevularım ile aynı kural: ayraç temizlenmiş ham telefon,
-  // abone numarasıyla (son 10 hane) biter. Silme yıkıcı olduğu için iki
-  // aşamalı: aday id'ler ham SQL ile → JS tarafında kesin endsWith doğrulaması.
+  // Üyenin TÜM randevuları (iptal/reddedilenler dahil). İki eşleştirme katmanı:
+  // 1) memberId FK — üye girişliyken oluşturulan randevular
+  // 2) telefon abone numarası (son 10 hane) — geriye dönük uyumluluk
+  // Silme yıkıcı olduğu için telefon tarafı iki aşamalı: aday id'ler ham SQL
+  // ile → JS tarafında kesin endsWith doğrulaması.
   const suffix = phoneSuffix(member.phone)
-  let apptIds: string[] = []
+  const apptIds = new Set<string>(
+    (
+      await db.appointment.findMany({
+        where: { memberId: member.id },
+        select: { id: true },
+      })
+    ).map((r) => r.id),
+  )
   if (suffix.length >= 10) {
     let candidates: Array<{ id: string; customerPhone: string }>
     try {
@@ -74,19 +82,19 @@ export async function DELETE(req: NextRequest) {
     } catch {
       return err('Hesap silme şu anda tamamlanamıyor — birkaç saniye sonra tekrar dene.', 502)
     }
-    apptIds = candidates
+    candidates
       .filter((r) => rawPhoneDigits(r.customerPhone).endsWith(suffix))
-      .map((r) => r.id)
+      .forEach((r) => apptIds.add(r.id))
   }
 
   try {
     await db.$transaction([
-      db.appointment.deleteMany({ where: { id: { in: apptIds } } }),
+      db.appointment.deleteMany({ where: { id: { in: [...apptIds] } } }),
       db.member.delete({ where: { id: member.id } }),
     ])
   } catch {
     return err('Hesap silme sırasında bir sorun oluştu — veriler değişmedi.', 500)
   }
 
-  return ok({ ok: true, deletedAppointments: apptIds.length })
+  return ok({ ok: true, deletedAppointments: apptIds.size })
 }
