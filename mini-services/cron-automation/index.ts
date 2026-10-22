@@ -7,6 +7,64 @@ import { createServer } from 'http'
 
 const PORT = 3010
 const APP_URL = process.env.APP_URL || 'http://localhost:3000'
+// Servis kimliği: /api/auth artık email+şifre (bcrypt) istiyor — eski {userId} gövdesi 400 dönerdi.
+// Kimlik env'den gelir; sandbox default'u program admini (admin/314159).
+const AUTOMATION_EMAIL = process.env.AUTOMATION_EMAIL || 'admin@gnccrm.app'
+const AUTOMATION_PASSWORD = process.env.AUTOMATION_PASSWORD || '314159'
+
+// ---- oturum: login → cache; 401'de bir kez re-login ----
+let cachedSession: string | null = null
+
+async function login(): Promise<string | null> {
+  try {
+    const authRes = await fetch(`${APP_URL}/api/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: AUTOMATION_EMAIL, password: AUTOMATION_PASSWORD }),
+    })
+    if (!authRes.ok) {
+      console.error(`[${new Date().toISOString()}] Auth başarısız: ${authRes.status} (${AUTOMATION_EMAIL})`)
+      cachedSession = null
+      return null
+    }
+    const authData = (await authRes.json().catch(() => null)) as { sessionId?: string } | null
+    const session = authData?.sessionId
+    if (!session) {
+      console.error(`[${new Date().toISOString()}] Auth yanıtı sessionId içermiyor`)
+      cachedSession = null
+      return null
+    }
+    cachedSession = session
+    console.log(`[${new Date().toISOString()}] Auth başarılı (${AUTOMATION_EMAIL})`)
+    return session
+  } catch (e) {
+    cachedSession = null
+    console.error(`[${new Date().toISOString()}] Auth isteği hata verdi:`, e)
+    return null
+  }
+}
+
+async function getFreshSession(force = false): Promise<string | null> {
+  if (force) cachedSession = null
+  if (cachedSession) return cachedSession
+  return login()
+}
+
+/** x-gnc-session başlığıyla istek atar; 401 gelirse BİR KEZ re-login + tekrar dener. */
+async function authedFetch(path: string, init: RequestInit = {}, retried = false): Promise<Response> {
+  const session = await getFreshSession()
+  if (!session) throw new Error('Oturum alınamadı — kimlik bilgileri hatalı olabilir')
+  const res = await fetch(`${APP_URL}${path}`, {
+    ...init,
+    headers: { 'x-gnc-session': session, ...(init.headers || {}) },
+  })
+  if (res.status === 401 && !retried) {
+    console.warn(`[${new Date().toISOString()}] Oturum geçersiz (401) — yeniden login deneniyor`)
+    await getFreshSession(true)
+    return authedFetch(path, init, true)
+  }
+  return res
+}
 
 // Tüm tenant'ların automation ayarlarını oku ve çalışan tenant'lar için otomasyon tetikle
 async function runAutomationForAllTenants() {
@@ -14,32 +72,12 @@ async function runAutomationForAllTenants() {
     console.log(`[${new Date().toISOString()}] Otomasyon cron başlatıldı...`)
 
     // Bu basit servis, doğrudan veritabanına erişemez (Prisma client ana app'te).
-    // Bunun yerine, ana uygulamanın automation API'sine admin session ile istek atar.
-    // Demo amaçlı: bilinen admin kullanıcı ID'si ile çağır.
-    // Production'da: her tenant için bir API key / service account gerekir.
-
-    // Admin user ID'yi environment'tan veya sabit değerden al
-    const adminUserId = process.env.ADMIN_USER_ID || 'cmtupc2ga0003u9261ucf9oab'
-
-    // Önce login ol (session al)
-    const authRes = await fetch(`${APP_URL}/api/auth`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: adminUserId }),
-    })
-
-    if (!authRes.ok) {
-      console.error(`[${new Date().toISOString()}] Auth başarısız: ${authRes.status}`)
-      return
-    }
-
-    const authData = await authRes.json()
-    const session = authData.sessionId
+    // Bunun yerine, ana uygulamanın automation API'sine service kimliğiyle istek atar.
+    // Önce login ol (email+şifre → session token), sonra tüm istekleri
+    // x-gnc-session başlığıyla gönder (401'de otomatik re-login).
 
     // Automation durumunu kontrol et
-    const statusRes = await fetch(`${APP_URL}/api/automation`, {
-      headers: { 'x-gnc-session': session },
-    })
+    const statusRes = await authedFetch('/api/automation')
     const status = await statusRes.json()
 
     if (!status.enabled) {
@@ -50,9 +88,8 @@ async function runAutomationForAllTenants() {
     console.log(`[${new Date().toISOString()}] Otomasyon aktif. Stale müşteri: ${status.staleCustomerCount}, threshold: ${status.thresholdDays} gün`)
 
     // Otomasyonu çalıştır
-    const runRes = await fetch(`${APP_URL}/api/automation/stale-customer-tasks?days=${status.thresholdDays}`, {
+    const runRes = await authedFetch(`/api/automation/stale-customer-tasks?days=${status.thresholdDays}`, {
       method: 'POST',
-      headers: { 'x-gnc-session': session },
     })
 
     const result = await runRes.json()
@@ -60,9 +97,9 @@ async function runAutomationForAllTenants() {
 
     // Üyelik bitiş hatırlatmaları (aktif paketler, 3 gün içinde bitenler)
     try {
-      const memRes = await fetch(`${APP_URL}/api/automation/membership-reminders`, {
+      const memRes = await authedFetch('/api/automation/membership-reminders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-gnc-session': session },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ days: 3 }),
       })
       if (memRes.ok) {

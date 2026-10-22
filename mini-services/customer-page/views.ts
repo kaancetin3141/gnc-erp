@@ -414,6 +414,26 @@ footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),r
 .appt-code{font-size:.72rem;color:var(--muted);font-family:ui-monospace,monospace}
 .empty-box{text-align:center;padding:26px 18px;color:var(--muted)}
 
+/* ---- KVKK: hesap silme (kırmızı outline + confirm diyalogu) ---- */
+.mem-danger{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px dashed var(--line)}
+.del-btn{border:1.5px solid rgba(194,51,77,.45);background:transparent;color:var(--brand);border-radius:999px;padding:8px 16px;font:inherit;font-size:.84rem;font-weight:800;cursor:pointer;transition:all .15s}
+.del-btn:hover{background:var(--brand-soft)}
+.del-overlay{position:fixed;inset:0;z-index:90;background:rgba(30,18,14,.46);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px}
+.del-overlay[hidden]{display:none}
+.del-box{background:#fff;border-radius:20px;box-shadow:var(--shadow-lg);padding:24px;max-width:430px;width:100%;display:grid;gap:12px}
+.del-box h2{font-size:1.12rem;font-weight:800;letter-spacing:-.01em}
+.del-box p{font-size:.9rem;color:#6d5647}
+.del-box .warn{background:var(--brand-soft);border:1px solid rgba(194,51,77,.2);border-radius:10px;padding:10px 12px;font-weight:600;color:var(--brand)}
+.del-confirm{background:var(--brand);color:#fff;border:none;box-shadow:0 8px 20px rgba(194,51,77,.34)}
+.del-confirm:hover:not(:disabled){transform:translateY(-1px)}
+.del-confirm:disabled{opacity:.65;cursor:wait}
+.del-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:2px}
+
+/* ---- hızlı seçim: ilk uygun saat (yeşil tema) ---- */
+.quick-slot{display:inline-flex;align-items:center;gap:8px;margin-bottom:10px;padding:9px 16px;border-radius:999px;border:1.5px solid rgba(13,138,99,.35);background:var(--green-soft);color:var(--green);font:inherit;font-size:.85rem;font-weight:800;cursor:pointer;transition:all .15s}
+.quick-slot:hover{background:var(--green);border-color:var(--green);color:#fff;transform:translateY(-1px)}
+.quick-slot[hidden]{display:none}
+
 /* ---- 404: hata sayfası arama + öneriler ---- */
 .nf-search{display:flex;gap:8px;max-width:420px;margin:16px auto 4px}
 .nf-search input{flex:1;min-width:0;border:1.5px solid var(--glass-border);background:rgba(255,255,255,.75);border-radius:999px;padding:10px 16px;font-size:.9rem;color:var(--ink)}
@@ -699,6 +719,7 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
 
       <div>
         <span class="f-label" id="slots-l">Saat seç</span>
+        <button type="button" class="quick-slot" id="quick-slot" hidden aria-label="İlk uygun saati seç"></button>
         <div class="slots" id="slots" aria-live="polite" aria-labelledby="slots-l"></div>
       </div>
 
@@ -742,6 +763,7 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
         <p class="mini-note" id="s-pending-note" hidden>⏳ Randevun işletme onayı bekliyor — onaylandığında bilgilendirilirsin.</p>
         <div class="s-actions">
           <a class="btn btn-wa" id="wa-link" target="_blank" rel="noopener" href="#">💬 WhatsApp'tan Onay Gönder</a>
+          <a class="btn btn-ghost" id="s-appts-link" href="${a.gwPort ? '/uyelik?XTransformPort=' + encodeURIComponent(a.gwPort) : '/uyelik'}" hidden>📅 Randevularıma git →</a>
           <button type="button" class="btn btn-ghost" id="again-btn">➕ Yeni randevu al</button>
           <a class="btn btn-ghost" href="${esc(a.homeUrl)}">🏠 Ana sayfaya dön</a>
         </div>
@@ -921,10 +943,31 @@ export function memberPage(baseDomain: string, gwPort?: string | null): string {
         <button type="button" class="btn btn-ghost" id="logout-btn">🚪 Çıkış Yap</button>
         <a class="btn btn-geo" href="/">🏠 Randevu Al</a>
       </div>
+      <div class="mem-danger">
+        <button type="button" class="del-btn" id="delete-btn">🗑️ Hesabımı Sil</button>
+        <span class="mini-note">KVKK kapsamında üyeliğini ve tüm randevularını kalıcı olarak sil.</span>
+      </div>
     </div>
 
     <h2 class="section-title" style="margin:22px 2px 6px">📅 Randevularım</h2>
     <div id="appt-list" aria-live="polite"><div class="mem-card" style="text-align:center;color:var(--muted)"><span class="spin dark"></span> Randevuların yükleniyor…</div></div>
+  </div>
+
+  <div class="del-overlay" id="del-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="del-title">
+    <div class="del-box">
+      <h2 id="del-title">⚠️ Hesabını silmek istediğine emin misin?</h2>
+      <p>Bu işlem <b>geri alınamaz</b>: üyeliğin silinir ve tüm işletmelerdeki randevuların — iptal edilenler dahil — kalıcı olarak kaldırılır.</p>
+      <p class="warn">🔐 Onay için hesap şifreni gir. Silme işleminden sonra aynı numarayla tekrar kayıt olabilirsin.</p>
+      <div class="field">
+        <label class="f-label" for="del-pass">Şifre teyidi</label>
+        <input id="del-pass" type="password" autocomplete="current-password" placeholder="••••••">
+      </div>
+      <p class="form-err" id="del-err" hidden></p>
+      <div class="del-actions">
+        <button type="button" class="btn btn-ghost" id="del-cancel">Vazgeç</button>
+        <button type="button" class="btn del-confirm" id="del-confirm">🗑️ Hesabımı Kalıcı Olarak Sil</button>
+      </div>
+    </div>
   </div>
 </main>
 ${siteFooter()}`;
@@ -1328,6 +1371,21 @@ export const DETAIL_JS = `
   var $ = function (s) { return document.querySelector(s); };
   var state = { serviceId: SVCS.length ? SVCS[0].id : null, date: null, time: null };
 
+  // ---- telefon görüntü maskeleme: "05329999999" → "0532 999 99 99"
+  // Yalnızca input görüntüsü; gönderilen değer sunucu tarafında normalize edilir.
+  // 0 ile başlamayan / 11 haneden uzun (örn. +90…) girişlere dokunulmaz.
+  function maskTrPhone(input) {
+    var d = String(input.value || '').replace(/\D/g, '');
+    if (!d || d.charAt(0) !== '0' || d.length > 11) return;
+    var out = d;
+    if (d.length > 9) out = d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7, 9) + ' ' + d.slice(9);
+    else if (d.length > 7) out = d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7);
+    else if (d.length > 4) out = d.slice(0, 4) + ' ' + d.slice(4);
+    input.value = out;
+  }
+  var fPhoneEl = $('#f-phone');
+  if (fPhoneEl) fPhoneEl.addEventListener('input', function () { maskTrPhone(fPhoneEl); });
+
   var DAYS_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
   var MON_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 
@@ -1431,7 +1489,31 @@ export const DETAIL_JS = `
     });
   }
 
-  // ---- slotlar
+  // ---- slotlar + "İlk uygun saat" hızlı seçimi
+  var quickBtn = document.getElementById('quick-slot');
+  var quickTime = null;
+  function setQuick(available, label) {
+    if (!quickBtn) return;
+    quickTime = available ? String(available) : null;
+    if (quickTime && !state.time) {
+      quickBtn.textContent = '⚡ İlk uygun saat: ' + (label || quickTime);
+      quickBtn.hidden = false;
+    } else {
+      quickBtn.hidden = true;
+    }
+  }
+  if (quickBtn) quickBtn.addEventListener('click', function () {
+    if (!quickTime) return;
+    var btns = slotsEl.querySelectorAll('.slot');
+    for (var i = 0; i < btns.length; i++) {
+      if (btns[i].textContent === quickTime && !btns[i].disabled) { btns[i].click(); return; }
+    }
+    // buton bulunamazsa (nadir) doğrudan seç
+    state.time = quickTime;
+    updateSummary();
+    quickBtn.hidden = true;
+  });
+
   function loadSlots() {
     hideErr();
     if (!state.serviceId || !state.date) return;
@@ -1444,6 +1526,7 @@ export const DETAIL_JS = `
           return;
         }
         renderSlots(x.j.slots || []);
+        setQuick(x.j.nextAvailable, x.j.nextAvailableLabel);
       })
       .catch(function () {
         slotsEl.innerHTML = '<p class="hint err-txt">Bağlantı hatası — <a href="#" id="slot-retry">tekrar dene</a>.</p>';
@@ -1472,6 +1555,7 @@ export const DETAIL_JS = `
           for (var i = 0; i < olds.length; i++) olds[i].classList.remove('on');
           b.classList.add('on');
           state.time = s.time;
+          if (quickBtn) quickBtn.hidden = true; // saat seçildi — hızlı buton gereksiz
           hideErr();
           updateSummary();
         });
@@ -1594,6 +1678,13 @@ export const DETAIL_JS = `
     }
     var pendNote = $('#s-pending-note');
     if (pendNote) pendNote.hidden = d.status === 'onaylandi';
+    // üye girişliyse "Randevularıma git" kısayolunu göster (→ /uyelik)
+    var apptLink = document.getElementById('s-appts-link');
+    if (apptLink) {
+      var ma = null;
+      try { ma = JSON.parse(localStorage.getItem('gnc_member') || 'null'); } catch (_) {}
+      apptLink.hidden = !(ma && ma.token);
+    }
     var wa = $('#wa-link');
     if (d.whatsappLink) {
       wa.href = d.whatsappLink;
@@ -1730,6 +1821,22 @@ export const MEMBER_JS = `
   }
 
   var LS_KEY = 'gnc_member';
+  // ---- telefon görüntü maskeleme: "05329999999" → "0532 999 99 99"
+  // Yalnızca input görüntüsü; gönderilen değer sunucuda normalize edilir.
+  // 0 ile başlamayan / 11 haneden uzun (örn. +90…) girişlere dokunulmaz.
+  function maskTrPhone(input) {
+    var d = String(input.value || '').replace(/\\D/g, '');
+    if (!d || d.charAt(0) !== '0' || d.length > 11) return;
+    var out = d;
+    if (d.length > 9) out = d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7, 9) + ' ' + d.slice(9);
+    else if (d.length > 7) out = d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7);
+    else if (d.length > 4) out = d.slice(0, 4) + ' ' + d.slice(4);
+    input.value = out;
+  }
+  ['l-phone', 'r-phone'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', function () { maskTrPhone(el); });
+  });
   function readAuth() {
     try {
       var raw = localStorage.getItem(LS_KEY);
@@ -1943,6 +2050,55 @@ export const MEMBER_JS = `
     clearAuth();
     toast('Çıkış yapıldı. Görüşürüz! 👋', 'ok');
     renderAuth();
+  });
+
+  // ---- KVKK: hesap silme (self-servis)
+  var delOverlay = document.getElementById('del-overlay');
+  var delOpenBtn = document.getElementById('delete-btn');
+  var delPass = document.getElementById('del-pass');
+  var delConfirm = document.getElementById('del-confirm');
+  var delCancelBtn = document.getElementById('del-cancel');
+  function openDel() {
+    if (!delOverlay) return;
+    delOverlay.hidden = false;
+    hideErr('del-err');
+    if (delPass) delPass.value = '';
+    setTimeout(function () { try { delPass.focus(); } catch (_) {} }, 60);
+  }
+  function closeDel() { if (delOverlay) delOverlay.hidden = true; }
+  if (delOpenBtn) delOpenBtn.addEventListener('click', openDel);
+  if (delCancelBtn) delCancelBtn.addEventListener('click', closeDel);
+  if (delOverlay) delOverlay.addEventListener('click', function (e) { if (e.target === delOverlay) closeDel(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && delOverlay && !delOverlay.hidden) closeDel();
+  });
+  if (delConfirm) delConfirm.addEventListener('click', function () {
+    var a = readAuth();
+    if (!a) { renderAuth(); return; }
+    var pass = delPass ? delPass.value : '';
+    if (!pass) return showErr('del-err', 'Onay için şifreni gir.');
+    setBusy(delConfirm, true, 'Siliniyor…');
+    fetch(gwq('/api/member/me'), {
+      method: 'DELETE',
+      headers: { accept: 'application/json', 'content-type': 'application/json', authorization: 'Bearer ' + a.token },
+      body: JSON.stringify({ password: pass })
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        setBusy(delConfirm, false, '🗑️ Hesabımı Kalıcı Olarak Sil');
+        if (x.ok && x.j && x.j.ok) {
+          closeDel();
+          clearAuth();
+          toast('Hesabın ve tüm randevuların kalıcı olarak silindi. İyi günler! 🌿', 'ok');
+          renderAuth();
+        } else {
+          showErr('del-err', (x.j && x.j.error) || 'Hesap silinemedi — tekrar dene.');
+        }
+      })
+      .catch(function () {
+        setBusy(delConfirm, false, '🗑️ Hesabımı Kalıcı Olarak Sil');
+        showErr('del-err', 'Bağlantı hatası — tekrar dene.');
+      });
   });
 
   // ---- başlat: token varsa profil yoksa auth göster

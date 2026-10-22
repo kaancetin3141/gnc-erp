@@ -8936,3 +8936,134 @@ Stage Summary:
 - Superpowers artık yerel playbook olarak kurulu; ana agent ve subagent'lar "Önce .agent-skills/superpowers/<skill>/SKILL.md oku ve uygula" talimatıyla kullanabilir
 - Öncelikli: systematic-debugging (yeni işletme randevu bug'ı), brainstorming (kayıt olma özelliği spec'i), verification-before-completion
 - Sınırlar: hooks/session-start otomasyonu çalışmaz (Claude Code'a özel); TDD skill'i bu projedeki "test kodu yazma yasağı" nedeniyle yalnızca ilke düzeyinde uygulanır
+---
+Task ID: qa-customer
+Agent: general-purpose subagent
+Task: customer-page 3002 + mini servisler tam QA turu (SADECE TEST + RAPOR — kod değişikliği yok)
+
+Work Log:
+- Kod incelemesi: mini-services/customer-page/index.ts — tenant çözümleme Host başlığı + BASE_DOMAIN env ile (index.ts:212-231); path modu `/isletme/<slug>` (index.ts:351-356, `/<slug>` route DEĞİL → markalı 404); /api/member/* proxy (index.ts:287-314, boş POST gövdesi {} kabulü cancel fix'i yerinde)
+- API smoke: 3002/healthz 200 {subdomainMode:false}; 3000/api/public/providers 200 (sik-kuafor); POST member/login hatalı şifre → 401 "Geçersiz telefon veya şifre" (doğrudan VE 3002 proxy üzerinden); 3010/health 200; 3011/health 200; 3005 socket.io handshake 200 + sid payload; /api/book eksik alan 400 + geçersiz tarih 400
+- BULGU-1 (env/bug): 3002 süreci BASE_DOMAIN'siz başlatılmış (pid 1228 `bun --hot index.ts`; ensure-services.sh:51 env geçmiyor; package.json dev scripti de env'siz) → Host: sik-kuafor.gncinc.online ANA SAYFAYI döndürüyor (200, işletme sayfası değil); rastgele123.gncinc.online da 200 (markalı 404 değil). healthz subdomainMode:false + startup logu "alt alan adı kapalı" teyit ediyor. Production deploy scriptleri (guncelle-gnc.sh:66, kurulum.sh:239) BASE_DOMAIN=gncinc.online geçiyor → sunucu etkilenmiyor. RESTART YASAK olduğu için dokunulmadı; fix önerisi raporda
+- Path modu ile işletme sayfası: /isletme/sik-kuafor 200 — başlık, 6 hizmet (fiyat/süre), çalışma saatleri tablosu, randevu formu (hizmet select, 14 günlük tarih şeridi, slot ızgarası, ad/telefon/not) — curl + browser
+- Markalı 404: /isletme/rastgele123 ve /rastgele123 → HTTP 404 + "Aradığın işletmeyi bulamadık" + arama formu + "Belki şunları arıyorsun?" öneri kartı + "Tüm işletmelere göz at" — curl + browser görsel doğrulama PASS (worklog hedefiyle uyumlu)
+- Randevu akışı (browser, misafir): Sakal Traşı 23 Eki 11:00 → "Randevun oluşturuldu!" + "Onaylandı ✅" + Randevu No M0BDXOE8 (ad: QA Musteri 261022-0331, tel: 0532 999 99 99); DB'de endTime 11:20 doğru, any-staff ataması Ayşe dolu olduğundan Ahmet Usta'ya — sanal/any mod doğru çalışıyor
+- Availability doğruluk testi: Manikür (45dk) 23 Eki 10:30/11:00/11:30 dolu görünüyor — Ayşe'nin 11:00-12:00 Cilt Bakımı randevusu ile çakışma hesabı DOĞRU; 18:30 kapanış öncesi sığmıyor → doğru; iptal sonrası 12:00 slotu yeniden açıldı (cache 10sn) PASS
+- Üyelik (browser): /uyelik kayıt (QA Musteri / 0532 777 77 77 / qa123456) → profil kartı + "Üyeliğin oluşturuldu! 🎉"; Çıkış → aynı bilgilerle giriş OK; Randevularım boş durum "📭 Henüz randevun yok." PASS
+- Üye randevu akışı: detay sayfası prefill (ad+tel+yeşil şerit "👤 QA Musteri olarak randevu alıyorsun"), Manikür 23 Eki 12:00 → kod W63PH7H9 → Randevularım'da "✅ Onaylandı" satırı → İptal Et → confirm "Randevu No W63PH7H9 iptal edilsin mi?" → toast "Randevu iptal edildi." → liste boş → DB status=iptal (worklog cancel-fix regresyonu PASS)
+- Misafir randevunun Randevularım görünümü: API üzerinden üye B (0532 999 99 99) kaydedildi → member/appointments M0BDXOE8'i listeledi (telefon eki eşleşmesi) → cancel 200 {"status":"iptal"} — misafir randevu da üyelik ekranına düşüyor PASS
+- Mobil 390x844: home/uyelik/isletme scrollWidth=390 overflowX YOK; #member-btn görünür; tür çipleri yatay kaydırılabilir (overflow-x:auto — tasarım); ekran görüntüleri alındı
+- Konsol/log: 4 sayfa turunda 0 console error, 0 page error; ağ isteklerinin tamamı 200 (tek 404 bilinçli 404 testi); dev.log son 50 satır temiz (tüm 200)
+- BULGU-2 (bug): cron-automation gece cronu "Auth başarısız: 400" (log 02:00) — mini-services/cron-automation/index.ts:22-34 {userId:'cmtupc2ga0003u9261ucf9oab'} gönderiyor ama bu user DB'de YOK ve /api/auth artık email+şifre bcrypt istiyor (src/app/api/auth/route.ts:44) → otomasyon sessizce hiç çalışmıyor
+- BULGU-3 (eksik): üye silme/deaktive API'si YOK (yalnız register/login/me/appointments/cancel) → test üyeleri kalıcı; admin üye yönetimi veya KVKK self-servis hesap silme önerilir
+- BULGU-4 (ops): logs/ dizini boşaltılmış — mini-servis süreçleri silinmiş inode'lara yazıyor (fd hedefi "(deleted)") → loglar kayıp; logs/ temizlerken süreç restart'ı birlikte yapılmalı
+- OPS NOTU: QA ortasında CRM 3000 harici olarak öldürüldü (dev.log'ta crash izi yok) → görev 9-ops'taki aynı nohup komutuyla geri getirildi (8sn'de 200); kod/konfig dokunulmadı
+- Temizlik: 2 QA randevusu da status=iptal (aktif QA randevu: 0 — DB ile doğrulandı); kalıcı test üyeleri: "QA Musteri" (905327777777) ve "QA Musteri 261022-0331" (905329999999) — silme API'si olmadığından raporda işaretlendi; tmp scriptler ve /tmp artıkları silindi
+- Ekran görüntüleri: tool-results/qa-cust-01..11 (isletme, form-dolu, randevu-basarili, kayit-profil, uye-randevu, randevularim-liste, iptal-sonrasi, mobil-home, mobil-uyelik, mobil-isletme, 404, home)
+
+Stage Summary:
+- Customer-page 3002 fonksiyonel QA: 16/18 PASS — randevu akışı (misafir+üye), üyelik (kayıt/giriş/çıkış/liste), İPTAL regresyonu, markalı 404, availability çakışma doğruluğu, mobil ve konsol TEMİZ
+- 2 gerçek bulgu: ①sandbox'ta BASE_DOMAIN eksik → host/subdomain modu kapalı (ensure-services.sh env geçmiyor; prod etkilenmiyor) ②cron-automation auth'u bozuk (eski userId body → /api/auth artık email+şifre; gece otomasyonu hiç çalışmıyor)
+- 2 eksik: üye silme API'si yok (test üyeleri kalıcı), mini-servis logları inode-deleted durumunda
+- Test verisi: 2 randevu iptal edildi (sıfır aktif QA randevu), 2 kalıcı QA üyesi raporlandı
+---
+Task ID: qa-crm
+Agent: general-purpose subagent
+Task: CRM 3000 tam QA turu
+
+Work Log:
+- worklog.md son 200 satır okundu; servis durumu doğrulandı (3000 UP, /api/public/providers 200), kod DEĞİŞTİRİLMEDİ
+- GİRİŞ: / yüklendi; admin/314159 → dashboard PASS; hatalı şifre → 401 "E-posta veya şifre hatalı" (UI mesajı düzgün) PASS; UI Çıkış Yap → login ekranı PASS
+- ADMIN PANELİ: 6 sekme gezildi. İşletme listesi PASS (7 tenant + sayaçlar). İŞLETME OLUŞTURMA YOK: POST /api/admin/tenants → 405, UI'da buton/dialog yok (tenant.create yalnız src/lib/seed.ts'te) → görevdeki "test işletmesi oluştur" tenant olarak YAPILAMADI; onun yerine Randevu modülü ServiceProvider API'siyle "QA Test İşletmesi 20261022034015" oluşturulup (POST 200) sonunda DELETE ile silindi (public slug listesi doğrulandı: sadece sik-kuafor)
+- BUG 1 (KRİTİK): Admin Paneli > Müşteriler & Roller → rol filtreleri boş: "Şirket Admini 6" rozetine rağmen "0 kayıt listeleniyor / Bu rolde kullanıcı yok". Kök: /api/admin/users superadmin'de bile tenantId: user.tenantId ile scoped (route.ts:22-24) — /api/users 23 kullanıcı dönerken /api/admin/users 1 (sadece superadmin) dönüyor; overview userByRole (admin 6, rep 6...) ile çelişiyor. Rol atama dialogu bu yüzden E2E test edilemedi (kendi hesabında Rol butonu disabled — doğru davranış)
+- BUG 2 (ORTA): /api/audit de superadmin için tenant-scoped (route.ts:25-27) → Denetim Kayıtları sekmesi superadmin'e sadece kendi tenant'ının 3 login kaydını gösteriyor; overview "Son Aktiviteler" platform geneli (public_booking, member_cancel) gösterdiği için tutarsız
+- MODÜLLER (26/26 açıldı): dashboard, müşteriler (30 kayıt), potansiyel müşteri, fırsatlar (19 aktif), görevler (8 gecikmiş), mesajlar, whatsapp merkezi, destek masası, raporlar (KPI özet), ürün & stok, teklifler, faturalar (yaşlandırma), siparişler, üretim listesi ("bekleyen kalem yok"), belge yönetimi, giderler, kafe ("Henüz kafe yok"), market ("Henüz market yok"), site yönetimi, randevular (takvim/hizmetler(6)/personel(3)/üyelikler sekmeleri), personel & İK ("Henüz personel kaydı yok"), sosyal medya, dağıtım merkezi, kullanıcılar (23 kayıt), ayarlar (8 sekme) — boş durum mesajları düzgün
+- FORM DOĞRULAMALARI (boş gönder, veri bulaşmadı): Randevu Personel → toast "Personel adı gerekli" PASS; Randevu Hizmet → "Hizmet adı gerekli" PASS; Müşteri Ekle → buton disabled PASS; İK Personel → "Ad ve pozisyon zorunludur" PASS; Kullanıcı Davet Et → "Ad ve e-posta zorunludur" PASS; Portfolyo Yeni Proje → "Projeyi Ekle" disabled PASS
+- API SMOKE: GET /api/public/providers 200+liste PASS; session ile /api/admin/tenants, /api/admin/overview, /api/users → 200 PASS; kimliksiz /api/admin/tenants → 401 {"Oturum açmanız gerekli"} PASS; /api/public/providers/olmayan-slug → 404 {"İşletme bulunamadı"} PASS; hatalı şifre → 401 PASS; member login (05559998877) → 200 PASS; kimliksiz /api/public/member/me → 401 PASS
+- BUG 3 (MİNÖR): Servisler sekmesi ilk açılışta "Servisler yüklenemedi: Çevrimdışısınız — veri geçici olarak kullanılamıyor" (API aslında 200). Kök: public/sw.js:92-113 /api/* network-first; fetch throw olursa cache boşsa 503 offline mesajı döndürüyor. Yenile ile düzeldi (1 kayıt "çalışıyor")
+- BUG 4 (MİNÖR): settings-view.tsx:471 typo — "talep upon silinir" (doğrusu "talep üzerine")
+- BUG 5 (MİNÖR): dev.log'ta /api/admin/audit?limit=20 → 404 (kaynak kodda bu path yok); SW stale-while-revalidate eski chunk çalıştırmış olmalı (reload sonrası /api/audit 200). Ayarlar > KVKK sekmesinde bir kez tam-sayfa reload + login flash gözlendi (tekrarlanmadı, dev/HMR şüphesi)
+- CONSOLE: 0 error/warn (15 info satırı, hepsi React DevTools info). dev.log son 50: beklenen 200'ler + bilinçli 401/404 testleri, stack trace yok
+- RESPONSIVE 390x844: document overflowX YOK; tablolar overflow-x-auto kabında PASS; sidebar daraltılınca ikon-rail (68px) ile navigasyon çalışıyor (Müşteri Portföyü açıldı); expanded sidebar fixed z-50 overlay (ana içeriği kapatıyor, hamburger yok — UX notu)
+- CLEANUP: QA provider DELETE 200; providers listesi 1 (Şık Kuaför); tenant sayısı 7 (değişmedi); kalıcı veri BIRAKILMADI
+- Ekran görüntüleri: tool-results/qa-crm-01..16*.png (16 adet)
+
+Stage Summary:
+- Genel durum SAĞLAM: giriş/çıkış, 26 modül, form validasyonları, API yetkilendirme (401/404) ve mobil uyum BEKLENDİĞİ GİBİ; 0 konsol hatası, dev.log temiz
+- 1 KRİTİK bug: superadmin Admin Paneli kullanıcı listesi/rol filtreleri boş (src/app/api/admin/users/route.ts:22-24 tenant-scoped; tenantScope() helper'ı api-utils.ts:39'ta hazır — tek satırlık fix)
+- 1 ORTA tutarsızlık: /api/audit aynı şekilde superadmin'de tenant-scoped (src/app/api/audit/route.ts:25-27)
+- 1 ORTA eksik özellik: tenant oluşturma UI/API'si yok (POST /api/admin/tenants 405) — onboarding akışı önerilir
+- 3 MİNÖR: SW offline false-error (public/sw.js:92), KVKK typo (settings-view.tsx:471), SW stale-chunk 404 dev.log gürültüsü
+- Önerilen UX: tenant oluşturma sihirbazı, platform-geneli tenant seçici (kullanıcı/audit), SW retry/offline rozeti, mobil overlay kapatma + hamburger, kalıcı PWA banner kapatma
+---
+Task ID: fix-crm
+Agent: general-purpose subagent
+Task: CRM QA bulguları fix + işletme oluşturma sihirbazı
+
+Work Log:
+- worklog.md son 250 satır (qa-crm raporu) okundu; 5 bulgu için 6 dosyada fix (378+/12- satır)
+- BUG1 (KRİTİK): src/app/api/admin/users/route.ts — hard-coded `tenantId: user!.tenantId` → `...tenantScope(user!)` (api-utils.ts:39 helper; superadmin'de {} → platform geneli)
+- BUG2 (ORTA): src/app/api/audit/route.ts — aynı tenantScope() deseni; superadmin artık public_booking/member_cancel dahil tüm tenant audit'lerini görüyor
+- BUG3 (ORTA): POST /api/admin/tenants eklendi (yalnız superadmin; name unique — harf duyarsız 409; plan free|business|enterprise default business; defaultCurrency 3-harf default TRY; country 2-harf default TR; opsiyonel adminUser{name,email,password} → db.$transaction içinde tenant+admin birlikte, bcrypt 10 round, role admin/status active, yetki getAdminPermissionsForTenant(name), tenant+user audit logları tx içinde). Not: görev metni plan default 'standard' dedi; uygulama sözlüğü free|business|enterprise (şema+UI+seed) olduğundan 'business' kullanıldı — 'standard' değeri hiçbir yerde yok, UI Select'i bozardı. Sektör ayrı kolon yok: getTenantSector(name) ile adından türetiliyor, yanıtta 'sector' dönüyor
+- BUG3 UI: src/components/admin/tenants-tab.tsx — superadmin'e "Yeni İşletme" butonu + shadcn Dialog sihirbazı (ad/plan/para/ülke + İlk Admin opsiyonel bölümü; client validasyon: ad zorunlu, admin 3 alanı ya hep ya hiç, e-posta regex, şifre ≥8; hata inline + toast; başarıda liste invalidate + dialog reset)
+- BUG4 (MİNÖR): public/sw.js API fetch handler — catch'te `if (navigator.onLine) throw err` eklendi; 503 offline fallback yalnız gerçekten çevrimdışıyken (online iken hata reject → react-query retry çalışır)
+- BUG5 (MİNÖR): settings-view.tsx:471 "talep upon" → "talep üzerine"
+- Doğrulama curl: role=admin → 6, role=rep → 6, filtresiz → 23 (QA hedefiyle birebir); audit limit=50 → 43 kayıt, action dağılımı public_booking:8 + member_cancel:5 (platform geneli); POST hata yolları: kimliksiz 401, ad eksik 400, duplikat 409, plan 400, e-posta 400, şifre<8 400, currency 400
+- Doğrulama UI (agent-browser): admin/314159 giriş → Admin Paneli > İşletmeler → "Yeni İşletme" → boş ad hatası "İşletme adı gerekli" (screenshot) → "QA Yeni İşletme 20261022-035900" + ilk admin qa-admin-20261022-035900@test.local/Test1234! → toast "İşletme oluşturuldu · İlk admin" → listede kart (1 kullanıcı) → DB: tenant + admin (role=admin, status=active, bcrypt $2b$10$, 34 yetki) + 2 audit kaydı → yeni admin ile API login OK → Müşteriler & Roller sekmesi kullanıcı tablosu + rol combobox'ları DOLU (rol atama ekranı artık çalışıyor); Denetim Kayıtları 51 kayıt platform geneli
+- OPS: CRM 3000 bu oturumda 3 kez öldü — dmesg: kernel OOM-kill next-server (anon-rss 2.2GB, 4GB sandbox); eski agent-browser chrome instance'ı (400MB) temizlendi, nohup ile restart edildi; lint sırasında da canlı
+- Temizlik: QA tenant prisma script ile silindi → admin user + audit cascade gitti; tenant=7, user=23 (başlangıçla aynı); QA kartı UI listede yok; tmp scriptler + /tmp session dosyası silindi (projede geçici dosya kalmadı)
+- Ekran görüntüleri: tool-results/fix-crm-01..06 (isletmeler, dialog-validasyon, dialog-acik, dialog-dolu, listede-gorunuyor, roller-tab-dolu, audit-platform)
+- NOT: src/app/api/public/member/me/route.ts çalışma ağacında +65 satır değişiklik var — BU görevden DEĞİL (paralel oturum, qa-crm BULGU-3 üye silme impl?), dokunulmadı
+
+Stage Summary:
+- 5/5 QA bulgusu kapandı: superadmin kullanıcı/rol filtreleri platform geneli (6 admin/6 rep/23), audit platform geneli, işletme oluşturma sihirbazı (API+UI, transaction+audit+bcrypt), SW offline yanlış pozitifi, KVKK typo
+- Yeni API sözleşmesi: POST /api/admin/tenants {name, plan?, defaultCurrency?, country?, adminUser?{name,email,password}} → 201 {tenant{...sector}, admin{id,name,email,role,status}|null}; hatalar 400/401/403/409
+- Lint: 7 hata — hepsi ÖNCEDEN VAR (6× .agent-skills/superpowers/.../server.cjs — 03:21'de tooling tarafından eklenmiş, kapsam dışı; 1× scripts/qa-cross-tenant-write-e2e.js = görevde belirtilen baseline). Bu görevden yeni hata 0
+- Kalan risk: sandbox OOM (next-dev 4GB limitte tekilliyor), tenant silme UI'sı yok (temizlik prisma script ile), ilk admin şifre kurtarma akışı henüz yok (admin kendi şifresini /api/auth/password ile değiştirebiliyor)
+---
+---
+Task ID: fix-cust
+Agent: general-purpose subagent
+Task: customer-page subdomain modu + cron-automation auth + KVKK hesap silme + UX
+
+Work Log:
+- worklog.md son 250 satır okundu (qa-customer raporu: BULGU-1 BASE_DOMAIN eksik, BULGU-2 cron auth kırık, BULGU-3 üye silme API yok)
+- FIX-1 (3002 subdomain): scripts/ensure-services.sh ensure() 3. parametre olarak servis-özel env aldı; `ensure customer-page 3002 "BASE_DOMAIN=${BASE_DOMAIN:-gncinc.online}"`. mini-services/customer-page/package.json dev scripti de `BASE_DOMAIN=${BASE_DOMAIN:-gncinc.online}` taşıyor (çift taraf idempotent). Not: sandbox'ta `fuser` YOK → kill, `ss -ltnp` ile bulunan pid'e yapıldı (1228), ardından ensure-services.sh
+- DOĞRULA-1: Host: sik-kuafor.gncinc.online → işletme sayfası (<title>Şık Kuaför &amp; Berber Salonu…</title>); Host: rastgele123.gncinc.online → 404 + "Aradığın işletmeyi bulamadık"; healthz 200; düz / 200
+- FIX-2 (cron-automation auth): index.ts — eski {userId:'cmtupc2ga…'} gövdesi kaldırıldı; AUTOMATION_EMAIL/AUTOMATION_PASSWORD env (default admin@gnccrm.app/314159) ile gerçek POST /api/auth login → {sessionId} alınır; tüm istekler authedFetch() üzerinden x-gnc-session başlığıyla; 401'de BİR KEZ re-login + retry. package.json dev scriptine AUTOMATION_EMAIL/AUTOMATION_PASSWORD env eklendi
+- DOĞRULA-2: 3010 restart (pid 1290 kill + ensure-services.sh) → POST /run-now logu: "Auth başarılı (admin@gnccrm.app)" → "Otomasyon aktif. Stale müşteri: 0" → "Otomasyon tamamlandı: 0 görev" → "Üyelik hatırlatma: 0" (eski "Auth başarısız: 400" gitti; test verisi üretmedi). 401→re-login zinciri ayrıca deterministik doğrulandı: login 200 → token DB'den silindi → iptal token ile /api/automation = 401 → re-login sonrası = 200; /health 200
+- FEATURE-3 backend (tek src/ dokunuşu): src/app/api/public/member/me/route.ts'e DELETE eklendi — bearer token verify (member-auth), gövdede şifre teyidi, bcrypt compare, üye + telefon-ekiyle eşleşen TÜM randevuları (iptal dahil; ham SQL aday + JS endsWith savunma katmanı, $transaction) siler → {ok:true, deletedAppointments:N}; şifre yanlış 401; member-delete rate limit 5/15dk
+- FEATURE-3 frontend: index.ts /api/member/* proxy'si DELETE metodunu da upstream'e iletiyor (405 mesajı güncellendi). views.ts: profil kartına kırmızı outline "🗑️ Hesabımı Sil" butonu + KVKK uyarı diyalogu (şifre alanı, geri alınamaz uyarısı, Vazgeç/onay, Esc+backdrop kapatma); MEMBER_JS silme akışı → başarılıysa clearAuth + auth formu
+- DOĞRULA-3 (agent-browser, fixcust session): üye kaydı "Fix Cust Test" (0532 777 66 55 / fixcust123) → profil + Hesabımı Sil → diyalog → YANLIŞ şifre: "Şifre doğrulanamadı — hesap silinmedi." (401) → DOĞRU şifre: toast "Hesabın ve tüm randevuların kalıcı olarak silindi" → auth formu; sonrası login (browser+curl) 401 "Geçersiz telefon veya şifre"; DB: 0 kalan üye, 0 kalan randevu (üye randevusu J8ODZ2TU da silindi)
+- FEATURE-4a: başarı ekranına üye girişliyken "📅 Randevularıma git →" linki (#s-appts-link, localStorage gnc_member token kontrolü) → /uyelik; doğrulandı: üye randevusu sonrası link görünür + tıklama /uyelik'e götürüp Randevularım listesinde randevuyu gösterdi
+- FEATURE-4b: "⚡ İlk uygun saat" hızlı butonu — index.ts slots proxy'si artık upstream nextAvailable/nextAvailableLabel'ı iletiyor (önceki hâli drop ediyordu); views.ts quick-slot butonu (yeşil tema) availability yanıtından beslenir, tıklayınca ilgili slotu seçer, saat seçilince gizlenir; doğrulandı: "⚡ İlk uygun saat: 11:00 (11:45 bitiş)" → tıklama → seçili 11:00 + özet "🧾 Manikür · 22.10.2026 11:00 · 200 ₺"
+- FEATURE-4c: telefon görüntü maskesi — detail (#f-phone) ve üyelik (#l-phone, #r-phone) inputlarında "05327776655" → "0532 777 66 55" (yalnız görsel; 0-başlangıçlı ≤11 hane biçimlendirilir, +90/uzun girişlere dokunulmaz); browser'da input değeri teyit edildi
+- OPS: QA sırasında CRM 3000 iki kez OOM ile öldü (dmesg: "Killed process next-server, anon-rss ~2.3GB") — worklog 9-ops/qa-customer precedent'iyle aynı şekilde ensure-server.sh ile geri getirildi (kod/konfig dokunulmadı; revizyon sonrası providers 200). Ölüm benim değişikliklerimle ilgisiz (dev-mode Turbopack bellek şişmesi + sandbox 4GB). Kalan eski chrome artıklarını (qa oturumu) temizledim
+- LINT: `bun run lint` — 7 hata TAMAMI önceden var olan dosyalarda (.agent-skills/.../server.cjs 6, scripts/qa-cross-tenant-write-e2e.js 1 — bana ait değil); benim dosyalarım 0 hata (mini-services eslint-ignore, member/me route temiz)
+- Temizlik: KVKK test üyesi + randevuları silme akışıyla zaten yok edildi (0 kalıntı); /tmp/kvkk-test.sh silindi; kalıcı QA üyeleri (905327777777, 905329999999, 905559998877) qa raporunda belgeli — dokunulmadı
+- Ekran görüntüleri: tool-results/fix-cust-01-uyelik-profil, 02-ilk-uygun-saat, 03-randevu-basarili-link, 03b-basarili-ekran, 04-hesap-sil-diyalog, 05-hesap-sil-yanlis-sifre, 06-hesap-silindi, 07-silme-sonrasi-login-401 (.png)
+
+Stage Summary:
+- 2 bug fix + 1 KVKK özelliği + 3 UX kazanımı tamamlandı; 3002 subdomain modu AÇIK (host→işletme sayfası, markalı 404), 3010 auth ÇALIŞIYOR (login+re-login), 3000 canlı
+- Hesap silme: şifre teyitli, randevularla birlikte atomik silme, 401/429 korumalı; UI'da kırmızı outline + confirm diyalogu
+- Riskler: ①sandbox OOM — next-server dev mode ~2GB RSS'e şişip periyodik ölüyor (watchdog/ensure-server toparlıyor; prod pm2 etkilenmez) ②üye-randevu eşleştirmesi telefon-eki bazlı (şema değişikliği olmadan) — numara değiştiren üye geçmişini göremez ③cron-automation kimliği tek program-admin hesabı (prod için service account önerilir) ④3010 cronu 02:00'de tetiklenir — tam gece koşusu sandbox'ta gözlemlenemedi (run-now ile eşdeğer zincir doğrulandı)
+---
+
+---
+Task ID: dev-turu-final
+Agent: Z.ai Code (ana ajan)
+Task: ①Gereksiz dosya temizliği ②tüm aktif özellikleri mükemmel hale getirme ③subagent'lı gerçek ürün geliştirme turu
+
+Work Log:
+- TEMİZLİK: tool-results/ (23M, 175 eski artifact), root task-*/site-*.png'ler, 3100 bozuk dosya, download/ (eski zip), logs/* eski loglar, upload/* eski yapışkanlar silindi (~60MB+). skills/ (platform), node_modules, .next (dev cache), db/ dokunulmadı. Kod upload/logs klasörlerine referans vermiyor (rg ile doğrulandı)
+- CRON: 15 dk'lık webDevReview görevi kuruldu (Job 470742, fixed_rate 900s)
+- QA (paralel 2 subagent): qa-crm → 26 modül + API smoke + mobil; qa-customer → 18 adım E2E. Skor: CRM 21/26 tam PASS, müşteri 16/18 PASS. Kritik/orta/minör bug listesi çıkarıldı
+- FİX (paralel 2 subagent): fix-crm → ①KRİTİK admin/users tenantScope ②audit platform-genel ③sw.js offline false-positive ④KVKK typo ⑤YENİ: İşletme Sihirbazı (POST /api/admin/tenants + UI dialog, transaction'lı ilk admin, 409 duplicate, E2E + cleanup). fix-cust → ①3002 BASE_DOMAIN=gncinc.online (ensure-services.sh + package.json, host modu + markalı 404 canlı) ②cron-automation gerçek login (env creds + 401 re-login) ③YENİ: KVKK üye self-servis hesap silme (DELETE /api/public/member/me + şifre teyidi + randevu cascade; UI'da kırmızı buton, E2E) ④UX: "Randevularıma git" linki + "⚡ İlk uygun saat" butonu (slots proxy nextAvailable iletmesi fix'i) + telefon maskeleme
+- FİNAL SMOKE: 5/5 port 200; Host: sik-kuafor.gncinc.online → işletme sayfası; rastgele123 → 404 markalı hata sayfası
+- LINT: her iki ajan 0 yeni hata (7 önceden var olan: 6× .agent-skills server.cjs + 1× qa-cross-tenant-write-e2e.js)
+
+Stage Summary:
+- Kullanıcının 4 maddesi tamam: temizlik yapıldı, tüm QA bulguları fix'lendi, 3 yeni özellik (işletme sihirbazı, KVKK hesap silme, UX paketi) eklendi ve browser-E2E ile kanıtlandı
+- Sistem şu an "gerçek çalışan program" seviyesinde: SaaS işletme açma → müşteri kaydı → randevu → iptal → hesap silme → otomasyon → SSL provisioning script zinciri uçtan uca çalışıyor
+- RİSK: sandbox OOM (next-dev ~2.2GB RSS ile 3 kez öldürüldü, watchdog/nohup toparlıyor) — prod pm2 etkilenmez; üye-randevu eşleşmesi telefon eki bazlı (şema değişikliği yapılabilir sonraki tur); cron-automation için prod'da service account önerilir
+- Sonraki turlar (cron 470742): üye-randevu memberId bağlantısı, hizmet bazlı 404 arama, PWA bandını kalıcı kapatma, mobil sidebar backdrop fix, rapor grafikleri

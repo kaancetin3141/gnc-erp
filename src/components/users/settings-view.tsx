@@ -468,7 +468,7 @@ function KvkkTab() {
                 <p className="font-medium">KVKK Uyumluluğu</p>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Bu CRM platformu, 6698 sayılı KVKK ve GDPR uyumludur. Müşteri kişisel verileri
-                  açık rıza ile işlenir, amaç dışı kullanılmaz ve talep upon silinir. Veri işleme
+                  açık rıza ile işlenir, amaç dışı kullanılmaz ve talep üzerine silinir. Veri işleme
                   amaçlarımızı Aydınlatma Metni&rsquo;nde bulabilirsiniz.
                 </p>
               </div>

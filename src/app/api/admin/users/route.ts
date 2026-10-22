@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import {
-  getSession, requireAuth, requirePermission, ok, safeJsonParse,
+  getSession, requireAuth, requirePermission, ok, safeJsonParse, tenantScope,
 } from '@/lib/api-utils'
 import type { PermissionKey } from '@/types'
 
@@ -20,7 +20,8 @@ export async function GET(req: NextRequest) {
   const status = url.searchParams.get('status') || ''
 
   const where: Record<string, unknown> = {
-    tenantId: user!.tenantId,
+    // SUPERADMIN: platform geneli (tüm tenantlar) — diğer roller: kendi tenantı
+    ...tenantScope(user!),
   }
 
   if (search) {

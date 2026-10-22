@@ -98,8 +98,11 @@ self.addEventListener('fetch', (event) => {
             cache.put(request, networkResponse.clone())
           }
           return networkResponse
-        } catch {
-          // Offline — cache'den döndür
+        } catch (err) {
+          // Fallback YALNIZCA gerçekten çevrimdışıyken: online iken ağ hatası
+          // (örn. sunucu restart, proxy hatası) 503 offline yanıtı DÖNDÜRMEZ —
+          // reject edilir ki react-query retry akışı çalışsın (yanlış pozitif fix'i)
+          if (navigator.onLine) throw err
           const cache = await caches.open(API_CACHE)
           const cached = await cache.match(request)
           if (cached) return cached

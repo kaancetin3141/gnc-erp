@@ -39,11 +39,12 @@ port_alive() {
 
 ensure() {
   local name="$1" port="$2" dir="$BASE/$1" attempt
+  local extra_env="${3:-}" # servis-özel env (örn. customer-page alt alan adı modu)
   if [ ! -d "$dir" ]; then return; fi
   if port_alive "$port"; then return; fi
   # 3 deneme: her başlatmadan sonra portu bekle (max ~20 sn)
   for attempt in 1 2 3; do
-    (cd "$dir" && nohup bun run dev > "$LOGDIR/$name.log" 2>&1 &)
+    (cd "$dir" && nohup env $extra_env bun run dev > "$LOGDIR/$name.log" 2>&1 &)
     for i in $(seq 1 10); do
       sleep 2
       port_alive "$port" && return
@@ -53,7 +54,9 @@ ensure() {
   return
 }
 
-ensure customer-page 3002
+# customer-page alt alan adı modu: {işletme}.gncinc.online Host başlığı → işletme sayfası.
+# package.json dev scripti de aynı default'u taşır (çift taraf idempotent).
+ensure customer-page 3002 "BASE_DOMAIN=${BASE_DOMAIN:-gncinc.online}"
 ensure chat-service 3005
 ensure appointment-reminders 3011
 ensure cron-automation 3010

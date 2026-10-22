@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { getSession, requirePermission, ok, safeJsonParse } from '@/lib/api-utils'
+import { getSession, requirePermission, ok, safeJsonParse, tenantScope } from '@/lib/api-utils'
 
 // GET — tenant bazlı denetim kayıtları (audit log)
 // Yetki: audit.view (yalnızca admin/superadmin)
@@ -23,7 +23,8 @@ export async function GET(req: NextRequest) {
     : 100
 
   const where: Record<string, unknown> = {
-    tenantId: user!.tenantId,
+    // SUPERADMIN: platform geneli (public_booking, member_cancel dahil) — diğer roller: kendi tenantı
+    ...tenantScope(user!),
   }
   if (entity) where.entity = entity
   if (action) where.action = action

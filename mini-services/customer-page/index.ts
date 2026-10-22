@@ -278,12 +278,16 @@ Bun.serve({
           serviceId,
           workingHours: r.data.workingHours ?? null,
           slots: Array.isArray(r.data.slots) ? r.data.slots : [],
+          // hızlı seçim: ilk uygun saat ("İlk uygun saat" butonu bunu kullanır)
+          nextAvailable: typeof r.data.nextAvailable === 'string' ? r.data.nextAvailable : null,
+          nextAvailableLabel: typeof r.data.nextAvailableLabel === 'string' ? r.data.nextAvailableLabel : null,
         };
         cacheSet(key, out, 10_000);
         return json(out);
       }
 
-      // --- API: üyelik proxy'si (CRM /api/public/member/* uçlarını aynı-origin yapar)
+      // --- API: üyelik proxy'si (CRM /api/public/member/* uçlarını same-origin yapar)
+      // GET/HEAD okuma, POST login/register/cancel, DELETE hesap silme (KVKK) için.
       const mMember = path.match(/^\/api\/member\/(.+)$/);
       if (mMember) {
         const rest = mMember[1].replace(/\/+$/, '');
@@ -295,7 +299,7 @@ Bun.serve({
           if (r.data) return json(r.data, r.ok ? 200 : r.status);
           return json({ error: 'Üyelik servisi şu anda yanıt vermiyor. Birazdan tekrar dene.' }, 502);
         }
-        if (method !== 'POST') return json({ error: 'Bu uç için GET veya POST kullan.' }, 405);
+        if (method !== 'POST' && method !== 'DELETE') return json({ error: 'Bu uç için GET, POST veya DELETE kullan.' }, 405);
         let mbody: Json;
         try {
           const raw = await req.text();
@@ -304,7 +308,7 @@ Bun.serve({
           return json({ error: 'İstek gövdesi okunamadı.' }, 400);
         }
         const r = await upstream('/api/public/member/' + rest, {
-          method: 'POST',
+          method,
           headers: { ...headers, 'content-type': 'application/json' },
           body: JSON.stringify(mbody),
           timeoutMs: 12000,

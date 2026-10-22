@@ -26,11 +26,14 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import {
   Building2, Search, RefreshCw, Users, Store, CalendarClock,
-  Receipt, ListTree, ShoppingCart, Save, ShieldCheck, Globe, Clock, Loader2,
+  Receipt, ListTree, ShoppingCart, Save, ShieldCheck, Globe, Clock, Loader2, Plus,
 } from 'lucide-react'
 
 interface TenantListItem {
@@ -153,6 +156,75 @@ export function TenantsTab() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // --- Yeni İşletme sihirbazı (yalnız superadmin) ---
+  const EMPTY_CREATE = {
+    name: '', plan: 'business', defaultCurrency: 'TRY', country: 'TR',
+    adminName: '', adminEmail: '', adminPassword: '',
+  }
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createForm, setCreateForm] = useState(EMPTY_CREATE)
+  const [createError, setCreateError] = useState('')
+
+  const createTenant = useMutation({
+    mutationFn: (payload: Record<string, unknown>) =>
+      apiPost<{ tenant: { id: string; name: string; sector: string }; admin: { email: string } | null }>(
+        '/api/admin/tenants',
+        payload,
+      ),
+    onSuccess: (res) => {
+      toast.success(
+        res.admin
+          ? `İşletme oluşturuldu: ${res.tenant.name} · İlk admin: ${res.admin.email}`
+          : `İşletme oluşturuldu: ${res.tenant.name}`,
+      )
+      qc.invalidateQueries({ queryKey: ['admin-tenants'] })
+      setCreateOpen(false)
+      setCreateForm(EMPTY_CREATE)
+      setCreateError('')
+    },
+    onError: (e: Error) => setCreateError(e.message),
+  })
+
+  const submitCreate = () => {
+    setCreateError('')
+    const name = createForm.name.trim()
+    if (!name) {
+      setCreateError('İşletme adı gerekli')
+      return
+    }
+    if (createForm.country && !/^[A-Z]{2}$/.test(createForm.country.trim().toUpperCase())) {
+      setCreateError('Ülke kodu 2 harf olmalı (örn. TR)')
+      return
+    }
+    const adminName = createForm.adminName.trim()
+    const adminEmail = createForm.adminEmail.trim()
+    const adminPassword = createForm.adminPassword
+    const hasAdmin = Boolean(adminName || adminEmail || adminPassword)
+    if (hasAdmin) {
+      if (!adminName || !adminEmail || !adminPassword) {
+        setCreateError('İlk admin için ad, e-posta ve şifre alanlarının tamamı gerekli (ya da üçünü de boş bırakın)')
+        return
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+        setCreateError('Geçerli bir e-posta adresi girin')
+        return
+      }
+      if (adminPassword.length < 8) {
+        setCreateError('İlk admin şifresi en az 8 karakter olmalı')
+        return
+      }
+    }
+    createTenant.mutate({
+      name,
+      plan: createForm.plan,
+      defaultCurrency: createForm.defaultCurrency,
+      country: createForm.country.trim().toUpperCase(),
+      ...(hasAdmin
+        ? { adminUser: { name: adminName, email: adminEmail, password: adminPassword } }
+        : {}),
+    })
+  }
+
   const sectorMeta = detail ? SECTOR_META[detail.tenant.sector] : null
 
   return (
@@ -170,10 +242,18 @@ export function TenantsTab() {
             İşletmeyi seçin; bilgilerini, rollerini ve modüllerini buradan yönetin
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => listQ.refetch()} disabled={listQ.isFetching}>
-          <RefreshCw className={cn('h-4 w-4 mr-1.5', listQ.isFetching && 'animate-spin')} />
-          Yenile
-        </Button>
+        <div className="flex items-center gap-2">
+          {superAdmin && (
+            <Button size="sm" onClick={() => { setCreateForm(EMPTY_CREATE); setCreateError(''); setCreateOpen(true) }}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              Yeni İşletme
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => listQ.refetch()} disabled={listQ.isFetching}>
+            <RefreshCw className={cn('h-4 w-4 mr-1.5', listQ.isFetching && 'animate-spin')} />
+            Yenile
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -519,6 +599,135 @@ export function TenantsTab() {
           )}
         </div>
       </div>
+
+      {/* --- Yeni İşletme sihirbazı (yalnız superadmin) --- */}
+      <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (!o) setCreateError('') }}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto custom-scroll">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-emerald-600" />
+              Yeni İşletme Aç
+            </DialogTitle>
+            <DialogDescription>
+              Platforma yeni bir işletme (tenant) ekleyin. İlk şirket adminini şimdi
+              oluşturabilir veya boş bırakıp sonra davet edebilirsiniz.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                İşletme Adı <span className="text-destructive">*</span>
+              </label>
+              <Input
+                placeholder="Örn. Yıldız Kırtasiye Ltd."
+                value={createForm.name}
+                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                maxLength={120}
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Plan</label>
+                <Select
+                  value={createForm.plan}
+                  onValueChange={(v) => setCreateForm({ ...createForm, plan: v })}
+                >
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">free</SelectItem>
+                    <SelectItem value="business">business</SelectItem>
+                    <SelectItem value="enterprise">enterprise</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Para Birimi</label>
+                <Select
+                  value={createForm.defaultCurrency}
+                  onValueChange={(v) => setCreateForm({ ...createForm, defaultCurrency: v })}
+                >
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TRY">TRY ₺</SelectItem>
+                    <SelectItem value="USD">USD $</SelectItem>
+                    <SelectItem value="EUR">EUR €</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Ülke</label>
+                <Input
+                  value={createForm.country}
+                  maxLength={2}
+                  placeholder="TR"
+                  onChange={(e) => setCreateForm({ ...createForm, country: e.target.value.toUpperCase() })}
+                  className="h-9"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <div>
+                <p className="text-xs font-semibold flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                  İlk Admin Kullanıcısı <span className="font-normal text-muted-foreground">(opsiyonel)</span>
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Girilirse rolü “Şirket Admini”, durumu “aktif” olur ve yetkileri işletme adından
+                  otomatik belirlenir. Şifre en az 8 karakter.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Ad Soyad</label>
+                  <Input
+                    placeholder="Örn. Ayşe Yılmaz"
+                    value={createForm.adminName}
+                    onChange={(e) => setCreateForm({ ...createForm, adminName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">E-posta</label>
+                  <Input
+                    type="email"
+                    placeholder="admin@sirket.com"
+                    value={createForm.adminEmail}
+                    onChange={(e) => setCreateForm({ ...createForm, adminEmail: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Şifre</label>
+                <Input
+                  type="password"
+                  placeholder="En az 8 karakter"
+                  value={createForm.adminPassword}
+                  onChange={(e) => setCreateForm({ ...createForm, adminPassword: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {createError && (
+              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-2.5 py-2">
+                {createError}
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={createTenant.isPending}>
+              İptal
+            </Button>
+            <Button onClick={submitCreate} disabled={createTenant.isPending}>
+              {createTenant.isPending
+                ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                : <Plus className="h-4 w-4 mr-1.5" />}
+              İşletmeyi Oluştur
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "bun --hot index.ts"
+    "dev": "AUTOMATION_EMAIL=${AUTOMATION_EMAIL:-admin@gnccrm.app} AUTOMATION_PASSWORD=${AUTOMATION_PASSWORD:-314159} bun --hot index.ts"
   },
   "dependencies": {
     "node-cron": "^3.0.3"
