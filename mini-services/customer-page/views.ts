@@ -557,11 +557,24 @@ footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),r
 .sc-dot.full{background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 3px 10px rgba(180,83,9,.32);border:1.5px solid rgba(180,83,9,.5)}
 .sc-dot.empty{background:rgba(255,255,255,.55);border:2px dashed rgba(120,113,108,.5);color:transparent}
 .sc-reward{margin:0;font-size:.84rem;font-weight:600;color:#92400e;background:var(--amber-soft);border:1px solid rgba(180,83,9,.22);border-radius:12px;padding:9px 13px}
-.sc-won{flex:none;display:inline-block;font-size:.72rem;font-weight:800;background:var(--green-soft);color:var(--green);border-radius:999px;padding:4px 11px;white-space:nowrap}`;
+.sc-won{flex:none;display:inline-block;font-size:.72rem;font-weight:800;background:var(--green-soft);color:var(--green);border-radius:999px;padding:4px 11px;white-space:nowrap}
+
+/* ---- 🔗 siteye göm (embed/widget) — iframe içi kompakt mod ---- */
+/* /widget/:slug → body.embed: site çerçevesi (nav/crumb/footer/üye linkleri)
+   gizlenir, içeriğe tam yükseklik verilir; kart gölgeleri hafifletilir. */
+body.embed{background:#ffffff}
+body.embed .page{min-height:auto;padding:0}
+body.embed header.top,
+body.embed .crumb,
+body.embed footer.ft,
+body.embed .embed-hide{display:none !important}
+body.embed .dwrap{padding:10px 10px 22px;margin:0;max-width:100%}
+body.embed .dcard{box-shadow:0 2px 10px rgba(70,26,36,.06)}
+body.embed main{padding-top:10px}`;
 
 // ---------------------------------------------------------------- Ortak sayfa parçaları
 
-function pageShell(o: { title: string; desc: string; body: string; scripts?: string[]; extraCss?: string[]; gwPort?: string | null }): string {
+function pageShell(o: { title: string; desc: string; body: string; scripts?: string[]; extraCss?: string[]; gwPort?: string | null; bodyClass?: string }): string {
   // Sürüm parametresi: CSS/JS içeriğinin djb2 özeti — içerik değişince URL değişir,
   // tarayıcı/heuristik önbellek eski stili servis edemez (cache-busting).
   let _vh = 5381;
@@ -587,7 +600,7 @@ function pageShell(o: { title: string; desc: string; body: string; scripts?: str
 <link rel="stylesheet" href="${gw('/assets/style.css')}">
   ${extraCss}
 </head>
-<body>
+<body${o.bodyClass ? ` class="${o.bodyClass}"` : ''}>
 <div class="page">
 ${o.body}
 </div>
@@ -701,7 +714,7 @@ const DAY_TR: Array<[string, string]> = [
 
 export function detailPage(a: {
   provider: Json; services: Json[]; reviews?: { items: Json[]; summary: Json } | null;
-  homeUrl: string; gwPort?: string | null;
+  homeUrl: string; gwPort?: string | null; embed?: boolean;
 }): string {
   const p = a.provider;
   const meta = typeMeta(p.type);
@@ -982,10 +995,10 @@ export function detailPage(a: {
         <p class="mini-note" id="s-pending-note" hidden>⏳ Randevun işletme onayı bekliyor — onaylandığında bilgilendirilirsin.</p>
         <div class="s-actions">
           <a class="btn btn-wa" id="wa-link" target="_blank" rel="noopener" href="#">💬 WhatsApp'tan Onay Gönder</a>
-          <a class="btn btn-ghost" id="s-ics-link" href="#" download hidden>📅 Takvime ekle</a>
-          <a class="btn btn-ghost" id="s-appts-link" href="${a.gwPort ? '/uyelik?XTransformPort=' + encodeURIComponent(a.gwPort) : '/uyelik'}" hidden>📅 Randevularıma git →</a>
+          <a class="btn btn-ghost" id="s-ics-link" href="#" download hidden${a.embed ? ' target="_blank" rel="noopener"' : ''}>📅 Takvime ekle</a>
+          <a class="btn btn-ghost s-appts${a.embed ? ' embed-hide' : ''}" id="s-appts-link" href="${a.gwPort ? '/uyelik?XTransformPort=' + encodeURIComponent(a.gwPort) : '/uyelik'}" hidden>📅 Randevularıma git →</a>
           <button type="button" class="btn btn-ghost" id="again-btn">➕ Yeni randevu al</button>
-          <a class="btn btn-ghost" href="${esc(a.homeUrl)}">🏠 Ana sayfaya dön</a>
+          <a class="btn btn-ghost s-home${a.embed ? ' embed-hide' : ''}" href="${esc(a.homeUrl)}">🏠 Ana sayfaya dön</a>
         </div>
       </div>
 
@@ -1039,6 +1052,7 @@ ${siteFooter()}`;
     title: `${p.name} — Online Randevu | GNC Randevu`,
     desc: `${p.name} (${p.city}) online randevu: hizmetler, çalışma saatleri ve uygun saatler. Saniyeler içinde üyeliksiz randevu.`,
     body,
+    bodyClass: a.embed ? 'embed' : undefined,
     extraCss: hasGeo ? ['/assets/leaflet/leaflet.css'] : undefined,
     scripts: hasGeo ? ['/assets/leaflet/leaflet.js', '/assets/detail.js'] : ['/assets/detail.js'],
     gwPort: a.gwPort,

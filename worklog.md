@@ -9418,3 +9418,41 @@ Stage Summary:
 - Kullanıcı talebi karşılandı: fonksiyonel doğrulama (smoke+güvenlik+E2E) + geliştirme (3 özellik) devam etti
 - Kalan riskler: dev server OOM eğilimi (altyapı; restart kolay), superadmin-smoke 2 bayat beklentisi (test güncellemesi bekliyor), Secure cookie prod işi
 - Tur 3 adayları: Member-Tenant şema ilişkisi, embed widget "siteye göm" UI, cron-automation prod servis hesabı, bekleme listesi otomatik bildirim (randevu iptal→sıradakine SMS/WhatsApp mock)
+---
+Task ID: tur3-embed-widget
+Agent: Z.ai Code (ana oturum)
+Task: "geliştirmeye devam et" — Tur 3 adayı: embed widget "siteye göm" (işletmelerin kendi sitelerine randevu formu)
+
+Work Log:
+- DURUM: Tur 2 tamamen kapalı (worklog: tur2-a/b/c + kapanış girişleri); damga-kartı ajanının işi önceki turda seed+E2E ile doğrulanmıştı; paralel ajan yok (8+ dk hareket yok). DB: 84 randevu/2 demo üye/3 bekleme/8 yorum/2 damga kartı+1 ayar — beklenen seed durumu. 5/5 servis 200
+- UYGULAMA (4 dosya): ①mini-services/customer-page/views.ts — pageShell'e bodyClass parametresi; detailPage'e embed?: boolean (başarı ekranı ICS linkine embed'te target=_blank rel=noopener [iframe'de indirme], "Randevularıma git"+"Ana sayfaya dön" linklerine embed-hide sınıfı); STYLE_CSS sonuna embed kuralları (body.embed: header.top/.crumb/footer.ft/.embed-hide display:none, .dwrap kompakt padding, beyaz zemin, yumuşak gölge) ②mini-services/customer-page/index.ts — GET /widget/:slug rotası (renderDetail embed=true; aynı kamu API'leri, ek saldırı yüzeyi yok) + /isletme/:slug?embed=1 desteği (renderDetail 5. parametre) ③src/components/admin/domains-tab.tsx — "Siteye Göm" diyaloğu: Yayın Adresi hücresinde Code2 butonu (slug varsa; baseDomain şartı kaldırıldı — ilk sürümde baseDomain boşken buton çıkmıyordu), diyalogta düzenlenebilir site adresi (default https://randevu.<baseDomain>, boşsa gncinc.online), kopyalanabilir iframe snippet'i (height 1200, lazy), Canlı Önizleme iframe'i (/widget/<slug>?XTransformPort=3002 relative → gateway), clipboard kopyala + toast ④ok
+- TESTLER: curl — /widget/sik-kuafor 200+class="embed"+embed CSS kuralı+ICS target="_blank" (normal sayfada YOK — karşılaştırmalı grep kanıtı); /isletme?embed=1 aynı; normal detail REGRESYONSUZ (embed class yok); olmayan işletme → 404; gateway (localhost:81) üzerinden /widget?XTransformPort=3002 → 200+embed (önizleme iframe'i gerçek önizleme ortamında çalışır — not: agent-browser localhost:3000'e direkt bağlanınca gateway devrede değil, CRM 404'ü test artefaktıydı). agent-browser E2E — widget sayfası: body.embed+header display:none+form var; UÇTAN UCA RANDEVU: hizmet→28.10 şerit tarihi→09:00 slot→QA Widget Test/0533 555 13 13→başarı kartı+kod P2J0TIHB+ICS target=_blank+ana-sayfa linki gizli; randevu CRM'e source=web/onaylandi/28.10 09:00 floating olarak düştü → prisma ile silindi (84 baseline). Admin E2E: Alan Adları tab→Code2 butonu→diyalog (snippet "https://randevu.gncinc.online/widget/sik-kuafor" + önizleme iframe src /widget/sik-kuafor?XTransformPort=3002) ⑤regresyon: qa-waitlist-e2e 27/27 PASS; /, /isletme/sik-kuafor, /uyelik hepsi 200; tsc dokunulan dosyalarda temiz (kalan hatalar eski baseline: mini-service Bun tipleri/capacitor/skills), eslint domains-tab temiz
+- OPS: dev server (3000) widget testi sırasında 1 kez OOM öldü (upstream hatası olarak görünmüştü) → ensure-services.sh ile toparlandı; 3002 hot-reload ile canlı
+
+Stage Summary:
+- EMBED WIDGET CANLI: işletmeler Artık "Alan Adları → Siteye Göm" ile tek tıkla kopyalanabilir iframe kodu alıyor; widget = detay sayfasının çerçevesiz hâli (aynı test edilmiş randevu akışı — nav/footer/üye linkleri gizli, ICS yeni sekmede); canlı önizleme admin panelde
+- Kullanıcı yolculuğu: Admin Paneli → Alan Adları → 💻 butonu → kodu kopyala → kendi sitesine yapıştır — rezervasyonlar "web" kaynağıyla panele düşer
+- Test kanıtı: widget içinden gerçek randevu alındı (kod P2J0TIHB) ve temizlendi; 27/27 waitlist regresyon; tüm sayfalar 200
+- Tur 3 kalan adaylar: Member-Tenant şema ilişkisi, bekleme müşterisine wa.me hızlı bildirim linki, cron-automation prod servis hesabı, damga kartı işlem geçmişi (StampCardLog)
+---
+Task ID: tur3-embed-widget-verify
+Agent: general-purpose subagent
+Task: Embed widget bağımsız doğrulama (tur3-embed-widget sonrası QA turu)
+
+Work Log:
+- TUR BAŞI SAĞLIK: 3000/3002/3010/3011 → 4/4 HTTP 200; sunucu saati 26 Eki 23:27 UTC (= 27 Eki 02:27 Istanbul; uygulama şeridi Pzt 26 Eki'den başlatıyor — "bugün 27 Ekim" talimatıyla uyumlu; yarın = Çar 28 Eki seçildi, dün/today pas geçildi)
+- WIDGET SAYFASI (3002/widget/sik-kuafor, agent-browser, mobil 390x844): body class="embed" ✓; header.top display:none ✓; footer.ft display:none ✓ (DOM'da var ama gizli); scrollWidth 390 ≤ 390 — yatay taşma YOK ✓; 13 hizmet kartı + randevu formu (hizmet select, tarih şeridi, saat grid, ad/telefon/not) + form görünür ✓; konsol hatası 0, page error 0 (yalnız HMR/React DevTools info log) ✓. Ek: 6 değerlendirme bölümü + çalışma saatleri render; şerit 14 günlük (26 Eki→8 Kas)
+- WIDGET İÇİ RANDEVU UÇTAN UCA: Hizmet "Saç Kesimi · 30 dk · 150 ₺" seçildi → tarih butonu "Çar 28 Eki" (class date-btn on — seçim doğrulandı) → 09:00 slotu (disabled değil, tıkla → class on) → form ad="QA Widget Verify" + tel="0533 555 14 14" (alanlar önceden Damla Şahin önyüklüydü — localStorage'dan; üzerine yazıldı) → "✅ Randevuyu Onayla" → "Teşekkürler!" başarı kartı + randevu kodu 11CU6678 ✓; embed davranışı: ICS linki target="_blank" ✓ (normal sayfada aksine), .embed-hide linkler ("Randevularıma git"+"Ana sayfaya dön") 2 adet gizli ✓; konsol hatası 0 ✓
+- DB KANIT: randevu source="web", status="onaylandi", 2026-10-28 09:00–09:30, phone 0533 555 14 14 olarak düştü (id ...11cu6678 — UI kodu id kuyruğundan türetiliyor)
+- TEMİZLİK: scripts/_tmp-qaw.mjs (geçici) ile findFirst {customerName:'QA Widget Verify'} → delete → sayım 85→84 ✓ (baseline geri geldi, REMAINING_QA=0); script iş sonunda SİLİNDİ (scripts/ içinde _tmp-qaw izi yok)
+- ADMIN DİYALOĞU (3000, süperadmin oturumu zaten açıktı — giriş yapılmadı): Admin Paneli → "Alan Adları" tab → aria-label "Şık Kuaför & Berber Salonu için siteye göm kodu" butonu (1 adet, eşsiz) → diyalog açılıyor ✓ ("Siteye Göm — Şık Kuaför & Berber Salonu"); snippet metni `<iframe src="https://randevu.gncinc.online/widget/sik-kuafor" ... height:1200px ... loading="lazy">` — /widget/sik-kuafor içeriyor ✓; Canlı Önizleme iframe src="/widget/sik-kuafor?XTransformPort=3002" + loading=lazy ✓ (iframe İÇİ değerlendirilmedi — gateway dışı 404 normal, talimat gereği içerik doğrulama yeterli); "Kodu Kopyala" + "web kaynaklı rezervasyon" açıklaması mevcut; 3000 konsol hatası 0 ✓
+- GENEL SAĞLIK: 3002/ ana sayfa render ✓ (hero + işletme kartları, scrollW 1440, konsol hatası 0); 3002/uyelik render ✓ ("Randevularım" + Damga bölümü görünür, konsol hatası 0); 3000/ 200 + Admin Paneli erişilir
+- LINT: bun run lint → 7 hata = BASELINE (6 × .agent-skills/superpowers/brainstorming/scripts/server.cjs require + 1 × scripts/qa-cross-tenant-write-e2e.js require) — 0 YENİ hata ✓
+- Kanıt ekran görüntüleri: tool-results/tur3v-01-widget-full.png, tur3v-02-widget-success.png, tur3v-03-admin-embed-dialog.png
+- OPS NOTU: tur boyunca hiçbir servis ölmedi/restart edilmedi; şemaya/API'ye/kaynak dosyalara dokunulmadı
+
+Stage Summary:
+- PASS — Embed widget bağımsız doğrulaması 6/6 adım: ①widget sayfası embed class + header/footer gizli + taşmasız + kartlar/form ②widget içi gerçek randevu (kod 11CU6678, source=web) ③admin "siteye göm" diyaloğu snippet + XTransformPort=3002 önizleme ④genel sağlık 4/4 servis + / ve /uyelik hatasız ⑤lint 7=baseline ⑥temizlik 84 randevu + temp script silindi
+- Konsol hatası: TÜM sayfalarda 0 (yalnız dev HMR info log). Page error: 0
+- Temizlik kanıtı: QA Widget Verify randevusu silindi; Appointment sayımı 85→84; kalan QA kaydı 0; oluşturulan tek varlık test randevusuydu
+- REGRESYON BULGUSU YOK — tur3-embed-widget'in işi bağımsız olarak teyit edildi; tek küçük not: randevu kodu Appointment.id kuyruğundan türetiliyor (UI kodu = id son 8 karakteri; tutarlı davranış)

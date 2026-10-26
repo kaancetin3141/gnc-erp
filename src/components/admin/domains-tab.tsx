@@ -28,8 +28,11 @@ import {
   Tooltip, TooltipContent, TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Globe, Save, Copy, MapPin, Loader2, RefreshCw, ExternalLink,
-  Navigation, Server, ExternalLink as ExtIcon, SearchX,
+  Navigation, Server, ExternalLink as ExtIcon, SearchX, Code2, Check,
 } from 'lucide-react'
 
 interface DomainItem {
@@ -75,6 +78,10 @@ export function DomainsTab() {
   const [baseInput, setBaseInput] = useState<string | null>(null)
   const [slugDrafts, setSlugDrafts] = useState<Record<string, string>>({})
   const [geoDrafts, setGeoDrafts] = useState<Record<string, { lat: string; lng: string }>>({})
+  // Siteye göm (embed widget) diyaloğu — satırdaki Code2 butonuyla açılır
+  const [embedTarget, setEmbedTarget] = useState<DomainItem | null>(null)
+  const [embedBase, setEmbedBase] = useState('')
+  const [embedCopied, setEmbedCopied] = useState(false)
 
   const q = useQuery({
     queryKey: ['admin-domains'],
@@ -349,22 +356,45 @@ kalori.${bd} {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {publicUrl ? (
-                              <a
-                                href={`/?XTransformPort=3002&isletme=${p.slug}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-xs font-mono text-sky-600 hover:underline inline-flex items-center gap-1"
-                                title={publicUrl}
-                              >
-                                {p.slug}.{baseDomain}
-                                <ExtIcon className="h-3 w-3 shrink-0" />
-                              </a>
-                            ) : (
-                              <span className="text-xs font-mono text-muted-foreground">
-                                {p.slug ? `${p.slug}.…` : '—'}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1">
+                              {publicUrl ? (
+                                <a
+                                  href={`/?XTransformPort=3002&isletme=${p.slug}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-mono text-sky-600 hover:underline inline-flex items-center gap-1"
+                                  title={publicUrl}
+                                >
+                                  {p.slug}.{baseDomain}
+                                  <ExtIcon className="h-3 w-3 shrink-0" />
+                                </a>
+                              ) : (
+                                <span className="text-xs font-mono text-muted-foreground">
+                                  {p.slug ? `${p.slug}.…` : '—'}
+                                </span>
+                              )}
+                              {p.slug && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                      title="Siteye göm — randevu widget kodu"
+                                      aria-label={`${p.name} için siteye göm kodu`}
+                                      onClick={() => {
+                                        setEmbedTarget(p)
+                                        setEmbedBase(baseDomain ? `https://randevu.${baseDomain}` : 'https://randevu.gncinc.online')
+                                        setEmbedCopied(false)
+                                      }}
+                                    >
+                                      <Code2 className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Siteye göm kodu</TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -464,6 +494,80 @@ kalori.${bd} {
           adımlarıyla <span className="font-mono">isletme-slug.anaalanadi.com</span> adresleri otomatik çalışır.
         </p>
       </div>
+
+      {/* Siteye Göm (embed widget) diyaloğu */}
+      <Dialog open={!!embedTarget} onOpenChange={(v) => !v && setEmbedTarget(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <Code2 className="h-4 w-4 text-emerald-600" />
+              Siteye Göm — {embedTarget?.name}
+            </DialogTitle>
+            <DialogDescription className="text-sm">
+              Aşağıdaki kodu kendi web sitenize yapıştırın: randevu formunuz sitenizde görünür,
+              rezervasyonlar doğrudan panelinize düşer. Kodu değiştirmeniz gerekmez — içerik otomatik günceldir.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="embed-base">
+                Randevu sitesi adresiniz
+              </label>
+              <Input
+                id="embed-base"
+                value={embedBase}
+                onChange={(e) => setEmbedBase(e.target.value.trim())}
+                className="h-8 font-mono text-xs mt-1"
+                placeholder="https://randevu.siteniz.com"
+              />
+            </div>
+
+            <pre className="text-[11px] leading-relaxed bg-stone-950 text-stone-100 rounded-lg p-3 overflow-x-auto font-mono select-all whitespace-pre-wrap break-all">{embedTarget && `<iframe src="${embedBase || 'https://randevu.siteniz.com'}/widget/${embedTarget.slug}"
+        style="width:100%;height:1200px;border:0;border-radius:16px"
+        title="Online Randevu — ${embedTarget.name}"
+        loading="lazy"></iframe>`}</pre>
+
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="h-8"
+                disabled={!embedTarget || !embedBase}
+                onClick={async () => {
+                  if (!embedTarget) return
+                  const code = `<iframe src="${embedBase}/widget/${embedTarget.slug}" style="width:100%;height:1200px;border:0;border-radius:16px" title="Online Randevu — ${embedTarget.name}" loading="lazy"></iframe>`
+                  try {
+                    await navigator.clipboard.writeText(code)
+                    setEmbedCopied(true)
+                    toast.success('Widget kodu kopyalandı')
+                    setTimeout(() => setEmbedCopied(false), 2000)
+                  } catch {
+                    toast.error('Kopyalanamadı — kodu elle seçip kopyalayın')
+                  }
+                }}
+              >
+                {embedCopied ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
+                {embedCopied ? 'Kopyalandı' : 'Kodu Kopyala'}
+              </Button>
+              <span className="text-[11px] text-muted-foreground">
+                Müşteri bu formdan aldığı randevular &quot;web&quot; kaynağıyla panelinize düşer.
+              </span>
+            </div>
+
+            {embedTarget && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">Canlı önizleme:</p>
+                <iframe
+                  src={`/widget/${embedTarget.slug}?XTransformPort=3002`}
+                  title={`${embedTarget.name} widget önizleme`}
+                  className="w-full h-[420px] rounded-lg border"
+                  loading="lazy"
+                />
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

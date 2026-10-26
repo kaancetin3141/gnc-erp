@@ -196,7 +196,7 @@ const leafletRes = (f: { data: string | Uint8Array; type: string }) =>
 
 // ---------------------------------------------------------------- sayfa render
 
-async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | null, q?: string): Promise<{ body: string; status: number }> {
+async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | null, q?: string, embed?: boolean): Promise<{ body: string; status: number }> {
   const r = await upstream(`/api/public/providers/${encodeURIComponent(slug)}`);
   if (r.status === 404) {
     // Alt alan adı modunda "tüm işletmelere dön" hedefi: randevu.ANA_DOMAIN ana liste
@@ -233,7 +233,7 @@ async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | 
   // Gateway modunda ana sayfa bağlantısına param ekle (CRM'e düşmesin)
   // Düzeltme: "Tüm işletmeler" her zaman randevu LİSTESİNE gider (ana siteye değil)
   const homeUrl = subdomain && BASE_DOMAIN ? `https://${listHost()}` : gwq('/')
-  return { body: detailPage({ provider, services, reviews, homeUrl, gwPort }), status: 200 };
+  return { body: detailPage({ provider, services, reviews, homeUrl, gwPort, embed }), status: 200 };
 
   // BASE_DOMAIN=randevu.x biçimindeyse aynen; bare domain ise randevu. öneki ekle
   function listHost(): string {
@@ -536,7 +536,19 @@ Bun.serve({
       const mDetail = path.match(/^\/isletme\/([^/]+)$/);
       if (mDetail && method === 'GET') {
         const slug = safeDecode(mDetail[1]);
-        const page = await renderDetail(slug, false, gwPort, url.searchParams.get('q') || undefined);
+        // ?embed=1 → siteye göm modu (iframe içi kompakt: nav/footer gizli)
+        const embed = url.searchParams.get('embed') === '1';
+        const page = await renderDetail(slug, false, gwPort, url.searchParams.get('q') || undefined, embed);
+        return htmlRes(page.body, page.status);
+      }
+
+      // --- 🔗 siteye göm (widget) — işletmelerin kendi sitelerine eklediği
+      // iframe kaynağı: /widget/:slug → detail sayfasının çerçevesiz hâli.
+      // Aynı kamu randevu API'lerini kullanır (ek saldırı yüzeyi yok).
+      const mWidget = path.match(/^\/widget\/([^/]+)$/);
+      if (mWidget && method === 'GET') {
+        const slug = safeDecode(mWidget[1]);
+        const page = await renderDetail(slug, false, gwPort, undefined, true);
         return htmlRes(page.body, page.status);
       }
 
