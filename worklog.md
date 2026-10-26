@@ -9253,3 +9253,19 @@ Stage Summary:
 - Tur 1 TAMAMLANDI: ①ortam sıfırlaması kurtarıldı (DB yeniden seed, yedekler git'te kalıcı, cron'lar geri) ②telefon normalize kökten düzeltildi ③saat dilimi yanlış alarmı kanıtlandı ve belgelendi ④değerlendirme/puanlama sistemi uçtan uca canlı (işletme sayfası + üye + misafir + admin moderasyon)
 - DB durumu: 84 randevu (seed), 8 yorum (6 onaylı + 2 moderasyon beklemede), 0 test kalıntısı
 - Tur 2 adayları (önerildi, bekliyor): Member-tenant şema ilişkisi, hatırlatıcı ayarları UI (3011), embed widget "siteye göm" UI, ICS takvim dosyası, bekleme listesi, damga kartı sadakat, AI asistan paneli
+
+---
+Task ID: tur1-izleme-dogrulama
+Agent: Z.ai Code (bu oturum)
+Task: Tur 1 paralel yürütmenin izlenmesi + bağımsız doğrulama (çakışma önleme)
+
+Work Log:
+- Aynı cron mesajı bu oturuma da düşmüştü; tur1-kurtarma-ve-duzeltmeler oturumu aktif çalışırken ÇAKIŞMAMAK için salt-okunur izleme modunda bekledi (schema/reviews/admin UI dosyalarına dokunulmadı)
+- tur1-tamamlandi girişi sonrası bağımsız doğrulama: GET /api/public/providers/sik-kuafor/reviews → 6 onaylı yorum + staffReply döner ✓; /isletme/sik-kuafor "Ortalama puan 4,3 — 6 değerlendirme" + "⭐ Değerlendirmeler" render ✓; token'sız POST /api/public/reviews → doğrulama hatasıyla reddedilir (veri oluşmaz) ✓
+- tsc --noEmit: yeni kodda 0 hata (kalanlar eski baseline: seed-sector-demo + skills/); eslint review dosyalarında temiz
+- scripts/_tmp-undo.ts (27 Eylül kalıntısı) silindi — scripts/ artık temp'siz
+
+Stage Summary:
+- Tur 1 ÇAKIŞMASIZ tamamlandı; bu oturum yalnız izleme + bağımsız doğrulama + 1 eski kalıntı temizliği yaptı
+- Sistem: 3000/3002 200; DB 84 randevu + 8 yorum (6 onaylı); yedekler latest.db olarak git'te kalıcı; cron'lar 475633 (yedek/6sa) + 475635 (webDevReview/15dk) aktif
+- Sırada (kullanıcı onayı bekliyor): Tur 2 — Member-tenant şema ilişkisi, hatırlatıcı ayarları UI, embed widget UI, ICS takvim, bekleme listesi, damga kartı
