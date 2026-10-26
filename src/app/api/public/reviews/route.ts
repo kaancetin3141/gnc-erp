@@ -61,7 +61,9 @@ export async function POST(req: NextRequest) {
   const rating = ratingRaw
 
   let comment = typeof body.comment === 'string' ? body.comment.trim() : ''
-  if (comment.length > 1000) comment = comment.slice(0, 1000)
+  // GÜVENLİK (sec-audit D3-B, DÜŞÜK): 1000+ karakter yorum sessizce kesiliyordu —
+  // istemci fark etmeden kayboluyordu; artık açık 400 (UI zaten 1000 krk sınırı gösteriyor)
+  if (comment.length > 1000) return err('Yorum en fazla 1000 karakter olabilir', 400)
   if (comment) comment = comment.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
 
   const appointmentId = typeof body.appointmentId === 'string' ? body.appointmentId.trim() : ''

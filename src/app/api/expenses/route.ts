@@ -1,16 +1,20 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
+import { getSession, requireAuth, requirePermission, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
 
 const CATEGORIES = ['kira','personel','fatura','malzeme','pazarlama','sigorta','vergi','diger']
 const STATUSES = ['odendi','beklemedi','odeme_yapilmedi']
 
 // GET — gider listesi (filtreli)
+// GÜVENLİK (sec-audit C3, YÜKSEK): eskiden yalnız requireAuth vardı —
+// expenses.view izni olmayan roller (rep) finansal kayıtları okuyabiliyordu.
 export async function GET(req: NextRequest) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
   if (authErr) return authErr
+  const permErr = requirePermission(user, 'expenses.view')
+  if (permErr) return permErr
 
   const url = new URL(req.url)
   const category = url.searchParams.get('category') || ''

@@ -11,10 +11,18 @@ export async function GET(req: NextRequest) {
   const authErr = requireAuth(user)
   if (authErr) return authErr
 
-  // PRIVACY-TEMPLATES (#3): depo rolü müşteri listesini GÖREMEZ
-  // (yalnızca üretim listesini görmeli)
-  if (user!.role === 'stock') {
-    return ok({ items: [], total: 0, limit: 0, offset: 0 })
+  // GÜVENLİK (sec-audit C3, ORTA): Bu uçta eskiden izin kontrolü YOKTU —
+  // customers.view.* izni olmayan tüm roller (kasiyer, stok vb.) müşteri
+  // listesini okuyabiliyordu. Artık açık izin şartı + belgeli istisna:
+  // · depo_sorumlusu → irsaliye/sipariş yönetimi için tenant geneli görür (aşağıda visFilter)
+  // · stock → üretim listesi dışına çıkmamalı (boş liste yerine 403)
+  const canViewCustomers =
+    user!.role === 'superadmin' ||
+    user!.role === 'depo_sorumlusu' ||
+    hasPermission(user!, 'customers.view.own') ||
+    hasPermission(user!, 'customers.view.all')
+  if (!canViewCustomers) {
+    return err('Bu rol için müşteri listesine erişim kısıtlıdır', 403)
   }
 
   const url = new URL(req.url)

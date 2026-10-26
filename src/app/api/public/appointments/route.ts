@@ -66,8 +66,30 @@ export async function POST(req: NextRequest) {
   if (!time || !/^\d{2}:\d{2}$/.test(time)) {
     return err('Geçerli bir saat (HH:mm) gerekli', 400)
   }
+  // GÜVENLİK (sec-audit D1-D/D1-E, DÜŞÜK): "25:99" / "2026-13-45" gibi değerler
+  // JS Date normalleşmesiyle sessizce kabul ediliyordu — artık açık aralık kontrolü.
+  {
+    const [y, m, d] = date!.split('-').map(Number)
+    const [hh, mm] = time!.split(':').map(Number)
+    if (y < 2020 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) {
+      return err('Geçersiz takvim tarihi', 400)
+    }
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+      return err('Geçersiz saat aralığı (00:00-23:59)', 400)
+    }
+    // Ayın gerçek gün sayısı kontrolü (örn. 31.02 reddedilir)
+    const probe = new Date(Date.UTC(y, m - 1, d))
+    if (probe.getUTCMonth() !== m - 1 || probe.getUTCDate() !== d) {
+      return err('Geçersiz takvim tarihi', 400)
+    }
+  }
   if (!customerName || !customerName.trim()) return err('Ad soyad gerekli', 400)
+  // GÜVENLİK (sec-audit D1-C, ORTA): girdi uzunluk sınırları — 10KB isim
+  // alanı DB'ye yazılabiliyordu (abuse/DoS vektörü).
+  if (customerName.trim().length > 120) return err('Ad soyad en fazla 120 karakter olabilir', 400)
+  if (customerNote && customerNote.length > 2000) return err('Not en fazla 2000 karakter olabilir', 400)
   if (!customerPhone || !customerPhone.trim()) return err('Telefon gerekli', 400)
+  if (customerPhone.trim().length > 30) return err('Geçersiz telefon numarası', 400)
 
   // Provider lookup (slug → id)
   let provider = await db.serviceProvider.findFirst({
