@@ -376,10 +376,61 @@ footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),r
 /* ---- backdrop-filter desteklemeyen tarayıcılar: düz yüzey ---- */
 @supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))){
   header.top,footer.ft{background:#fbf5f0}
-  .card,.dcard,.book-card,.map-card,.state-box,.center-card{background:#ffffff}
+  .card,.dcard,.book-card,.map-card,.state-box,.center-card,.rev-card,.rev-item,.rev-form,.rev-done{background:#ffffff}
   .sk{background:#f7efe9}
   .search input,.field input,.field select,.field textarea,.chip,.city-wrap select,.date-btn,.slot,.svc,.sumcard,.tel-btn,.open-chip,.map-toggle,.dir-links a,.sumline,.form-err,.btn-ghost,.crumb{background:#ffffff}
   #toast{background:#2b211b}
+}
+
+/* ---- değerlendirmeler (review) — amber yıldızlar, mobil öncelikli ---- */
+.rate-badge{display:inline-flex;align-items:center;gap:7px;margin:8px 0 2px;padding:7px 14px;border-radius:999px;background:var(--amber-soft);border:1px solid rgba(245,158,11,.35);color:var(--amber);font-weight:700;font-size:.88rem;text-decoration:none;transition:transform .15s,box-shadow .15s}
+.rate-badge:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(180,83,9,.18)}
+.rate-badge .rate-badge-s{font-size:1rem;line-height:1}
+.rate-badge b{font-size:1.02rem;letter-spacing:-.02em}
+.rate-badge .rate-badge-c{font-weight:600;color:#a06a2c;font-size:.8rem}
+.rate-badge.rate-new{background:var(--green-soft);border-color:rgba(13,138,99,.3);color:var(--green);font-size:.82rem}
+.rate-chip{display:inline-flex;align-items:center;gap:4px;font-size:.74rem;font-weight:800;color:#b45309;background:var(--amber-soft);border:1px solid rgba(245,158,11,.3);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.rate-chip .s{color:#f59e0b}
+.rev-card{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-border);border-radius:var(--radius);padding:20px 18px;margin:12px 0 16px;box-shadow:var(--shadow);display:grid;gap:16px}
+.rev-summary{display:grid;gap:14px}
+.rev-avg{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.rev-avg-n{font-size:2.3rem;font-weight:800;letter-spacing:-.04em;line-height:1;color:var(--ink)}
+.rev-stars{color:#f59e0b;letter-spacing:3px;font-size:1.05rem;text-shadow:0 1px 0 rgba(255,255,255,.6)}
+.rev-avg-c{color:var(--muted);font-size:.85rem;font-weight:600}
+.rev-bars{display:grid;gap:6px}
+.rev-bar-row{display:grid;grid-template-columns:38px 1fr 24px;align-items:center;gap:10px;font-size:.78rem;color:var(--muted)}
+.rev-bar{display:block;height:9px;border-radius:99px;background:rgba(94,52,40,.10);overflow:hidden}
+.rev-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#f59e0b,#fbbf24)}
+.rev-bar-v{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#8a6a3f}
+.rev-empty{color:var(--muted);font-size:.92rem;margin:0}
+.rev-form{background:var(--glass-strong);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-border);border-radius:var(--radius);padding:20px 18px;margin:0 0 16px;box-shadow:var(--shadow)}
+.rev-star-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.rev-star-btn{font:inherit;font-size:1.1rem;letter-spacing:2px;padding:9px 12px;border-radius:12px;border:1.5px solid rgba(255,255,255,.8);background:rgba(255,255,255,.6);color:#c9b7a7;cursor:pointer;transition:all .15s;line-height:1}
+.rev-star-btn:hover{border-color:rgba(245,158,11,.5);color:#f59e0b;transform:translateY(-1px)}
+.rev-star-btn.on{background:linear-gradient(180deg,rgba(251,191,36,.22),rgba(245,158,11,.14));border-color:rgba(245,158,11,.65);color:#f59e0b;box-shadow:0 4px 14px rgba(180,83,9,.15)}
+.rev-done{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid rgba(13,138,99,.3);border-radius:var(--radius);padding:22px 18px;margin:0 0 16px;box-shadow:var(--shadow);text-align:center}
+.rev-done .okmark{font-size:2rem}
+.rev-done .sub{color:var(--muted);font-size:.9rem}
+.rev-list{display:grid;gap:12px}
+.rev-item{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-border);border-radius:16px;padding:16px 16px 14px;box-shadow:var(--shadow)}
+.rev-item-head{display:flex;gap:10px;align-items:center}
+.rev-avatar{flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:.95rem;color:#fff;background:linear-gradient(135deg,#f59e0b,#d97706);box-shadow:0 4px 10px rgba(180,83,9,.25)}
+.rev-author{font-weight:700;font-size:.95rem}
+.rev-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.8rem;color:var(--muted)}
+.rev-date{font-variant-numeric:tabular-nums}
+.rev-text{margin:10px 2px 0;font-size:.92rem;line-height:1.6;color:#4a352a;white-space:pre-line;overflow-wrap:anywhere}
+.rev-reply{margin:12px 0 0;background:rgba(94,52,40,.06);border-left:3px solid #f59e0b;border-radius:0 12px 12px 0;padding:10px 12px}
+.rev-reply-t{display:block;font-size:.72rem;font-weight:800;color:#8a6a3f;letter-spacing:.02em;margin-bottom:3px}
+.rev-reply p{margin:0;font-size:.85rem;color:#5c4636;line-height:1.55}
+.appt-review{border:1.5px solid rgba(245,158,11,.5);background:rgba(255,255,255,.6);color:#b45309;border-radius:999px;padding:7px 14px;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s}
+.appt-review:hover{background:var(--amber-soft);transform:translateY(-1px)}
+.rev-ov-summary{background:rgba(94,52,40,.05);border-radius:12px;padding:10px 12px;font-size:.84rem;color:#5d4436;display:grid;gap:2px}
+.rev-ov-summary b{font-size:.9rem}
+/* geniş ekranda özet kartı yan yana (mobilde tek kolon) */
+@media (min-width:720px){
+  .rev-card{grid-template-columns:1fr auto;align-items:center}
+  .rev-summary{grid-template-columns:auto 1fr;gap:26px;align-items:center}
+  .rev-bars{min-width:220px}
 }
 
 /* ---- üyelik (Giriş / Kayıt + Randevularım) ---- */
@@ -592,7 +643,10 @@ const DAY_TR: Array<[string, string]> = [
   ['sun', 'Pazar'],
 ];
 
-export function detailPage(a: { provider: Json; services: Json[]; homeUrl: string; gwPort?: string | null }): string {
+export function detailPage(a: {
+  provider: Json; services: Json[]; reviews?: { items: Json[]; summary: Json } | null;
+  homeUrl: string; gwPort?: string | null;
+}): string {
   const p = a.provider;
   const meta = typeMeta(p.type);
   const wh = (p.workingHours && typeof p.workingHours === 'object') ? p.workingHours : {};
@@ -607,6 +661,55 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
   const nSvc = a.services.length;
   const prices = a.services.map((s) => s.price).filter((x: unknown) => typeof x === 'number');
   const minP = prices.length ? Math.min(...prices) : null;
+
+  // ---- değerlendirmeler (SSR) ----
+  const revItems: Json[] = Array.isArray((a.reviews?.items as Json[] | undefined)) ? (a.reviews!.items as Json[]) : [];
+  const revSum = a.reviews?.summary ?? {};
+  const revCount = Number(revSum.count ?? 0) || 0;
+  const revAvg = Number(revSum.average ?? 0) || 0;
+  const revDist: Record<string, number> = (revSum.distribution && typeof revSum.distribution === 'object')
+    ? (revSum.distribution as Record<string, number>) : {};
+  const fmtAvg = revCount > 0 ? revAvg.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '';
+  // başlık yakınında puan rozeti
+  const ratingBadge = revCount > 0
+    ? `<a class="rate-badge" href="#degerlendirmeler" aria-label="Ortalama puan ${fmtAvg} — ${revCount} değerlendirme">
+        <span class="rate-badge-s" aria-hidden="true">★</span> <b>${fmtAvg}</b>
+        <span class="rate-badge-c">${revCount} değerlendirme</span>
+      </a>`
+    : `<a class="rate-badge rate-new" href="#degerlendirmeler">Yeni — ilk değerlendiren sen ol</a>`;
+  const starsOf = (r: number) => '★'.repeat(Math.max(0, Math.min(5, r))) + '☆'.repeat(Math.max(0, 5 - r));
+  const fmtRevDate = (iso: unknown): string => {
+    const d = new Date(String(iso || ''));
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number) => (n < 10 ? '0' + n : String(n));
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+  };
+  const distRows = [5, 4, 3, 2, 1].map((star) => {
+    const c = Number(revDist[String(star)] ?? 0) || 0;
+    const pct = revCount > 0 ? Math.round((c / revCount) * 100) : 0;
+    return `<div class="rev-bar-row" aria-label="${star} yıldız: ${c} değerlendirme">
+      <span class="rev-bar-l">${star} ★</span>
+      <span class="rev-bar"><i style="width:${pct}%"></i></span>
+      <span class="rev-bar-v">${c}</span>
+    </div>`;
+  }).join('');
+  const revCards = revItems.map((r) => {
+    const rating = Math.max(1, Math.min(5, Number(r.rating) || 0));
+    const reply = r.staffReply
+      ? `<div class="rev-reply"><span class="rev-reply-t">💬 İşletme yanıtı</span><p>${esc(r.staffReply)}</p></div>`
+      : '';
+    return `<article class="rev-item">
+      <div class="rev-item-head">
+        <span class="rev-avatar" aria-hidden="true">${esc(String(r.authorName || 'M').trim().charAt(0).toLocaleUpperCase('tr'))}</span>
+        <div style="min-width:0;flex:1">
+          <div class="rev-author">${esc(r.authorName)}</div>
+          <div class="rev-meta"><span class="rev-stars" role="img" aria-label="5 üzerinden ${rating} puan">${starsOf(rating)}</span> <span class="rev-date">${esc(fmtRevDate(r.createdAt))}</span></div>
+        </div>
+      </div>
+      ${r.comment ? `<p class="rev-text">${esc(r.comment)}</p>` : ''}
+      ${reply}
+    </article>`;
+  }).join('');
 
   const data = jsonIsland({
     provider: {
@@ -671,6 +774,7 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
             ${minP !== null ? `<span class="badge b-def">min. ${(minP as number).toLocaleString('tr-TR')} ₺</span>` : ''}
           </div>
           <h1 class="dtitle">${esc(p.name)}</h1>
+          ${ratingBadge}
           <p class="dloc">📍 ${esc(p.city)}${p.district ? ' · ' + esc(p.district) : ''}</p>
           ${p.address ? `<p class="daddr">${esc(p.address)}</p>` : ''}
           <div class="dcontact">
@@ -704,6 +808,60 @@ export function detailPage(a: { provider: Json; services: Json[]; homeUrl: strin
               .join('')}</div>`
           : `<p class="hint">Bu işletme henüz hizmet eklememiş — yine de telefonla ulaşabilirsin.</p>`
       }
+    </section>
+
+    <section id="degerlendirmeler" aria-labelledby="rev-h">
+      <h2 class="section-title" id="rev-h">⭐ Değerlendirmeler${revCount ? ` <span class="badge b-kuafor">${revCount}</span>` : ''}</h2>
+
+      <div class="rev-card">
+        <div class="rev-summary">
+          ${
+            revCount > 0
+              ? `<div class="rev-avg">
+            <span class="rev-avg-n">${fmtAvg}</span>
+            <span class="rev-stars" role="img" aria-label="Ortalama ${fmtAvg} / 5">${starsOf(Math.round(revAvg))}</span>
+            <span class="rev-avg-c">${revCount} değerlendirme</span>
+          </div>
+          <div class="rev-bars">${distRows}</div>`
+              : `<p class="rev-empty">Bu işletme henüz değerlendirme almamış — randevundan sonra ilk puanı sen verebilirsin. ⭐</p>`
+          }
+        </div>
+        <button type="button" class="btn btn-geo rev-open" id="rev-open">⭐ Değerlendir</button>
+      </div>
+
+      <form id="review-form" class="rev-form" hidden novalidate>
+        <div style="display:grid;gap:14px">
+          <div>
+            <span class="f-label" id="rv-stars-l">Puanın *</span>
+            <div class="rev-star-row" role="group" aria-labelledby="rv-stars-l" id="rv-stars">
+              <button type="button" class="rev-star-btn" data-v="1" aria-label="1 yıldız">★</button>
+              <button type="button" class="rev-star-btn" data-v="2" aria-label="2 yıldız">★★</button>
+              <button type="button" class="rev-star-btn" data-v="3" aria-label="3 yıldız">★★★</button>
+              <button type="button" class="rev-star-btn" data-v="4" aria-label="4 yıldız">★★★★</button>
+              <button type="button" class="rev-star-btn" data-v="5" aria-label="5 yıldız">★★★★★</button>
+            </div>
+          </div>
+          <div class="field">
+            <label class="f-label" for="rv-comment">Yorumun <span class="mini-note">(opsiyonel, en fazla 1000 karakter)</span></label>
+            <textarea id="rv-comment" maxlength="1000" placeholder="Deneyimini paylaş: hizmet, ilgi, temizlik…"></textarea>
+          </div>
+          <div class="field">
+            <label class="f-label" for="rv-code">Randevu No <span class="mini-note">— randevu onay ekranındaki 8 karakterli kod</span></label>
+            <input id="rv-code" type="text" placeholder="örn. 7BY3OH39" autocomplete="off" style="text-transform:uppercase;letter-spacing:1px">
+          </div>
+          <p class="form-err" id="rv-err" hidden></p>
+          <button type="submit" class="btn btn-submit" id="rv-submit">⭐ Değerlendirmeyi Gönder</button>
+          <p class="mini-note" style="text-align:center">Değerlendirmeler inceleme sonrası yayınlanır · tek randevu bir kez puanlanır</p>
+        </div>
+      </form>
+
+      <div class="rev-done" id="rev-done" hidden>
+        <span class="okmark" aria-hidden="true">🙏</span>
+        <h3 style="margin:6px 0 4px">Teşekkürler!</h3>
+        <p id="rev-done-msg" class="sub">Değerlendirmen incelemeden sonra yayınlanacak.</p>
+      </div>
+
+      ${revCards ? `<div class="rev-list">${revCards}</div>` : ''}
     </section>
 
     ${
@@ -978,6 +1136,31 @@ export function memberPage(baseDomain: string, gwPort?: string | null): string {
       </div>
     </div>
   </div>
+  <div class="del-overlay" id="rev-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="rev-ov-title">
+    <div class="del-box">
+      <h2 id="rev-ov-title">⭐ Randevunu Değerlendir</h2>
+      <div class="rev-ov-summary" id="rev-ov-sum"></div>
+      <div>
+        <span class="f-label" id="rov-stars-l">Puanın *</span>
+        <div class="rev-star-row" role="group" aria-labelledby="rov-stars-l" id="rov-stars">
+          <button type="button" class="rev-star-btn" data-v="1" aria-label="1 yıldız">★</button>
+          <button type="button" class="rev-star-btn" data-v="2" aria-label="2 yıldız">★★</button>
+          <button type="button" class="rev-star-btn" data-v="3" aria-label="3 yıldız">★★★</button>
+          <button type="button" class="rev-star-btn" data-v="4" aria-label="4 yıldız">★★★★</button>
+          <button type="button" class="rev-star-btn" data-v="5" aria-label="5 yıldız">★★★★★</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="f-label" for="rov-comment">Yorumun <span class="mini-note">(opsiyonel, en fazla 1000 karakter)</span></label>
+        <textarea id="rov-comment" maxlength="1000" placeholder="Deneyimini paylaş: hizmet, ilgi, temizlik…"></textarea>
+      </div>
+      <p class="form-err" id="rov-err" hidden></p>
+      <div class="del-actions">
+        <button type="button" class="btn btn-ghost" id="rov-cancel">Vazgeç</button>
+        <button type="button" class="btn btn-submit" id="rov-send" style="border:none">⭐ Gönder</button>
+      </div>
+    </div>
+  </div>
 </main>
 ${siteFooter()}`;
 
@@ -1189,11 +1372,16 @@ export const HOME_JS = `
       ? '<span class="phb ph-' + tKey + '" aria-hidden="true">' + t.emoji + '</span><img class="cphoto" src="' + esc(it.photo) + '" alt="' + esc(it.name) + '" loading="lazy" onerror="this.remove()">'
       : '<span class="phb ph-' + tKey + '" aria-hidden="true">' + t.emoji + '</span>';
     var dist = (typeof it._d === 'number') ? '<span class="dist">📍 ' + esc(fmtKm(it._d)) + '</span>' : '';
+    var rate = (typeof it.ratingAvg === 'number' && it.ratingCount > 0)
+      ? '<span class="rate-chip"><span class="s" aria-hidden="true">★</span>' +
+        esc(it.ratingAvg.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })) +
+        ' <span style="font-weight:600;opacity:.75">(' + it.ratingCount + ')</span></span>'
+      : '';
     var tel = it.phone ? '<a class="tel-link" href="tel:' + esc(String(it.phone).replace(/\\s+/g, '')) + '" title="Ara">📞 ' + esc(it.phone) + '</a>' : '<span></span>';
     return '<article class="card" style="animation-delay:' + Math.min(i * 45, 400) + 'ms">' +
       '<div class="cover">' + cover + '</div>' +
       '<div class="body">' +
-      '<div class="row-top"><span class="badge b-' + tKey + '">' + t.emoji + ' ' + esc(t.label) + '</span>' + dist + '</div>' +
+      '<div class="row-top"><span class="badge b-' + tKey + '">' + t.emoji + ' ' + esc(t.label) + '</span>' + rate + dist + '</div>' +
       '<h3 class="c-name"><a class="card-link" href="' + bizHref(it.slug) + '">' + esc(it.name) + '</a></h3>' +
       '<p class="c-loc">📍 ' + esc(it.city || '') + (it.district ? ' · ' + esc(it.district) : '') + '</p>' +
       (it.address ? '<p class="c-addr">' + esc(it.address) + '</p>' : '') +
@@ -1464,6 +1652,91 @@ export const DETAIL_JS = `
         el.className = 'open-chip ' + (open ? 'on' : 'off');
       }
     }
+  })();
+
+  // ---- değerlendirme formu (⭐) — hizmet olsun olmasın çalışır
+  (function () {
+    var openBtn = document.getElementById('rev-open');
+    var form = document.getElementById('review-form');
+    if (!openBtn || !form) return;
+    var errEl = document.getElementById('rv-err');
+    var doneEl = document.getElementById('rev-done');
+    var doneMsg = document.getElementById('rev-done-msg');
+    var rating = 0;
+    var starBtns = form.querySelectorAll('.rev-star-btn');
+    for (var si = 0; si < starBtns.length; si++) {
+      (function (b) {
+        b.addEventListener('click', function () {
+          rating = parseInt(b.getAttribute('data-v'), 10) || 0;
+          for (var k = 0; k < starBtns.length; k++) {
+            var on = parseInt(starBtns[k].getAttribute('data-v'), 10) <= rating;
+            starBtns[k].classList.toggle('on', on);
+            starBtns[k].setAttribute('aria-pressed', String(on));
+          }
+          if (errEl) errEl.hidden = true;
+        });
+      })(starBtns[si]);
+    }
+    openBtn.addEventListener('click', function () {
+      form.hidden = false;
+      openBtn.hidden = true;
+      try { form.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+      toast('Önce puanını seç, sonra randevu numaranı gir.', 'ok');
+    });
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      if (errEl) errEl.hidden = true;
+      if (!rating) {
+        if (errEl) { errEl.textContent = 'Lütfen puanını seç (1-5 yıldız).'; errEl.hidden = false; }
+        return;
+      }
+      var code = (document.getElementById('rv-code').value || '').trim();
+      if (!code) {
+        if (errEl) { errEl.textContent = 'Randevu numaranı gir — randevu onay ekranındaki 8 karakterli kod.'; errEl.hidden = false; }
+        return;
+      }
+      var comment = (document.getElementById('rv-comment').value || '').trim();
+      var btn = document.getElementById('rv-submit');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin"></span> Gönderiliyor…';
+      // üye girişliyse token hem başlıkta hem gövdede taşınır (proxy iletir)
+      var mtok = null;
+      try { mtok = (JSON.parse(localStorage.getItem('gnc_member') || 'null') || {}).token || null; } catch (_) {}
+      var headers = { 'content-type': 'application/json' };
+      if (mtok) headers['authorization'] = 'Bearer ' + mtok;
+      fetch(gwq('/api/reviews'), {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          providerSlug: P.slug,
+          rating: rating,
+          comment: comment,
+          appointmentCode: code,
+          memberToken: mtok || undefined
+        })
+      })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (x) {
+          btn.disabled = false;
+          btn.textContent = '⭐ Değerlendirmeyi Gönder';
+          if (x.ok && x.j && x.j.ok) {
+            form.hidden = true;
+            if (doneMsg && x.j.message) doneMsg.textContent = x.j.message;
+            if (doneEl) {
+              doneEl.hidden = false;
+              try { doneEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+            }
+            toast('Değerlendirmen alındı — teşekkürler! 🙏', 'ok');
+          } else {
+            if (errEl) { errEl.textContent = (x.j && x.j.error) || 'Değerlendirme gönderilemedi — lütfen tekrar dene.'; errEl.hidden = false; }
+          }
+        })
+        .catch(function () {
+          btn.disabled = false;
+          btn.textContent = '⭐ Değerlendirmeyi Gönder';
+          if (errEl) { errEl.textContent = 'Bağlantı hatası — lütfen tekrar dene.'; errEl.hidden = false; }
+        });
+    });
   })();
 
   // ---- hizmet select
@@ -2024,6 +2297,13 @@ export const MEMBER_JS = `
     if (cancelledMode && it.providerSlug) {
       replan = '<button type="button" class="appt-replan" data-slug="' + esc(it.providerSlug) + '" data-svc="' + esc(it.serviceId || '') + '" aria-label="' + esc(it.providerName || '') + ' — ' + esc(it.serviceName || 'aynı hizmet') + ' için yeni randevu al">🔁 Tekrar planla</button>';
     }
+    // ⭐ Değerlendirme: tamamlanmış ya da tarihi geçmiş + henüz değerlendirilmemiş
+    // (iptal/reddedildi randevular API'de zaten listelenmez)
+    var reviewable = !cancelledMode && !it.reviewed && it.providerSlug &&
+      (it.status === 'tamamlandi' || new Date(it.date).getTime() < Date.now());
+    var reviewBtn = reviewable
+      ? '<button type="button" class="appt-review" data-id="' + esc(it.id) + '" data-slug="' + esc(it.providerSlug) + '" data-biz="' + esc(it.providerName || '') + '" data-svc="' + esc(it.serviceName || 'Hizmet') + '" data-when="' + esc(fmtWhen(it.date)) + '" data-code="' + esc(it.code || '') + '" aria-label="' + esc(it.providerName || '') + ' — ' + esc(it.serviceName || 'hizmet') + ' randevusunu değerlendir">⭐ Değerlendir</button>'
+      : '';
     return '<div class="appt">' +
       '<div class="appt-main">' +
       '<div class="appt-biz"><a href="' + esc(bizHref(it.providerSlug || '')) + '" style="color:inherit;text-decoration:none">' + esc(it.providerName) + '</a></div>' +
@@ -2035,6 +2315,7 @@ export const MEMBER_JS = `
       '<span class="st-badge ' + st.cls + '">' + esc(st.label) + '</span>' +
       (cancellable ? '<button type="button" class="appt-cancel" data-id="' + esc(it.id) + '" data-code="' + esc(it.code) + '">İptal Et</button>' : '') +
       replan +
+      reviewBtn +
       '</div></div>';
   }
 
@@ -2073,7 +2354,100 @@ export const MEMBER_JS = `
         location.href = withParams(bizHref(slug), extra);
       });
     });
+    // ⭐ Değerlendir: overlay formunu bu randevu için aç (appointmentId önceden dolu)
+    listEl.querySelectorAll('.appt-review').forEach(function (b) {
+      b.addEventListener('click', function () {
+        openRevOverlay({
+          id: b.getAttribute('data-id') || '',
+          slug: b.getAttribute('data-slug') || '',
+          biz: b.getAttribute('data-biz') || '',
+          svc: b.getAttribute('data-svc') || '',
+          when: b.getAttribute('data-when') || '',
+          code: b.getAttribute('data-code') || ''
+        });
+      });
+    });
   }
+
+  // ---- ⭐ değerlendirme overlay (Randevularım → Değerlendir)
+  var revOverlay = document.getElementById('rev-overlay');
+  var revTarget = null;
+  var revRating = 0;
+  function openRevOverlay(t) {
+    if (!revOverlay) return;
+    revTarget = t;
+    revRating = 0;
+    var sum = document.getElementById('rev-ov-sum');
+    if (sum) {
+      sum.innerHTML = '<b>' + esc(t.biz) + '</b><span>' + esc(t.svc) + ' · ' + esc(t.when) + ' · No: ' + esc(t.code) + '</span>';
+    }
+    var stars = document.querySelectorAll('#rov-stars .rev-star-btn');
+    for (var i = 0; i < stars.length; i++) { stars[i].classList.remove('on'); stars[i].setAttribute('aria-pressed', 'false'); }
+    var cm = document.getElementById('rov-comment');
+    if (cm) cm.value = '';
+    hideErr('rov-err');
+    revOverlay.hidden = false;
+  }
+  function closeRevOverlay() { if (revOverlay) revOverlay.hidden = true; revTarget = null; }
+  (function () {
+    if (!revOverlay) return;
+    var stars = document.querySelectorAll('#rov-stars .rev-star-btn');
+    for (var i = 0; i < stars.length; i++) {
+      (function (b) {
+        b.addEventListener('click', function () {
+          revRating = parseInt(b.getAttribute('data-v'), 10) || 0;
+          for (var k = 0; k < stars.length; k++) {
+            var on = parseInt(stars[k].getAttribute('data-v'), 10) <= revRating;
+            stars[k].classList.toggle('on', on);
+            stars[k].setAttribute('aria-pressed', String(on));
+          }
+          hideErr('rov-err');
+        });
+      })(stars[i]);
+    }
+    var cancelBtn = document.getElementById('rov-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', closeRevOverlay);
+    revOverlay.addEventListener('click', function (e) { if (e.target === revOverlay) closeRevOverlay(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !revOverlay.hidden) closeRevOverlay();
+    });
+    var sendBtn = document.getElementById('rov-send');
+    if (sendBtn) sendBtn.addEventListener('click', function () {
+      var a = readAuth();
+      if (!a) { closeRevOverlay(); renderAuth(); return; }
+      if (!revTarget || !revTarget.id || !revTarget.slug) return;
+      hideErr('rov-err');
+      if (!revRating) return showErr('rov-err', 'Lütfen puanını seç (1-5 yıldız).');
+      var comment = (document.getElementById('rov-comment').value || '').trim();
+      setBusy(sendBtn, true, 'Gönderiliyor…');
+      // üye akışı: Bearer token + appointmentId (kod alanına gerek yok)
+      fetch(gwq('/api/reviews'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + a.token },
+        body: JSON.stringify({
+          providerSlug: revTarget.slug,
+          rating: revRating,
+          comment: comment,
+          appointmentId: revTarget.id
+        })
+      })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (x) {
+          setBusy(sendBtn, false, '⭐ Gönder');
+          if (x.ok && x.j && x.j.ok) {
+            closeRevOverlay();
+            toast('Teşekkürler! Değerlendirmen incelemeden sonra yayınlanacak. 🙏', 'ok');
+            loadAppointments();
+          } else {
+            showErr('rov-err', (x.j && x.j.error) || 'Değerlendirme gönderilemedi — tekrar dene.');
+          }
+        })
+        .catch(function () {
+          setBusy(sendBtn, false, '⭐ Gönder');
+          showErr('rov-err', 'Bağlantı hatası — tekrar dene.');
+        });
+    });
+  })();
 
   function cancelAppointment(id) {
     var a = readAuth();

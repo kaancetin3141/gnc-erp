@@ -53,10 +53,13 @@ server.log
 # Skills directory
 /skills/
 # Veritabanı dosyaları — canlı veri repoda taşınmaz (sunucu verisi korunur)
+# İSTİSNA: db/backups/latest.db git'e girer — sandbox sıfırlamalarında
+# takipsiz dosyalar silindiği için son yedeğin kalıcı kopyası budur.
 db/custom.db
 db/*.db
 db/.pdf-share-secret
-db/backups/
+db/backups/*
+!db/backups/latest.db
 
 # Üyelik auth HMAC secret — asla repoya girmez (görev 8-sec: untrack + rotate)
 db/.member-secret

@@ -5,6 +5,7 @@ import {
   getSession, requirePermission, ok, err,
 } from '@/lib/api-utils'
 import { isSuperAdmin } from '@/lib/rbac'
+import { normalizePhoneDigits } from '@/lib/member-auth'
 
 // ============================================================
 // GET /api/reports/summary — Randevu özet metrikleri (grafik kartları)
@@ -16,12 +17,10 @@ import { isSuperAdmin } from '@/lib/rbac'
 // ============================================================
 
 // Telefonu Member.phone formatına normalize et (905xxxxxxxxx)
+// — tek kaynak: member-auth normalizePhoneDigits (fix-tel ile uyumlu)
 function toMemberPhone(raw: string): string | null {
-  const d = (raw || '').replace(/\D/g, '')
-  if (d.startsWith('90') && d.length === 12) return d // 905xx…
-  if (d.startsWith('0') && d.length === 11) return '90' + d.slice(1) // 0555… → 90555…
-  if (d.length === 10) return '90' + d
-  return null
+  const n = normalizePhoneDigits(raw || '')
+  return n.length >= 10 ? n : null
 }
 
 export async function GET(req: NextRequest) {
@@ -48,7 +47,13 @@ export async function GET(req: NextRequest) {
     ? (requestedTenantId || null)
     : user!.tenantId
 
-  // UTC gün sınırları — strftime bucket'ları ve sıfır doldurma ile aynı referans
+  // Gün sınırları — UTC.
+  // ÖNEMLİ BULGU (görev fix-tz araştırması): Appointment.date değerleri
+  // "floating local time" olarak saklanıyor (randevu API'si new Date(y,m,d,hh,mm)
+  // ile sunucu-TZ=UTC'de duvar saatini doğrudan yazıyor: 22:00 TR → 22:00Z).
+  // Bu modelde UTC gün bucket'ı duvar tarihini birebir korur; '+3 hours'
+  // eklemek akşam randevularını yanlışlıkla ertesi güne kaydırırdı.
+  // Eğer ileride tarihler gerçek UTC anına geçirilirse o ZAMAN +3h gerekir.
   const now = new Date()
   const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
   const rangeStart = new Date(todayUtc.getTime() - (days - 1) * 86_400_000)
@@ -83,7 +88,8 @@ export async function GET(req: NextRequest) {
   const activeStatusFilter = { notIn: ['iptal', 'reddedildi'] } // "talep edilen" = iptal/reddedildi hariç
 
   const [byDayRows, statusGroups, serviceGroups, staffGroups, totalAppointments, upcomingCount, memberPhones, apptPhones] = await Promise.all([
-    // Gün bazlı trend — raw SQL (SQLite DateTime tam sayı ms saklar → unixepoch)
+    // Gün bazlı trend — raw SQL (SQLite DateTime tam sayı ms saklar → unixepoch).
+    // UTC bucket = floating duvar tarihi (yukarıdaki açıklamaya bak).
     db.$queryRaw<Array<{ day: string; total: bigint; onaylandi: bigint; iptal: bigint }>>(
       Prisma.sql`SELECT strftime('%Y-%m-%d', "date" / 1000, 'unixepoch') as day,
           COUNT(*) as total,

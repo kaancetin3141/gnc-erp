@@ -1,0 +1,875 @@
+     1→// ============================================================
+     2→// GEREKÇELİ DEMO VERİ MOTORU — "uygulamayı daha gerçekçi"
+     3→// Gerçekçi Türk işletme verileri: CRM pipeline, giderler,
+     4→// kafe menü+sipariş geçmişi, market ürünleri+satışlar,
+     5→// veresiye, kuaför randevu geçmişi, site aidat/talep.
+     6→// Deterministik RNG → her koşuda tutarlı, gerçekçi veri.
+     7→// Idempotent: TenantSetting 'seed.realistic.done' işareti.
+     8→// ============================================================
+     9→
+    10→import { db } from './db'
+    11→
+    12→// ---------- Deterministik RNG ----------
+    13→function mulberry32(seed: number) {
+    14→  let a = seed
+    15→  return function () {
+    16→    a |= 0
+    17→    a = (a + 0x6d2b79f5) | 0
+    18→    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    19→    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    20→    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    21→  }
+    22→}
+    23→const rng = mulberry32(20261002)
+    24→const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(rng() * arr.length)]
+    25→const ri = (min: number, max: number) => min + Math.floor(rng() * (max - min + 1))
+    26→const rf = (min: number, max: number) => min + rng() * (max - min)
+    27→const chance = (p: number) => rng() < p
+    28→function genId(): string {
+    29→  // cuid-benzeri kısa id (SQLite şema zorunluluğu yok)
+    30→  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+    31→  let s = 'c'
+    32→  for (let i = 0; i < 24; i++) s += chars[Math.floor(rng() * chars.length)]
+    33→  return s
+    34→}
+    35→
+    36→// ---------- Tarih yardımcıları ----------
+    37→function dayAt(offsetDays: number, hour: number, minute = 0): Date {
+    38→  const d = new Date()
+    39→  d.setDate(d.getDate() + offsetDays)
+    40→  d.setHours(hour, minute, 0, 0)
+    41→  return d
+    42→}
+    43→
+    44→// ---------- Türkçe ad havuzları ----------
+    45→const FIRST = ['Mehmet', 'Ayşe', 'Mustafa', 'Fatma', 'Ahmet', 'Emine', 'Ali', 'Zeynep', 'Hüseyin', 'Hatice', 'İbrahim', 'Elif', 'Hasan', 'Meryem', 'Murat', 'Sultan', 'Kemal', 'Seda', 'Nazlı', 'Emre', 'Burcu', 'Serkan', 'Duygu', 'Onur']
+    46→const LAST = ['Yılmaz', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Yıldız', 'Yıldırım', 'Öztürk', 'Aydın', 'Özdemir', 'Arslan', 'Doğan', 'Kılıç', 'Aslan', 'Çetin', 'Kara', 'Koç', 'Kurt', 'Özkan', 'Şimşek']
+    47→const fullName = () => `${pick(FIRST)} ${pick(LAST)}`
+    48→
+    49→function trPhone(): string {
+    50→  const prefixes = ['532', '533', '534', '535', '536', '542', '543', '544', '555']
+    51→  return `+90${pick(prefixes)}${String(ri(100, 999))}${String(ri(10, 99))}${String(ri(10, 99))}`
+    52→}
+    53→
+    54→function trBarcode(): string {
+    55→  let s = '869'
+    56→  for (let i = 0; i < 10; i++) s += ri(0, 9)
+    57→  return s
+    58→}
+    59→
+    60→const round2 = (n: number) => Math.round(n * 100) / 100
+    61→const tl9 = (base: number) => round2(Math.round(base / 5) * 5 + (chance(0.6) ? 0.9 : 0)) // 34.90 gibi
+    62→
+    63→// ============================================================
+    64→// ANA FONKSİYON
+    65→// ============================================================
+    66→export async function runRealisticSeed(): Promise<{ message: string; created: Record<string, number> }> {
+    67→  const created: Record<string, number> = {}
+    68→  const markerKey = 'seed.realistic.done'
+    69→
+    70→  const sectionDone = async (key: string) => {
+    71→    const m = await db.tenantSetting.findFirst({ where: { key } })
+    72→    return !!m
+    73→  }
+    74→  const markDone = async (key: string) => {
+    75→    const dup = await db.tenantSetting.findFirst({ where: { key } })
+    76→    if (dup) return
+    77→    let tid = crmTenantId
+    78→    if (!tid) {
+    79→      const anyTenant = await db.tenant.findFirst({ select: { id: true } })
+    80→      tid = anyTenant?.id
+    81→    }
+    82→    if (tid) await db.tenantSetting.create({ data: { tenantId: tid, key, value: new Date().toISOString() } })
+    83→  }
+    84→
+    85→  const alreadyDone = await db.tenantSetting.findFirst({ where: { key: markerKey } })
+    86→  if (alreadyDone) return { message: 'Gerçekçi demo verisi zaten yüklenmiş (idempotent atlandı).', created }
+    87→
+    88→  // ---- Tenantları bul ----
+    89→  const adminUser = await db.user.findFirst({ where: { name: 'Demir Yıldız' } })
+    90→  const crmTenantId = adminUser?.tenantId
+    91→  const cafe = await db.cafe.findFirst()
+    92→  const market = await db.market.findFirst()
+    93→  const provider = await db.serviceProvider.findFirst()
+    94→  const parkSite = await db.site.findFirst({ where: { name: 'Park Sitesi' } })
+    95→
+    96→  // ============================================================
+    97→  // 1) CRM — Deal pipeline, aktiviteler, görevler, giderler
+    98→  // ============================================================
+    99→  if (crmTenantId && !(await sectionDone('seed.realistic.crm'))) {
+   100→    const customers = await db.customer.findMany({ where: { tenantId: crmTenantId }, select: { id: true, name: true } })
+   101→    const reps = await db.user.findMany({ where: { tenantId: crmTenantId, role: { in: ['admin', 'manager', 'rep'] } }, select: { id: true } })
+   102→
+   103→    if (customers.length > 0) {
+   104→      // --- 1a. Müşteri iletişim zenginleştirme ---
+   105→      const custUpdateIds = customers.slice(0, 18).map((c) => c.id)
+   106→      for (const cid of custUpdateIds) {
+   107→        const phone = chance(0.85) ? trPhone() : null
+   108→        const email = chance(0.7) ? `info@${(pick(['anadolu', 'marmara', 'ege', 'bogazici', 'toros', 'kristal', 'zaferyapi', 'dogus']) + pick(['grup', 'eticaret', 'insaat', 'teknoloji', 'lojistik'])).replace(/[^a-z]/g, '')}.com.tr` : null
+   109→        await db.customer.update({ where: { id: cid }, data: { phone, email } })
+   110→      }
+   111→      created['musteri-guncelleme'] = custUpdateIds.length
+   112→
+   113→      // --- 1b. Deals — gerçekçi pipeline ---
+   114→      const dealTitles = [
+   115→        'CRM Geçiş Projesi', 'Kurumsal Lisans — Yıllık', '12 Aylık Bakım Sözleşmesi',
+   116→        'Satış Ekibi Eğitim Paketi', 'ERP Entegrasyon Danışmanlığı', 'Yıllık Destek Sözleşmesi',
+   117→        'Bulut Altyapı Yükseltmesi', 'Otomasyon Kurulumu', 'Pilot Proje — 3 Ay',
+   118→        'Kurumsal E-posta Göçü', 'Raporlama Modülü Lisansı', 'WhatsApp Entegrasyon Paketi',
+   119→      ]
+   120→      const stages = ['yeni', 'iletisim', 'teklif', 'muzakere', 'kazanıldı', 'kaybedildi']
+   121→      const lossReasons = ['Bütçe onayı alınamadı', 'Rakip firma daha uygun fiyat verdi', 'Proje ertelendi', 'Karşı taraf temsilci değiştirdi']
+   122→      const dealRows: {
+   123→        id: string; tenantId: string; title: string; customerId: string; value: number; stage: string; probability: number; expectedCloseDate: Date; ownerId: string; lossReason?: string; lossNote?: string; createdAt: Date; updatedAt: Date
+   124→      }[] = []
+   125→      const wonStages = stages.flatMap(() => [])
+   126→      for (let i = 0; i < 26; i++) {
+   127→        const stage =
+   128→          i < 5 ? 'yeni' : i < 9 ? 'iletisim' : i < 13 ? 'teklif' : i < 17 ? 'muzakere' : i < 23 ? 'kazanıldı' : 'kaybedildi'
+   129→        const isWon = stage === 'kazanıldı'
+   130→        const isLost = stage === 'kaybedildi'
+   131→        const prob = { yeni: 10, iletisim: 25, teklif: 45, muzakere: 70, 'kazanıldı': 100, kaybedildi: 0 }[stage] as number
+   132→        const closeDate = isWon ? dayAt(-ri(3, 50), 17) : isLost ? dayAt(-ri(5, 40), 17) : dayAt(ri(-4, 45), 17)
+   133→        dealRows.push({
+   134→          id: genId(),
+   135→          tenantId: crmTenantId,
+   136→          title: `${pick(dealTitles)}${chance(0.3) ? ` — ${pick(['2026', 'Q4', 'Kurumsal', 'Şube Ağı'])}` : ''}`,
+   137→          customerId: pick(customers).id,
+   138→          value: ri(4, 120) * 12500,
+   139→          stage,
+   140→          probability: prob,
+   141→          expectedCloseDate: closeDate,
+   142→          ownerId: pick(reps).id,
+   143→          ...(isLost ? { lossReason: pick(lossReasons), lossNote: chance(0.6) ? 'Müşteri tekrar dönüş için "yıl sonunda değerlendirelim" dedi.' : undefined } : {}),
+   144→          createdAt: dayAt(-ri(20, 90), ri(9, 18), ri(0, 59)),
+   145→          updatedAt: dayAt(-ri(0, 15), ri(9, 18), ri(0, 59)),
+   146→        })
+   147→      }
+   148→      await db.deal.createMany({ data: dealRows })
+   149→      created['firsatlar'] = dealRows.length
+   150→
+   151→      // --- 1c. Aktiviteler — satış ekipleri gerçekten çalışıyor ---
+   152→      const actTypes = ['arama', 'arama', 'arama', 'toplanti', 'whatsapp', 'email', 'ziyaret', 'not'] as const
+   153→      const subjects: Record<string, string[]> = {
+   154→        arama: ['Fiyat teyidi için arandı', 'Teklif takibi', 'Yeni dönem tarifesi görüşüldü', 'Sipariş onayı alındı'],
+   155→        toplanti: ['Yerinde tanışma toplantısı', 'Demo sunumu yapıldı', 'Yıllık değerlendirme toplantısı', 'Sözleşme müzakeresi'],
+   156→        whatsapp: ['WhatsApp üzerinden katalog gönderildi', 'Proforma PDF iletildi', 'Hızlı fiyat sorusu yanıtlandı'],
+   157→        email: ['Resmi teklif e-postası gönderildi', 'Sözleşme taslağı iletildi', 'Sunum ve referans listesi gönderildi'],
+   158→        ziyaret: ['Şube ziyareti gerçekleştirildi', 'Depo yerinde inceleme', 'Yeni şube açılışına katılım'],
+   159→        not: ['Karar verici tatilde, Ekim başı dönüş bekleniyor', 'Rakip teklifi var, fiyat esnetilebilir', 'Muhasebe onayı bekleniyor'],
+   160→      }
+   161→      const outcomes = ['basarili', 'basarili', 'basarili', 'callback', 'ertelendi', 'basarisiz']
+   162→      const actRows: { id: string; tenantId: string; type: string; subject: string; detail: string; date: Date; durationMin: number; outcome: string; userId: string; customerId: string; dealId?: string; createdAt: Date }[] = []
+   163→      for (let i = 0; i < 48; i++) {
+   164→        const type = pick(actTypes)
+   165→        const deal = chance(0.55) ? pick(dealRows) : undefined
+   166→        actRows.push({
+   167→          id: genId(),
+   168→          tenantId: crmTenantId,
+   169→          type,
+   170→          subject: pick(subjects[type]),
+   171→          detail: chance(0.5) ? `${pick(['Müşteri olumlu baktı', 'Fiyat pazarlığı var', 'Karar süreci yönetim kurulunda', 'Ekim bütçesi açıldı', 'Termin öne alındı'])}.` : '',
+   172→          date: dayAt(-ri(0, 45), ri(9, 18), ri(0, 59)),
+   173→          durationMin: type === 'arama' ? ri(3, 15) : type === 'toplanti' ? ri(30, 90) : type === 'ziyaret' ? ri(45, 120) : 0,
+   174→          outcome: pick(outcomes),
+   175→          userId: pick(reps).id,
+   176→          customerId: deal ? deal.customerId : pick(customers).id,
+   177→          ...(deal ? { dealId: deal.id } : {}),
+   178→          createdAt: dayAt(-ri(0, 45), ri(9, 18), ri(0, 59)),
+   179→        })
+   180→      }
+   181→      await db.activity.createMany({ data: actRows })
+   182→      created['aktiviteler'] = actRows.length
+   183→
+   184→      // --- 1d. Görevler — geciken + yaklaşan + tamamlanan ---
+   185→      const taskTitles = [
+   186→        'Teklif revizesi gönder', 'Sözleşme imzala', 'Muhasebe ile fatura uyumu kontrol et',
+   187→        'Yeni müşteri onboarding planı hazırla', 'Aylık satış raporunu sun', 'Demo ortamını hazırla',
+   188→        'Referans müşteri ara', 'Depo sayımına katıl', 'Kampanya metnini onaylat',
+   189→      ]
+   190→      const taskRows: { id: string; tenantId: string; title: string; dueDate: Date; assigneeId: string; customerId: string; priority: string; status: string; completedAt?: Date; createdAt: Date; updatedAt: Date }[] = []
+   191→      for (let i = 0; i < 17; i++) {
+   192→        const status = i < 5 ? 'acik' : i < 13 ? 'acik' : 'tamamlandi'
+   193→        const due = i < 5 ? dayAt(-ri(1, 6), 18) : i < 13 ? dayAt(ri(0, 9), ri(10, 18)) : dayAt(-ri(2, 12), 17)
+   194→        taskRows.push({
+   195→          id: genId(),
+   196→          tenantId: crmTenantId,
+   197→          title: pick(taskTitles),
+   198→          dueDate: due,
+   199→          assigneeId: pick(reps).id,
+   200→          customerId: pick(customers).id,
+   201→          priority: pick(['dusuk', 'orta', 'orta', 'yuksek', 'acil']),
+   202→          status,
+   203→          ...(status === 'tamamlandi' ? { completedAt: dayAt(-ri(2, 12), 16) } : {}),
+   204→          createdAt: dayAt(-ri(3, 20), ri(9, 18)),
+   205→          updatedAt: dayAt(-ri(0, 3), ri(9, 18)),
+   206→        })
+   207→      }
+   208→      await db.task.createMany({ data: taskRows })
+   209→      created['gorevler'] = taskRows.length
+   210→
+   211→      // --- 1e. Giderler — 2 aylık gerçekçi işletme gideri ---
+   212→      const expRows: { id: string; tenantId: string; category: string; description: string; amount: number; date: Date; recurring?: string; vendor?: string; invoiceNo?: string; status: string; createdById?: string; createdAt: Date; updatedAt: Date }[] = []
+   213→      // Sabit aylık giderler (son 2 ay)
+   214→      for (const m of [0, 1]) {
+   215→        const base = m === 0 ? 0 : 30
+   216→        expRows.push({ id: genId(), tenantId: crmTenantId, category: 'kira', description: 'Ofis kirası — Kozyatağı', amount: 48000, date: dayAt(-base - 1, 10), recurring: 'monthly', vendor: 'Yapı A.Ş. Gayrimenkul', invoiceNo: `KR-${2026}${String(9 - m).padStart(2, '0')}`, status: 'odendi', createdAt: dayAt(-base - 1, 10), updatedAt: dayAt(-base - 1, 10) })
+   217→        expRows.push({ id: genId(), tenantId: crmTenantId, category: 'personel', description: 'Personel maaş ödemeleri', amount: 268000, date: dayAt(-base - 1, 9), recurring: 'monthly', vendor: 'Paso Hizmet', status: 'odendi', createdAt: dayAt(-base - 1, 9), updatedAt: dayAt(-base - 1, 9) })
+   218→        expRows.push({ id: genId(), tenantId: crmTenantId, category: 'fatura', description: `Elektrik faturası — ${m === 0 ? 'Eylül' : 'Ağustos'}`, amount: tl9(4200), date: dayAt(-base - 8, 11), vendor: 'Aydın Elektrik', invoiceNo: `EL${ri(100000, 999999)}`, status: 'odendi', createdAt: dayAt(-base - 8, 11), updatedAt: dayAt(-base - 8, 11) })
+   219→        expRows.push({ id: genId(), tenantId: crmTenantId, category: 'fatura', description: 'İnternet & telefon hatları', amount: tl9(2450), date: dayAt(-base - 6, 14), recurring: 'monthly', vendor: 'TurkNet', status: 'odendi', createdAt: dayAt(-base - 6, 14), updatedAt: dayAt(-base - 6, 14) })
+   220→      }
+   221→      // Değişken giderler
+   222→      const varExp: [string, string, number, string][] = [
+   223→        ['pazarlama', 'Meta reklamları — potansiyel müşteri kampanyası', 8500, 'Meta Platforms'],
+   224→        ['pazarlama', 'Google Ads — marka aramaları', 6200, 'Google'],
+   225→        ['malzeme', 'Kırtasiye & ofis malzemeleri', tl9(1200), 'Kırtasiye Dunyası'],
+   226→        ['malzeme', 'Sunum projesi — ekran & kablo', tl9(3400), 'Teknoloji Market'],
+   227→        ['diger', 'Yol, park & konaklamalar', tl9(2300), '—'],
+   228→        ['diger', 'Müşteri hediye setleri (çeyrek sonrası)', tl9(4600), 'Kurumsal Hediye'],
+   229→        ['sigorta', 'Ofis yangın sigortası yenileme', tl9(5800), 'Anadolu Sigorta'],
+   230→        ['vergi', 'Damga vergisi — sözleşmeler', tl9(950), '—'],
+   231→        ['fatura', 'Bulut sunucu aboneliği', tl9(1850), 'AWS'],
+   232→        ['pazarlama', 'Yerel fuar stant kiralaması', tl9(12500), 'Fuar Merkezi'],
+   233→      ]
+   234→      for (const [cat, desc, amt, vendor] of varExp) {
+   235→        const d = dayAt(-ri(1, 55), ri(9, 17))
+   236→        expRows.push({ id: genId(), tenantId: crmTenantId, category: cat, description: desc, amount: amt, date: d, vendor, invoiceNo: chance(0.7) ? `FT-${ri(2026100, 2026999)}` : undefined, status: d < dayAt(-20, 12) ? 'odendi' : pick(['odendi', 'beklemedi']), createdById: pick(reps).id, createdAt: d, updatedAt: d })
+   237→      }
+   238→      await db.expense.createMany({ data: expRows })
+   239→      created['giderler'] = expRows.length
+   240→    }
+   241→    await markDone('seed.realistic.crm')
+   242→  }
+   243→
+   244→  // ============================================================
+   245→  // 2) KAFE — menü zenginleştirme + 3 haftalık sipariş geçmişi + rezervasyonlar
+   246→  // ============================================================
+   247→  if (cafe && !(await sectionDone('seed.realistic.cafe'))) {
+   248→    // --- 2a. tableCount düzelt ---
+   249→    await db.cafe.update({ where: { id: cafe.id }, data: { tableCount: 8 } })
+   250→
+   251→    // --- 2b. Menü kategorileri & ürünleri ---
+   252→    const cats = await db.menuCategory.findMany({ where: { cafeId: cafe.id } })
+   253→    const catByName = new Map(cats.map((c) => [c.name, c.id]))
+   254→    async function ensureCat(name: string, sort: number): Promise<string> {
+   255→      if (catByName.has(name)) return catByName.get(name)!
+   256→      const id = genId()
+   257→      await db.menuCategory.create({ data: { id, cafeId: cafe!.id, name, sortOrder: sort } })
+   258→      catByName.set(name, id)
+   259→      return id
+   260→    }
+   261→    const kahvelerId = await ensureCat('Kahveler', 3)
+   262→    const sogukId = await ensureCat('Soğuk İçecekler', 4)
+   263→    const firinId = await ensureCat('Fırın & Atıştırmalık', 5)
+   264→    const kahvaltiId = catByName.get('Kahvaltı') ?? (await ensureCat('Kahvaltı', 1))
+   265→    const anaId = catByName.get('Ana Yemek') ?? (await ensureCat('Ana Yemek', 2))
+   266→    const tatliId = catByName.get('Tatlılar') ?? (await ensureCat('Tatlılar', 6))
+   267→
+   268→    const menuSeed: [string, number, string, number][] = [
+   269→      // [category, sort, name, price]
+   270→      [kahvelerId, 10, 'Espresso', 70], [kahvelerId, 11, 'Americano', 85], [kahvelerId, 12, 'Cappuccino', 105],
+   271→      [kahvelerId, 13, 'Caffe Latte', 110], [kahvelerId, 14, 'Caramel Macchiato', 140], [kahvelerId, 15, 'White Mocha', 135],
+   272→      [kahvelerId, 16, 'Türk Kahvesi (orta şekerli)', 80], [kahvelerId, 17, 'Menengiç Kahvesi', 95], [kahvelerId, 18, 'Filtre Kahve', 95],
+   273→      [kahvelerId, 19, 'Cold Brew', 120], [kahvelerId, 20, 'Buzlu Latte', 125],
+   274→      [sogukId, 10, 'Ev Yapımı Limonata', 85], [sogukId, 11, 'Taze Sıkılmış Portakal Suyu', 95], [sogukId, 12, 'Şeftali Nektarı', 60],
+   275→      [sogukId, 13, 'Milkshake (çilek/çikolata)', 140], [sogukId, 14, 'Mango Smoothie', 155], [sogukId, 15, 'Maden Suyu', 25],
+   276→      [firinId, 10, 'Poğaça', 40], [firinId, 11, 'Simit', 25], [firinId, 12, 'Tereyağlı Kruvasan', 65],
+   277→      [firinId, 13, 'Tuzlu Kurabiye', 35], [firinId, 14, 'Fındıklı Kurabiye', 45],
+   278→      [kahvaltiId, 10, 'Sucuklu Yumurta', 130], [kahvaltiId, 11, 'Avokado Tost', 160], [kahvaltiId, 12, 'Peynirli Tost', 90],
+   279→      [kahvaltiId, 13, 'Granola Bowl', 145], [kahvaltiId, 14, 'Simit Tabağı (zeytin, peynir, domates)', 85],
+   280→      [anaId, 10, 'Makarna Arrabbiata', 190], [anaId, 11, 'Makarna Pesto', 210], [anaId, 12, 'Köri Soslu Tavuk', 265],
+   281→      [anaId, 13, 'Nachos (kıymalı)', 180], [anaId, 14, 'Babagannuş', 175],
+   282→      [tatliId, 10, 'Cheesecake (dilim)', 145], [tatliId, 11, 'San Sebastian', 165], [tatliId, 12, 'Çikolatalı Sufle', 135],
+   283→      [tatliId, 13, 'Fıstıklı Baklava (4 dilim)', 175], [tatliId, 14, 'Dondurma (3 top)', 110], [tatliId, 15, 'Waffle (muz-fındık)', 190],
+   284→    ]
+   285→    const menuItems = await db.menuItem.findMany({ where: { category: { cafeId: cafe.id } }, select: { name: true } })
+   286→    const existingNames = new Set(menuItems.map((m) => m.name))
+   287→    const newMenuRows = menuSeed
+   288→      .filter(([, , name]) => !existingNames.has(name))
+   289→      .map(([categoryId, sortOrder, name, price]) => ({ id: genId(), categoryId, name, price, isAvailable: true, sortOrder }))
+   290→    if (newMenuRows.length) await db.menuItem.createMany({ data: newMenuRows })
+   291→    created['menu-urun'] = newMenuRows.length
+   292→
+   293→    // --- 2c. 3 haftalık sipariş geçmişi ---
+   294→    const allMenu = await db.menuItem.findMany({ where: { category: { cafeId: cafe.id } }, select: { id: true, name: true, price: true } })
+   295→    const tables = await db.cafeTable.findMany({ where: { cafeId: cafe.id }, select: { id: true, number: true, capacity: true } })
+   296→    const kasaUsers = await db.user.findMany({ where: { tenantId: cafe.tenantId }, select: { id: true } })
+   297→
+   298→    // mevcut sipariş numaralarından devam et
+   299→    const existingOrders = await db.cafeOrder.findMany({ where: { cafeId: cafe.id }, select: { number: true } })
+   300→    let seq = 0
+   301→    for (const o of existingOrders) {
+   302→      const m = o.number?.match(/S-(\d+)/)
+   303→      if (m) seq = Math.max(seq, parseInt(m[1], 10))
+   304→    }
+   305→
+   306→    const orderIds: string[] = []
+   307→    const orderItems: { id: string; orderId: string; menuItemId: string | null; name: string; qty: number; unitPrice: number; status: string; station: string }[] = []
+   308→    const payments: { id: string; orderId: string; amount: number; method: string; status: string; createdAt: Date }[] = []
+   309→    const orderRows: { id: string; cafeId: string; tableId: string | null; number: string; status: string; type: string; customerName?: string; subtotal: number; taxTotal: number; total: number; createdById?: string; createdAt: Date; updatedAt: Date; notes?: string }[] = []
+   310→
+   311→    // Kahvaltı öğeleri 8-11, öğle 12-14, ikindi kahvesi 15-18, akşam 18-22
+   312→    const breakfast = allMenu.filter((m) => /Serpme|Menemen|Omlet|Tost|Yumurta|Avokado|Granola|Simit Tabağı|Poğaça|Simit|Kruvasan/i.test(m.name))
+   313→    const lunch = allMenu.filter((m) => /Köfte|Tavuk|Makarna|Nachos|Babagannuş|Köri/i.test(m.name))
+   314→    const coffee = allMenu.filter((m) => /Espresso|Americano|Cappuccino|Latte|Mocha|Kahvesi|Filtre|Cold Brew|Limonata|Smoothie|Milkshake|Portakal/i.test(m.name))
+   315→    const dessert = allMenu.filter((m) => /Cheesecake|Sebastian|Sufle|Baklava|Dondurma|Waffle|Kurabiye|Gofret/i.test(m.name))
+   316→
+   317→    for (let d = -21; d <= 0; d++) {
+   318→      const isToday = d === 0
+   319→      const ordersToday = isToday ? 6 : ri(6, 11)
+   320→      // cuma-cumartesi yoğunluk
+   321→      const dow = dayAt(d, 12).getDay()
+   322→      const factor = dow === 5 || dow === 6 ? 1.35 : dow === 0 ? 1.15 : 1
+   323→      const n = Math.max(2, Math.round(ordersToday * factor))
+   324→      for (let k = 0; k < n; k++) {
+   325→        let hour: number
+   326→        const r = rng()
+   327→        if (r < 0.28) hour = ri(8, 11)
+   328→        else if (r < 0.58) hour = ri(12, 14)
+   329→        else if (r < 0.83) hour = ri(15, 18)
+   330→        else hour = ri(18, 21)
+   331→        const minute = pick([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55])
+   332→        const date = dayAt(d, hour, minute)
+   333→        if (isToday && date > new Date()) continue // bugünün ilerisi olmasın
+   334→
+   335→        const type = chance(0.75) ? 'dine_in' : chance(0.6) ? 'takeaway' : 'delivery'
+   336→        const tableId = type === 'dine_in' && tables.length ? pick(tables).id : null
+   337→        seq++
+   338→        const isLive = isToday && k < 3
+   339→        const status = isLive ? (['acik', 'hazirlaniyor', 'hazir'] as const)[k] : chance(0.96) ? 'odendi' : 'iptal'
+   340→        const pool = hour <= 11 ? breakfast : hour <= 14 ? [...lunch, ...coffee] : hour <= 18 ? coffee : [...coffee, ...dessert]
+   341→        const itemCount = ri(1, 4)
+   342→        const chosen = new Set<string>()
+   343→        const items: { menuItemId: string | null; name: string; qty: number; unitPrice: number }[] = []
+   344→        for (let j = 0; j < itemCount; j++) {
+   345→          const mi = pick(pool.length ? pool : allMenu)
+   346→          if (chosen.has(mi.id)) continue
+   347→          chosen.add(mi.id)
+   348→          items.push({ menuItemId: mi.id, name: mi.name, qty: chance(0.25) ? 2 : 1, unitPrice: mi.price })
+   349→        }
+   350→        const subtotal = round2(items.reduce((s, it) => s + it.qty * it.unitPrice, 0))
+   351→        const taxTotal = round2((subtotal * 10) / 110) // KDV dahil %10
+   352→        const id = genId()
+   353→        orderIds.push(id)
+   354→        orderRows.push({
+   355→          id, cafeId: cafe.id, tableId, number: `S-${String(seq).padStart(3, '0')}`,
+   356→          status, type,
+   357→          ...(type !== 'dine_in' ? { customerName: fullName() } : {}),
+   358→          subtotal, taxTotal, total: subtotal,
+   359→          createdById: kasaUsers.length ? pick(kasaUsers).id : undefined,
+   360→          createdAt: date, updatedAt: date,
+   361→          ...(chance(0.12) ? { notes: pick(['Az şekerli', 'Soğuk olsun', 'Paket ayrı ayrı', 'Yanında buz']) } : {}),
+   362→        })
+   363→        for (const it of items) {
+   364→          orderItems.push({ id: genId(), orderId: id, menuItemId: it.menuItemId, name: it.name, qty: it.qty, unitPrice: it.unitPrice, status: isLive ? 'bekliyor' : 'servis_edildi', station: /Kahvesi|Espresso|Americano|Cappuccino|Latte|Mocha|Filtre|Cold Brew|Limonata|Smoothie|Milkshake|Portakal|Çay|Nektar|Soda|Maden/i.test(it.name) ? 'bar' : /Cheesecake|Sebastian|Sufle|Baklava|Dondurma|Waffle|Kurabiye/i.test(it.name) ? 'dessert' : 'kitchen' })
+   365→        }
+   366→        if (status === 'odendi') {
+   367→          payments.push({ id: genId(), orderId: id, amount: subtotal, method: chance(0.55) ? 'card' : 'cash', status: 'tamamlandi', createdAt: new Date(date.getTime() + 45 * 60000) })
+   368→        }
+   369→      }
+   370→    }
+   371→    await db.cafeOrder.createMany({ data: orderRows })
+   372→    if (orderItems.length) await db.cafeOrderItem.createMany({ data: orderItems })
+   373→    if (payments.length) await db.cafePayment.createMany({ data: payments })
+   374→    created['kafe-siparis'] = orderRows.length
+   375→
+   376→    // --- 2d. Rezervasyonlar — bugün ve ileri tarih ---
+   377→    const resNames = ['Yıldız Hanım (doğum günü)', 'Kadıköy Kitap Kulübü', 'Ersan Bey — iş toplantısı', 'Deniz & arkadaşlar', 'Yıldırım ailesi', 'Bay Şen (yerin üstü)', 'Bahar Hanım — nişan kahvası', 'Okul veli toplantısı sonrası']
+   378→    const resRows: { id: string; cafeId: string; tableId: string | null; name: string; phone: string; partySize: number; date: Date; durationMin: number; status: string; source: string; note?: string }[] = []
+   379→    const resSpecs: [number, number, number, string][] = [
+   380→      // [günOfseti, saat, kişi, durum]
+   381→      [0, 13, 4, 'onaylandi'], [0, 16, 2, 'onaylandi'], [0, 19, 6, 'onaylandi'], [0, 20, 3, 'bekliyor'],
+   382→      [1, 10, 2, 'onaylandi'], [1, 13, 5, 'bekliyor'], [1, 19, 4, 'onaylandi'],
+   383→      [2, 12, 8, 'onaylandi'], [3, 15, 2, 'onaylandi'], [4, 18, 6, 'bekliyor'],
+   384→    ]
+   385→    for (let i = 0; i < resSpecs.length; i++) {
+   386→      const [doff, h, size, status] = resSpecs[i]
+   387→      const table = tables.length ? pick(tables) : null
+   388→      resRows.push({
+   389→        id: genId(), cafeId: cafe.id, tableId: table && size <= table.capacity ? table.id : null,
+   390→        name: resNames[i % resNames.length].split(' (')[0],
+   391→        phone: trPhone(), partySize: size,
+   392→        date: dayAt(doff, h, pick([0, 15, 30])),
+   393→        durationMin: size >= 6 ? 120 : 90,
+   394→        status, source: chance(0.6) ? 'telefon' : chance(0.5) ? 'web' : 'yüz yüze',
+   395→        ...(chance(0.5) ? { note: pick(['Doğum günü pastası getirilecek', 'Bebek arabası var, geniş masa', 'Pencere kenarı tercih eder', 'Fatura firmaya']) } : {}),
+   396→      })
+   397→    }
+   398→    await db.cafeReservation.createMany({ data: resRows })
+   399→    created['kafe-rezervasyon'] = resRows.length
+   400→    await markDone('seed.realistic.cafe')
+   401→  }
+   402→
+   403→  // ============================================================
+   404→  // 3) MARKET — gerçekçi ürün kataloğu + 3 haftalık POS satışı + veresiye
+   405→  // ============================================================
+   406→  if (market && !(await sectionDone('seed.realistic.market'))) {
+   407→    const existingProducts = await db.product.findMany({ where: { tenantId: market.tenantId }, select: { id: true, name: true, sku: true, price: true, stock: true } })
+   408→    const existingNames = new Set(existingProducts.map((p) => p.name))
+   409→
+   410→    const productSeed: [string, string, number, string, number][] = [
+   411→      // [name, category, price, unit, taxRate]
+   412→      ['Coca-Cola 1L', 'İçecek', 45, 'adet', 10], ['Coca-Cola Kutu 330ml', 'İçecek', 25, 'adet', 10],
+   413→      ['Sprite 1L', 'İçecek', 42, 'adet', 10], ['Şalgam Suyu 300ml', 'İçecek', 22, 'adet', 10],
+   414→      ['Su 5L', 'İçecek', 35, 'adet', 10], ['Su 0.5L', 'İçecek', 12, 'adet', 10],
+   415→      ['Vişne Suyu 1L', 'İçecek', 48, 'adet', 10], ['Soda 200ml', 'İçecek', 15, 'adet', 10],
+   416→      ['Pınar Labne 250g', 'Süt Ürünleri', 55, 'adet', 1], ['Sütaş Kefir 1L', 'Süt Ürünleri', 75, 'adet', 1],
+   417→      ['Kaşar Peyniri 500g', 'Süt Ürünleri', 289, 'adet', 1], ['Tereyağı 250g', 'Süt Ürünleri', 185, 'adet', 1],
+   418→      ['Nutella 350g', 'Kahvaltılık', 189, 'adet', 1], ['Süzme Bal 850g', 'Kahvaltılık', 320, 'adet', 1],
+   419→      ['Ülker Çikolata', 'Atıştırmalık', 45, 'adet', 10], ['Eti Burçak', 'Atıştırmalık', 35, 'adet', 10],
+   420→      ['Çay 500g', 'Kahvaltılık', 145, 'adet', 1], ['Nescafe 200g', 'Kahvaltılık', 189, 'adet', 10],
+   421→      ['Zeytinyağı 1L', 'Mutfak', 320, 'adet', 1], ['Ülker Gofret', 'Atıştırmalık', 25, 'adet', 10],
+   422→      ['Karışık Kuruyemiş 500g', 'Atıştırmalık', 210, 'adet', 1], ['Antep Fıstığı 250g', 'Atıştırmalık', 145, 'adet', 1],
+   423→      ['Omo Sıvı 3L', 'Temizlik', 289, 'adet', 20], ['Çamaşır Suyu 1L', 'Temizlik', 32, 'adet', 20],
+   424→      ['Bulaşık Deterjanı 750ml', 'Temizlik', 55, 'adet', 20], ['Cam Temizleyici', 'Temizlik', 45, 'adet', 20],
+   425→      ['Yumuşatıcı 2L', 'Temizlik', 95, 'adet', 20], ['Cif Krem', 'Temizlik', 65, 'adet', 20],
+   426→      ['Selpak 10\'lu', 'Kağıt Ürünleri', 95, 'paket', 20], ['Tualet Kağıdı 12\'li', 'Kağıt Ürünleri', 135, 'paket', 20],
+   427→      ['Peçete 100\'lü', 'Kağıt Ürünleri', 35, 'paket', 20], ['Alüminyum Folyo 30m', 'Kağıt Ürünleri', 55, 'adet', 20],
+   428→      ['Colgate Diş Macunu', 'Kişisel Bakım', 75, 'adet', 20], ['Şampuan 500ml', 'Kişisel Bakım', 95, 'adet', 20],
+   429→      ['Katı Sabun 4\'lü', 'Kişisel Bakım', 65, 'paket', 20],
+   430→      ['Makarna 500g', 'Mutfak', 22, 'adet', 1], ['Pirinç 1kg', 'Mutfak', 65, 'adet', 1],
+   431→      ['Bulgur 1kg', 'Mutfak', 48, 'adet', 1], ['Domates Salçası 700g', 'Mutfak', 78, 'adet', 1],
+   432→      ['Kırmızı Mercimek 1kg', 'Mutfak', 55, 'adet', 1], ['Un 1kg', 'Mutfak', 35, 'adet', 1],
+   433→      ['Toz Şeker 1kg', 'Mutfak', 42, 'adet', 1], ['Ayçiçek Yağı 5L', 'Mutfak', 489, 'adet', 1],
+   434→      ['Patates Kızartma 1kg', 'Dondurulmuş', 75, 'adet', 10], ['Hamsi 1kg (temiz)', 'Dondurulmuş', 210, 'kg', 1],
+   435→      ['Kedi Maması 1.5kg', 'Evcil', 189, 'adet', 20], ['Köpek Maması 3kg', 'Evcil', 289, 'adet', 20],
+   436→      ['Bez Çanta', 'Diğer', 15, 'adet', 20], ['Çakmak', 'Diğer', 30, 'adet', 20],
+   437→      ['Atıştırmalık Kuruyemiş 150g', 'Atıştırmalık', 68, 'adet', 10], ['Dondurmalı Gofret', 'Atıştırmalık', 38, 'adet', 10],
+   438→      ['Ekmek Kırıntısı', 'Mutfak', 28, 'adet', 1], ['Mısır Nişastası 400g', 'Mutfak', 38, 'adet', 1],
+   439→      ['Mis Kokulu Mum', 'Diğer', 89, 'adet', 20], ['Yanık Süt 1L', 'Süt Ürünleri', 48, 'adet', 1],
+   440→    ]
+   441→    const newProductRows = productSeed
+   442→      .filter(([name]) => !existingNames.has(name))
+   443→      .map(([name, category, price, unit, taxRate]) => ({
+   444→        id: genId(), tenantId: market.tenantId, name,
+   445→        sku: String(100 + ri(100, 899)),
+   446→        description: null as string | null,
+   447→        price, currency: 'TRY', taxRate, unit, category,
+   448→        stock: ri(0, 120),
+   449→        minStock: ri(5, 25),
+   450→      }))
+   451→    if (newProductRows.length) {
+   452→      await db.product.createMany({ data: newProductRows })
+   453→      await db.barcode.createMany({
+   454→        data: newProductRows.map((p) => ({ id: genId(), marketId: market.id, productId: p.id, code: trBarcode(), type: 'ean13' })),
+   455→      })
+   456→    }
+   457→    created['market-urun'] = newProductRows.length
+   458→
+   459→    const products = await db.product.findMany({
+   460→      where: { tenantId: market.tenantId },
+   461→      select: { id: true, name: true, price: true, taxRate: true },
+   462→    })
+   463→    const barcodeMap = new Map<string, string>()
+   464→    const existingBarcodes = await db.barcode.findMany({ where: { productId: { in: products.map((p) => p.id) } }, select: { productId: true, code: true } })
+   465→    for (const b of existingBarcodes) barcodeMap.set(b.productId, b.code)
+   466→    const kasiyers = await db.user.findMany({ where: { tenantId: market.tenantId, role: { in: ['admin', 'kasiyer'] } }, select: { id: true } })
+   467→
+   468→    // mevcut fiş no dizisinden devam
+   469→    const existingSales = await db.marketSale.findMany({ where: { marketId: market.id }, select: { number: true } })
+   470→    let fis = 0
+   471→    for (const s of existingSales) {
+   472→      const m = s.number?.match(/FIS-(\d+)/)
+   473→      if (m) fis = Math.max(fis, parseInt(m[1], 10))
+   474→    }
+   475→
+   476→    // Ucuz ürünler daha sık satılır (ağırlıklı havuz)
+   477→    const weighted: typeof products = []
+   478→    for (const p of products) {
+   479→      const w = p.price <= 50 ? 6 : p.price <= 100 ? 4 : p.price <= 200 ? 2 : 1
+   480→      for (let i = 0; i < w; i++) weighted.push(p)
+   481→    }
+   482→
+   483→    const saleRows: { id: string; marketId: string; number: string; type: string; status: string; subtotal: number; taxTotal: number; discount: number; total: number; paymentMethod: string; cashAmount: number; cardAmount: number; customerName?: string; userId?: string; createdAt: Date; updatedAt: Date }[] = []
+   484→    const saleItems: { id: string; saleId: string; productId: string; barcode: string; name: string; qty: number; unitPrice: number; taxRate: number; discount: number; lineTotal: number }[] = []
+   485→
+   486→    for (let d = -21; d <= 0; d++) {
+   487→      const isToday = d === 0
+   488→      const dow = dayAt(d, 12).getDay()
+   489→      const n = Math.round((dow === 6 || dow === 0 ? 14 : 10) * rf(0.85, 1.15))
+   490→      for (let k = 0; k < n; k++) {
+   491→        const date = dayAt(d, ri(8, 22), ri(0, 59))
+   492→        if (isToday && date > new Date()) continue
+   493→        const itemCount = ri(1, 6)
+   494→        const items: { productId: string; barcode: string; name: string; qty: number; unitPrice: number; taxRate: number }[] = []
+   495→        const used = new Set<string>()
+   496→        for (let j = 0; j < itemCount; j++) {
+   497→          const p = pick(weighted)
+   498→          if (used.has(p.id)) continue
+   499→          used.add(p.id)
+   500→          const barcode = barcodeMap.get(p.id) ?? trBarcode()
+   501→          items.push({ productId: p.id, barcode, name: p.name, qty: chance(0.3) ? ri(2, 3) : 1, unitPrice: p.price, taxRate: p.taxRate })
+   502→        }
+   503→        const subtotal = round2(items.reduce((s, it) => s + it.qty * it.unitPrice, 0))
+   504→        const taxTotal = round2(items.reduce((s, it) => {
+   505→          const lineGross = it.qty * it.unitPrice
+   506→          return s + (lineGross * it.taxRate) / (100 + it.taxRate)
+   507→        }, 0))
+   508→        fis++
+   509→        const method = chance(0.45) ? 'cash' : chance(0.93) ? 'card' : 'mixed'
+   510→        const id = genId()
+   511→        saleRows.push({
+   512→          id, marketId: market.id, number: `FIS-${String(fis).padStart(4, '0')}`,
+   513→          type: 'satis', status: 'tamamlandi',
+   514→          subtotal, taxTotal, discount: 0, total: subtotal,
+   515→          paymentMethod: method,
+   516→          cashAmount: method === 'cash' ? subtotal : method === 'mixed' ? round2(subtotal / 2) : 0,
+   517→          cardAmount: method === 'card' ? subtotal : method === 'mixed' ? round2(subtotal / 2) : 0,
+   518→          userId: kasiyers.length ? pick(kasiyers).id : undefined,
+   519→          createdAt: date, updatedAt: date,
+   520→        })
+   521→        for (const it of items) {
+   522→          saleItems.push({ id: genId(), saleId: id, productId: it.productId, barcode: it.barcode, name: it.name, qty: it.qty, unitPrice: it.unitPrice, taxRate: it.taxRate, discount: 0, lineTotal: round2(it.qty * it.unitPrice) })
+   523→        }
+   524→      }
+   525→    }
+   526→    await db.marketSale.createMany({ data: saleRows })
+   527→    if (saleItems.length) await db.marketSaleItem.createMany({ data: saleItems })
+   528→    created['market-satis'] = saleRows.length
+   529→
+   530→    // --- 3b. Veresiye defteri — mahalle gerçekleri ---
+   531→    const creditSpecs: [string, string, number | null, [string, number, number, number | null][], string][] = [
+   532→      // [ad, not, limit, hareketler[type, tutar, günOfseti, vadeGünOfseti], telefon]
+   533→      ['Kemal Usta (Terzi)', 'Mahalle terzisi — haftada 2-3 alışveriş', 3000, [['borc', 620, -18, -3], ['borc', 340, -9, 5], ['odeme', 400, -6, null]], trPhone()],
+   534→      ['Ayşe Teyze (3. Blok)', 'Site sakinleri — kredi limiti düşük tutuldu', 2000, [['borc', 850, -21, -5], ['borc', 600, -11, 4], ['odeme', 700, -8, null]], trPhone()],
+   535→      ['Hasan Abi (Taksici)', 'Gece vardiyası sonrası alıyor — vadesi geçti, hatırlat', 1500, [['borc', 320, -25, -10], ['odeme', 200, -15, null]], trPhone()],
+   536→      ['Zeynep Hanım (Eczacı)', 'Sık müşteri — limiti aşmak üzere', 5000, [['borc', 2100, -20, 0], ['borc', 1800, -8, 12], ['odeme', 900, -4, null]], trPhone()],
+   537→      ['Minibüs Durak Ekibi', 'Çay & su hesabı — ay sonunda toplu ödeme', 2500, [['borc', 480, -14, 3]], trPhone()],
+   538→    ]
+   539→    for (const [name, note, limit, entries, phone] of creditSpecs) {
+   540→      const cc = await db.creditCustomer.create({ data: { marketId: market.id, name, phone, note, creditLimit: limit } })
+   541→      for (const [type, amount, d, due] of entries) {
+   542→        await db.creditEntry.create({
+   543→          data: {
+   544→            customerId: cc.id, type, amount,
+   545→            ...(type === 'odeme' ? { method: pick(['nakit', 'havale']) } : { dueDate: dayAt(due ?? 0, 18) }),
+   546→            note: type === 'borc' ? 'POS veresiye satışı / manuel giriş' : null,
+   547→            createdAt: dayAt(d, ri(9, 20)),
+   548→          },
+   549→        })
+   550→      }
+   551→    }
+   552→    created['veresiye-musteri'] = creditSpecs.length
+   553→    await markDone('seed.realistic.market')
+   554→  }
+   555→
+   556→  // ============================================================
+   557→  // 4) KUAFÖR — personel, hizmet, müşteri ve randevu geçmişi
+   558→  // ============================================================
+   559→  if (provider && !(await sectionDone('seed.realistic.kuafor'))) {
+   560→    await db.serviceProvider.update({ where: { id: provider.id }, data: { email: 'info@sikkuaforsalonu.com' } })
+   561→
+   562→    // --- 4a. Personel & hizmet zenginleştirme ---
+   563→    const staffExisting = await db.staff.findMany({ where: { providerId: provider.id } })
+   564→    const staffNames = new Set(staffExisting.map((s) => s.name))
+   565→    const addStaff: [string, string][] = [
+   566→      ['Seda Yılmaz', 'Renk Uzmanı'],
+   567→      ['Nazlı Doğan', 'Manikür & Pedikür Uzmanı'],
+   568→    ]
+   569→    for (const [name, title] of addStaff) {
+   570→      if (!staffNames.has(name)) await db.staff.create({ data: { providerId: provider.id, name, title, phone: trPhone(), isActive: true } })
+   571→    }
+   572→    const staffAll = await db.staff.findMany({ where: { providerId: provider.id } })
+   573→
+   574→    const svcExisting = await db.service.findMany({ where: { providerId: provider.id } })
+   575→    const svcNames = new Set(svcExisting.map((s) => s.name))
+   576→    const addSvc: [string, number, number, string][] = [
+   577→      ['Fön & Şekillendirme', 300, 40, 'Saç'],
+   578→      ['Sakal Dizaynı', 200, 25, 'Sakal'],
+   579→      ['Keratin Bakımı', 1200, 120, 'Saç'],
+   580→      ['Çocuk Saç Kesimi', 120, 25, 'Saç'],
+   581→      ['Ağda — Yüz', 150, 20, 'Cilt'],
+   582→      ['Saç Bakım Maskesi', 350, 30, 'Saç'],
+   583→      ['Perma', 900, 120, 'Saç'],
+   584→    ]
+   585→    for (const [name, price, duration, category] of addSvc) {
+   586→      if (!svcNames.has(name)) await db.service.create({ data: { providerId: provider.id, name, price, duration, category, isActive: true } })
+   587→    }
+   588→    const svcAll = await db.service.findMany({ where: { providerId: provider.id } })
+   589→
+   590→    // personel-hizmet eşlemesi
+   591→    const byName = (n: string) => svcAll.find((s) => s.name.startsWith(n))
+   592→    const svcMap: Record<string, string[]> = {
+   593→      'Ahmet Usta': ['Saç Kesimi', 'Sakal', 'Çocuk'],
+   594→      'Ayşe Hanım': ['Saç Boyama', 'Fön', 'Keratin', 'Perma', 'Bakım Maskesi'],
+   595→      'Mehmet Bey': ['Saç Kesimi', 'Sakal', 'Fön'],
+   596→      'Seda Yılmaz': ['Saç Boyama', 'Fön', 'Keratin', 'Bakım Maskesi', 'Cilt'],
+   597→      'Nazlı Doğan': ['Manikür', 'Pedikür', 'Ağda', 'Cilt'],
+   598→    }
+   599→    for (const st of staffAll) {
+   600→      const svcNamesForStaff = svcMap[st.name] ?? []
+   601→      for (const sn of svcNamesForStaff) {
+   602→        const svc = byName(sn)
+   603→        if (!svc) continue
+   604→        const dup = await db.staffService.findFirst({ where: { staffId: st.id, serviceId: svc.id } })
+   605→        if (!dup) await db.staffService.create({ data: { staffId: st.id, serviceId: svc.id } })
+   606→      }
+   607→    }
+   608→
+   609→    // --- 4b. Gerçekçi randevu müşterileri ---
+   610→    const apptCustomerSeed: [string, string, string, string][] = [
+   611→      ['Elif Yıldırım', 'Bitkisel boya tercih eder; amonyaklı boyaya alerjisi var', 'VIP', '04-12'],
+   612→      ['Murat Şahin', 'Her 3 haftada bir sakal dizaynı — sabit müşteri', 'Sabit müşteri', ''],
+   613→      ['Zeynep Kaya', 'Fön sonrası düzleştirici kullanmıyor, doğal kuruma', 'Sabit müşteri', '07-21'],
+   614→      ['Hakan Özdemir', 'Saç kesimi 2 numara makine, üstte makas', 'Sabit müşteri', ''],
+   615→      ['Selin Arslan', 'Keratin bakımı 4 ayda bir; kuaför koltuğu pencere kenarı', 'VIP', '11-02'],
+   616→      ['Emre Çelik', 'Çocukla geliyor, aynı anda iki koltuk lazım', '', ''],
+   617→      ['Derya Aslan', 'Manikürde jant tercih ediyor', 'Sabit müşteri', '01-18'],
+   618→      ['Kerem Doğan', 'Sadece Ahmet Ustaya geliyor', 'Sabit müşteri', ''],
+   619→      ['Gizem Kurt', 'İlk kez geliyor — Instagram kampanyasıyla', '', ''],
+   620→      ['Baran Özkan', 'Perma denedi, memnun kaldı; tekrar planlanacak', '', ''],
+   621→      ['Nil Şimşek', 'Ağda hassasiyeti var, öncesi sakinleştirici krem', '', ''],
+   622→      ['Tarık Koç', 'Kurumsal — firma faturası ister', 'VIP', ''],
+   623→    ]
+   624→    const apptCustomers: Record<string, string> = {}
+   625→    for (const [name, notes, tag, birthday] of apptCustomerSeed) {
+   626→      const phone = trPhone()
+   627→      const phoneDigits = phone.replace(/\D/g, '')
+   628→      const found = await db.appointmentCustomer.findFirst({ where: { providerId: provider.id, phoneDigits } })
+   629→      if (found) {
+   630→        apptCustomers[name] = found.id
+   631→        continue
+   632→      }
+   633→      const rec = await db.appointmentCustomer.create({
+   634→        data: { providerId: provider.id, name, phone, phoneDigits, notes, tags: tag ? JSON.stringify([tag]) : null, ...(birthday ? { birthday } : {}) },
+   635→      })
+   636→      apptCustomers[name] = rec.id
+   637→    }
+   638→
+   639→    // --- 4c. Randevu geçmişi (14 gün) + bugün + gelecek haft ---
+   640→    const validPairs: { staffId: string; serviceId: string; duration: number; price: number }[] = []
+   641→    for (const st of staffAll) {
+   642→      const ss = await db.staffService.findMany({ where: { staffId: st.id }, include: { service: true } })
+   643→      for (const link of ss) {
+   644→        validPairs.push({ staffId: st.id, serviceId: link.service.id, duration: link.service.duration, price: link.service.price })
+   645→      }
+   646→    }
+   647→
+   648→    const rows: { id: string; providerId: string; customerId?: string; staffId: string; serviceId: string; customerName: string; customerPhone: string; date: Date; endTime: Date; status: string; price: number; source: string; createdAt: Date; updatedAt: Date; notes?: string }[] = []
+   649→    const custNames = Object.keys(apptCustomers)
+   650→    async function addAppt(d: number, h: number, m: number, status: string, source?: string, notes?: string, pickPair?: number) {
+   651→      const pair = validPairs[pickPair ?? ri(0, validPairs.length - 1)]
+   652→      const custName = pick(custNames)
+   653→      const cust = await db.appointmentCustomer.findUnique({ where: { id: apptCustomers[custName] } })
+   654→      const date = dayAt(d, h, m)
+   655→      rows.push({
+   656→        id: genId(), providerId: provider!.id,
+   657→        customerId: apptCustomers[custName], staffId: pair.staffId, serviceId: pair.serviceId,
+   658→        customerName: cust?.name ?? custName, customerPhone: cust?.phone ?? trPhone(),
+   659→        date, endTime: new Date(date.getTime() + pair.duration * 60000),
+   660→        status, price: pair.price,
+   661→        source: source ?? pick(['web', 'phone', 'phone', 'walk_in']),
+   662→        createdAt: dayAt(d - ri(0, 3), ri(10, 20)),
+   663→        updatedAt: dayAt(d, h, m),
+   664→        ...(notes ? { notes } : {}),
+   665→      })
+   666→    }
+   667→
+   668→    // geçmiş 14 gün: gerçekleştirilmiş randevular
+   669→    for (let d = -14; d < 0; d++) {
+   670→      const dow = dayAt(d, 12).getDay()
+   671→      if (dow === 0) continue // pazar kapalı
+   672→      const n = dow === 6 ? ri(4, 6) : ri(3, 5)
+   673→      for (let k = 0; k < n; k++) {
+   674→        const status = chance(0.86) ? 'tamamlandi' : chance(0.5) ? 'gelmedi' : 'iptal'
+   675→        await addAppt(d, ri(9, 17), pick([0, 30]), status, undefined, status === 'gelmedi' ? 'Habersiz gelmedi — not düştü' : undefined)
+   676→      }
+   677→    }
+   678→    // bugün: 6 randevu (1 tanesi beklemede, diğerleri onaylı)
+   679→    const todaySpecs: [number, number, string][] = [[10, 0, 'tamamlandi'], [11, 30, 'tamamlandi'], [13, 0, 'onaylandi'], [14, 30, 'onaylandi'], [16, 0, 'beklemede'], [17, 30, 'onaylandi']]
+   680→    for (const [h, m, status] of todaySpecs) {
+   681→      if (status === 'tamamlandi' && new Date() < dayAt(0, h, m)) continue
+   682→      await addAppt(0, h, m, status)
+   683→    }
+   684→    // gelecek 7 gün
+   685→    for (let d = 1; d <= 7; d++) {
+   686→      const dow = dayAt(d, 12).getDay()
+   687→      if (dow === 0) continue
+   688→      const n = dow === 6 ? ri(4, 6) : ri(3, 5)
+   689→      for (let k = 0; k < n; k++) {
+   690→        await addAppt(d, ri(9, 17), pick([0, 30]), chance(0.7) ? 'onaylandi' : 'beklemede')
+   691→      }
+   692→    }
+   693→    if (rows.length) await db.appointment.createMany({ data: rows })
+   694→    created['kuaför-randevu'] = rows.length
+   695→    await markDone('seed.realistic.kuafor')
+   696→  }
+   697→
+   698→  // ============================================================
+   699→  // 5) SİTE — bloklar, daireler, sakinler, aidat, talepler, duyurular
+   700→  // ============================================================
+   701→  if (parkSite && !(await sectionDone('seed.realistic.site'))) {
+   702→    const blocks = await db.block.findMany({ where: { siteId: parkSite.id } })
+   703→    const blockA = blocks.find((b) => b.name.includes('A')) ?? blocks[0]
+   704→    const blockB = blocks.find((b) => b.name.includes('B')) ?? blocks[1]
+   705→
+   706→    // C Blok ekle
+   707→    let blockC = blocks.find((b) => b.name.includes('C'))
+   708→    if (!blockC) blockC = await db.block.create({ data: { siteId: parkSite.id, name: 'C Blok', floors: 8 } })
+   709→
+   710→    // Yeni daireler (A/B tamamlanıyor + C)
+   711→    const existingApts = await db.apartment.findMany({ where: { siteId: parkSite.id }, select: { blockId: true, number: true } })
+   712→    const aptKey = (blockId: string, num: string) => `${blockId}:${num}`
+   713→    const existingKeys = new Set(existingApts.map((a) => aptKey(a.blockId, a.number)))
+   714→    const newApts: { id: string; blockId: string; siteId: string; number: string; floor: number; type: string; area: number }[] = []
+   715→    const plans: [string | undefined, number[]][] = [
+   716→      [blockA?.id, [7, 8]],
+   717→      [blockB?.id, [5, 6, 7, 8]],
+   718→      [blockC.id, [1, 2, 3, 4, 5, 6]],
+   719→    ]
+   720→    for (const [bid, nums] of plans) {
+   721→      if (!bid) continue
+   722→      for (const num of nums) {
+   723→        if (existingKeys.has(aptKey(bid, String(num)))) continue
+   724→        newApts.push({ id: genId(), blockId: bid, siteId: parkSite.id, number: String(num), floor: ((num - 1) % 5) + 1, type: 'daire', area: pick([95, 110, 125, 140]) })
+   725→      }
+   726→    }
+   727→    if (newApts.length) await db.apartment.createMany({ data: newApts })
+   728→    created['daire'] = newApts.length
+   729→
+   730→    // Sakinler — TC'li mal sahipleri + kiracılar
+   731→    const residentsExisting = await db.resident.findMany({ where: { siteId: parkSite.id } })
+   732→    const resNames = new Set(residentsExisting.map((r) => r.name))
+   733→    const residentRows: [string, string, boolean][] = [
+   734→      [fullName(), 'mal_sahibi', true], [fullName(), 'kiraci', false], [fullName(), 'mal_sahibi', true],
+   735→      [fullName(), 'kiraci', false], [fullName(), 'mal_sahibi', true], [fullName(), 'mal_sahibi', true],
+   736→      [fullName(), 'kiraci', false], [fullName(), 'mal_sahibi', true], [fullName(), 'kiraci', false],
+   737→      [fullName(), 'mal_sahibi', true],
+   738→    ]
+   739→    const newResidentIds: string[] = []
+   740→    for (const [name, type, isOwner] of residentRows) {
+   741→      if (resNames.has(name)) continue
+   742→      const rec = await db.resident.create({
+   743→        data: {
+   744→          tenantId: parkSite.tenantId, siteId: parkSite.id, name,
+   745→          phone: trPhone(),
+   746→          email: chance(0.7) ? `${name.toLowerCase().replace(/[^a-z]/g, '.')}@gmail.com` : null,
+   747→          type, isOwner,
+   748→          ...(isOwner ? { tcKimlikNo: String(ri(100, 999)) + String(ri(10000000000, 99999999999)) } : { moveInDate: dayAt(-ri(30, 900), 12) }),
+   749→          notes: chance(0.3) ? pick(['Evde teslimat yoğun', 'Evcil hayvan: kedi', 'Gece vardiyasında çalışıyor — gürültüye hassas']) : null,
+   750→        },
+   751→      })
+   752→      newResidentIds.push(rec.id)
+   753→    }
+   754→    created['sakin'] = newResidentIds.length
+   755→
+   756→    // Sakinleri dairelere ata
+   757→    const apts = await db.apartment.findMany({ where: { siteId: parkSite.id, residentId: null }, select: { id: true } })
+   758→    const assignIds = newResidentIds.slice(0, apts.length)
+   759→    for (let i = 0; i < assignIds.length; i++) {
+   760→      await db.apartment.update({ where: { id: apts[i].id }, data: { residentId: assignIds[i] } })
+   761→    }
+   762→
+   763→    // Site personeli
+   764→    const staffCount = await db.siteStaff.count({ where: { siteId: parkSite.id } })
+   765→    if (staffCount === 0) {
+   766→      await db.siteStaff.createMany({
+   767→        data: [
+   768→          { siteId: parkSite.id, name: 'Bahri Uçar', role: 'kapici', phone: trPhone(), salary: 22000, startDate: dayAt(-700, 9) },
+   769→          { siteId: parkSite.id, name: 'Ramazan Tekin', role: 'guvenlik', phone: trPhone(), salary: 24500, startDate: dayAt(-400, 9), notes: 'Gece nöbeti 22:00-08:00' },
+   770→          { siteId: parkSite.id, name: 'Murat Efe', role: 'teknik', phone: trPhone(), salary: 31000, startDate: dayAt(-250, 9), notes: 'Asansör & hidrofor bakımı' },
+   771→          { siteId: parkSite.id, name: 'Sultan Gezer', role: 'temizlik', phone: trPhone(), salary: 19500, startDate: dayAt(-150, 9) },
+   772→        ],
+   773→      })
+   774→      created['site-personel'] = 4
+   775→    }
+   776→
+   777→    // Aidatlar — son 4 ay her daire için
+   778→    const allApts = await db.apartment.findMany({ where: { siteId: parkSite.id }, select: { id: true, residentId: true, area: true } })
+   779→    const existingDues = await db.dues.findMany({ where: { siteId: parkSite.id }, select: { apartmentId: true, month: true, year: true } })
+   780→    const duesKey = (aid: string, m: number, y: number) => `${aid}:${m}:${y}`
+   781→    const duesSet = new Set(existingDues.map((d) => duesKey(d.apartmentId, d.month, d.year)))
+   782→    const now = new Date()
+   783→    const months: [number, number, number][] = [] // [month, year, offset]
+   784→    for (let off = 3; off >= 0; off--) {
+   785→      const dt = new Date(now.getFullYear(), now.getMonth() - off, 1)
+   786→      months.push([dt.getMonth() + 1, dt.getFullYear(), off])
+   787→    }
+   788→    const duesRows: { id: string; siteId: string; apartmentId: string; residentId: string | null; month: number; year: number; amount: number; dueDate: Date; status: string; paidDate?: Date; paidAmount?: number; paymentMethod?: string }[] = []
+   789→    for (const apt of allApts) {
+   790→      for (const [m, y, off] of months) {
+   791→        if (duesSet.has(duesKey(apt.id, m, y))) continue
+   792→        const amount = 1850 + Math.round((apt.area ?? 100) * 1.2)
+   793→        const dueDate = new Date(y, m - 1, 10, 12)
+   794→        let status = 'odenmedi'
+   795→        let paidDate: Date | undefined
+   796→        let paidAmount: number | undefined
+   797→        let paymentMethod: string | undefined
+   798→        if (off > 0) {
+   799→          // eski aylar: çoğu ödendi, birkaç gecikmiş
+   800→          if (chance(0.82)) {
+   801→            status = 'odendi'
+   802→            paidDate = new Date(y, m - 1, ri(3, 12), 14)
+   803→            paidAmount = amount
+   804→            paymentMethod = pick(['bank', 'cash', 'online'])
+   805→          } else {
+   806→            status = 'gecikti'
+   807→          }
+   808→        } else {
+   809→          // bu ay: yarısı ödedi
+   810→          if (chance(0.5)) {
+   811→            status = 'odendi'
+   812→            paidDate = dayAt(-ri(0, 8), 15)
+   813→            paidAmount = amount
+   814→            paymentMethod = pick(['bank', 'online', 'cash'])
+   815→          }
+   816→        }
+   817→        duesRows.push({ id: genId(), siteId: parkSite.id, apartmentId: apt.id, residentId: apt.residentId, month: m, year: y, amount, dueDate, status, ...(paidDate ? { paidDate, paidAmount, paymentMethod } : {}) })
+   818→      }
+   819→    }
+   820→    if (duesRows.length) await db.dues.createMany({ data: duesRows })
+   821→    created['aidat'] = duesRows.length
+   822→
+   823→    // Gerçekçi talepler
+   824→    const complaintSeed: [string, string, string, string, string, number | null, number | null][] = [
+   825→      ['A blok asansörü korkuluk sallanıyor', '2. kattan itibaren korkuluk oynuyor, çocuklu aileler tedirgin.', 'asansor', 'acik', 'acil', null, null],
+   826→      ['B blok çatı su kaçağı', 'Yağmurda 5. kat dairede tavan lekeniyor. İzolasyon kontrolü lazım.', 'su', 'inceleniyor', 'yuksek', 8500, null],
+   827→      ['Otoparkta yabancı araçlar', 'Misafir parkı dışında b blok önüne sürekli dış araç park ediyor.', 'park', 'acik', 'normal', null, null],
+   828→      ['Çöp konteyneri kokusuz hale gelmiyor', 'Konteyner alanı haftada 2 kez yıkanmalı.', 'temizlik', 'cozuldu', 'normal', 1200, 1350],
+   829→      ['Koridorda ampul arızaları', '2. kat ve 4. kat koridor ampulleri yanmıyor.', 'elektrik', 'cozuldu', 'dusuk', 300, 240],
+   830→      ['Gece gürültüsü şikâyeti (C blok)', 'Hafta sonu 01:00 sonrası terasta müzik. Sakin uyarısı yapıldı.', 'gurultu', 'inceleniyor', 'normal', null, null],
+   831→      ['Hidrofor sesi arttı', 'Su basıncı düşük ve hidrofor gürültülü çalışıyor.', 'su', 'acik', 'yuksek', 4200, null],
+   832→    ]
+   833→    const techStaff = await db.siteStaff.findFirst({ where: { siteId: parkSite.id, role: 'teknik' } })
+   834→    const cleaningStaff = await db.siteStaff.findFirst({ where: { siteId: parkSite.id, role: 'temizlik' } })
+   835→    const residents2 = await db.resident.findMany({ where: { siteId: parkSite.id }, select: { id: true } })
+   836→    for (const [title, description, category, status, priority, est, act] of complaintSeed) {
+   837→      await db.complaint.create({
+   838→        data: {
+   839→          siteId: parkSite.id,
+   840→          residentId: chance(0.8) ? pick(residents2).id : null,
+   841→          title, description, category, status, priority,
+   842→          ...(status === 'cozuldu' ? { respondedAt: dayAt(-ri(1, 10), 16), response: `Talep tamamlandı, ilgili ekip tarafından çözüm raporlandı. (Tahmini maliyet: ${est ?? '-'} TL, gerçekleşen: ${act ?? '-'} TL)` } : {}),
+   843→          ...(assignedFor(category, techStaff?.id, cleaningStaff?.id) ? { assignedStaffId: assignedFor(category, techStaff?.id, cleaningStaff?.id)! } : {}),
+   844→          ...(est ? { estimatedCost: est } : {}),
+   845→          ...(status !== 'cozuldu' ? { dueDate: dayAt(ri(2, 12), 18) } : {}),
+   846→        },
+   847→      })
+   848→    }
+   849→    created['talep'] = complaintSeed.length
+   850→
+   851→    // Duyurular
+   852→    await db.announcement.createMany({
+   853→      data: [
+   854→        { siteId: parkSite.id, title: 'Asansör Yıllık Bakımı — Perşembe', content: 'Sayın sakinlerimiz, A ve B blok asansörlerinde perşembe günü 10:00-16:00 arası yıllık bakım yapılacaktır. Bakım süresince asansör kullanılamayacaktır. Anlayışınız için teşekkür ederiz.', type: 'bakim', isPinned: true, publishDate: dayAt(-2, 9), expiryDate: dayAt(5, 18) },
+   855→        { siteId: parkSite.id, title: 'Ekim Ayı Aidat Bordrosu', content: 'Ekim ayı aidat bordrosu sakin paneline yüklenmiştir. Ödemeler için son tarih 10 Ekim. Gecikme zammı uygulanmadan önce ödeme yapılmasını rica ederiz.', type: 'aidat', isPinned: true, publishDate: dayAt(-5, 9), expiryDate: dayAt(20, 18) },
+   856→        { siteId: parkSite.id, title: 'Su Kesintisi — Hidrofor Bakımı', content: 'Cumartesi 09:00-13:00 arasında hidrofor bakımı nedeniyle su kesintisi yaşanacaktır. Lütfen önceden su ihtiyacınızı karşılayın.', type: 'acil', publishDate: dayAt(-8, 9), expiryDate: dayAt(-4, 18) },
+   857→        { siteId: parkSite.id, title: 'Site Bahçesi Düzenleme Günü', content: 'Bu pazar günü saat 11:00\'de bahçe düzenleme etkinliği düzenliyoruz. Katılmak isteyen sakinlerimiz kapıcı dairesine kayıt yaptırabilir. Sonrasında ikram olacak.', type: 'etkinlik', publishDate: dayAt(-10, 9), expiryDate: dayAt(4, 20) },
+   858→      ],
+   859→    })
+   860→    created['duyuru'] = 4
+   861→    await markDone('seed.realistic.site')
+   862→  }
+   863→
+   864→  // işaretle
+   865→  await markDone(markerKey)
+   866→
+   867→  return { message: `Gerçekçi demo verisi yüklendi: ${Object.entries(created).map(([k, v]) => `${k}=${v}`).join(', ')}`, created }
+   868→}
+   869→
+   870→function assignedFor(category: string, techId?: string, cleaningId?: string): string | null {
+   871→  if (category === 'asansor' || category === 'su' || category === 'elektrik') return techId ?? null
+   872→  if (category === 'temizlik') return cleaningId ?? null
+   873→  return null
+   874→}
+   875→

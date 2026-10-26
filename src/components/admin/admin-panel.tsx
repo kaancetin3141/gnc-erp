@@ -42,7 +42,7 @@ import {
   Search, RefreshCw, Building2, MapPin, Mail, Phone, Globe,
   Eye, Edit3, BarChart3, ListTree, Activity, Clock, Hash,
   CircleUser, Layers, Coffee, Store, Blocks, UserRound,
-  History, Filter, ScrollText, ChevronLeft, Loader2, Download, LayoutGrid,
+  History, Filter, ScrollText, ChevronLeft, Loader2, Download, LayoutGrid, Star,
 } from 'lucide-react'
 import { initials, formatRelative, formatDateTime, formatDate } from '@/lib/format'
 import {
@@ -54,6 +54,7 @@ import { RoleAssignDialog } from './role-assign-dialog'
 import { PortfolioManager } from './portfolio-manager'
 import { TenantsTab } from './tenants-tab'
 import { MembersTab } from './members-tab'
+import { ReviewsTab } from './reviews-tab'
 import { DomainsTab } from './domains-tab'
 import { ServicesTab } from './services-tab'
 
@@ -1525,6 +1526,10 @@ export function AdminPanel() {
             <UserRound className="w-3.5 h-3.5" />
             Üyeler
           </TabsTrigger>
+          <TabsTrigger value="reviews" className="text-xs gap-1.5">
+            <Star className="w-3.5 h-3.5" />
+            Değerlendirmeler
+          </TabsTrigger>
           <TabsTrigger value="domains" className="text-xs gap-1.5">
             <Globe className="w-3.5 h-3.5" />
             Alan Adları
@@ -1684,6 +1689,10 @@ export function AdminPanel() {
 
         <TabsContent value="members" className="space-y-4">
           <MembersTab />
+        </TabsContent>
+
+        <TabsContent value="reviews" className="space-y-4">
+          <ReviewsTab />
         </TabsContent>
 
         <TabsContent value="domains" className="space-y-4">

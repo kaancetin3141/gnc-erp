@@ -102,6 +102,9 @@ function normBiz(it: Json): Json {
     lng: typeof it.lng === 'number' && !isNaN(it.lng) ? it.lng : it.lng != null && !isNaN(Number(it.lng)) ? Number(it.lng) : null,
     workingHours: it.workingHours && typeof it.workingHours === 'object' ? it.workingHours : {},
     services: Array.isArray(it.services) ? it.services : [],
+    // değerlendirme özeti (ana sayfa kartındaki ★ rozeti)
+    ratingAvg: typeof it.ratingAvg === 'number' ? it.ratingAvg : 0,
+    ratingCount: typeof it.ratingCount === 'number' ? it.ratingCount : 0,
   };
 }
 
@@ -213,10 +216,24 @@ async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | 
   }
   const services: Json[] = Array.isArray(r.data.services) ? r.data.services : [];
   const provider = normBiz({ ...r.data.provider, services });
+  // Değerlendirmeler (server-side çekilir; hata olursa bölüm boş düşer)
+  let reviews: { items: Json[]; summary: Json } | null = null;
+  try {
+    const rr = await upstream(`/api/public/providers/${encodeURIComponent(slug)}/reviews?limit=20`);
+    const rd = rr.data as Json | null;
+    if (rr.ok && rd && Array.isArray(rd.items)) {
+      reviews = {
+        items: rd.items,
+        summary: (rd.summary ?? { average: 0, count: 0, distribution: {} }) as Json,
+      };
+    }
+  } catch {
+    // değerlendirmeler olmadan da sayfa render edilir
+  }
   // Gateway modunda ana sayfa bağlantısına param ekle (CRM'e düşmesin)
   // Düzeltme: "Tüm işletmeler" her zaman randevu LİSTESİNE gider (ana siteye değil)
   const homeUrl = subdomain && BASE_DOMAIN ? `https://${listHost()}` : gwq('/')
-  return { body: detailPage({ provider, services, homeUrl, gwPort }), status: 200 };
+  return { body: detailPage({ provider, services, reviews, homeUrl, gwPort }), status: 200 };
 
   // BASE_DOMAIN=randevu.x biçimindeyse aynen; bare domain ise randevu. öneki ekle
   function listHost(): string {
@@ -345,6 +362,44 @@ Bun.serve({
         });
         if (r.data) return json(r.data, r.ok ? 200 : r.status);
         return json({ error: 'Üyelik servisi şu anda yanıt vermiyor. Birazdan tekrar dene.' }, 502);
+      }
+
+      // --- API: değerlendirme proxy'si (CRM /api/public/reviews ucunu same-origin yapar)
+      // POST /api/reviews                     → POST   /api/public/reviews (üye token'ı varsa Bearer iletilir)
+      // GET  /api/reviews/providers/<slug>    → GET    /api/public/providers/<slug>/reviews
+      if (path === '/api/reviews' && method === 'POST') {
+        let rbody: Json;
+        try {
+          const raw = await req.text();
+          rbody = (raw.trim() ? JSON.parse(raw) : {}) as Json;
+        } catch {
+          return json({ error: 'İstek gövdesi okunamadı.' }, 400);
+        }
+        const auth = req.headers.get('authorization');
+        const headers: Record<string, string> = { 'content-type': 'application/json' };
+        if (auth) headers['authorization'] = auth;
+        const r = await upstream('/api/public/reviews', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(rbody),
+          timeoutMs: 12000,
+        });
+        if (r.data) return json(r.data, r.ok ? 200 : r.status);
+        return json({ error: 'Değerlendirme servisi şu anda yanıt vermiyor. Birazdan tekrar dene.' }, 502);
+      }
+      const mRevList = path.match(/^\/api\/reviews\/providers\/([^/]+)$/);
+      if (mRevList && method === 'GET') {
+        const slug = safeDecode(mRevList[1]);
+        const lim = url.searchParams.get('limit') || '20';
+        const key = `reviews:${slug}:${lim}`;
+        const hit = cacheGet(key);
+        if (hit) return json(hit);
+        const r = await upstream(`/api/public/providers/${encodeURIComponent(slug)}/reviews?limit=${encodeURIComponent(lim)}`);
+        if (r.status === 404) return json({ error: 'İşletme bulunamadı.' }, 404);
+        if (!r.ok || !r.data) return json({ error: 'Değerlendirmeler şu anda alınamıyor. Birazdan tekrar dene.' }, 502);
+        // admin onayı yeni yorum yayınlandığında görünsün — kısa TTL
+        cacheSet(key, r.data, 15_000);
+        return json(r.data);
       }
 
       // --- API: randevu oluştur (upstream'e ilet)

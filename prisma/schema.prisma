@@ -1140,6 +1140,7 @@ model ServiceProvider {
   customers    AppointmentCustomer[]
   timeOffs     StaffTimeOff[]
   closures     ProviderClosure[]
+  reviews      Review[]
 }
 
 // Personel (berber, kuaför, diş hekimi, vs.)
@@ -1245,6 +1246,34 @@ model Appointment {
   @@index([status])
   @@index([customerId])
   @@index([memberId])
+  review       Review?
+}
+
+// ============================================================
+// DEĞERLENDİRME — randevu sonrası puanlama (Fresha/Booksy tarzı)
+// Randevusu gerçekleşen müşteri işletmeyi 1-5 puan + yorumla
+// değerlendirir. status 'pending' başlar; admin moderasyonu
+// (onayla/reddet) sonrası işletme sayfasında yayınlanır.
+// Tek randevuya tek değerlendirme (appointmentId unique).
+// ============================================================
+model Review {
+  id            String          @id @default(cuid())
+  providerId    String
+  provider      ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  appointmentId String?         @unique // null: randevu kaydı silinmişse değerlendirme kalır
+  appointment   Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  memberId      String?
+  member        Member?         @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  authorName    String // görünen ad (üye adı ya da randevu müşteri adı)
+  rating        Int // 1-5
+  comment       String? // max 1000 karakter (API katmanında sınırlandırılır)
+  status        String          @default("pending") // pending | approved | rejected
+  staffReply    String? // işletme yanıtı (admin panelinden)
+  repliedAt     DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([providerId, status, createdAt])
 }
 
 // Kalıcı müşteri kayıt defteri — işletme bazlı müşteri profilleri.
@@ -1288,6 +1317,7 @@ model Member {
   updatedAt    DateTime @updatedAt
 
   appointments Appointment[]
+  reviews      Review[]
 }
 
 // ============================================================

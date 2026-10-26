@@ -83,7 +83,13 @@ export async function runRealisticSeed(): Promise<{ message: string; created: Re
   }
 
   const alreadyDone = await db.tenantSetting.findFirst({ where: { key: markerKey } })
-  if (alreadyDone) return { message: 'Gerçekçi demo verisi zaten yüklenmiş (idempotent atlandı).', created }
+  if (alreadyDone) {
+    // Sonradan eklenen bölümler (ör. reviews) kendi işaretleri yoksa
+    // yalnızca o bölüm koşacak şekilde devam edilir (diğerleri sectionDone
+    // işaretleriyle atlanır) — idempotent davranış korunur.
+    const reviewsDone = await sectionDone('seed.realistic.reviews')
+    if (reviewsDone) return { message: 'Gerçekçi demo verisi zaten yüklenmiş (idempotent atlandı).', created }
+  }
 
   // ---- Tenantları bul ----
   const adminUser = await db.user.findFirst({ where: { name: 'Demir Yıldız' } })
@@ -839,10 +845,9 @@ export async function runRealisticSeed(): Promise<{ message: string; created: Re
           siteId: parkSite.id,
           residentId: chance(0.8) ? pick(residents2).id : null,
           title, description, category, status, priority,
-          ...(status === 'cozuldu' ? { resolvedAt: dayAt(-ri(1, 10), 16) } : {}),
+          ...(status === 'cozuldu' ? { respondedAt: dayAt(-ri(1, 10), 16), response: `Talep tamamlandı, ilgili ekip tarafından çözüm raporlandı. (Tahmini maliyet: ${est ?? '-'} TL, gerçekleşen: ${act ?? '-'} TL)` } : {}),
           ...(assignedFor(category, techStaff?.id, cleaningStaff?.id) ? { assignedStaffId: assignedFor(category, techStaff?.id, cleaningStaff?.id)! } : {}),
           ...(est ? { estimatedCost: est } : {}),
-          ...(act ? { actualCost: act } : {}),
           ...(status !== 'cozuldu' ? { dueDate: dayAt(ri(2, 12), 18) } : {}),
         },
       })
@@ -860,6 +865,74 @@ export async function runRealisticSeed(): Promise<{ message: string; created: Re
     })
     created['duyuru'] = 4
     await markDone('seed.realistic.site')
+  }
+
+  // ============================================================
+  // 6) DEĞERLENDİRMELER — Şık Kuaför yorumları (moderasyon dahil)
+  // 6 onaylı + 2 beklemede; puanlar 4-5 ağırlıklı (bir 3, bir 2).
+  // Randevulara bağlanmaz (appointmentId null) → gerçek müşteri
+  // akışları için tüm geçmiş randevular değerlendirilebilir kalır.
+  // ============================================================
+  if (provider && !(await sectionDone('seed.realistic.reviews'))) {
+    const reviewSeed: {
+      name: string; rating: number; comment: string; daysAgo: number; hour: number
+      status: 'approved' | 'pending'; reply?: string
+    }[] = [
+      {
+        name: 'Elif Yıldırım', rating: 5, daysAgo: 6, hour: 19, status: 'approved',
+        comment: 'Saç kesimi harikaydı, Ahmet Usta tam istediğim gibi kesti. Randevu saatinde başladılar, hiç bekletmediler.',
+        reply: 'Teşekkürler Elif Hanım, yolunuz her zaman düşer! 😊',
+      },
+      {
+        name: 'Derya Aslan', rating: 5, daysAgo: 12, hour: 13, status: 'approved',
+        comment: 'Manikür için gittim, Nazlı Hanım çok titiz çalıştı. Aletlerin steril geldiğini görmek de ayrıca güven verdi.',
+      },
+      {
+        name: 'Murat Şahin', rating: 4, daysAgo: 18, hour: 17, status: 'approved',
+        comment: 'Sakal dizaynı ve fön için gittim. Sonuç beklediğimden de iyiydi, salonun atmosferi çok sıcak.',
+      },
+      {
+        name: 'Selin Arslan', rating: 4, daysAgo: 27, hour: 11, status: 'approved',
+        comment: 'Keratin bakımı yaptırdım, saçlarım ipek gibi oldu. Süre biraz uzadı ama sonuç buna kesinlikle değer.',
+      },
+      {
+        name: 'Emre Çelik', rating: 5, daysAgo: 35, hour: 15, status: 'approved',
+        comment: 'Çocuğumla birlikte gittik, iki koltukta aynı anda kestiler. Çocuk saç kesimi için çok sabırlı ve ilgililer.',
+      },
+      {
+        name: 'Nil Şimşek', rating: 3, daysAgo: 45, hour: 20, status: 'approved',
+        comment: 'Pedikür beklediğim kadar detaylı değildi, yine de personel çok ilgilendi. Bir daha deneyeceğim.',
+      },
+      {
+        name: 'Baran Özkan', rating: 4, daysAgo: 3, hour: 21, status: 'pending',
+        comment: 'Perma denedim, dalgalar çok doğal duruyor. Sonraki sefere biraz daha kısa kesmek üzere anlaştık.',
+      },
+      {
+        name: 'Hakan Özdemir', rating: 2, daysAgo: 8, hour: 22, status: 'pending',
+        comment: 'Randevuma 20 dakika bekledim, yoğunluk yüzünden sanırım. Kesim de tam istediğim gibi olmadı.',
+      },
+    ]
+    for (const r of reviewSeed) {
+      const createdAt = dayAt(-r.daysAgo, r.hour, ri(0, 59))
+      await db.review.create({
+        data: {
+          providerId: provider.id,
+          appointmentId: null,
+          memberId: null,
+          authorName: r.name,
+          rating: r.rating,
+          comment: r.comment,
+          status: r.status,
+          ...(r.reply
+            ? { staffReply: r.reply, repliedAt: dayAt(-r.daysAgo + 1, 10, 0) }
+            : {}),
+          createdAt,
+          updatedAt: createdAt,
+        },
+      })
+    }
+    created['değerlendirme'] = reviewSeed.length
+    await markDone('seed.realistic.reviews')
   }
 
   // işaretle

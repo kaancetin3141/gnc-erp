@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
   ])
 
   const seen = new Set<string>()
-  const items = [...byMember, ...byPhone]
+  const merged = [...byMember, ...byPhone]
     .filter((a) => {
       if (seen.has(a.id)) return false
       seen.add(a.id)
@@ -83,22 +83,38 @@ export async function GET(req: NextRequest) {
     })
     .sort((x, y) => y.date.getTime() - x.date.getTime())
     .slice(0, 80)
-    .map((a) => ({
-      id: a.id,
-      code: a.id.slice(-8).toUpperCase(),
-      providerName: a.provider.name,
-      providerSlug: a.provider.slug,
-      providerCity: a.provider.city,
-      serviceId: a.serviceId,
-      serviceName: a.service?.name ?? null,
-      currency: a.service?.currency ?? 'TRY',
-      staffName: a.staff?.name ?? null,
-      status: a.status,
-      date: a.date,
-      endTime: a.endTime,
-      price: a.price,
-      customerName: a.customerName,
-    }))
+
+  // Değerlendirme durumu: bu randevulara ait review var mı?
+  // (Randevularım ekranı "⭐ Değerlendir" butonunu yalnız
+  // değerlendirilmemiş uygun randevularda gösterir)
+  const reviewedIds = new Set(
+    merged.length
+      ? (
+          await db.review.findMany({
+            where: { appointmentId: { in: merged.map((a) => a.id) } },
+            select: { appointmentId: true },
+          })
+        ).map((r) => r.appointmentId ?? '')
+      : [],
+  )
+
+  const items = merged.map((a) => ({
+    id: a.id,
+    code: a.id.slice(-8).toUpperCase(),
+    providerName: a.provider.name,
+    providerSlug: a.provider.slug,
+    providerCity: a.provider.city,
+    serviceId: a.serviceId,
+    serviceName: a.service?.name ?? null,
+    currency: a.service?.currency ?? 'TRY',
+    staffName: a.staff?.name ?? null,
+    status: a.status,
+    date: a.date,
+    endTime: a.endTime,
+    price: a.price,
+    customerName: a.customerName,
+    reviewed: reviewedIds.has(a.id),
+  }))
 
   return ok({ items })
 }

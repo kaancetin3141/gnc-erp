@@ -35,12 +35,14 @@ const SECRET = loadSecret()
 
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 gün
 
-/** Telefonu rakamlara indirip TR biçimine normalleştirir (905XXXXXXXXX). */
+/** Telefonu rakamlara indirip TR biçimine normalleştirir (905XXXXXXXXX).
+ *  "05…" ile başlayan yerel biçimde baştaki 0 önce atılır — 10 haneli "05…"
+ *  girişlerinin eskiden "9005…" üretme hatası düzeltildi (görev fix-tel). */
 export function normalizePhoneDigits(p: string): string {
   let d = String(p || '').replace(/\D/g, '')
   if (d.startsWith('00')) d = d.slice(2)
   if (d.startsWith('90') && d.length === 12) return d
-  if (d.startsWith('0') && d.length === 11) return '90' + d.slice(1)
+  if (d.startsWith('0')) d = d.slice(1) // "0532…" → "532…"
   if (d.length === 10) return '90' + d
   return d
 }
