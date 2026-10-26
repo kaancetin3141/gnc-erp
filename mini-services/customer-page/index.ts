@@ -402,6 +402,102 @@ Bun.serve({
         return json(r.data);
       }
 
+      // --- API: bekleme listesi proxy'si (CRM /api/public/waitlist → same-origin)
+      // POST /api/waitlist → beklemeye gir (üye token'ı varsa Bearer iletilir)
+      // GET  /api/waitlist?phone=  → "Bekleme Durumum" sorgusu
+      // Gerçek istemci IP'si (x-forwarded-for) rate limit için taşınır —
+      // aksi halde tüm müşteri sitesi istekleri tek 'unknown' kovasına düşerdi.
+      if (path === '/api/waitlist') {
+        const auth = req.headers.get('authorization');
+        const headers: Record<string, string> = { accept: 'application/json' };
+        if (auth) headers['authorization'] = auth;
+        const xff = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip');
+        if (xff) headers['x-forwarded-for'] = xff;
+        if (method === 'GET') {
+          const qs = url.searchParams.toString();
+          const r = await upstream('/api/public/waitlist' + (qs ? '?' + qs : ''), { headers });
+          if (r.data) return json(r.data, r.ok ? 200 : r.status);
+          return json({ error: 'Bekleme durumu şu anda alınamıyor. Birazdan tekrar dene.' }, 502);
+        }
+        if (method !== 'POST') return json({ error: 'Bu uç için GET veya POST kullan.' }, 405);
+        let wbody: Json;
+        try {
+          const raw = await req.text();
+          wbody = (raw.trim() ? JSON.parse(raw) : {}) as Json;
+        } catch {
+          return json({ error: 'İstek gövdesi okunamadı.' }, 400);
+        }
+        const r = await upstream('/api/public/waitlist', {
+          method: 'POST',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify(wbody),
+          timeoutMs: 12000,
+        });
+        // 201 (oluştu) dahil olmak üzere status aynen iletilir
+        if (r.data) return json(r.data, r.status);
+        return json({ error: 'Bekleme servisi şu anda yanıt vermiyor. Birazdan tekrar dene.' }, 502);
+      }
+
+      // --- API: damga kartı proxy'si (CRM /api/public/stampcard → same-origin)
+      // GET /api/stampcard — üyenin damga kartları (Bearer token iletilir;
+      // /api/reviews proxy deseni). Kartlar yalnız aktif damga programı
+      // olan işletmeler için döner.
+      if (path === '/api/stampcard' && method === 'GET') {
+        const auth = req.headers.get('authorization');
+        const headers: Record<string, string> = { accept: 'application/json' };
+        if (auth) headers['authorization'] = auth;
+        const r = await upstream('/api/public/stampcard', { headers });
+        if (r.data) return json(r.data, r.ok ? 200 : r.status);
+        return json({ error: 'Damga kartların şu anda alınamıyor. Birazdan tekrar dene.' }, 502);
+      }
+
+      // --- API: ICS takvim dosyası proxy'si (CRM /api/public/appointments/ics → same-origin)
+      // "📅 Takvime ekle" butonları bu ucu kullanır: ?code=XXXXXXXX (misafir) ya da
+      // ?id=<appointmentId> + Authorization: Bearer (üye). Token varsa upstream'e
+      // iletilir; gerçek istemci IP'si (x-forwarded-for) rate limit için taşınır.
+      // text/calendar yanıtı olduğu gibi (Content-Disposition dahil) aktarılır;
+      // JSON hataları (400/401/404/409/429) status koduyla iletilir.
+      if (path === '/api/appointments/ics' && method === 'GET') {
+        const qs = url.searchParams.toString();
+        const fwdHeaders: Record<string, string> = { accept: 'text/calendar, application/json' };
+        const auth = req.headers.get('authorization');
+        if (auth) fwdHeaders['authorization'] = auth;
+        const xff = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip');
+        if (xff) fwdHeaders['x-forwarded-for'] = xff;
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 8000);
+          const res = await fetch(UPSTREAM + '/api/public/appointments/ics' + (qs ? '?' + qs : ''), {
+            headers: fwdHeaders,
+            signal: ctrl.signal,
+          });
+          clearTimeout(timer);
+          const ct = res.headers.get('content-type') || '';
+          if (ct.includes('text/calendar')) {
+            const body = await res.text();
+            return new Response(body, {
+              status: res.status,
+              headers: {
+                'content-type': 'text/calendar; charset=utf-8',
+                'content-disposition':
+                  res.headers.get('content-disposition') || 'attachment; filename="randevu.ics"',
+                'cache-control': 'no-store',
+              },
+            });
+          }
+          // hata yanıtı: JSON (404/429/400/…) — olduğu gibi aktar
+          let data: Json | null = null;
+          try {
+            data = (await res.json()) as Json;
+          } catch {
+            data = null;
+          }
+          return json(data ?? { error: 'Takvim dosyası alınamadı.' }, res.status);
+        } catch {
+          return json({ error: 'Takvim servisi şu anda yanıt vermiyor. Birazdan tekrar dene.' }, 502);
+        }
+      }
+
       // --- API: randevu oluştur (upstream'e ilet)
       if (path === '/api/book') {
         if (method !== 'POST') return json({ success: false, error: 'Bu uç için POST kullan.' }, 405);

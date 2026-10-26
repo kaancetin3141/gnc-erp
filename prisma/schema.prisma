@@ -1141,6 +1141,9 @@ model ServiceProvider {
   timeOffs     StaffTimeOff[]
   closures     ProviderClosure[]
   reviews      Review[]
+  waitlistEntries WaitlistEntry[]
+  stampCardSetting StampCardSetting? @relation("StampCardSettings")
+  stampCards  StampCard[]
 }
 
 // Personel (berber, kuaför, diş hekimi, vs.)
@@ -1247,6 +1250,71 @@ model Appointment {
   @@index([customerId])
   @@index([memberId])
   review       Review?
+  waitlistEntries WaitlistEntry[] @relation("WaitlistAppointment")
+}
+
+// ============================================================
+// BEKLEME LİSTESİ — dolu randevu slotu isteyen müşteri
+// (Fresha/Booksy "waitlist" deseni). İstediği slot dolu olan
+// müşteri beklemeye girer; iptal olduğunda işletme manuel
+// çağırır (status: notified/booked) ve yer alır.
+// ============================================================
+model WaitlistEntry {
+  id             String          @id @default(cuid())
+  providerId     String
+  provider       ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  // Dolu randevuya bağlanır (opsiyonel); randevu silinirse kayıt kalır
+  appointmentId  String?
+  appointment    Appointment?    @relation("WaitlistAppointment", fields: [appointmentId], references: [id], onDelete: SetNull)
+  memberId       String?
+  member         Member?         @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  customerName   String
+  customerPhone  String // normalleştirilmiş: 905XXXXXXXXX
+  serviceName    String? // hangi hizmeti istiyor
+  preferredDate  DateTime // istenen gün — floating local time (new Date(y,m,d))
+  preferredSlot  String? // "14:00" gibi
+  note           String?
+  status         String          @default("waiting") // waiting | notified | booked | cancelled | expired
+  notifiedAt     DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([providerId, status, preferredDate])
+}
+
+// ============================================================
+// DAMGA KARTI — klasik sadakat kartı ("N hizmet al → 1 ücretsiz")
+// Kuaför/kafe gibi işletmeler için müşteri tutma aracı.
+// PUAN bazlı LoyaltyAccount/LoyaltyTransaction sisteminden AYRI:
+// bu modeller randevu sektörü işletmesi + üye (Member) eksenlidir.
+// ============================================================
+model StampCardSetting {
+  id                String         @id @default(cuid())
+  providerId        String         @unique
+  provider          ServiceProvider @relation("StampCardSettings", fields: [providerId], references: [id], onDelete: Cascade)
+  requiredStamps    Int            @default(10) // kaç damgada ödül (min 3, max 30)
+  rewardDescription String // ödül: "Ücretsiz saç kesimi"
+  isActive          Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([isActive])
+}
+
+model StampCard {
+  id             String         @id @default(cuid())
+  providerId     String
+  provider       ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  memberId       String
+  member         Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  stamps         Int            @default(0) // basılı damga sayısı
+  lastStampAt    DateTime? // son damga zamanı
+  redeemedCount  Int            @default(0) // kazanılan ödül sayısı
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([providerId, memberId]) // üye + işletme başına tek kart
+  @@index([providerId, updatedAt])
 }
 
 // ============================================================
@@ -1318,6 +1386,8 @@ model Member {
 
   appointments Appointment[]
   reviews      Review[]
+  waitlistEntries WaitlistEntry[]
+  stampCards   StampCard[]
 }
 
 // ============================================================

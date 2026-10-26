@@ -376,7 +376,7 @@ footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),r
 /* ---- backdrop-filter desteklemeyen tarayıcılar: düz yüzey ---- */
 @supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))){
   header.top,footer.ft{background:#fbf5f0}
-  .card,.dcard,.book-card,.map-card,.state-box,.center-card,.rev-card,.rev-item,.rev-form,.rev-done{background:#ffffff}
+  .card,.dcard,.book-card,.map-card,.state-box,.center-card,.rev-card,.rev-item,.rev-form,.rev-done,.wl-box,.wl-done,.wl-card,.sc-card{background:#ffffff}
   .sk{background:#f7efe9}
   .search input,.field input,.field select,.field textarea,.chip,.city-wrap select,.date-btn,.slot,.svc,.sumcard,.tel-btn,.open-chip,.map-toggle,.dir-links a,.sumline,.form-err,.btn-ghost,.crumb{background:#ffffff}
   #toast{background:#2b211b}
@@ -466,7 +466,24 @@ footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),r
 .appt-replan{border:1.5px solid rgba(13,138,99,.4);background:rgba(255,255,255,.6);color:var(--green);border-radius:999px;padding:7px 14px;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s}
 .appt-replan:hover{background:var(--green-soft);transform:translateY(-1px)}
 .appt-code{font-size:.72rem;color:var(--muted);font-family:ui-monospace,monospace}
+/* 📅 takvime ekle — ICS indirme (stone/toprak tonu; dokunma hedefi ≥44px) */
+.appt-ics{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;border:1.5px solid rgba(93,68,54,.38);background:rgba(255,255,255,.6);color:#5d4436;border-radius:999px;padding:7px 16px;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s;text-decoration:none;white-space:nowrap}
+.appt-ics:hover{background:rgba(93,68,54,.09);border-color:rgba(93,68,54,.55);transform:translateY(-1px);color:#5d4436}
 .empty-box{text-align:center;padding:26px 18px;color:var(--muted)}
+
+/* ---- 🔔 hatırlatıcı tercihi (localStorage) — satır tamamlık dokunma hedefi ---- */
+.rem-pref{margin:14px 0 4px}
+.rem-row{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1.5px solid var(--glass-border);border-radius:16px;padding:10px 16px;cursor:pointer;font:inherit;text-align:left;transition:background .15s;box-shadow:var(--shadow)}
+.rem-row:hover{background:rgba(255,255,255,.8)}
+.rem-ic{font-size:1.25rem;flex:none}
+.rem-txt{flex:1;min-width:0}
+.rem-txt b{display:block;font-size:.92rem}
+.rem-sub{display:block;font-size:.78rem;color:var(--muted)}
+.rem-sw{flex:none;width:46px;height:28px;border-radius:999px;background:rgba(94,52,40,.18);border:1.5px solid var(--glass-border);position:relative;transition:background .18s}
+.rem-knob{position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(70,26,36,.25);transition:transform .18s}
+.rem-row[aria-checked="true"] .rem-sw{background:var(--green)}
+.rem-row[aria-checked="true"] .rem-knob{transform:translateX(18px)}
+.rem-note{font-size:.74rem;color:var(--muted);margin:6px 4px 0}
 
 /* ---- KVKK: hesap silme (kırmızı outline + confirm diyalogu) ---- */
 .mem-danger{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px dashed var(--line)}
@@ -501,7 +518,46 @@ footer.ft{margin-top:auto;background:linear-gradient(180deg,rgba(24,14,11,.92),r
 .nf-ic{font-size:1.25rem;flex:none}
 .nf-nm{font-weight:700;font-size:.84rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nf-svc{display:inline-block;margin-top:3px;font-size:.7rem;font-weight:800;color:var(--green);background:var(--green-soft);border-radius:999px;padding:2px 8px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nf-loc{font-size:.72rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}`;
+.nf-loc{font-size:.72rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- ⏳ bekleme listesi (waitlist) — amber vurgu, mobil öncelikli ---- */
+.wl-teaser{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:8px 15px;border-radius:999px;border:1.5px dashed rgba(180,83,9,.45);background:var(--amber-soft);color:var(--amber);font:inherit;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.wl-teaser:hover{background:rgba(180,83,9,.2);transform:translateY(-1px)}
+.wl-box{margin-top:20px;padding-top:18px;border-top:2px dashed rgba(180,83,9,.28)}
+.wl-box[hidden]{display:none}
+.wl-title{display:flex;align-items:center;gap:8px;font-size:1.02rem;font-weight:800;color:var(--ink);margin:0 0 4px}
+.wl-sub{font-size:.85rem;color:var(--muted);margin:0 0 14px}
+.wl-grid{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:520px){.wl-grid{grid-template-columns:1fr 1fr}}
+.btn-wl{width:100%;background:linear-gradient(120deg,#b45309,#d97706);color:#fff;font-size:.98rem;padding:13px;letter-spacing:.01em;box-shadow:0 10px 26px rgba(180,83,9,.34),inset 0 1px 0 rgba(255,255,255,.26)}
+.btn-wl:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 28px rgba(180,83,9,.42)}
+.btn-wl:disabled{opacity:.65;cursor:wait;transform:none}
+.wl-done{display:grid;gap:10px;text-align:center;padding:16px 6px 6px}
+.wl-done[hidden]{display:none}
+.wl-done .okmark{background:rgba(180,83,9,.15);border-color:rgba(180,83,9,.28);color:var(--amber)}
+.wl-done h3{font-size:1.2rem;font-weight:800}
+.wl-done .sub{color:#6d5647;font-size:.92rem}
+.wlq-row{display:flex;gap:10px;flex-wrap:wrap}
+.wlq-row input{flex:1;min-width:200px;border:1.5px solid var(--glass-border);background:rgba(255,255,255,.75);border-radius:12px;padding:11px 14px;font:inherit;font-size:.92rem;color:var(--ink)}
+.wlq-row input:focus{outline:none;border-color:rgba(180,83,9,.5)}
+.wl-card{display:flex;justify-content:space-between;align-items:center;gap:12px;background:rgba(255,255,255,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.72);border-radius:14px;padding:12px 14px;margin-top:10px;box-shadow:0 3px 12px rgba(70,26,36,.07)}
+.wl-card-main{min-width:0}
+.wl-card-biz{font-weight:800;font-size:.92rem;color:var(--ink)}
+.wl-card-svc{font-size:.8rem;color:var(--muted);margin-top:2px}
+.wl-st{flex:none;border-radius:999px;padding:6px 12px;font-size:.76rem;font-weight:800;white-space:nowrap}
+.wl-st-waiting{background:var(--amber-soft);color:var(--amber)}
+.wl-st-notified,.wl-st-booked{background:var(--green-soft);color:var(--green)}
+
+/* ---- 🎟️ damga kartları — amber vurgu, mobil öncelikli ---- */
+.sc-card{position:relative}
+.sc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.sc-biz{font-weight:800;font-size:.98rem;color:var(--ink)}
+.sc-dots{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0 10px}
+.sc-dot{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:1rem;font-weight:800;flex:none;box-sizing:border-box}
+.sc-dot.full{background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 3px 10px rgba(180,83,9,.32);border:1.5px solid rgba(180,83,9,.5)}
+.sc-dot.empty{background:rgba(255,255,255,.55);border:2px dashed rgba(120,113,108,.5);color:transparent}
+.sc-reward{margin:0;font-size:.84rem;font-weight:600;color:#92400e;background:var(--amber-soft);border:1px solid rgba(180,83,9,.22);border-radius:12px;padding:9px 13px}
+.sc-won{flex:none;display:inline-block;font-size:.72rem;font-weight:800;background:var(--green-soft);color:var(--green);border-radius:999px;padding:4px 11px;white-space:nowrap}`;
 
 // ---------------------------------------------------------------- Ortak sayfa parçaları
 
@@ -883,6 +939,7 @@ export function detailPage(a: {
         <span class="f-label" id="slots-l">Saat seç</span>
         <button type="button" class="quick-slot" id="quick-slot" hidden aria-label="İlk uygun saati seç"></button>
         <div class="slots" id="slots" aria-live="polite" aria-labelledby="slots-l"></div>
+        <button type="button" class="wl-teaser" id="wl-open">⏳ Dolu mu? Bekleme listesine gir</button>
       </div>
 
       <p class="sumline" id="sumline" hidden></p>
@@ -925,9 +982,50 @@ export function detailPage(a: {
         <p class="mini-note" id="s-pending-note" hidden>⏳ Randevun işletme onayı bekliyor — onaylandığında bilgilendirilirsin.</p>
         <div class="s-actions">
           <a class="btn btn-wa" id="wa-link" target="_blank" rel="noopener" href="#">💬 WhatsApp'tan Onay Gönder</a>
+          <a class="btn btn-ghost" id="s-ics-link" href="#" download hidden>📅 Takvime ekle</a>
           <a class="btn btn-ghost" id="s-appts-link" href="${a.gwPort ? '/uyelik?XTransformPort=' + encodeURIComponent(a.gwPort) : '/uyelik'}" hidden>📅 Randevularıma git →</a>
           <button type="button" class="btn btn-ghost" id="again-btn">➕ Yeni randevu al</button>
           <a class="btn btn-ghost" href="${esc(a.homeUrl)}">🏠 Ana sayfaya dön</a>
+        </div>
+      </div>
+
+      <div class="wl-box" id="waitlist-box" hidden>
+        <p class="wl-title">⏳ Bekleme Listesi</p>
+        <p class="wl-sub">İstediğin saat dolu mu? Bilgilerini bırak — bir randevu açılır açılmaz seni ararız.</p>
+        <form id="waitlist-form" novalidate>
+          <div style="display:grid;gap:14px">
+            <div class="field">
+              <label class="f-label" for="wl-name">Ad Soyad *</label>
+              <input id="wl-name" type="text" required minlength="2" maxlength="120" placeholder="Örn. Ayşe Yılmaz" autocomplete="name">
+            </div>
+            <div class="field">
+              <label class="f-label" for="wl-phone">Telefon *</label>
+              <input id="wl-phone" type="tel" required placeholder="0555 111 22 33" autocomplete="tel" inputmode="tel">
+            </div>
+            <div class="wl-grid">
+              <div class="field">
+                <label class="f-label" for="wl-date">İstenen tarih *</label>
+                <input id="wl-date" type="date" required>
+              </div>
+              <div class="field">
+                <label class="f-label" for="wl-time">İstenen saat <span class="mini-note">(opsiyonel)</span></label>
+                <input id="wl-time" type="time">
+              </div>
+            </div>
+            <div class="field">
+              <label class="f-label" for="wl-note">Not <span class="mini-note">(opsiyonel, en fazla 500 karakter)</span></label>
+              <textarea id="wl-note" maxlength="500" placeholder="Örn. öğleden sonra olabilir, 14:00 sonrası da uyar..."></textarea>
+            </div>
+            <p class="form-err" id="wl-err" hidden></p>
+            <button type="submit" class="btn btn-wl" id="wl-submit">⏳ Bekleme Listesine Gir</button>
+            <p class="mini-note" style="text-align:center">Aynı güne yalnız bir bekleme kaydı · iptal olduğunda sizi ararız</p>
+          </div>
+        </form>
+        <div class="wl-done" id="wl-done" hidden>
+          <span class="okmark" aria-hidden="true">⏳</span>
+          <h3>Bekleme listesine alındınız!</h3>
+          <p class="sub" id="wl-done-msg">Randevu açılır açılmaz sizi arayacağız.</p>
+          <p class="mini-note" style="text-align:center">Durumunu <a href="${a.gwPort ? '/uyelik?XTransformPort=' + encodeURIComponent(a.gwPort) : '/uyelik'}">Bekleme Durumum</a> sorgusuyla takip edebilirsin.</p>
         </div>
       </div>
     </section>`
@@ -1117,8 +1215,37 @@ export function memberPage(baseDomain: string, gwPort?: string | null): string {
     </div>
 
     <h2 class="section-title" style="margin:22px 2px 6px">📅 Randevularım</h2>
+    <div class="rem-pref" id="rem-pref" hidden>
+      <button type="button" class="rem-row" id="rem-toggle" role="switch" aria-checked="true" aria-describedby="rem-note">
+        <span class="rem-ic" aria-hidden="true">🔔</span>
+        <span class="rem-txt">
+          <b>Hatırlatıcılar</b>
+          <span class="rem-sub" id="rem-state">Açık — randevu saatinden 2 saat önce hatırlatma alınır</span>
+        </span>
+        <span class="rem-sw" aria-hidden="true"><span class="rem-knob"></span></span>
+      </button>
+      <p class="rem-note" id="rem-note">Tercihin bu cihazda saklanır. "📅 Takvime ekle" ile indirdiğin takvim dosyasına, açıkken randevu saatinden 2 saat önce çalan bir hatırlatma eklenir.</p>
+    </div>
     <div id="appt-list" aria-live="polite"><div class="mem-card" style="text-align:center;color:var(--muted)"><span class="spin dark"></span> Randevuların yükleniyor…</div></div>
+
+    <h2 class="section-title" style="margin:24px 2px 6px">🎟️ Damga Kartlarım</h2>
+    <div id="sc-list" aria-live="polite"><div class="mem-card" style="text-align:center;color:var(--muted)"><span class="spin dark"></span> Damga kartların yükleniyor…</div></div>
   </div>
+
+  <section class="wlq-wrap" aria-labelledby="wlq-h">
+    <h2 class="section-title" id="wlq-h" style="margin:22px 2px 6px">⏳ Bekleme Durumum</h2>
+    <div class="mem-card">
+      <p class="mini-note" style="margin:0 0 12px">Dolu slot için bekleme listesine girdiysen, telefon numaranla durumunu sorgulayabilirsin — üye olman gerekmez.</p>
+      <form id="wlq-form" novalidate>
+        <div class="wlq-row">
+          <input id="wlq-phone" type="tel" placeholder="0555 111 22 33" inputmode="tel" autocomplete="tel" aria-label="Telefon numarası">
+          <button type="submit" class="btn btn-submit" style="width:auto;padding:12px 20px">🔍 Sorgula</button>
+        </div>
+        <p class="form-err" id="wlq-err" hidden></p>
+      </form>
+      <div id="wlq-result" aria-live="polite"></div>
+    </div>
+  </section>
 
   <div class="del-overlay" id="del-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="del-title">
     <div class="del-box">
@@ -1616,6 +1743,12 @@ export const DETAIL_JS = `
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
   function isoOf(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
 
+  // 🔔 hatırlatıcı tercihi (localStorage; /uyelik sayfasındaki toggle ile aynı
+  // anahtar) — kapalıysa ICS linkine &alarm=0 eklenir (VALARM yazılmaz)
+  function remindersOn() {
+    try { return (localStorage.getItem('gnc_reminders') || 'on') !== 'off'; } catch (_) { return true; }
+  }
+
   var toastTimer = null;
   function toast(msg, kind) {
     var t = document.getElementById('toast');
@@ -1822,6 +1955,7 @@ export const DETAIL_JS = `
 
   function loadSlots() {
     hideErr();
+    closeWaitlist(); // ⏳ yeni yükleme — otomatik açılan bekleme bölümünü kapat
     if (!state.serviceId || !state.date) return;
     slotsEl.innerHTML = '<div class="slotload"><span class="spin dark"></span> Uygun saatler yükleniyor…</div>';
     fetch(gwq('/api/businesses/' + encodeURIComponent(P.slug) + '/slots?date=' + state.date + '&serviceId=' + encodeURIComponent(state.serviceId)), { headers: { accept: 'application/json' } })
@@ -1844,6 +1978,7 @@ export const DETAIL_JS = `
   function renderSlots(slots) {
     if (!slots.length) {
       slotsEl.innerHTML = '<p class="hint">😴 Bu tarihte saat aralığı bulunamadı — işletme kapalı olabilir, başka bir gün dene.</p>';
+      openWaitlist(true); // ⏳ slot yok — bekleme listesi alternatifini göster
       updateSummary();
       return;
     }
@@ -1876,6 +2011,7 @@ export const DETAIL_JS = `
       p.className = 'hint';
       p.textContent = '🙏 Bu günün tüm saatleri dolu — lütfen başka bir tarih seç.';
       slotsEl.appendChild(p);
+      openWaitlist(true); // ⏳ tüm saatler dolu — bekleme listesi alternatifini göster
     }
     updateSummary();
   }
@@ -1984,6 +2120,17 @@ export const DETAIL_JS = `
     if (d.appointmentCode) {
       $('#s-code').textContent = d.appointmentCode;
       $('#s-code-row').hidden = false;
+      // 📅 takvime ekle — randevu koduyla ICS indir (hatırlatıcı tercihi kapalıysa alarm'sız)
+      var icsL = document.getElementById('s-ics-link');
+      if (icsL) {
+        var icsH = gwq('/api/appointments/ics?code=' + encodeURIComponent(d.appointmentCode));
+        if (!remindersOn()) icsH += '&alarm=0';
+        icsL.href = icsH;
+        icsL.hidden = false;
+      }
+    } else {
+      var icsL0 = document.getElementById('s-ics-link');
+      if (icsL0) icsL0.hidden = true;
     }
     if (d.status) {
       $('#s-status').textContent = d.status === 'onaylandi' ? 'Onaylandı ✅'
@@ -2075,6 +2222,105 @@ export const DETAIL_JS = `
       note.textContent = '👤 ' + (m.name || '') + ' olarak randevu alıyorsun — üyeliksiz de devam edebilirsin.';
       note.hidden = false;
     }
+  }
+
+  // ---- ⏳ bekleme listesi (dolu slot alternatifi — Fresha/Booksy waitlist)
+  var wlBox = document.getElementById('waitlist-box');
+  var wlDone = document.getElementById('wl-done');
+  var wlAuto = false; // bölüm otomatik (slot yok/dolu) mı açıldı
+  function openWaitlist(auto) {
+    if (!wlBox) return;
+    wlAuto = !!auto;
+    wlBox.hidden = false;
+    if (wlDone) wlDone.hidden = true;
+    // randevu formundaki mevcut seçimleri bekleme formuna taşı (boşsa)
+    var nm = document.getElementById('f-name'), ph = document.getElementById('f-phone');
+    var wn = document.getElementById('wl-name'), wp = document.getElementById('wl-phone');
+    if (nm && wn && !wn.value) wn.value = nm.value;
+    if (ph && wp && !wp.value) wp.value = ph.value;
+    var wd = document.getElementById('wl-date');
+    if (wd && state.date && !wd.value) wd.value = state.date;
+    var wt = document.getElementById('wl-time');
+    if (wt && state.time && !wt.value) wt.value = state.time;
+    try { wlBox.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+  }
+  function closeWaitlist() {
+    if (!wlBox || wlBox.hidden) return;
+    if (wlAuto) { wlBox.hidden = true; wlAuto = false; } // manuel açılan kalsın
+  }
+  var wlOpenBtn = document.getElementById('wl-open');
+  if (wlOpenBtn) wlOpenBtn.addEventListener('click', function () {
+    openWaitlist(false);
+    toast('Bilgilerini bırak — randevu açılır açılmaz seni arayalım.', 'ok');
+  });
+  var wlForm = document.getElementById('waitlist-form');
+  if (wlForm) {
+    var wlPhoneEl = document.getElementById('wl-phone');
+    if (wlPhoneEl) wlPhoneEl.addEventListener('input', function () { maskTrPhone(wlPhoneEl); });
+    var wlDateEl = document.getElementById('wl-date');
+    if (wlDateEl) wlDateEl.min = isoOf(new Date()); // istenen tarih en erken bugün
+    function wlShowErr(msg) {
+      var el = document.getElementById('wl-err');
+      if (el) { el.textContent = msg; el.hidden = false; }
+      toast(msg, 'err');
+    }
+    wlForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var el = document.getElementById('wl-err');
+      if (el) el.hidden = true;
+      var name = (document.getElementById('wl-name').value || '').trim();
+      var phone = (document.getElementById('wl-phone').value || '').trim();
+      var date = (wlDateEl ? wlDateEl.value : '') || '';
+      var time = (document.getElementById('wl-time').value || '').trim();
+      var note = (document.getElementById('wl-note').value || '').trim();
+      if (name.length < 2) return wlShowErr('Lütfen adını yaz (en az 2 harf).');
+      if (phone.replace(/\\D/g, '').length < 10) return wlShowErr('Geçerli bir telefon numarası gir (örn. 0555 111 22 33).');
+      if (!date) return wlShowErr('İstediğin tarihi seç.');
+      var svc = svcById(state.serviceId);
+      var btn = document.getElementById('wl-submit');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin"></span> Ekleniyor…';
+      // üye girişliyse bekleme kaydı hesaba bağlanır (memberId FK)
+      var mtok = null;
+      try { mtok = (JSON.parse(localStorage.getItem('gnc_member') || 'null') || {}).token || null; } catch (_) {}
+      var headers = { 'content-type': 'application/json' };
+      if (mtok) headers['authorization'] = 'Bearer ' + mtok;
+      fetch(gwq('/api/waitlist'), {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          providerSlug: P.slug,
+          customerName: name,
+          customerPhone: phone,
+          serviceName: svc ? svc.name : '',
+          preferredDate: date,
+          preferredSlot: time || undefined,
+          note: note || undefined
+        })
+      })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (x) {
+          btn.disabled = false;
+          btn.textContent = '⏳ Bekleme Listesine Gir';
+          if (x.ok && x.j && x.j.ok) {
+            wlForm.hidden = true;
+            var m = document.getElementById('wl-done-msg');
+            if (m && x.j.message) m.textContent = x.j.message;
+            if (wlDone) {
+              wlDone.hidden = false;
+              try { wlDone.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+            }
+            toast('Bekleme listesine alındın! 🙏', 'ok');
+          } else {
+            wlShowErr((x.j && x.j.error) || 'Bekleme listesine eklenemedi — lütfen tekrar dene.');
+          }
+        })
+        .catch(function () {
+          btn.disabled = false;
+          btn.textContent = '⏳ Bekleme Listesine Gir';
+          wlShowErr('Bağlantı hatası — lütfen tekrar dene.');
+        });
+    });
   }
 
   // ---- üyelik butonu etiketi (girişliyse üye adını göster + prefill)
@@ -2170,6 +2416,34 @@ export const MEMBER_JS = `
   function saveAuth(v) { try { localStorage.setItem(LS_KEY, JSON.stringify(v)); } catch (_) {} }
   function clearAuth() { try { localStorage.removeItem(LS_KEY); } catch (_) {} }
 
+  // ---- 🔔 hatırlatıcı tercihi (localStorage — bu tur için istemci tarafı çözüm:
+  // şemada üye tercih modeli yok ve şemaya dokunulamıyor). Tercih kapalıysa
+  // "📅 Takvime ekle" linkine &alarm=0 eklenir → ICS'e VALARM bloğu yazılmaz.
+  var REM_KEY = 'gnc_reminders';
+  function remindersOn() {
+    try { return (localStorage.getItem(REM_KEY) || 'on') !== 'off'; } catch (_) { return true; }
+  }
+  function setReminders(on) {
+    try { localStorage.setItem(REM_KEY, on ? 'on' : 'off'); } catch (_) {}
+  }
+  function renderRemPref() {
+    var row = document.getElementById('rem-toggle');
+    if (!row) return;
+    var on = remindersOn();
+    row.setAttribute('aria-checked', String(on));
+    var st = document.getElementById('rem-state');
+    if (st) st.textContent = on
+      ? 'Açık — randevu saatinden 2 saat önce hatırlatma alınır'
+      : 'Kapalı — hatırlatma alınmaz, istediğin an açabilirsin';
+  }
+
+  // "📅 Takvime ekle" indirme linki (3002 same-origin proxy'si)
+  function icsHref(code) {
+    var h = gwq('/api/appointments/ics?code=' + encodeURIComponent(code));
+    if (!remindersOn()) h += '&alarm=0';
+    return h;
+  }
+
   var authEl = document.getElementById('mem-auth');
   var loggedEl = document.getElementById('mem-logged');
   var listEl = document.getElementById('appt-list');
@@ -2205,12 +2479,72 @@ export const MEMBER_JS = `
     document.getElementById('m-phone').textContent = '📞 ' + fmtPhone(member.phone);
     var em = document.getElementById('m-email');
     if (member.email) { em.textContent = '✉️ ' + member.email; em.hidden = false; } else { em.hidden = true; }
+    var rp = document.getElementById('rem-pref');
+    if (rp) { renderRemPref(); rp.hidden = false; }
     loadAppointments();
+    loadStampCards();
   }
   function renderAuth() {
     loggedEl.hidden = true;
     authEl.hidden = false;
+    var rp2 = document.getElementById('rem-pref');
+    if (rp2) rp2.hidden = true;
     showTab('login');
+  }
+
+  // ---- 🎟️ damga kartlarım (sadakat — "N hizmet al → 1 ücretsiz")
+  // Yalnız üye girişliyken görünür (bölüm #mem-logged içinde). Kartlar
+  // aktif damga programı olan işletmeler için döner; damga basma işlemi
+  // randevu tamamlandığında / admin panelinden yapılır.
+  function renderStampCards(items) {
+    var wrap = document.getElementById('sc-list');
+    if (!wrap) return;
+    if (!items || !items.length) {
+      wrap.innerHTML = '<div class="mem-card empty-box">🎟️ Henüz damga kartın yok.<br>Damga programı olan işletmelerden hizmet aldıkça kartın burada birikir.</div>';
+      return;
+    }
+    wrap.innerHTML = items.map(function (c) {
+      var req = Number(c.requiredStamps) || 10;
+      var st = Math.max(0, Math.min(Number(c.stamps) || 0, req));
+      var dots = '';
+      for (var i = 0; i < req; i++) {
+        dots += '<span class="sc-dot ' + (i < st ? 'full' : 'empty') + '" aria-hidden="true">' + (i < st ? '✓' : '·') + '</span>';
+      }
+      var kalan = Math.max(req - st, 0);
+      var reward = kalan > 0
+        ? '<b>' + kalan + ' damga kaldı</b> → ödül: ' + esc(c.rewardDescription)
+        : '🎉 <b>Ödül hakkın doğdu!</b> Sıradaki ziyaretinde ' + esc(c.rewardDescription) + ' seni bekliyor.';
+      return '<div class="mem-card sc-card">' +
+        '<div class="sc-top"><span class="sc-biz">' + esc(c.providerName) + '</span>' +
+        (Number(c.redeemedCount) > 0 ? '<span class="sc-won">🏆 ' + c.redeemedCount + ' ödül kazandın</span>' : '') +
+        '</div>' +
+        '<div class="sc-dots" role="img" aria-label="' + st + ' / ' + req + ' damga dolu">' + dots + '</div>' +
+        '<p class="sc-reward">🎯 ' + reward + '</p>' +
+        '</div>';
+    }).join('');
+  }
+  function loadStampCards() {
+    var wrap = document.getElementById('sc-list');
+    if (!wrap) return;
+    var a = readAuth();
+    if (!a) return; // bölüm zaten girişte gizli (#mem-logged)
+    fetch(gwq('/api/stampcard'), { headers: { accept: 'application/json', authorization: 'Bearer ' + a.token } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        if (!x.ok) {
+          // sessiz düşük profil — kartlar kritik değil, hata kartı basma
+          wrap.innerHTML = '<div class="mem-card empty-box">🎟️ Damga kartları şu anda alınamadı. <button type="button" class="btn btn-ghost" id="sc-retry" style="margin-top:8px">🔄 Tekrar dene</button></div>';
+          var rb = document.getElementById('sc-retry');
+          if (rb) rb.addEventListener('click', loadStampCards);
+          return;
+        }
+        renderStampCards(x.j.items || []);
+      })
+      .catch(function () {
+        wrap.innerHTML = '<div class="mem-card empty-box">🎟️ Damga kartları şu anda alınamadı. <button type="button" class="btn btn-ghost" id="sc-retry" style="margin-top:8px">🔄 Tekrar dene</button></div>';
+        var rb2 = document.getElementById('sc-retry');
+        if (rb2) rb2.addEventListener('click', loadStampCards);
+      });
   }
 
   // ---- randevularım
@@ -2304,6 +2638,12 @@ export const MEMBER_JS = `
     var reviewBtn = reviewable
       ? '<button type="button" class="appt-review" data-id="' + esc(it.id) + '" data-slug="' + esc(it.providerSlug) + '" data-biz="' + esc(it.providerName || '') + '" data-svc="' + esc(it.serviceName || 'Hizmet') + '" data-when="' + esc(fmtWhen(it.date)) + '" data-code="' + esc(it.code || '') + '" aria-label="' + esc(it.providerName || '') + ' — ' + esc(it.serviceName || 'hizmet') + ' randevusunu değerlendir">⭐ Değerlendir</button>'
       : '';
+    // 📅 Takvime ekle: aktif randevuların ICS dosyası. İptal kartında
+    // gösterilmez (iptal randevuyu takvime eklemek anlamsız — orada "Tekrar
+    // planla" kısayolu öne çıkar; sunucu yine de STATUS:CANCELLED üretir).
+    var icsBtn = (!cancelledMode && it.code)
+      ? '<a class="appt-ics" href="' + esc(icsHref(it.code)) + '" download aria-label="' + esc(it.providerName || '') + ' — ' + esc(it.serviceName || 'randevu') + ' takvim dosyasını (.ics) indir">📅 Takvime ekle</a>'
+      : '';
     return '<div class="appt">' +
       '<div class="appt-main">' +
       '<div class="appt-biz"><a href="' + esc(bizHref(it.providerSlug || '')) + '" style="color:inherit;text-decoration:none">' + esc(it.providerName) + '</a></div>' +
@@ -2316,6 +2656,7 @@ export const MEMBER_JS = `
       (cancellable ? '<button type="button" class="appt-cancel" data-id="' + esc(it.id) + '" data-code="' + esc(it.code) + '">İptal Et</button>' : '') +
       replan +
       reviewBtn +
+      icsBtn +
       '</div></div>';
   }
 
@@ -2446,6 +2787,22 @@ export const MEMBER_JS = `
           setBusy(sendBtn, false, '⭐ Gönder');
           showErr('rov-err', 'Bağlantı hatası — tekrar dene.');
         });
+    });
+  })();
+
+  // ---- 🔔 hatırlatıcı toggle: tercih localStorage'a yazılır; kartlardaki
+  // "📅 Takvime ekle" linkleri alarm parametresine göre yeniden çizilir.
+  (function () {
+    var row = document.getElementById('rem-toggle');
+    if (!row) return;
+    row.addEventListener('click', function () {
+      var on = !remindersOn();
+      setReminders(on);
+      renderRemPref();
+      toast(on
+        ? '🔔 Hatırlatıcılar açıldı — randevudan 2 saat önce hatırlatma alırsın.'
+        : '🔕 Hatırlatıcılar kapatıldı.', 'ok');
+      if (lastItems.length || loadCancelled().length) renderAppointments(lastItems);
     });
   })();
 
@@ -2592,6 +2949,67 @@ export const MEMBER_JS = `
         showErr('del-err', 'Bağlantı hatası — tekrar dene.');
       });
   });
+
+  // ---- ⏳ bekleme durumum (telefonla sorgu — üyeliksiz de çalışır)
+  (function () {
+    var qForm = document.getElementById('wlq-form');
+    if (!qForm) return;
+    var phoneEl = document.getElementById('wlq-phone');
+    var errEl = document.getElementById('wlq-err');
+    var resEl = document.getElementById('wlq-result');
+    if (phoneEl) phoneEl.addEventListener('input', function () { maskTrPhone(phoneEl); });
+    var ST_WL = {
+      waiting: { label: '⏳ Sıradasınız', cls: 'wl-st-waiting' },
+      notified: { label: '📞 Aranacağınızı bildirdik', cls: 'wl-st-notified' },
+      booked: { label: '✅ Randevunuz oluşturuldu', cls: 'wl-st-booked' }
+    };
+    // preferredDate floating local (T00:00) saklanır — günü ISO'dan çöz (TZ kaymasız)
+    function fmtDay(iso) {
+      var dpart = String(iso || '').split('T')[0];
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(dpart)) return String(iso || '');
+      var a = dpart.split('-');
+      return a[2] + '.' + a[1] + '.' + a[0];
+    }
+    function wlqErr(msg) { if (errEl) { errEl.textContent = msg; errEl.hidden = false; } }
+    qForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      if (errEl) errEl.hidden = true;
+      var phone = (phoneEl ? phoneEl.value : '').trim();
+      if (phone.replace(/\\D/g, '').length < 10) return wlqErr('Geçerli bir telefon numarası gir (örn. 0555 111 22 33).');
+      if (resEl) resEl.innerHTML = '<div class="mem-card" style="text-align:center;color:var(--muted)"><span class="spin dark"></span> Bekleme kayıtların sorgulanıyor…</div>';
+      fetch(gwq('/api/waitlist?phone=' + encodeURIComponent(phone)), { headers: { accept: 'application/json' } })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (x) {
+          if (!x.ok) {
+            if (resEl) resEl.innerHTML = '';
+            return wlqErr((x.j && x.j.error) || 'Sorgu yapılamadı — tekrar dene.');
+          }
+          var items = (x.j && x.j.items) || [];
+          if (!resEl) return;
+          if (!items.length) {
+            resEl.innerHTML = '<div class="mem-card empty-box">📭 Bu numaraya ait aktif bekleme kaydı yok.<br><span style="font-size:.85rem">Dolu bir slot için işletme sayfasındaki "⏳ Dolu mu? Bekleme listesine gir" ile listeye girebilirsin.</span></div>';
+            return;
+          }
+          resEl.innerHTML = items.map(function (w) {
+            var st = ST_WL[w.status] || ST_WL.waiting;
+            return '<div class="wl-card">' +
+              '<div class="wl-card-main">' +
+              '<div class="wl-card-biz">' + esc(w.providerName) + '</div>' +
+              '<div class="wl-card-svc">' + esc(w.serviceName || 'Hizmet') + ' · 📅 ' + esc(fmtDay(w.preferredDate)) + (w.preferredSlot ? ' · ⏱ ' + esc(w.preferredSlot) : '') + '</div>' +
+              '</div>' +
+              '<span class="wl-st ' + st.cls + '">' + esc(st.label) + '</span>' +
+              '</div>';
+          }).join('');
+        })
+        .catch(function () {
+          if (resEl) resEl.innerHTML = '';
+          wlqErr('Bağlantı hatası — tekrar dene.');
+        });
+    });
+    // üye girişliyse telefonu önceden doldur
+    var a = readAuth();
+    if (a && a.member && phoneEl && !phoneEl.value) phoneEl.value = fmtPhone(a.member.phone);
+  })();
 
   // ---- başlat: token varsa profil yoksa auth göster
   (function init() {

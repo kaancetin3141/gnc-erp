@@ -185,7 +185,64 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  return ok({ ...updated, packageUsed })
+  // DAMGA KARTI entegrasyonu: randevu İLK KEZ 'tamamlandi' olduğunda ve
+  // randevu bir üyeye bağlıysa (memberId FK), işletmenin AKTİF damga
+  // programı varsa üyenin kartına +1 damga basılır (kart yoksa oluşturulur).
+  // Damga yalnız İLK geçişte basılır — zaten 'tamamlandi' olan randevu
+  // tekrar güncellenirse çift damga basılmaz (yukarıdaki koşul garantiler).
+  // Kart requiredStamps'e ulaşırsa otomatik sıfırlanır + ödül sayacı artar.
+  let stampCardResult: {
+    stamps: number; requiredStamps: number; rewardDescription: string; rewardWon: boolean
+  } | null = null
+  if (status === 'tamamlandi' && existing.status !== 'tamamlandi' && existing.memberId) {
+    try {
+      const setting = await db.stampCardSetting.findUnique({
+        where: { providerId: id },
+        select: { requiredStamps: true, rewardDescription: true, isActive: true },
+      })
+      if (setting && setting.isActive && setting.requiredStamps > 0) {
+        const card = await db.stampCard.upsert({
+          where: { providerId_memberId: { providerId: id, memberId: existing.memberId } },
+          create: {
+            providerId: id,
+            memberId: existing.memberId,
+            stamps: 1,
+            lastStampAt: new Date(),
+          },
+          update: {
+            stamps: { increment: 1 },
+            lastStampAt: new Date(),
+          },
+          select: { id: true, stamps: true },
+        })
+        // requiredStamps'e ulaştıysa kartı sıfırla + ödülü kazanıldı say
+        if (card.stamps >= setting.requiredStamps) {
+          const redeemed = await db.stampCard.update({
+            where: { id: card.id },
+            data: { stamps: 0, redeemedCount: { increment: 1 } },
+            select: { stamps: true },
+          })
+          stampCardResult = {
+            stamps: redeemed.stamps,
+            requiredStamps: setting.requiredStamps,
+            rewardDescription: setting.rewardDescription,
+            rewardWon: true,
+          }
+        } else {
+          stampCardResult = {
+            stamps: card.stamps,
+            requiredStamps: setting.requiredStamps,
+            rewardDescription: setting.rewardDescription,
+            rewardWon: false,
+          }
+        }
+      }
+    } catch {
+      // Damga kartı entegrasyonu randevu akışını bloklamaz
+    }
+  }
+
+  return ok({ ...updated, packageUsed, stampCard: stampCardResult })
 }
 
 // DELETE — randevu iptal et

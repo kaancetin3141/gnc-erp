@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     ...(visFilter.ownerId ? { ownerId: visFilter.ownerId } : {}),
   }
 
-  const [overdueTasks, dueSoonTasks, staleCustomers, dealsClosingSoon, wonDealsToday, pendingAppointments, upcomingAppointments] = await Promise.all([
+  const [overdueTasks, dueSoonTasks, staleCustomers, dealsClosingSoon, wonDealsToday, pendingAppointments, upcomingAppointments, openedSlots] = await Promise.all([
     db.task.findMany({
       where: { ...taskFilter, dueDate: { lt: now } },
       include: { customer: { select: { id: true, name: true } } },
@@ -91,11 +91,27 @@ export async function GET(req: NextRequest) {
       orderBy: { date: 'asc' },
       take: 5,
     }),
+    // Yeni açılan slotlar — son 48 saatte iptal edilmiş GELECEK randevular
+    // (bekleme listesinde aynı gün bekleyen varsa "Açılan slot" bildirimi üretilir)
+    db.appointment.findMany({
+      where: {
+        status: 'iptal',
+        date: { gte: now },
+        updatedAt: { gte: new Date(now.getTime() - 48 * 60 * 60 * 1000) },
+        provider: { tenantId: user!.tenantId },
+      },
+      include: {
+        provider: { select: { id: true, name: true } },
+        service: { select: { id: true, name: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 5,
+    }),
   ])
 
   const notifications: Array<{
     id: string
-    type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal' | 'appointment_pending' | 'appointment_reminder' | 'whatsapp_queued'
+    type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal' | 'appointment_pending' | 'appointment_reminder' | 'waitlist_ready' | 'whatsapp_queued'
     severity: 'urgent' | 'warning' | 'info' | 'success'
     title: string
     description: string
@@ -193,6 +209,36 @@ export async function GET(req: NextRequest) {
       entityType: 'appointment',
       meta: { appointmentId: a.id, providerName: a.provider.name, appointmentNo: a.id.slice(-8).toUpperCase(), reminderSent: a.reminderSent },
     })
+  }
+
+  // Açılan slotlar — iptal edilen gelecek randevu için aynı gün + aynı işletmede
+  // 'waiting' durumdaki bekleme müşterisi varsa işletmeyi uyar (slot kapatılmadan arayın)
+  for (const a of openedSlots) {
+    const dayStart = new Date(Date.UTC(a.date.getUTCFullYear(), a.date.getUTCMonth(), a.date.getUTCDate()))
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60_000)
+    const waitingCount = await db.waitlistEntry.count({
+      where: {
+        providerId: a.providerId,
+        status: 'waiting',
+        preferredDate: { gte: dayStart, lt: dayEnd },
+      },
+    })
+    if (waitingCount > 0) {
+      notifications.push({
+        id: `wr_${a.id}`,
+        type: 'waitlist_ready',
+        severity: 'warning',
+        title: `Açılan slot: ${waitingCount} bekleyen müşteri`,
+        description: `${a.service?.name ?? 'Hizmet'} · ${formatDateTimeLabel(a.date)} iptal edildi — bekleme listesinden arayın`,
+        entityType: 'appointment',
+        meta: {
+          appointmentId: a.id,
+          providerName: a.provider.name,
+          appointmentNo: a.id.slice(-8).toUpperCase(),
+          waitlistCount: waitingCount,
+        },
+      })
+    }
   }
 
   // Kuyrukta bekleyen WhatsApp mesajları — Merkez'den gönderilmeyi bekliyor

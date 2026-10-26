@@ -8,6 +8,7 @@
 // ============================================================
 
 import { db } from './db'
+import bcrypt from 'bcryptjs'
 
 // ---------- Deterministik RNG ----------
 function mulberry32(seed: number) {
@@ -84,11 +85,15 @@ export async function runRealisticSeed(): Promise<{ message: string; created: Re
 
   const alreadyDone = await db.tenantSetting.findFirst({ where: { key: markerKey } })
   if (alreadyDone) {
-    // Sonradan eklenen bölümler (ör. reviews) kendi işaretleri yoksa
+    // Sonradan eklenen bölümler (ör. reviews, waitlist) kendi işaretleri yoksa
     // yalnızca o bölüm koşacak şekilde devam edilir (diğerleri sectionDone
     // işaretleriyle atlanır) — idempotent davranış korunur.
     const reviewsDone = await sectionDone('seed.realistic.reviews')
-    if (reviewsDone) return { message: 'Gerçekçi demo verisi zaten yüklenmiş (idempotent atlandı).', created }
+    const waitlistDone = await sectionDone('seed.realistic.waitlist')
+    const stampcardDone = await sectionDone('seed.realistic.stampcard')
+    if (reviewsDone && waitlistDone && stampcardDone) {
+      return { message: 'Gerçekçi demo verisi zaten yüklenmiş (idempotent atlandı).', created }
+    }
   }
 
   // ---- Tenantları bul ----
@@ -933,6 +938,138 @@ export async function runRealisticSeed(): Promise<{ message: string; created: Re
     }
     created['değerlendirme'] = reviewSeed.length
     await markDone('seed.realistic.reviews')
+  }
+
+  // ============================================================
+  // 7) BEKLEME LİSTESİ — Şık Kuaför dolu slot istekleri
+  // 2 waiting + 1 notified; farklı tarihler, gerçekçi TR isim/telefon.
+  // ============================================================
+  if (provider && !(await sectionDone('seed.realistic.waitlist'))) {
+    const waitlistSeed: {
+      name: string; phone: string; service: string; dayOffset: number; slot: string | null
+      status: 'waiting' | 'notified'; note?: string
+    }[] = [
+      {
+        name: 'Pelin Doğan', phone: '905364182739', service: 'Saç Kesimi & Yıkama',
+        dayOffset: 2, slot: '14:00', status: 'waiting',
+        note: 'Mümkünse öğleden sonra olsun, sabah işim var.',
+      },
+      {
+        name: 'Cem Aksoy', phone: '905437290156', service: 'Sakal Traşı & Dizayn',
+        dayOffset: 5, slot: null, status: 'waiting',
+        note: 'Cumartesi günü herhangi bir saat olabilir.',
+      },
+      {
+        name: 'Gizem Kurt', phone: '905552174863', service: 'Manikür',
+        dayOffset: 1, slot: '11:00', status: 'notified',
+        note: 'Sabırsızlıkla bekliyorum, hemen geleyim.',
+      },
+    ]
+    for (const w of waitlistSeed) {
+      // floating local time deseni — preferredDate = istenen günün gün başı
+      const d = new Date()
+      d.setDate(d.getDate() + w.dayOffset)
+      const preferred = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+      const created = new Date(preferred.getTime() - 24 * 3600_000) // bir gün önce girmiş
+      await db.waitlistEntry.create({
+        data: {
+          providerId: provider.id,
+          appointmentId: null,
+          memberId: null,
+          customerName: w.name,
+          customerPhone: w.phone,
+          serviceName: w.service,
+          preferredDate: preferred,
+          preferredSlot: w.slot,
+          note: w.note ?? null,
+          status: w.status,
+          ...(w.status === 'notified' ? { notifiedAt: new Date(preferred.getTime() - 2 * 3600_000) } : {}),
+          createdAt: created,
+          updatedAt: created,
+        },
+      })
+    }
+    created['bekleme-listesi'] = waitlistSeed.length
+    await markDone('seed.realistic.waitlist')
+  }
+
+  // ============================================================
+  // 8) DAMGA KARTI — Şık Kuaför sadakat programı
+  // Ayar (10 damga → "Ücretsiz saç kesimi") + 2 demo üye + kartları.
+  // Üyeler gerçek hesaplar: /uyelik'te telefon + şifre "1234" ile
+  // giriş yapılabilir (üye kayıt akışıyla aynı bcrypt deseni).
+  // ============================================================
+  if (provider && !(await sectionDone('seed.realistic.stampcard'))) {
+    // 8a) işletme ayarı — upsert (idempotent)
+    await db.stampCardSetting.upsert({
+      where: { providerId: provider.id },
+      create: {
+        providerId: provider.id,
+        requiredStamps: 10,
+        rewardDescription: 'Ücretsiz saç kesimi',
+        isActive: true,
+      },
+      update: {
+        requiredStamps: 10,
+        rewardDescription: 'Ücretsiz saç kesimi',
+        isActive: true,
+      },
+    })
+    created['damga-ayari'] = 1
+
+    // 8b) demo üyeleri — telefon 905XXXXXXXXX, şifre "1234" (demo)
+    const stampMembers: { name: string; phone: string }[] = [
+      { name: 'Damla Şahin', phone: '905325001122' },
+      { name: 'Murat Öztürk', phone: '905415556677' },
+    ]
+    const memberIds: Record<string, string> = {}
+    for (const m of stampMembers) {
+      const existing = await db.member.findUnique({ where: { phone: m.phone } })
+      if (existing) {
+        memberIds[m.name] = existing.id
+        continue
+      }
+      const created2 = await db.member.create({
+        data: {
+          name: m.name,
+          phone: m.phone,
+          email: null,
+          // üye kayıt akışındaki desen: bcryptjs, 10 tur (register route)
+          passwordHash: await bcrypt.hash('1234', 10),
+          isActive: true,
+        },
+      })
+      memberIds[m.name] = created2.id
+    }
+
+    // 8c) kartlar — farklı damga sayıları (aynı koşulda tekrar koşulmaz)
+    const stampCards: { name: string; stamps: number; redeemedCount: number; lastStampDayOffset: number }[] = [
+      { name: 'Damla Şahin', stamps: 7, redeemedCount: 0, lastStampDayOffset: -3 }, // 3 damga kaldı
+      { name: 'Murat Öztürk', stamps: 3, redeemedCount: 1, lastStampDayOffset: -1 }, // 1 ödül kazanmış
+    ]
+    for (const c of stampCards) {
+      const mid = memberIds[c.name]
+      if (!mid) continue
+      const existingCard = await db.stampCard.findUnique({
+        where: { providerId_memberId: { providerId: provider.id, memberId: mid } },
+      })
+      if (existingCard) continue
+      const d = new Date()
+      d.setDate(d.getDate() + c.lastStampDayOffset)
+      d.setHours(11, 30, 0, 0)
+      await db.stampCard.create({
+        data: {
+          providerId: provider.id,
+          memberId: mid,
+          stamps: c.stamps,
+          redeemedCount: c.redeemedCount,
+          lastStampAt: d,
+        },
+      })
+    }
+    created['damga-uyeleri'] = stampMembers.length
+    created['damga-kartlari'] = stampCards.length
+    await markDone('seed.realistic.stampcard')
   }
 
   // işaretle

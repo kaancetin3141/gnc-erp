@@ -42,7 +42,7 @@ import {
   Search, RefreshCw, Building2, MapPin, Mail, Phone, Globe,
   Eye, Edit3, BarChart3, ListTree, Activity, Clock, Hash,
   CircleUser, Layers, Coffee, Store, Blocks, UserRound,
-  History, Filter, ScrollText, ChevronLeft, Loader2, Download, LayoutGrid, Star,
+  History, Filter, ScrollText, ChevronLeft, Loader2, Download, LayoutGrid, Star, Stamp,
 } from 'lucide-react'
 import { initials, formatRelative, formatDateTime, formatDate } from '@/lib/format'
 import {
@@ -55,6 +55,8 @@ import { PortfolioManager } from './portfolio-manager'
 import { TenantsTab } from './tenants-tab'
 import { MembersTab } from './members-tab'
 import { ReviewsTab } from './reviews-tab'
+import { WaitlistTab } from './waitlist-tab'
+import { StampCardTab } from './stampcard-tab'
 import { DomainsTab } from './domains-tab'
 import { ServicesTab } from './services-tab'
 
@@ -1530,6 +1532,14 @@ export function AdminPanel() {
             <Star className="w-3.5 h-3.5" />
             Değerlendirmeler
           </TabsTrigger>
+          <TabsTrigger value="waitlist" className="text-xs gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            Bekleme Listesi
+          </TabsTrigger>
+          <TabsTrigger value="stampcard" className="text-xs gap-1.5">
+            <Stamp className="w-3.5 h-3.5" />
+            Damga Kartları
+          </TabsTrigger>
           <TabsTrigger value="domains" className="text-xs gap-1.5">
             <Globe className="w-3.5 h-3.5" />
             Alan Adları
@@ -1693,6 +1703,14 @@ export function AdminPanel() {
 
         <TabsContent value="reviews" className="space-y-4">
           <ReviewsTab />
+        </TabsContent>
+
+        <TabsContent value="waitlist" className="space-y-4">
+          <WaitlistTab />
+        </TabsContent>
+
+        <TabsContent value="stampcard" className="space-y-4">
+          <StampCardTab />
         </TabsContent>
 
         <TabsContent value="domains" className="space-y-4">

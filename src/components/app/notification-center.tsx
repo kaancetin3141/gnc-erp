@@ -13,12 +13,12 @@ import { cn } from '@/lib/utils'
 import {
   Bell, Clock, AlertTriangle, Users, TrendingUp, Trophy,
   CheckCircle2, ChevronRight, CheckCheck, X, CalendarClock, CalendarCheck,
-  MessageSquareText,
+  MessageSquareText, Hourglass,
 } from 'lucide-react'
 
 interface Notification {
   id: string
-  type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal' | 'appointment_pending' | 'appointment_reminder' | 'whatsapp_queued'
+  type: 'overdue_task' | 'due_soon_task' | 'stale_customer' | 'deal_closing' | 'won_deal' | 'appointment_pending' | 'appointment_reminder' | 'waitlist_ready' | 'whatsapp_queued'
   severity: 'urgent' | 'warning' | 'info' | 'success'
   title: string
   description: string
@@ -48,6 +48,7 @@ const TYPE_LABELS: Record<string, string> = {
   won_deal: 'Kazanılan Fırsat',
   appointment_pending: 'Onay Bekleyen Randevu',
   appointment_reminder: 'Yaklaşan Randevu',
+  waitlist_ready: 'Açılan Slot — Bekleyen Var',
   whatsapp_queued: 'WhatsApp Kuyruğu',
 }
 
@@ -55,6 +56,7 @@ const TYPE_LABELS: Record<string, string> = {
 const TYPE_ICONS: Partial<Record<string, typeof Clock>> = {
   appointment_pending: CalendarClock,
   appointment_reminder: CalendarCheck,
+  waitlist_ready: Hourglass,
   whatsapp_queued: MessageSquareText,
 }
 
@@ -149,7 +151,7 @@ export function NotificationCenter() {
       setView('tasks')
     } else if (n.type === 'deal_closing' || n.type === 'won_deal') {
       setView('pipeline')
-    } else if (n.type === 'appointment_pending' || n.type === 'appointment_reminder') {
+    } else if (n.type === 'appointment_pending' || n.type === 'appointment_reminder' || n.type === 'waitlist_ready') {
       setView('appointments')
     } else if (n.type === 'whatsapp_queued') {
       setView('whatsapp-hub')

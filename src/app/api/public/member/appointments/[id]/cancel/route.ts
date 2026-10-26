@@ -72,5 +72,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // sessiz geç
   }
 
-  return ok({ id: appointment.id, status: 'iptal' })
+  // ---- Bekleme listesi entegrasyonu: slot açıldı ----
+  // Aynı işletme + aynı gün (floating local — Appointment.date'in UTC
+  // bileşenleri TR duvar saatidir; gün başı UTC ile çıkarılır) için
+  // 'waiting' durumdaki bekleme kayıtları sayılır. Bu sayı:
+  // · yanıtta waitlistCandidates olarak döner (müşteri arayüzü bilgi amaçlı)
+  // · /api/notifications aynı eşleşmeyle işletmeye "Açılan slot" bildirimi üretir
+  let waitlistCandidates = 0
+  try {
+    const dayStart = new Date(Date.UTC(
+      appointment.date.getUTCFullYear(),
+      appointment.date.getUTCMonth(),
+      appointment.date.getUTCDate(),
+    ))
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60_000)
+    waitlistCandidates = await db.waitlistEntry.count({
+      where: {
+        providerId: appointment.providerId,
+        status: 'waiting',
+        preferredDate: { gte: dayStart, lt: dayEnd },
+      },
+    })
+  } catch {
+    // bekleme listesi sorgusu başarısız olsa da iptal işlemi geçerli kalır
+  }
+
+  return ok({ id: appointment.id, status: 'iptal', waitlistCandidates })
 }
