@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate, formatTime, whatsappLink } from '@/lib/format'
-import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban, UserCheck, UserX, RotateCcw, UserPlus, Ticket } from 'lucide-react'
+import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban, UserCheck, UserX, RotateCcw, UserPlus, Ticket } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { ProviderSettings } from './provider-settings'
 import { StaffManager } from './staff-manager'
@@ -243,8 +243,8 @@ export function AppointmentsView() {
 
       <Tabs value={tab} onValueChange={(v) => {
         setTab(v)
-        // Personel/hizmet değişiklikleri Müşteri Görünümü'ne ve listeye yansısın
-        if (v === 'booking' || v === 'appointments') qc.invalidateQueries({ queryKey: ['provider', providerId] })
+        // Personel/hizmet değişiklikleri listeye yansısın
+        if (v === 'appointments') qc.invalidateQueries({ queryKey: ['provider', providerId] })
       }}>
         <TabsList>
           <TabsTrigger value="appointments" className="text-xs"><Calendar className="w-3.5 h-3.5 mr-1" /> Randevular</TabsTrigger>
@@ -253,7 +253,6 @@ export function AppointmentsView() {
           <TabsTrigger value="staff" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Personel</TabsTrigger>
           <TabsTrigger value="services" className="text-xs"><Scissors className="w-3.5 h-3.5 mr-1" /> Hizmetler</TabsTrigger>
           <TabsTrigger value="membership" className="text-xs"><Ticket className="w-3.5 h-3.5 mr-1" /> Üyelikler</TabsTrigger>
-          <TabsTrigger value="booking" className="text-xs"><Store className="w-3.5 h-3.5 mr-1" /> Müşteri Görünümü</TabsTrigger>
           <TabsTrigger value="settings" className="text-xs"><Settings2 className="w-3.5 h-3.5 mr-1" /> İşletme Ayarları</TabsTrigger>
         </TabsList>
 
@@ -478,11 +477,6 @@ export function AppointmentsView() {
           {providerId && <ServiceManager providerId={providerId} />}
         </TabsContent>
 
-        {/* Müşteri Görünümü — Public Booking */}
-        <TabsContent value="booking" className="mt-4">
-          {provider && <PublicBooking provider={provider} onBooked={() => qc.invalidateQueries({ queryKey: ['appointments'] })} />}
-        </TabsContent>
-
         {/* İşletme Ayarları — otomatik onay anahtarı, çalışma saatleri */}
         <TabsContent value="settings" className="mt-4">
           {providerId && <ProviderSettings providerId={providerId} />}
@@ -535,198 +529,6 @@ export function AppointmentsView() {
         />
       )}
     </div>
-  )
-}
-
-// Müşteri görünümü — public booking widget
-function PublicBooking({ provider, onBooked }: { provider: Provider; onBooked: () => void }) {
-  const [step, setStep] = useState(1)
-  const [selectedService, setSelectedService] = useState<Service | null>(null)
-  const [selectedStaff, setSelectedStaff] = useState<string>('')
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
-  const [selectedTime, setSelectedTime] = useState('')
-  const [customer, setCustomer] = useState({ name: '', phone: '', email: '', note: '' })
-  const [booking, setBooking] = useState(false)
-  const [bookedStatus, setBookedStatus] = useState<string>('onaylandi')
-
-  // Basit slot üretimi (09:00-18:00, 30dk aralık)
-  const slots = useMemo(() => {
-    const result: string[] = []
-    for (let h = 9; h < 18; h++) {
-      result.push(`${String(h).padStart(2, '0')}:00`)
-      result.push(`${String(h).padStart(2, '0')}:30`)
-    }
-    return result
-  }, [])
-
-  const handleBook = async () => {
-    setBooking(true)
-    try {
-      const dateTime = new Date(`${selectedDate}T${selectedTime}:00`)
-      const created = await apiPost<{ status?: string }>(`/api/appointments/providers/${provider.id}/appointments`, {
-        serviceId: selectedService?.id,
-        staffId: selectedStaff || undefined,
-        customerName: customer.name,
-        customerPhone: customer.phone,
-        customerEmail: customer.email || undefined,
-        customerNote: customer.note || undefined,
-        date: dateTime.toISOString(),
-        source: 'web',
-      })
-      setBookedStatus(created?.status ?? 'onaylandi')
-      toast.success(
-        created?.status === 'beklemede' ? 'Randevu talebiniz alındı — onay bekliyor' : 'Randevu oluşturuldu!',
-        { description: `${formatDate(selectedDate)} ${selectedTime}` },
-      )
-      setStep(5) // success
-      onBooked()
-    } catch (e) {
-      toast.error('Randevu oluşturulamadı', { description: e instanceof Error ? e.message : '' })
-    } finally {
-      setBooking(false)
-    }
-  }
-
-  return (
-    <Card className="shadow-soft max-w-2xl mx-auto">
-      <CardContent className="p-6">
-        {/* Progress */}
-        <div className="flex items-center justify-between mb-6">
-          {['Hizmet', 'Personel', 'Tarih', 'Bilgiler', 'Tamam'].map((label, i) => (
-            <div key={i} className="flex items-center flex-1">
-              <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0',
-                step > i + 1 ? 'bg-emerald-500 text-white' : step === i + 1 ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground')}>
-                {step > i + 1 ? '✓' : i + 1}
-              </div>
-              {i < 4 && <div className={cn('flex-1 h-0.5 mx-1', step > i + 1 ? 'bg-emerald-500' : 'bg-muted')} />}
-            </div>
-          ))}
-        </div>
-
-        {/* Step 1: Service */}
-        {step === 1 && (
-          <div className="space-y-3">
-            <h3 className="font-semibold text-lg">Hizmet Seçin</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {provider.services.map((s) => (
-                <button key={s.id} onClick={() => { setSelectedService(s); setStep(2) }}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-border hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors text-left">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center shrink-0">
-                    <Scissors className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{s.name}</div>
-                    <div className="text-xs text-muted-foreground">{s.duration}dk · {formatCurrency(s.price)}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Staff */}
-        {step === 2 && (
-          <div className="space-y-3">
-            <h3 className="font-semibold text-lg">Personel Seçin</h3>
-            <button onClick={() => { setSelectedStaff(''); setStep(3) }}
-              className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 transition-colors text-left">
-              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center"><User className="w-5 h-5" /></div>
-              <span className="font-medium text-sm">Herhangi biri</span>
-            </button>
-            {provider.staff.map((s) => (
-              <button key={s.id} onClick={() => { setSelectedStaff(s.id); setStep(3) }}
-                className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors text-left">
-                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-sm font-semibold">{s.name.charAt(0)}</div>
-                <div><div className="font-medium text-sm">{s.name}</div><div className="text-xs text-muted-foreground">{s.title}</div></div>
-              </button>
-            ))}
-            <Button variant="ghost" size="sm" onClick={() => setStep(1)}>← Geri</Button>
-          </div>
-        )}
-
-        {/* Step 3: Date & Time */}
-        {step === 3 && (
-          <div className="space-y-3">
-            <h3 className="font-semibold text-lg">Tarih ve Saat Seçin</h3>
-            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} min={new Date().toISOString().slice(0, 10)} />
-            <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
-              {slots.map((time) => (
-                <button key={time} onClick={() => { setSelectedTime(time); setStep(4) }}
-                  className="px-2 py-2 text-sm rounded-lg border border-border hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors tabular-nums">
-                  {time}
-                </button>
-              ))}
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => setStep(2)}>← Geri</Button>
-          </div>
-        )}
-
-        {/* Step 4: Customer info */}
-        {step === 4 && (
-          <div className="space-y-3">
-            <h3 className="font-semibold text-lg">Bilgilerinizi Girin</h3>
-            <div className="space-y-2">
-              <div><Label className="text-xs">Ad Soyad *</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} placeholder="Adınız Soyadınız" /></div>
-              <div><Label className="text-xs">Telefon *</Label><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} placeholder="+90 5xx xxx xx xx" /></div>
-              <div><Label className="text-xs">E-posta (opsiyonel)</Label><Input value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} placeholder="email@ornek.com" /></div>
-              <div><Label className="text-xs">Not (opsiyonel)</Label><Textarea value={customer.note} onChange={(e) => setCustomer({ ...customer, note: e.target.value })} placeholder="Eklemek istedikleriniz" className="h-16" /></div>
-            </div>
-            <div className="p-3 rounded-lg bg-muted/30 text-sm">
-              <div className="font-medium">Özet</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {selectedService?.name} · {selectedStaff ? provider.staff.find((s) => s.id === selectedStaff)?.name : 'Herhangi'} · {formatDate(selectedDate)} {selectedTime} · {formatCurrency(selectedService?.price ?? 0)}
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setStep(3)}>← Geri</Button>
-              <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={handleBook} disabled={booking || !customer.name || !customer.phone}>
-                {booking ? 'Oluşturuluyor...' : 'Randevuyu Onayla'}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 5: Success — durum bazlı (onaylandı / onay bekliyor) */}
-        {step === 5 && (
-          <div className="text-center py-8">
-            {bookedStatus === 'beklemede' ? (
-              <>
-                <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-950/30 flex items-center justify-center mx-auto mb-4">
-                  <Clock className="w-8 h-8 text-amber-600" />
-                </div>
-                <h3 className="font-semibold text-lg mb-1">Randevu Talebiniz Alındı!</h3>
-                <p className="text-sm text-muted-foreground mb-1">
-                  {selectedService?.name} · {formatDate(selectedDate)} {selectedTime}
-                </p>
-                <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-lg px-3 py-2 inline-block mb-4">
-                  ⏳ İşletme onayladığında randevunuz kesinleşecek
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-600" />
-                </div>
-                <h3 className="font-semibold text-lg mb-1">Randevunuz Oluşturuldu!</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {selectedService?.name} · {formatDate(selectedDate)} {selectedTime}
-                </p>
-              </>
-            )}
-            <a href={whatsappLink(customer.phone, bookedStatus === 'beklemede'
-              ? `Randevu talebiniz alındı: ${selectedService?.name}, ${formatDate(selectedDate)} ${selectedTime}. Onay sonrası bilgi verilecek.`
-              : `Randevunuz onaylandı: ${selectedService?.name}, ${formatDate(selectedDate)} ${selectedTime}`)} target="_blank" rel="noopener">
-              <Button variant="outline" size="sm"><MessageCircle className="w-4 h-4 mr-1.5" /> WhatsApp Hatırlatma</Button>
-            </a>
-            <div className="mt-4">
-              <Button variant="ghost" size="sm" onClick={() => { setStep(1); setSelectedService(null); setSelectedStaff(''); setSelectedTime(''); setCustomer({ name: '', phone: '', email: '', note: '' }) }}>
-                Yeni Randevu
-              </Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
   )
 }
 

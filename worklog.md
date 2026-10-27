@@ -9539,3 +9539,19 @@ Stage Summary:
 - Kod değişikliği YOK — yalnız DB verisi + mevcut geçiş scripti kullanıldı; login API/ekran zaten kullanıcı adı ("admin") girişini destekliyordu
 - Etki: tüm kullanıcılar bir sonraki istekte yeniden giriş yapmalı (46 oturum iptal); 1234 ile girenlerde "şifre değiştir" uyarısı görünür
 - Risk/Not: seed.ts bu durumu koruyor (admin@gnccrm.app/314159 + boş hash'lere 1234) — future seed'lerde uyumlu; DB yedeği backup-db.sh ile alınabilir durumda
+---
+Task ID: randevu-musteri-gorunumu-sil
+Agent: Z.ai Code (ana ajan)
+Task: Kullanıcı talebi — "randevu sekmesindeki müşteri görünümü kısmını sil"
+
+Work Log:
+- KEŞİF: "Müşteri Görünümü" = Randevu modülü (appointments-view.tsx) içindeki value="booking" sekmesi + inline PublicBooking bileşeni (5 adımlı kendi kendine randevu sihirbazı). Ayırt edilen: public-booking-flow.tsx + /?booking modu = MÜŞTERİ WEB SİTESİ özelliği → DOKUNULMADI; src/components/appointments/public-booking.tsx = hiçbir yerde import edilmeyen ölü kod (farklı imzalı eski PublicBooking)
+- SİLME (appointments-view.tsx): ①TabsTrigger value="booking" ("Müşteri Görünümü") ②TabsContent value="booking" bloğu ③tüm inline PublicBooking fonksiyonu (190 satır, sed 535-726d) ④tab onValueChange'teki 'booking' koşulu + yorum güncellendi ⑤lucide importundan yalnız User kaldırıldı (dikkat: Store ikonu boş durum kartında hâlâ kullanıldığı için korundu; Scissors/Label/Textarea/whatsappLink/MessageCircle/formatDate başka kullanımları var → korundu)
+- SİLME (dosya): src/components/appointments/public-booking.tsx silindi (0 referans)
+- KALİTE: bunx tsc --noEmit → appointments-view 0 hata; bun run lint → 7 hata = BASELINE aynen (0 yeni); dev server kapanmıştı → yeniden başlatıldı (3000 200)
+- DOĞRULAMA (agent-browser, izole session tabsil): admin@sikkuaför.com/1234 giriş → Randevular modülü → tablist artık: Randevular · Takvim · Müşteriler · Personel · Hizmetler · Üyelikler · İşletme Ayarları — "Müşteri Görünümü" YOK ✓; Takvim/Müşteriler (Toplam Müşteri 9)/İşletme Ayarları (otomatik onay + çalışma saatleri) sekmeleri render ✓; body metninde "Müşteri Görünümü" geçmiyor ✓; konsol hatası 0 ✓; kanıt: tool-results/tabsil-musteri-gorunumu-silindi.png
+
+Stage Summary:
+- Randevu sekmesindeki "Müşteri Görünümü" (Public Booking sihirbazı) tamamen kaldırıldı: sekme + içerik + 190 satırlık bileşen + ölü public-booking.tsx dosyası
+- Müşteri randevu alma AKIŞI KORUNDU: müşteri web sitesi (3002) + widget + /?booking public akışı etkilenmedi — yalnızca CRM panelindeki yinelenen iç görünüm silindi
+- 0 yeni lint/tsc hatası, tarayıcıda 7 sekmenin tamamı çalışıyor, konsol hatası 0
