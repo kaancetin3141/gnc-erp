@@ -1,0 +1,602 @@
+  1120→  const openDetail = (lead: Lead) => {
+  1121→    setDetailLead(lead)
+  1122→    setDetailOpen(true)
+  1123→  }
+  1124→
+  1125→  // ---- daily limit display ----
+  1126→  const limitPct = Math.min(100, (todayCount / DAILY_LIMIT) * 100)
+  1127→
+  1128→  return (
+  1129→    <div className="space-y-6 animate-fade-in">
+  1130→      {/* Header */}
+  1131→      <div className="flex items-start justify-between flex-wrap gap-3">
+  1132→        <div>
+  1133→          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+  1134→            <MapPin className="w-6 h-6 text-emerald-600" />
+  1135→            Potansiyel Müşteri Madenciliği
+  1136→          </h2>
+  1137→          <p className="text-sm text-muted-foreground mt-1">
+  1138→            Google Maps üzerindeki işletmeleri ara, seç ve CRM'ne lead olarak aktar.
+  1139→          </p>
+  1140→        </div>
+  1141→      </div>
+  1142→
+  1143→      {/* Two-panel layout */}
+  1144→      <div className="grid lg:grid-cols-5 gap-4">
+  1145→        {/* ---------- LEFT PANEL ---------- */}
+  1146→        <div className="lg:col-span-3 space-y-4">
+  1147→          {/* Search form card */}
+  1148→          <Card>
+  1149→            <CardHeader className="pb-3">
+  1150→              <div className="flex items-center justify-between gap-2">
+  1151→                <CardTitle className="text-base flex items-center gap-1.5">
+  1152→                  <Search className="w-4 h-4 text-muted-foreground" />
+  1153→                  Arama
+  1154→                </CardTitle>
+  1155→                <Tooltip>
+  1156→                  <TooltipTrigger asChild>
+  1157→                    <div className={cn(
+  1158→                      'flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border',
+  1159→                      limitReached
+  1160→                        ? 'border-red-200 bg-red-50 text-red-700 dark:bg-red-950/30 dark:border-red-900/50'
+  1161→                        : limitPct > 70
+  1162→                          ? 'border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:border-amber-900/50'
+  1163→                          : 'border-border bg-muted/40 text-muted-foreground',
+  1164→                    )}>
+  1165→                      <AlertCircle className="w-3 h-3" />
+  1166→                      <span className="font-medium">Günlük arama limiti: {todayCount}/{DAILY_LIMIT}</span>
+  1167→                    </div>
+  1168→                  </TooltipTrigger>
+  1169→                  <TooltipContent side="bottom">
+  1170→                    Maps API maliyet koruması için günlük {DAILY_LIMIT} arama ile sınırlıdır.
+  1171→                  </TooltipContent>
+  1172→                </Tooltip>
+  1173→              </div>
+  1174→            </CardHeader>
+  1175→            <CardContent className="space-y-3">
+  1176→              {/* category quick-select chips */}
+  1177→              <div className="flex flex-wrap gap-1.5">
+  1178→                {MAPS_CATEGORIES.map((c) => (
+  1179→                  <button
+  1180→                    key={c.query}
+  1181→                    type="button"
+  1182→                    onClick={() => setQuery(c.query)}
+  1183→                    className={cn(
+  1184→                      'text-xs px-2.5 py-1 rounded-full border transition-colors',
+  1185→                      'hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700',
+  1186→                      'dark:hover:bg-emerald-950/30 dark:hover:border-emerald-800',
+  1187→                      query === c.query
+  1188→                        ? 'bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800'
+  1189→                        : 'bg-muted/40 border-border text-muted-foreground',
+  1190→                    )}
+  1191→                  >
+  1192→                    {c.category}
+  1193→                  </button>
+  1194→                ))}
+  1195→              </div>
+  1196→
+  1197→              <div className="grid sm:grid-cols-3 gap-2">
+  1198→                <div className="sm:col-span-1">
+  1199→                  <Input
+  1200→                    placeholder="Arama sorgusu (örn: diş kliniği)"
+  1201→                    value={query}
+  1202→                    onChange={(e) => setQuery(e.target.value)}
+  1203→                    onKeyDown={(e) => { if (e.key === 'Enter') handleSearch() }}
+  1204→                    disabled={!canSearch || limitReached || searchMutation.isPending}
+  1205→                  />
+  1206→                </div>
+  1207→                <Select value={city} onValueChange={setCity} disabled={!canSearch || searchMutation.isPending}>
+  1208→                  <SelectTrigger className="w-full">
+  1209→                    <SelectValue placeholder="Şehir" />
+  1210→                  </SelectTrigger>
+  1211→                  <SelectContent>
+  1212→                    {CITIES.map((c) => (
+  1213→                      <SelectItem key={c} value={c}>{c}</SelectItem>
+  1214→                    ))}
+  1215→                  </SelectContent>
+  1216→                </Select>
+  1217→                <Select
+  1218→                  value={String(radius)}
+  1219→                  onValueChange={(v) => setRadius(Number(v))}
+  1220→                  disabled={!canSearch || searchMutation.isPending}
+  1221→                >
+  1222→                  <SelectTrigger className="w-full">
+  1223→                    <SelectValue placeholder="Yarıçap" />
+  1224→                  </SelectTrigger>
+  1225→                  <SelectContent>
+  1226→                    {RADII.map((r) => (
+  1227→                      <SelectItem key={r} value={String(r)}>{r} km</SelectItem>
+  1228→                    ))}
+  1229→                  </SelectContent>
+  1230→                </Select>
+  1231→              </div>
+  1232→
+  1233→              <div className="flex items-center gap-2 flex-wrap">
+  1234→                <Button
+  1235→                  onClick={handleSearch}
+  1236→                  disabled={!canSearch || limitReached || searchMutation.isPending}
+  1237→                >
+  1238→                  {searchMutation.isPending ? (
+  1239→                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+  1240→                  ) : (
+  1241→                    <Search className="w-4 h-4 mr-1.5" />
+  1242→                  )}
+  1243→                  Ara
+  1244→                </Button>
+  1245→                {hasSearched && results.length > 0 && (
+  1246→                  <Button variant="outline" onClick={handleExportCsv}>
+  1247→                    <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+  1248→                    CSV Dışa Aktar
+  1249→                  </Button>
+  1250→                )}
+  1251→                {!canSearch && (
+  1252→                  <span className="text-xs text-muted-foreground">
+  1253→                    Harita araması yapma yetkiniz yok.
+  1254→                  </span>
+  1255→                )}
+  1256→              </div>
+  1257→            </CardContent>
+  1258→          </Card>
+  1259→
+  1260→          {/* Results card */}
+  1261→          {searchMutation.isPending && !hasSearched ? (
+  1262→            <Card>
+  1263→              <CardContent className="p-4 space-y-2">
+  1264→                <Skeleton className="h-8 w-full" />
+  1265→                <Skeleton className="h-16 w-full" />
+  1266→                <Skeleton className="h-16 w-full" />
+  1267→                <Skeleton className="h-16 w-full" />
+  1268→              </CardContent>
+  1269→            </Card>
+  1270→          ) : hasSearched ? (
+  1271→            <Card>
+  1272→              <CardHeader className="pb-3">
+  1273→                <div className="flex items-center justify-between gap-2 flex-wrap">
+  1274→                  <CardTitle className="text-base flex items-center gap-1.5">
+  1275→                    <Users className="w-4 h-4 text-muted-foreground" />
+  1276→                    Sonuçlar
+  1277→                    <Badge variant="secondary" className="ml-1">{results.length}</Badge>
+  1278→                    {selectedIds.size > 0 && (
+  1279→                      <Badge className="ml-1 bg-sky-100 text-sky-700 border-sky-200">
+  1280→                        {selectedIds.size} seçili
+  1281→                      </Badge>
+  1282→                    )}
+  1283→                  </CardTitle>
+  1284→                  <div className="flex items-center gap-1.5">
+  1285→                    <Button
+  1286→                      size="sm" variant="ghost" className="h-7 text-xs"
+  1287→                      onClick={selectAllNew}
+  1288→                      disabled={results.length === 0}
+  1289→                    >
+  1290→                      <Check className="w-3.5 h-3.5 mr-1" />
+  1291→                      Tümünü Seç
+  1292→                    </Button>
+  1293→                    <Button
+  1294→                      size="sm" variant="ghost" className="h-7 text-xs"
+  1295→                      onClick={clearSelection}
+  1296→                      disabled={selectedIds.size === 0}
+  1297→                    >
+  1298→                      <X className="w-3.5 h-3.5 mr-1" />
+  1299→                      Seçimi Temizle
+  1300→                    </Button>
+  1301→                  </div>
+  1302→                </div>
+  1303→              </CardHeader>
+  1304→              <CardContent className="p-0">
+  1305→                {results.length === 0 ? (
+  1306→                  <div className="p-8 text-center">
+  1307→                    <Search className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+  1308→                    <p className="text-sm text-muted-foreground">Sonuç bulunamadı.</p>
+  1309→                    <p className="text-xs text-muted-foreground/70 mt-1">
+  1310→                      Farklı bir sorgu veya şehir deneyin.
+  1311→                    </p>
+  1312→                  </div>
+  1313→                ) : (
+  1314→                  <div className="max-h-[420px] overflow-y-auto custom-scroll border-t">
+  1315→                    <Table>
+  1316→                      <TableHeader className="sticky top-0 bg-card z-10">
+  1317→                        <TableRow>
+  1318→                          <TableHead className="w-10 pl-4">
+  1319→                            <Checkbox
+  1320→                              checked={results.length > 0 && results.every((r) => r.existsInCrm || selectedIds.has(r.placeId))}
+  1321→                              onCheckedChange={(v) => {
+  1322→                                if (v) selectAllNew()
+  1323→                                else clearSelection()
+  1324→                              }}
+  1325→                              aria-label="Tümünü seç"
+  1326→                            />
+  1327→                          </TableHead>
+  1328→                          <TableHead>İşletme</TableHead>
+  1329→                          <TableHead className="hidden md:table-cell">Adres</TableHead>
+  1330→                          <TableHead className="hidden lg:table-cell">İletişim</TableHead>
+  1331→                          <TableHead className="text-right">Puan</TableHead>
+  1332→                        </TableRow>
+  1333→                      </TableHeader>
+  1334→                      <TableBody>
+  1335→                        {results.map((r) => {
+  1336→                          const selected = selectedIds.has(r.placeId)
+  1337→                          return (
+  1338→                            <TableRow
+  1339→                              key={r.placeId}
+  1340→                              data-state={selected ? 'selected' : undefined}
+  1341→                              className="cursor-pointer"
+  1342→                              onClick={() => toggleSelect(r.placeId)}
+  1343→                            >
+  1344→                              <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
+  1345→                                <Checkbox
+  1346→                                  checked={selected}
+  1347→                                  onCheckedChange={() => toggleSelect(r.placeId)}
+  1348→                                  disabled={r.existsInCrm}
+  1349→                                  aria-label={r.name}
+  1350→                                />
+  1351→                              </TableCell>
+  1352→                              <TableCell>
+  1353→                                <div className="flex items-center gap-2 min-w-0">
+  1354→                                  <div className="min-w-0">
+  1355→                                    <div className="font-medium text-sm truncate flex items-center gap-1.5">
+  1356→                                      {r.name}
+  1357→                                      {r.existsInCrm && (
+  1358→                                        <Badge className="text-[10px] h-4 px-1 bg-emerald-100 text-emerald-700 border-emerald-200">
+  1359→                                          <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" /> CRM'de
+  1360→                                        </Badge>
+  1361→                                      )}
+  1362→                                    </div>
+  1363→                                    <div className="text-xs text-muted-foreground truncate">{r.category}</div>
+  1364→                                  </div>
+  1365→                                </div>
+  1366→                              </TableCell>
+  1367→                              <TableCell className="hidden md:table-cell max-w-[220px]">
+  1368→                                <span className="text-xs text-muted-foreground truncate block">
+  1369→                                  {r.address}
+  1370→                                </span>
+  1371→                              </TableCell>
+  1372→                              <TableCell className="hidden lg:table-cell">
+  1373→                                <div className="flex items-center gap-1.5">
+  1374→                                  {r.phone && (
+  1375→                                    <Tooltip>
+  1376→                                      <TooltipTrigger asChild>
+  1377→                                        <a
+  1378→                                          href={telLink(r.phone)}
+  1379→                                          onClick={(e) => e.stopPropagation()}
+  1380→                                          target="_blank" rel="noreferrer"
+  1381→                                          className="w-7 h-7 rounded-md border border-border flex items-center justify-center hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-600"
+  1382→                                        >
+  1383→                                          <Phone className="w-3.5 h-3.5" />
+  1384→                                        </a>
+  1385→                                      </TooltipTrigger>
+  1386→                                      <TooltipContent>{formatPhone(r.phone)}</TooltipContent>
+  1387→                                    </Tooltip>
+  1388→                                  )}
+  1389→                                  {r.web && (
+  1390→                                    <Tooltip>
+  1391→                                      <TooltipTrigger asChild>
+  1392→                                        <a
+  1393→                                          href={webHref(r.web) || '#'}
+  1394→                                          onClick={(e) => e.stopPropagation()}
+  1395→                                          target="_blank" rel="noreferrer"
+  1396→                                          className="w-7 h-7 rounded-md border border-border flex items-center justify-center hover:bg-sky-50 hover:border-sky-200 hover:text-sky-600"
+  1397→                                        >
+  1398→                                          <Globe className="w-3.5 h-3.5" />
+  1399→                                        </a>
+  1400→                                      </TooltipTrigger>
+  1401→                                      <TooltipContent>{r.web}</TooltipContent>
+  1402→                                    </Tooltip>
+  1403→                                  )}
+  1404→                                  {!r.phone && !r.web && (
+  1405→                                    <span className="text-xs text-muted-foreground">—</span>
+  1406→                                  )}
+  1407→                                </div>
+  1408→                              </TableCell>
+  1409→                              <TableCell className="text-right">
+  1410→                                <StarRating rating={r.rating} reviewCount={r.reviewCount} className="justify-end" />
+  1411→                              </TableCell>
+  1412→                            </TableRow>
+  1413→                          )
+  1414→                        })}
+  1415→                      </TableBody>
+  1416→                    </Table>
+  1417→                  </div>
+  1418→                )}
+  1419→              </CardContent>
+  1420→              {results.length > 0 && selectedIds.size > 0 && (
+  1421→                <div className="border-t bg-muted/30 p-3 flex items-center justify-between gap-2 flex-wrap">
+  1422→                  <span className="text-xs text-muted-foreground">
+  1423→                    {selectedIds.size} kayıt lead olarak aktarılacak
+  1424→                  </span>
+  1425→                  <Button
+  1426→                    size="sm"
+  1427→                    onClick={() => setImportOpen(true)}
+  1428→                    disabled={!canImport}
+  1429→                  >
+  1430→                    <UserPlus className="w-4 h-4 mr-1.5" />
+  1431→                    Seçilenleri Lead Olarak Aktar
+  1432→                  </Button>
+  1433→                </div>
+  1434→              )}
+  1435→            </Card>
+  1436→          ) : null}
+  1437→
+  1438→          {/* Recent searches */}
+  1439→          <Card>
+  1440→            <CardHeader className="pb-3">
+  1441→              <CardTitle className="text-base flex items-center gap-1.5">
+  1442→                <History className="w-4 h-4 text-muted-foreground" />
+  1443→                Son Aramalar
+  1444→              </CardTitle>
+  1445→              <CardDescription className="text-xs">
+  1446→                Tekrar çalıştırmak için bir aramaya tıklayın.
+  1447→              </CardDescription>
+  1448→            </CardHeader>
+  1449→            <CardContent className="p-0">
+  1450→              {recentLoading ? (
+  1451→                <div className="p-4 space-y-2">
+  1452→                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+  1453→                </div>
+  1454→              ) : recentSearches.length === 0 ? (
+  1455→                <div className="p-6 text-center">
+  1456→                  <Clock className="w-7 h-7 mx-auto mb-2 text-muted-foreground/40" />
+  1457→                  <p className="text-sm text-muted-foreground">Henüz arama geçmişi yok.</p>
+  1458→                </div>
+  1459→              ) : (
+  1460→                <ScrollArea className="max-h-72">
+  1461→                  <div className="divide-y">
+  1462→                    {recentSearches.slice(0, 10).map((s) => (
+  1463→                      <button
+  1464→                        key={s.id}
+  1465→                        type="button"
+  1466→                        onClick={() => rerunSearch(s)}
+  1467→                        className="w-full text-left p-3 hover:bg-muted/50 transition-colors flex items-center gap-3"
+  1468→                      >
+  1469→                        <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center shrink-0">
+  1470→                          <Search className="w-3.5 h-3.5 text-emerald-600" />
+  1471→                        </div>
+  1472→                        <div className="flex-1 min-w-0">
+  1473→                          <div className="flex items-center gap-2">
+  1474→                            <span className="text-sm font-medium truncate">{s.query}</span>
+  1475→                            <Badge variant="outline" className="text-[10px] h-4 px-1">
+  1476→                              {s.city || '—'}
+  1477→                            </Badge>
+  1478→                          </div>
+  1479→                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+  1480→                            <span>{s.resultCount} sonuç</span>
+  1481→                            {s.importedCount > 0 && (
+  1482→                              <>
+  1483→                                <span>·</span>
+  1484→                                <span className="text-emerald-600">{s.importedCount} aktarıldı</span>
+  1485→                              </>
+  1486→                            )}
+  1487→                            <span>·</span>
+  1488→                            <span>{formatRelative(s.createdAt)}</span>
+  1489→                            {s.user && s.user.id !== user?.id && (
+  1490→                              <>
+  1491→                                <span>·</span>
+  1492→                                <span>{s.user.name}</span>
+  1493→                              </>
+  1494→                            )}
+  1495→                          </div>
+  1496→                        </div>
+  1497→                        <ChevronRight className="w-4 h-4 text-muted-foreground/40 shrink-0" />
+  1498→                      </button>
+  1499→                    ))}
+  1500→                  </div>
+  1501→                </ScrollArea>
+  1502→              )}
+  1503→            </CardContent>
+  1504→          </Card>
+  1505→        </div>
+  1506→
+  1507→        {/* ---------- RIGHT PANEL: MAP ---------- */}
+  1508→        <div className="lg:col-span-2">
+  1509→          <div className="lg:sticky lg:top-4 space-y-3">
+  1510→            <Card className="overflow-hidden">
+  1511→              <CardHeader className="pb-3">
+  1512→                <CardTitle className="text-base flex items-center gap-1.5">
+  1513→                  <MapPin className="w-4 h-4 text-emerald-600" />
+  1514→                  Harita Görünümü
+  1515→                </CardTitle>
+  1516→                <CardDescription className="text-xs">
+  1517→                  {hasSearched
+  1518→                    ? `${results.length} işletme haritada gösteriliyor`
+  1519→                    : 'Arama sonuçları haritada görünecek'}
+  1520→                </CardDescription>
+  1521→              </CardHeader>
+  1522→              <CardContent className="p-4 pt-0">
+  1523→                <MapView
+  1524→                  key={searchId ?? 'initial'}
+  1525→                  results={results}
+  1526→                  selectedIds={selectedIds}
+  1527→                  onToggleSelect={toggleSelect}
+  1528→                  city={city}
+  1529→                  hasSearched={hasSearched}
+  1530→                />
+  1531→              </CardContent>
+  1532→            </Card>
+  1533→          </div>
+  1534→        </div>
+  1535→      </div>
+  1536→
+  1537→      {/* ---------- LEADS FROM MAPS ---------- */}
+  1538→      <Card>
+  1539→        <CardHeader className="pb-3">
+  1540→          <div className="flex items-center justify-between gap-2 flex-wrap">
+  1541→            <div>
+  1542→              <CardTitle className="text-base flex items-center gap-1.5">
+  1543→                <Sparkles className="w-4 h-4 text-violet-600" />
+  1544→                Maps Leadleri
+  1545→              </CardTitle>
+  1546→              <CardDescription className="text-xs mt-0.5">
+  1547→                Google Maps'ten içe aktarılan potansiyel müşteriler
+  1548→              </CardDescription>
+  1549→            </div>
+  1550→            <div className="flex items-center gap-1.5">
+  1551→              <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+  1552→              <div className="flex flex-wrap gap-1">
+  1553→                <button
+  1554→                  type="button"
+  1555→                  onClick={() => setLeadStatusFilter('')}
+  1556→                  className={cn(
+  1557→                    'text-xs px-2.5 py-1 rounded-full border transition-colors',
+  1558→                    leadStatusFilter === ''
+  1559→                      ? 'bg-foreground text-background border-foreground'
+  1560→                      : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted',
+  1561→                  )}
+  1562→                >
+  1563→                  Tümü <span className="ml-1 tabular-nums opacity-60">{leadTotal}</span>
+  1564→                </button>
+  1565→                {LEAD_STATUSES.map((s) => (
+  1566→                  <button
+  1567→                    key={s.value}
+  1568→                    type="button"
+  1569→                    onClick={() => setLeadStatusFilter(s.value)}
+  1570→                    className={cn(
+  1571→                      'text-xs px-2.5 py-1 rounded-full border transition-colors',
+  1572→                      leadStatusFilter === s.value
+  1573→                        ? cn(s.color, 'font-medium')
+  1574→                        : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted',
+  1575→                    )}
+  1576→                  >
+  1577→                    {s.label} <span className="ml-1 tabular-nums opacity-60">{leadStatusCounts[s.value] ?? 0}</span>
+  1578→                  </button>
+  1579→                ))}
+  1580→              </div>
+  1581→            </div>
+  1582→          </div>
+  1583→        </CardHeader>
+  1584→        <CardContent className="p-0">
+  1585→          {leadsQuery.isLoading ? (
+  1586→            <div className="p-4 space-y-2">
+  1587→              {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+  1588→            </div>
+  1589→          ) : leads.length === 0 ? (
+  1590→            <div className="p-10 text-center">
+  1591→              <UserPlus className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+  1592→              <p className="text-sm text-muted-foreground">
+  1593→                {leadStatusFilter
+  1594→                  ? 'Bu durumda Maps leadi yok.'
+  1595→                  : 'Henüz Maps leadi yok.'}
+  1596→              </p>
+  1597→              <p className="text-xs text-muted-foreground/70 mt-1">
+  1598→                Yukarıdan arama yapıp seçili işletmeleri lead olarak aktarın.
+  1599→              </p>
+  1600→            </div>
+  1601→          ) : (
+  1602→            <div className="max-h-[480px] overflow-y-auto custom-scroll border-t">
+  1603→              <Table>
+  1604→                <TableHeader className="sticky top-0 bg-card z-10">
+  1605→                  <TableRow>
+  1606→                    <TableHead className="pl-4">İşletme</TableHead>
+  1607→                    <TableHead className="hidden md:table-cell">Şehir</TableHead>
+  1608→                    <TableHead className="hidden lg:table-cell">İletişim</TableHead>
+  1609→                    <TableHead className="hidden sm:table-cell text-right">Puan</TableHead>
+  1610→                    <TableHead>Durum</TableHead>
+  1611→                    <TableHead className="hidden md:table-cell">Sahip</TableHead>
+  1612→                    <TableHead className="hidden lg:table-cell">Tarih</TableHead>
+  1613→                    <TableHead className="text-right pr-4">İşlem</TableHead>
+  1614→                  </TableRow>
+  1615→                </TableHeader>
+  1616→                <TableBody>
+  1617→                  {leads.map((lead) => {
+  1618→                    const statusColor = getColor(LEAD_STATUSES, lead.status)
+  1619→                    return (
+  1620→                      <TableRow key={lead.id}>
+  1621→                        <TableCell className="pl-4">
+  1622→                          <div className="min-w-0">
+  1623→                            <div className="font-medium text-sm truncate">{lead.name}</div>
+  1624→                            <div className="text-xs text-muted-foreground truncate">
+  1625→                              {lead.category || '—'}
+  1626→                            </div>
+  1627→                          </div>
+  1628→                        </TableCell>
+  1629→                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+  1630→                          {lead.city || '—'}
+  1631→                        </TableCell>
+  1632→                        <TableCell className="hidden lg:table-cell">
+  1633→                          {lead.phone ? (
+  1634→                            <a
+  1635→                              href={telLink(lead.phone)}
+  1636→                              className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
+  1637→                            >
+  1638→                              <Phone className="w-3 h-3" />
+  1639→                              {formatPhone(lead.phone)}
+  1640→                            </a>
+  1641→                          ) : (
+  1642→                            <span className="text-xs text-muted-foreground">—</span>
+  1643→                          )}
+  1644→                        </TableCell>
+  1645→                        <TableCell className="hidden sm:table-cell text-right">
+  1646→                          <StarRating rating={lead.rating} reviewCount={lead.reviewCount} className="justify-end" />
+  1647→                        </TableCell>
+  1648→                        <TableCell>
+  1649→                          <Badge variant="outline" className={cn('text-[10px]', statusColor)}>
+  1650→                            {getLabel(LEAD_STATUSES, lead.status)}
+  1651→                          </Badge>
+  1652→                        </TableCell>
+  1653→                        <TableCell className="hidden md:table-cell">
+  1654→                          <span className="text-xs text-muted-foreground">
+  1655→                            {lead.owner?.name ?? '—'}
+  1656→                          </span>
+  1657→                        </TableCell>
+  1658→                        <TableCell className="hidden lg:table-cell">
+  1659→                          <span className="text-xs text-muted-foreground">
+  1660→                            {formatDate(lead.createdAt)}
+  1661→                          </span>
+  1662→                        </TableCell>
+  1663→                        <TableCell className="text-right pr-4">
+  1664→                          <div className="flex items-center justify-end gap-1">
+  1665→                            <Tooltip>
+  1666→                              <TooltipTrigger asChild>
+  1667→                                <Button
+  1668→                                  size="icon" variant="ghost" className="h-7 w-7"
+  1669→                                  onClick={() => openDetail(lead)}
+  1670→                                >
+  1671→                                  <Eye className="w-3.5 h-3.5" />
+  1672→                                </Button>
+  1673→                              </TooltipTrigger>
+  1674→                              <TooltipContent>Görüntüle</TooltipContent>
+  1675→                            </Tooltip>
+  1676→                            {lead.status !== 'donustu' ? (
+  1677→                              <Tooltip>
+  1678→                                <TooltipTrigger asChild>
+  1679→                                  <Button
+  1680→                                    size="icon" variant="ghost" className="h-7 w-7 hover:bg-emerald-50 hover:text-emerald-600"
+  1681→                                    onClick={() => convertMutation.mutate(lead.id)}
+  1682→                                    disabled={convertMutation.isPending}
+  1683→                                  >
+  1684→                                    <UserPlus className="w-3.5 h-3.5" />
+  1685→                                  </Button>
+  1686→                                </TooltipTrigger>
+  1687→                                <TooltipContent>Müşteriye Dönüştür</TooltipContent>
+  1688→                              </Tooltip>
+  1689→                            ) : (
+  1690→                              <Badge variant="outline" className="text-[10px] h-5 bg-emerald-50 text-emerald-700 border-emerald-200">
+  1691→                                <CheckCircle2 className="w-3 h-3 mr-0.5" /> Dönüştü
+  1692→                              </Badge>
+  1693→                            )}
+  1694→                          </div>
+  1695→                        </TableCell>
+  1696→                      </TableRow>
+  1697→                    )
+  1698→                  })}
+  1699→                </TableBody>
+  1700→              </Table>
+  1701→            </div>
+  1702→          )}
+  1703→        </CardContent>
+  1704→      </Card>
+  1705→
+  1706→      {/* Dialogs */}
+  1707→      <ImportDialog
+  1708→        open={importOpen}
+  1709→        onOpenChange={setImportOpen}
+  1710→        selectedResults={selectedResults}
+  1711→        searchId={searchId}
+  1712→        onImported={() => {
+  1713→          // drop CRM-existing from selection after import
+  1714→          setSelectedIds(new Set())
+  1715→        }}
+  1716→      />
+  1717→      <LeadDetailDialog lead={detailLead} open={detailOpen} onOpenChange={setDetailOpen} />
+  1718→    </div>
+  1719→  )
+  1720→}
+  1721→

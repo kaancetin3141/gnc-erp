@@ -1,0 +1,333 @@
+  4957→## Task ID: BUILD-SITE-APARTMENT
+  4958→Agent: Fullstack Next.js 16 + TypeScript + Prisma
+  4959→Task: Site modülüne Blok/Daire ekleme-düzenleme-silme UI'sı + seed verisi.
+  4960→
+  4961→### Yapılan işler (somut adımlar)
+  4962→1. **`src/components/site/apartment-form-dialog.tsx`** (yeni, 245 satır) — `ProductFormDialog` deseni:
+  4963→   - Props: `{ open, onOpenChange, siteId, blockId?, editApartment? }`
+  4964→   - Form alanları: `blockId` (Select), `number` (text zorunlu), `floor` (number?), `type` (Select: daire/dukkan/depo), `area` (number?, m²)
+  4965→   - Blokları `GET /api/site/{siteId}/blocks` ile fetch'ler (yalnızca dialog açıkken)
+  4966→   - Hiç blok yoksa uyarı paneli + submit disable
+  4967→   - Submit: edit ise `PATCH /api/site/{siteId}/apartments/{id}`, değilse `POST /api/site/{siteId}/apartments`
+  4968→   - Invalidate: `["apartments", siteId]` + `["blocks", siteId]` + `["site", siteId]`
+  4969→   - Export edilen tipler: `Apartment`, `ApartmentBlock`, `ApartmentResident`
+  4970→
+  4971→2. **`src/components/site/block-form-dialog.tsx`** (yeni, 134 satır) — aynı desende, daha sade:
+  4972→   - Props: `{ open, onOpenChange, siteId, editBlock? }`
+  4973→   - Form alanları: `name` (zorunlu), `floors` (default 5)
+  4974→   - Submit: `PATCH/POST /api/site/{siteId}/blocks`
+  4975→   - Invalidate: `["blocks", siteId]` + `["site", siteId]`
+  4976→
+  4977→3. **`src/components/site/site-view.tsx`** (REFACTOR, 583 satır):
+  4978→   - Yeni tab: `units` — "Blok & Daireler"
+  4979→   - **Bloklar** bölümü: her blok için kart (icon + "X kat · Y daire" + Düzenle/Sil ikon butonları) + "+ Blok Ekle" + boş durum + Skeleton
+  4980→   - **Daireler** bölümü: shadcn `Table` — kolonlar: Daire No, Blok, Kat, Tip (Badge), Alan (m²), Sakin (resident veya "Boş"), İşlem (Düzenle/Sil). "+ Daire Ekle" (blok yoksa disabled). Boş durum mesajı.
+  4981→   - **Silme onayı**: shadcn `AlertDialog` — daire ve blok için ayrı dialog; cascade uyarı metni ("tüm aidat kayıtları da silinecek")
+  4982→   - Yeni state: `aptDialogOpen`, `editApt`, `deleteApt`, `blockDialogOpen`, `editBlock`, `deleteBlock`
+  4983→   - Yeni queries (yalnızca `tab === 'units'` iken enable): `["apartments", siteId]`, `["blocks", siteId]`
+  4984→   - Yeni ikonlar: `Pencil`, `Trash2` (kullanılmayan `Wrench` kaldırıldı)
+  4985→   - TS düzeltme: `any` yerine `DuesItem`, `ComplaintItem`, `ComplaintItem[]` tipleri
+  4986→   - Genel Bakış'taki "Blok & Daireler" kartı: kaldırılmadı, "Yönet" butonu eklendi (units tab'a yönlendirir)
+  4987→
+  4988→4. **`prisma/schema.prisma`** (BUG FIX — RESEARCH-2 gözden kaçırmıştı):
+  4989→   - `Apartment` modelinde `siteId` field vardı ama `site Site @relation` field yoktu → `PATCH/DELETE /api/site/[id]/apartments/[apartmentId]` endpoint'lerindeki `include: { site: true }` Prisma hatası veriyordu (500)
+  4990→   - Düzeltme: `Apartment`'a `site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)` eklendi; `Site`'a `apartments Apartment[]` back-relation
+  4991→   - `bun run db:push` çalıştırıldı, Prisma client 6.19.2 regenerate (537ms)
+  4992→
+  4993→5. **`src/lib/seed.ts`** (SEED):
+  4994→   - **Cleanup**: site varlıkları için `deleteMany` zinciri eklendi — sıra: `ResidentMessage → Complaint → Announcement → Dues → SiteStaff → Apartment → Block → Resident → Site` (FK bağımlılık sırasıyla)
+  4995→   - **1 Site** "Park Sitesi" (İstanbul Kadıköy, dueDay 5, defaultDueAmount 750₺, manager "Mehmet Yılmaz")
+  4996→   - **2 Blok**: A Blok (5 kat), B Blok (6 kat)
+  4997→   - **10 Daire**: A#1-5 (daire), A D1 (depo, -1. kat, 12m²), B#1-3 (daire), B "Dükkan 1" (dukkan, 45m²)
+  4998→   - **5 Sakin** (Türk telefon formatı): Ayşe Kaya (mal_sahibi), Mustafa Demir (kiraci), Fatma Şahin (mal_sahibi), Ahmet Çelik (kiraci), Zeynep Yıldız (mal_sahibi) — 5 daireye bağlandı
+  4999→   - **12 Aidat**: 10 mevcut ay (5 ödenmiş / 5 ödenmemiş) + 2 gecikmiş (önceki ay). Tutarlar: daire 750₺, dükkan 1500₺, depo 250₺. Ödenmişlerde `paidDate`/`paidAmount`/`paymentMethod: 'bank'`
+  5000→   - **3 Duyuru**: Genel Kurul (pinned, daysAgo 2), Asansör Bakım (daysAgo 5), Aidat Tahsilatı (daysAgo 7)
+  5001→   - **3 Şikayet**: Sızıntı (acik/yuksek), Asansör gürültüsü (inceleniyor, cevaplı), Park yeri (cozuldu, cevaplı)
+  5002→   - **2 Personel**: Hüseyin Arslan (kapıcı, 28k₺), İbrahim Doğan (guvenlik, 32k₺)
+  5003→
+  5004→### Lint sonucu
+  5005→`bun run lint` → `0 errors, 9 warnings` (tüm warning'ler önceden mevcut, başka dosyalarda `Unused eslint-disable directive`).
+  5006→
+  5007→### Doğrulama (agent-browser)
+  5008→1. `agent-browser open http://localhost:3000/` + cookies/localStorage clear → demo login ekranı
+  5009→2. `click @e25` → "SY Site Yöneticisi" (admin@parksitesi.com) ile giriş — dashboard gerçek veri gösterdi: "Toplam Sakin 10 daire", "%41 Tahsilat Oranı", "2 Açık Şikayet", "2 Personel"
+  5010→3. `click "Site Yönetimi"` → site-view yüklendi (başlık "Park Sitesi", 6 tab)
+  5011→4. `click "Blok & Daireler"`:
+  5012→   - "Bloklar 2" + "Blok Ekle" + her blok için Düzenle/Sil
+  5013→   - "Daireler 10" + "Daire Ekle" + 10 satırlık tablo (Tip Badge'leri: Daire, Depo, Dükkan; 5 dairede "Boş")
+  5014→5. `click "Daire Ekle"` → Yeni Daire dialog:
+  5015→   - Blok combobox → A Blok / B Blok seçenekleri (kat sayısıyla gösterim)
+  5016→   - Daire Numarası *, Kat, Tip (default Daire), Alan (m²)
+  5017→   - Boş form → buton disabled; doldurunca enable
+  5018→6. B Blok + numara "100" + kat 5 + alan 140 → submit → "Daireler 11" ✓, yeni satır tabloda göründü ✓
+  5019→7. Sil butonu → AlertDialog "Daireyi Sil" (cascade uyarısı) → onay:
+  5020→   - **İlk denemede hata**: "Unexpected end of JSON input" — kök neden: schema bug'ı (yukarıda düzeltildi)
+  5021→   - Schema fix + `db:push` + dev restart → ikinci denemede daire silindi, "Daireler 10" ✓
+  5022→8. `click "Blok Ekle"` → "C Blok" + 4 kat → "Bloklar 3" ✓, "C Blok 4 kat · 0 daire" listede ✓
+  5023→9. C Blok Sil → AlertDialog "Bloğu Sil" → onay → "Bloklar 2" ✓
+  5024→10. İlk dairenin "Düzenle" → "Daireyi Düzenle" dialog, form önceden dolu, buton "Güncelle" ✓, İptal ile kapatıldı
+  5025→
+  5026→### Ekran görüntüleri
+  5027→`/home/z/my-project/site-units-tab.png` (68 KB) — Blok & Daireler tab görünümü
+  5028→`/home/z/my-project/site-add-apartment.png` (68 KB) — tablo üst kısmı
+  5029→`/home/z/my-project/site-apartment-form.png` (75 KB) — Yeni Daire form dialog
+  5030→
+  5031→### Notlar
+  5032→- **Schema bug'ı** RESEARCH-2'nin gözünden kaçtı: `Apartment` modelinde `siteId` field vardı ama `site Site @relation` yoktu → DELETE/PATCH endpoint'lerinde `include: { site: true }` PrismaClientValidationError veriyordu. Bu task'ta yakalandı ve düzeltildi.
+  5033→- **Dev server restart**: sandbox'ta `bun run dev` zaman aşımına uğramıştı (dev.log stale, port 3000 boş). `nohup ./node_modules/.bin/next dev -p 3000 > /tmp/next.log 2>&1 &` ile manuel restart gerekti.
+  5034→- **Devam eden eksikler** (bu task'ın kapsamı dışında): `CreateResidentDialog`, `CreateStaffDialog`, `CreateAnnouncementDialog`, `CreateComplaintDialog` + cevap paneli — API'leri hazır, UI'ları sonraki task'lere bırakıldı.
+  5035→
+  5036→---
+  5037→
+  5038→Task ID: BUILD-REPORTS-SECTOR
+  5039→Agent: Full-stack Next.js 16 + TypeScript + Prisma (Build)
+  5040→Task: Raporlar (Analiz) modülünü sektör-bazlı hale getirme — CRM/Cafe/Market/Site/Appointments için ayrı metrikler (Dashboard refactor'inin kopyası).
+  5041→
+  5042→## Özet
+  5043→Raporlar modülü Dashboard refactor'inin birebir kopyası mimariyle sektör-bazlı hale getirildi. 5 sektörün tümü için ayrı fetcher + component + veri tipi yazıldı, API route'u `?range=` parametresi kabul edecek ve `getTenantSector()` dispatch yapacak şekilde güncellendi, frontend parent dispatcher pattern'ine geçti. CRM sektörü mevcut 10 bölümü `CrmReports` sub-component içinde sarmalanarak birebir korundu — hiçbir özellik kaybı yok. Date range filtresi artık gerçekten API'ye geçiyor (önceden cosmetic idi).
+  5044→
+  5045→## 1. Yeni/Değiştirilen Dosyalar
+  5046→
+  5047→### Yeni Dosyalar
+  5048→- `/home/z/my-project/src/components/reports/types.ts` (93 satır) — `CafeReportsData`, `MarketReportsData`, `SiteReportsData`, `AppointmentsReportsData` + union `SectorReportsData` tipleri
+  5049→- `/home/z/my-project/src/lib/reports-sectors.ts` (850 satır) — 4 sektör fetcher (`getCafeReportsData`, `getMarketReportsData`, `getSiteReportsData`, `getAppointmentReportsData`) + `computeRange(range)` ve `dayLabel(idx)` helper'ları
+  5050→- `/home/z/my-project/src/components/reports/sector-reports.tsx` (1829 satır) — 4 sektör component (`CafeReports`, `MarketReports`, `SiteReports`, `AppointmentsReports`) + shared `KpiCard` (useCountUp animasyonlu), `EmptyState`, `ExportButtons`, `exportCSV`, `exportXLSX` helper'ları
+  5051→
+  5052→### Değiştirilen Dosyalar
+  5053→- `/home/z/my-project/src/app/api/reports/route.ts` (399 → 478 satır) — `getTenantSector()` dispatch eklendi, `?range=` URL parametresi kabul edilir, `computeRange()` ile `rangeStart/rangeEnd` hesaplanır. CRM sektörü yeni `getCrmReportsData(user, rangeStart, rangeEnd)` helper'ına taşındı (mevcut tüm sorgular korundu, sadece `rangeStart/rangeEnd` ile filtreleme eklendi). Non-CRM sektörlerde sektör-bazlı veri + CRM backward-compat alanlar `0/null/[]` olarak döner.
+  5054→- `/home/z/my-project/src/components/reports/reports-view.tsx` (2376 → 2434 satır) — `ReportsView()` parent dispatcher'a çevrildi (≈80 satır). Yeni `ReportsHeader({ sector, sectorMeta, dateRange, onDateChange, onOpenDailyReport?, onExportAll? })` component'i (sektör-bazlı başlık + alt başlık). Mevcut 10 bölüm `CrmReports({ data, openCustomer })` sub-component'ine taşındı. `ReportsSkeleton({ sector })` sektör-bazlı placeholder sayısı gösterir. `DailyReportView` Dialog artık sadece CRM sektöründe render ediliyor.
+  5055→- `/home/z/my-project/src/lib/api-client.ts` (75 → 74 satır) — `qk.reports` sabit array → fonksiyona çevrildi: `reports: (range?: string) => ['reports', range ?? '6m'] as const`. Date range değişince proper cache invalidasyonu.
+  5056→
+  5057→## 2. Sektör Bazlı Metrikler (Refactor Sonucu)
+  5058→
+  5059→| Sektör | Tenant | KPI'lar | Trend Grafiği | Breakdown | Listeler |
+  5060→|--------|--------|---------|---------------|-----------|----------|
+  5061→| **CRM** (Anadolu Satış) | "Anadolu Satış A.Ş. (CRM/ERP)" | Pipeline Değeri / Win Rate / Maps Dönüşüm / Toplam Ciro (KPI Summary kartı 4) | Ciro trend 6 ay (AreaChart amber) + Aktivite trend 30g (LineChart violet) | Satış Hunisi (BarChart) + Win/Loss donut + Loss reasons + Maps funnel + Aktivite tipleri (BarChart) | Top müşteriler + İletişimsiz müşteriler + Rep performansı (sortable Table) + ERP (stok/fatura/teklif) + Gün Sonu Raporu Dialog |
+  5062→| **Kafe** (Şık Kafe) | "Şık Kafe & Restoran" | Toplam Ciro / Sipariş Sayısı / Ortalama Hesap / Masa Doluluk | Günlük ciro trendi 30g (AreaChart amber) | Saatlik kırılım 08-23 (BarChart) + Sipariş tipi (PieChart dine_in/takeaway/delivery) | Top satılan ürünler (Table) + Çoklu kafe karşılaştırması (Table) |
+  5063→| **Market** (Anadolu Market) | "Anadolu Market Zinciri" | Toplam Satış / Fiş Sayısı / Ortalama Sepet / Düşük Stok | Günlük satış trendi 30g (AreaChart emerald) | Ödeme yöntemi (PieChart cash/card/mixed) | Top ürünler (Table + stock + gün kapağı) + Kasiyer performansı (Table) + Low/out-of-stock alerts (renkli liste) |
+  5064→| **Site** (Park Sitesi) | "Park Sitesi Yönetimi" | Tahsilat Oranı / Açık Şikayet / Toplam Sakin / Personel | Aylık aidat tahsilatı 6 ay (BarChart stacked collected/expected) + Sakin büyümesi 12 ay (LineChart cumulative + new) | Şikayet özeti donut (Toplam/Açık/Çözüldü) + Şikayet kategori + Öncelik badge'leri | Personel iş yükü (Table: assigned/resolved + çözüm oranı progress) |
+  5065→| **Randevu** (Şık Kuaför) | "Şık Kuaför & Güzellik Merkezi" | Toplam Randevu / No-show Oranı / Dönem Cirosu / Sağlayıcı Sayısı | Günlük randevu volume 30g (AreaChart pink) | No-show donut (Tamamlandı/İptal/Gelmedi) + Busy hours 7×24 heatmap | Hizmet bazlı ciro (Table) + Personel performansı (sortable Table: total/completed/cancelled/noShow/revenue + no-show % progress) |
+  5066→
+  5067→## 3. Hatalar ve Çözümler
+  5068→
+  5069→### `bun run lint`
+  5070→- ✅ 0 hata (bizim dokunduğumuz dosyalarda)
+  5071→- ⚠️ 9 warning (admin-panel, chat, customer-360, customer-list, product-detail-dialog, product-table, production-view, photo-upload — hepsi "Unused eslint-disable directive" unrelated)
+  5072→- İlk denemede `CreditCard` importu eksikti `sector-reports.tsx`'te → import'a geri eklendi
+  5073→
+  5074→### `npx tsc --noEmit`
+  5075→- ✅ 0 hata (`src/lib/reports-sectors.ts`, `src/components/reports/sector-reports.tsx`, `src/components/reports/types.ts`, `src/components/reports/reports-view.tsx`, `src/app/api/reports/route.ts`, `src/lib/api-client.ts`)
+  5076→- İlk denemede 4 hata vardı, hepsi çözüldü:
+  5077→  - `reports-sectors.ts(284,9)`: `sales` Promise.all içinde daha tanımlanmadan kullanılıyordu → ayrı `const cashierIds` haline getirildi
+  5078→  - `reports-sectors.ts(369,22)`: `Array.from(new Set(...))` `unknown[]` dönüyordu → explicit `string[]` annotation
+  5079→  - `route.ts(61,5)`: `sector` iki kere belirtiliyordu (spread + explicit) → explicit kaldırıldı
+  5080→  - `route.ts(205,39)`: `lastActivityAt: Date | null` ile `string | null` Map tipi çakışıyordu → `.toISOString()` dönüşümü eklendi
+  5081→
+  5082→### Önceden mevcut hatalar (bizim dosyalarımızda değil, değmediğimiz dosyalar)
+  5083→- `kanban-board.tsx`, `market-purchase.tsx`, `market-stock-view.tsx`, `resident-portal.tsx`, `site-view.tsx`, `tasks-view.tsx`, `users-view.tsx`, `seed.ts`, `maps-mock.ts`, `invoice-detail-dialog.tsx` — hepsi pre-existing hatalar
+  5084→
+  5085→## 4. Browser Doğrulaması — 5 sektör kullanıcısı
+  5086→
+  5087→`agent-browser` CLI ile her bir demo kullanıcıyla giriş yapıldı, "Raporlar" sidebar item'ına tıklandı, sayfa snapshot alındı, full-page screenshot çekildi.
+  5088→
+  5089→### Screenshot'lar (`/home/z/my-project/upload/reports-verification/`)
+  5090→
+  5091→| File | Sektör | User | Verify |
+  5092→|------|--------|------|--------|
+  5093→| `01-crm-reports.png` | CRM | Demir Yıldız (demo@anadolu.com) | 10 CRM bölümü + "Gün Sonu Raporu" butonu + "Tümünü Dışe Aktar" butonu görünür; KPI summary (Pipeline Değeri/Kazanma Oranı/Dönüşüm Oranı/Toplam Ciro); gerçek veriler (3.96M ₺ pipeline, 17% win rate, 9 reps) |
+  5094→| `02-crm-reports-30d.png` | CRM | Demir Yıldız | "Son 30 gün" date range seçildi — API'ye `?range=30d` geçti (combobox value güncellendi, content refresh oldu) |
+  5095→| `03-cafe-reports.png` | Kafe | Cafe Yöneticisi (admin@sikkafe.com) | "Kafe Raporları" başlığı + ☕ emoji subtitle; "Gün Sonu Raporu" butonu GİZLİ; "Tümünü Dışe Aktar" butonu GİZLİ; KPI grid (Toplam Ciro / Sipariş / Ort. Hesap / Masa Doluluk); Empty state'ler düzgün render (seed tenant'da CafeOrder yok — pre-existing) |
+  5096→| `04-market-reports.png` | Market | Market Yöneticisi (admin@anadolumarket.com) | "Market Raporları" başlığı + 🛒 emoji subtitle; CRM-only butonlar GİZLİ; KPI grid (Toplam Satış / Fiş / Ort. Sepet / Düşük Stok); tüm sektör bölümleri render |
+  5097→| `05-appointments-reports.png` | Randevu | Kuaför Yöneticisi (admin@sikkuaför.com) | "Randevu Raporları" başlığı + 💇 emoji subtitle; KPI grid (Toplam Randevu / No-show Oranı / Dönem Cirosu / Sağlayıcı Sayısı); tüm sektör bölümleri render |
+  5098→| `06-site-reports.png` | Site | Site Yöneticisi (admin@parksitesi.com) | "Site Yönetim Raporları" başlığı + 🏠 emoji subtitle; **GERÇEK DB VERİSİ**: %41 Tahsilat Oranı (3,750 ₺ collected), 2 Açık Şikayet (3 total), 5 Toplam Sakin (10 daire), 2 Personel; Monthly Collection BarChart 6 ay (Nis-Eyl); Şikayet özeti donut "Toplam 3 şikayet"; Şikayet kategorileri (Su/Asansor/Park); Priority badges (Yuksek:1, Normal:1, Dusuk:1); Sakin büyümesi LineChart 12 ay; Personel iş yükü Table (Hüseyin Arslan 2/1 %50, İbrahim Doğan 2/1 %50) |
+  5099→| `06b-site-reports-1y.png` | Site | Site Yöneticisi | "Son 1 yıl" date range seçildi — combobox value güncellendi, content refresh oldu |
+  5100→
+  5101→### Doğrulanan davranışlar
+  5102→
+  5103→**CRM (Demir Yıldız)**:
+  5104→- ✅ Header "Raporlar & Analiz" + subtitle "Satış performansı, pipeline ve müşteri dönüşüm metrikleri"
+  5105→- ✅ "Gün Sonu Raporu" butonu görünür (violet bg-violet-600)
+  5106→- ✅ Date range Select default "Son 6 ay"
+  5107→- ✅ "Tümünü Dışe Aktar" butonu görünür
+  5108→- ✅ 10 bölüm render: KPI Özeti, Satış Hunisi, Ciro Trendi, Kazan/Kayıp Analizi, Maps Lead Dönüşümü, Aktivite Performansı (Tabs), Temsilci Performansı (sortable), En İyi Müşteriler, İletişimsiz Müşteriler, ERP Lite Metrikleri
+  5109→- ✅ Date range "Son 30 gün" → API `?range=30d` çağrısı (proper cache invalidation)
+  5110→
+  5111→**Kafe (Cafe Yöneticisi)**:
+  5112→- ✅ Header "Kafe Raporları" + "☕ Kafe & Restoran sektör raporları"
+  5113→- ✅ "Gün Sonu Raporu" butonu GİZLİ
+  5114→- ✅ "Tümünü Dışe Aktar" butonu GİZLİ
+  5115→- ✅ KPI grid: Toplam Ciro / Sipariş Sayısı / Ortalama Hesap / Masa Doluluk
+  5116→- ✅ Tüm sektör bölümleri (Daily Revenue Trend 30g AreaChart amber + Hourly Breakdown 08-23 BarChart + Order Type PieChart + Top Items Table + Per-Cafe Comparison Table) render
+  5117→- ✅ Her bölümde CSV/XLSX export butonu
+  5118→- ⚠️ Veri yok: seed Şık Kafe tenant'ı için CafeOrder oluşturmadı (Anadolu Satış tenant'ına oluşturdu) — pre-existing seed limitation
+  5119→
+  5120→**Market (Market Yöneticisi)**:
+  5121→- ✅ Header "Market Raporları" + "🛒 Market & Bakkal sektör raporları"
+  5122→- ✅ "Gün Sonu Raporu" ve "Tümünü Dışe Aktar" butonları GİZLİ
+  5123→- ✅ KPI grid: Toplam Satış / Fiş Sayısı / Ortalama Sepet / Düşük Stok
+  5124→- ✅ Tüm sektör bölümleri render
+  5125→- ⚠️ Veri yok (pre-existing seed limitation)
+  5126→
+  5127→**Randevu (Kuaför Yöneticisi)**:
+  5128→- ✅ Header "Randevu Raporları" + "💇 Randevu & Hizmet sektör raporları"
+  5129→- ✅ CRM-only butonlar GİZLİ
+  5130→- ✅ KPI grid: Toplam Randevu / No-show Oranı / Dönem Cirosu / Sağlayıcı Sayısı
+  5131→- ✅ Tüm sektör bölümleri render (Busy hours 7×24 heatmap dahil)
+  5132→- ⚠️ Veri yok (pre-existing seed limitation)
+  5133→
+  5134→**Site (Site Yöneticisi)**:
+  5135→- ✅ Header "Site Yönetim Raporları" + "🏠 Site & Apartman Yönetimi sektör raporları"
+  5136→- ✅ CRM-only butonlar GİZLİ
+  5137→- ✅ **GERÇEK VERİLER**: %41 Tahsilat Oranı, 2 Açık Şikayet, 5 Toplam Sakin, 2 Personel
+  5138→- ✅ Monthly Collection BarChart 6 ay (Nis-May-Haz-Tem-Ağu-Eyl) — collected vs expected stacked
+  5139→- ✅ Şikayet özeti donut — "Toplam 3 şikayet" center label
+  5140→- ✅ Şikayet kategorileri list — Su/Asansor/Park
+  5141→- ✅ Priority badges — Yuksek:1, Normal:1, Dusuk:1
+  5142→- ✅ Sakin büyümesi LineChart 12 ay
+  5143→- ✅ Personel iş yükü Table — Hüseyin Arslan (2/1 %50), İbrahim Doğan (2/1 %50)
+  5144→- ✅ Date range "Son 1 yıl" → API `?range=1y` çağrısı
+  5145→
+  5146→## 5. Mimari Tutarlılık — Dashboard Refactor ile Paralellik
+  5147→
+  5148→| Dosya | Dashboard | Reports |
+  5149→|-------|-----------|---------|
+  5150→| Backend fetchers | `src/lib/dashboard-sectors.ts` (402 satır, 4 fetcher) | `src/lib/reports-sectors.ts` (850 satır, 4 fetcher + `computeRange`) |
+  5151→| Type interfaces | `src/components/dashboard/types.ts` (110 satır) | `src/components/reports/types.ts` (93 satır) |
+  5152→| Sector components | `src/components/dashboard/sector-dashboards.tsx` (829 satır, 4 component + KpiCard/EmptyState) | `src/components/reports/sector-reports.tsx` (1829 satır, 4 component + KpiCard/EmptyState/ExportButtons) |
+  5153→| API route | `src/app/api/dashboard/route.ts` (sector dispatch + `?range=`) | `src/app/api/reports/route.ts` (478 satır, sector dispatch + `?range=`) |
+  5154→| Frontend parent | `src/components/dashboard/dashboard-view.tsx` (sector-aware parent + skeleton) | `src/components/reports/reports-view.tsx` (parent + CrmReports + ReportsHeader + ReportsSkeleton) |
+  5155→| API client | `qk.dashboard` (sabit) | `qk.reports(range)` (range-aware) |
+  5156→
+  5157→## 6. Backward Compatibility
+  5158→
+  5159→- ✅ CRM sektör kullanıcısı (Demir Yıldız) refactor öncesi ile birebir aynı UI görür — `CrmReports` sub-component içinde 10 bölümün tamamı korundu
+  5160→- ✅ Tüm export butonları (her bölüm CSV/XLSX + header'da "Tümünü Dışe Aktar" global) CRM'de korundu
+  5161→- ✅ Daily Report Dialog (`DailyReportView`) sadece CRM'de çalışır — trigger butonu CRM-only gated
+  5162→- ✅ Rep rolü visibility filter (`visibleRepPerformance`) `CrmReports` içinde korundu
+  5163→- ✅ Stock rolü hala 403 alıyor (API) + ShieldX kartı (frontend) — RBAC değişmedi
+  5164→- ✅ RepPerformanceCard'da sortable headers korundu
+  5165→- ✅ User Activity Log Dialog (RepPerformanceCard "Detay" butonu) korundu
+  5166→
+  5167→## 7. Önemli Tasarım Kararları
+  5168→
+  5169→1. **Date range cosmetic-bug fix**: Mevcut `useState('6m')` set ediliyordu ama `apiGet('/api/reports')` çağrısına GEÇİLMİYORDU. Backend sabit pencere kullanıyordu (revenue son 6 ay, activities son 30 gün). Refactor ile `qk.reports(dateRange)` range-aware hale geldi (proper cache invalidation) + `queryFn` `?range=${dateRange}` parametresini geçiyor + backend `computeRange(range)` ile tüm sorgular için `rangeStart/rangeEnd` hesaplıyor.
+  5170→
+  5171→2. **Site `staffWorkload` workaround**: `Complaint` şemasında `assigneeId` alanı yok — personel başına doğrudan atama yapılamaz. Çözüm: her `SiteStaff` için site'undaki toplam şikayet sayısını site'undaki personel sayısına böl (eşit dağıtım). `getSiteReportsData` içinde yorumla belirtildi.
+  5172→
+  5173→3. **Site `complaintStats.avgResolutionHours`**: `respondedAt ?? updatedAt` fallback zinciri kullanıldı (canonical "yönetim cevabı" timestamp → fallback son güncelleme). Hiçbiri yoksa `null` → UI "—" gösterir.
+  5174→
+  5175→4. **Appointments no-show rate**: `status='gelmedi'` (explicit no-show) baz alındı — `iptal` (voluntary cancellation) dahil değil. Formül: `noShow / (completed + noShow)`. İptaller denominator'dan çıkarıldı çünkü no-show değil.
+  5176→
+  5177→5. **Appointments busyHours heatmap**: 7×24 grid (Paz-Cmt × 00-23). Cell'ler intensity bucket'a göre renkli (0 / amber-300 / amber-400 / amber-500 / rose-500). Accessibility için `title` attribute'unda "Pzt 14:00 · 3 randevu" formatında bilgi var.
+  5178→
+  5179→6. **CRM backward-compat alanlar**: Non-CRM API yanıtları `pipeline: []`, `winRate: 0`, `totalRevenue: 0`, `erp: null` gibi alanları da içerir. Bu, `useQuery<ReportsData>` destructuring'i yapan kodun eksik property hatası almamasını sağlar. Frontend `data.sector` alanına göre dispatch eder.
+  5180→
+  5181→## 8. Pre-existing Limitations (bu refactor'tan kaynaklı değil)
+  5182→
+  5183→- Seed dosyası Şık Kafe, Anadolu Market, Şık Kuaför tenant'ları için `Cafe`, `Market`, `ServiceProvider` oluşturmuyor — Anadolu Satış CRM tenant'ına oluşturuyor. Bu yüzden Cafe/Market/Appointments sektörleri empty-state gösteriyor. Sadece `Site` sektörü gerçek veri gösteriyor çünkü `Park Sitesi Yönetimi` tenant'ı için seed 1 `Site` + 3 `Complaint` + 12 `Dues` + 5 `Resident` oluşturuyor. Bu bir seed limitation, refactor değil.
+  5184→
+  5185→---
+  5186→
+  5187→Task ID: BUILD-REPORTS-SECTOR (Verification Pass)
+  5188→Agent: Full-stack Next.js 16 + TypeScript + Prisma (Build)
+  5189→Task: Mevcut sektör-bazlı Raporlar refactor'ini doğrula + 5 sektör için browser testi + screenshot üret + worklog'a sonuçları ekle.
+  5190→
+  5191→## Özet
+  5192→Mevcut BUILD-REPORTS-SECTOR implementasyonu (worklog satır 5038–5185) tam ve çalışır durumda. 4 yeni dosya (`src/lib/reports-sectors.ts`, `src/components/reports/types.ts`, `src/components/reports/sector-reports.tsx`) + 3 değiştirilmiş dosya (`src/app/api/reports/route.ts`, `src/components/reports/reports-view.tsx`, `src/lib/api-client.ts`) doğrulandı. Tüm sektörler için browser testi yapıldı, 8 screenshot üretildi, lint 0 hata, runtime hatası yok.
+  5193→
+  5194→## 1. Yapılan Adımlar (somut)
+  5195→
+  5196→### 1.1 Mevcut kodun doğrulanması
+  5197→- `src/lib/reports-sectors.ts` (851 satır) → 4 fetcher + `computeRange()` + `dayLabel()` helper'ları mevcut. Prisma şemasındaki modellerle (`Cafe`, `CafeOrder`, `CafeOrderItem`, `CafeTable`, `Market`, `MarketSale`, `MarketSaleItem`, `Product`, `Site`, `Dues`, `Complaint`, `Resident`, `Apartment`, `SiteStaff`, `ServiceProvider`, `Appointment`) alanlar hizalı.
+  5198→- `src/components/reports/types.ts` (94 satır) → 4 sektör tip arayüzü + union `SectorReportsData` + `TenantSector` re-export mevcut.
+  5199→- `src/components/reports/sector-reports.tsx` (1830 satır) → `CafeReports`, `MarketReports`, `SiteReports`, `AppointmentsReports` component'leri + shared `KpiCard` (useCountUp animasyonlu), `EmptyState`, `ExportButtons`, `exportCSV`, `exportXLSX` helper'ları mevcut.
+  5200→- `src/app/api/reports/route.ts` (479 satır) → `getTenantSector()` dispatch + `?range=` parametresi + CRM-sector için `getCrmReportsData()` helper (rangeStart/rangeEnd filtreli) + Non-CRM sektörlerde backward-compat alanlar (`pipeline: []`, `winRate: 0`, `erp: null` vb.) mevcut.
+  5201→- `src/components/reports/reports-view.tsx` (2435 satır) → `ReportsView` parent dispatcher (~80 satır) + `ReportsHeader` + `CrmReports` (mevcut 10 bölümün sarmalı) + `ReportsSkeleton` mevcut. `DailyReportView` Dialog sadece CRM'de render ediliyor.
+  5202→- `src/lib/api-client.ts` (75 satır) → `qk.reports(range)` fonksiyon haline getirilmiş (proper cache invalidation).
+  5203→
+  5204→### 1.2 Lint doğrulaması
+  5205→```bash
+  5206→$ bun run lint
+  5207→✖ 9 problems (0 errors, 9 warnings)
+  5208→```
+  5209→- **0 hata** — bizim dosyalarımızda
+  5210→- 9 warning (admin-panel, chat, customer-360, customer-list, product-detail-dialog, product-table, production-view, photo-upload — hepsi "Unused eslint-disable directive", bu dosyalara değinmedik)
+  5211→
+  5212→### 1.3 Dev server kontrol
+  5213→- `dev.log` temiz: sadece Next.js 16.1.3 + Turbopack startup log'u, runtime error yok
+  5214→- `/` 200 dönüyor
+  5215→- `/api/reports` (unauth) 401 dönüyor — RBAC doğru çalışıyor
+  5216→
+  5217→## 2. Browser Doğrulaması — 5 Sektör (agent-browser)
+  5218→
+  5219→Her demo kullanıcı için: cookies+localStorage clear → login → "Raporlar" sidebar item'ına tıkla → içerik kontrolü → full-page screenshot.
+  5220→
+  5221→### Screenshot'lar (`/home/z/my-project/upload/reports-verification/`)
+  5222→
+  5223→| File | Sektör | User | Verify |
+  5224→|------|--------|------|--------|
+  5225→| `01-crm-reports.png` (85 KB) | CRM | Demir Yıldız (QL3Y-001) | "Raporlar & Analiz" başlığı + "Gün Sonu Raporu" butonu (violet) + "Tümünü Dışe Aktar" butonu + "Son 6 ay" combobox + 10 bölüm: KPI Özeti, Satış Hunisi, Ciro Trendi, Kazan/Kayıp Analizi, Maps Lead Dönüşümü, Aktivite Performansı (Tabs), Temsilci Performansı (sortable), En İyi Müşteriler, İletişimsiz Müşteriler, ERP Lite Metrikleri |
+  5226→| `02-crm-reports-30d.png` (85 KB) | CRM | Demir Yıldız | "Son 30 gün" date range seçildi — `/api/reports?range=30d` çağrısı 200 OK (network log'unda görüldü) — combobox value güncellendi, içerik refresh oldu |
+  5227→| `03-cafe-reports.png` (68 KB) | Kafe | Cafe Yöneticisi (0NHK-012) | "Kafe Raporları" başlığı + "☕ Kafe & Restoran sektör raporları" alt başlık; "Gün Sonu Raporu" ve "Tümünü Dışe Aktar" butonları GİZLİ; KPI grid (Toplam Ciro / Sipariş / Ort. Hesap / Masa Doluluk 0/0); 5 bölüm: Günlük Ciro Trendi 30g (AreaChart amber) + Saatlik Kırılım 08-23 (BarChart) + Sipariş Tipi Dağılımı (PieChart) + En Çok Satan Ürünler (Table) + Çoklu Kafe Karşılaştırması (Table); Empty state'ler düzgün render (Şık Kafe tenant'ında CafeOrder yok — pre-existing seed limitation) |
+  5228→| `04-market-reports.png` (68 KB) | Market | Market Yöneticisi (J46U-016) | "Market Raporları" başlığı + "🛒 Market & Bakkal sektör raporları" alt başlık; CRM-only butonlar GİZLİ; KPI grid (Toplam Satış / Fiş / Ort. Sepet / Düşük Stok 0); 5 bölüm: Günlük Satış Trendi 30g + Ödeme Yöntemi Dağılımı + Kasiyer Performansı + En Çok Satan Ürünler + Stok Uyarıları; Empty state'ler düzgün render (Anadolu Market tenant'ında MarketSale yok — pre-existing) |
+  5229→| `05-appointments-reports.png` (70 KB) | Randevu | Kuaför Yöneticisi (7W4N-019) | "Randevu Raporları" başlığı + "💇 Randevu & Hizmet sektör raporları" alt başlık; CRM-only butonlar GİZLİ; KPI grid (Toplam Randevu / No-show Oranı %0 / Dönem Cirosu / Sağlayıcı Sayısı —); 5 bölüm: Günlük Randevu Hacmi 30g (AreaChart pink) + Randevu Durumu donut (Tamamlandı/İptal/Gelmedi) + Hizmet Bazlı Ciro (Table) + Personel Performansı (sortable Table) + Yoğun Saatler (7×24 grid); Empty state'ler düzgün render (Şık Kuaför tenant'ında ServiceProvider/Appointment yok — pre-existing) |
+  5230→| `06-site-reports.png` (71 KB) | Site | Site Yöneticisi (M11E-020) | "Site Yönetim Raporları" başlığı + "🏠 Site & Apartman Yönetimi sektör raporları" alt başlık; **GERÇEK DB VERİSİ**: %41 Tahsilat Oranı (3,750 ₺ collected), 2 Açık Şikayet (3 total), 5 Toplam Sakin (10 daire), 2 Personel; Aylık Aidat Tahsilatı BarChart 6 ay (Nis-Eyl) — collected vs expected stacked; Şikayet Özeti donut — "Toplam 3 şikayet" (2 açık, 1 çözüldü); Şikayet kategorileri — Su/Asansor/Park; Priority badges — Yuksek:1, Normal:1, Dusuk:1; Sakin Büyümesi LineChart 12 ay; Personel İş Yükü Table — Hüseyin Arslan (2/1 %50), İbrahim Doğan (2/1 %50) |
+  5231→| `06b-site-reports-1y.png` (71 KB) | Site | Site Yöneticisi | "Son 1 yıl" date range seçildi — `/api/reports?range=1y` çağrısı 200 OK (network log'unda görüldü) — combobox value güncellendi, içerik refresh oldu |
+  5232→| `07-crm-daily-report-dialog.png` (89 KB) | CRM | Demir Yıldız | "Gün Sonu Raporu" butonuna tıklanınca `DailyReportView` Dialog açıldı: tarih Input (14.09.2026) + kullanıcı Select (Kendim Demir Yıldız) + Yenile/CSV butonları; CRM-only Dialog doğru çalışıyor |
+  5233→
+  5234→### Network doğrulama — date range filtresi
+  5235→`agent-browser network requests --filter reports` ile izlendi:
+  5236→```
+  5237→GET /api/reports?range=6m → 200  (CRM, default)
+  5238→GET /api/reports?range=30d → 200 (CRM, after combobox change)
+  5239→GET /api/reports?range=6m → 200  (Cafe/Market/Appointments, default)
+  5240→GET /api/reports?range=1y → 200  (Site, after combobox change)
+  5241→```
+  5242→- ✅ Cosmetic bug düzeltilmiş — `range` parametresi gerçekten API'ye geçiyor
+  5243→- ✅ Proper cache invalidation — `qk.reports(dateRange)` sayesinde range değişince yeni query çalışıyor
+  5244→
+  5245→### Console / Errors
+  5246→- `agent-browser errors` → boş (0 runtime error)
+  5247→- `agent-browser console` → sadece `[HMR] connected` + React DevTools info (hata yok)
+  5248→
+  5249→## 3. Backward Compatibility Doğrulaması
+  5250→
+  5251→| Özellik | Durum | Not |
+  5252→|---------|-------|-----|
+  5253→| CRM 10 bölümün tamamı | ✅ Korunuyor | `CrmReports` sub-component sarmalında — `KpiSummary`, `SalesFunnelCard`, `RevenueTrendCard`, `WinLossAnalysisCard`, `MapsConversionCard`, `ActivityPerformanceCard`, `RepPerformanceCard`, `TopCustomersCard`, `StaleCustomersCard`, `ErpMetricsCard` hepsi çalışır |
+  5254→| `DailyReportView` Dialog (CRM-only) | ✅ Çalışır | `07-crm-daily-report-dialog.png` ile doğrulandı |
+  5255→| "Tümünü Dışe Aktar" global export (CRM-only) | ✅ Korunuyor | `ReportsHeader`'da `onExportAll={sector === 'crm' ? ... : undefined}` — sadece CRM'de render |
+  5256→| `RepPerformanceCard` sortable headers | ✅ Korunuyor | Temsilci/Activite/Kazanılan/Kazanç/Kazanma % kolonları |
+  5257→| `UserActivityLogDialog` (RepPerformanceCard "Detay" butonu) | ✅ Korunuyor | CRM-only |
+  5258→| Rep rolü visibility filter (`visibleRepPerformance`) | ✅ Korunuyor | `CrmReports` içinde `data.repPerformance.filter((r) => r.id === user.id)` |
+  5259→| `stock` rolü 403 + ShieldX kartı | ✅ Korunuyor | API 403 döner + frontend "Yetkisiz Erişim" kartı (rota + UI aynı) |
+  5260→| Export butonu (CSV + XLSX) her bölümde | ✅ Korunuyor | CRM ve diğer sektör component'lerinde `ExportButtons` helper kullanır |
+  5261→
+  5262→## 4. Mimari Tutarlılık — Dashboard Refactor ile Paralellik
+  5263→
+  5264→| Dosya | Dashboard | Reports | Durum |
+  5265→|-------|-----------|---------|-------|
+  5266→| Backend fetcher | `src/lib/dashboard-sectors.ts` (402 satır) | `src/lib/reports-sectors.ts` (851 satır) | ✅ Paralel pattern |
+  5267→| Type interfaces | `src/components/dashboard/types.ts` (110 satır) | `src/components/reports/types.ts` (94 satır) | ✅ Paralel pattern |
+  5268→| Sector components | `src/components/dashboard/sector-dashboards.tsx` (828 satır) | `src/components/reports/sector-reports.tsx` (1830 satır) | ✅ Paralel pattern (KpiCard/EmptyState/ExportButtons helper'ları) |
+  5269→| API route | `src/app/api/dashboard/route.ts` (sector dispatch + `?range=`) | `src/app/api/reports/route.ts` (479 satır, sector dispatch + `?range=`) | ✅ Paralel pattern |
+  5270→| Frontend parent | `src/components/dashboard/dashboard-view.tsx` (sector-aware parent + skeleton) | `src/components/reports/reports-view.tsx` (parent + CrmReports + ReportsHeader + ReportsSkeleton) | ✅ Paralel pattern |
+  5271→| API client | `qk.dashboard` (sabit) | `qk.reports(range)` (range-aware) | ✅ Reports ek range-aware |
+  5272→
+  5273→## 5. Sonuç
+  5274→
+  5275→Mevcut BUILD-REPORTS-SECTOR implementation'ı **tam ve çalışır durumda**. 5 sektörün tümü için:
+  5276→- ✅ Sektör-bazlı title + alt başlık + emoji
+  5277→- ✅ Sektöre özel KPI grid (4 kart, useCountUp animasyonlu)
+  5278→- ✅ Sektöre özel chart'lar (AreaChart/BarChart/PieChart/LineChart — recharts)
+  5279→- ✅ Sektöre özel listeler (sortable Table, Progress bar)
+  5280→- ✅ CRM-only kontrollerin (Gün Sonu Raporu, Tümünü Dışe Aktar) diğer sektörlerde gizlenmesi
+  5281→- ✅ Date range filtresinin API'ye parametre olarak geçişi (cosmetic bug fix doğru)
+  5282→- ✅ Tüm export butonları (CSV + XLSX) her bölümde
+  5283→- ✅ Empty state'ler düzgün render (Cafe/Market/Appointments seed limitation'dan dolayı boş)
+  5284→- ✅ Site sektöründe **gerçek veriler** (3,750 ₺ collected, 2 open complaints, 5 residents, 2 staff) — seed data mevcut
+  5285→
+  5286→Lint 0 hata, browser testleri 5 sektörde de geçti, runtime error yok. Görev tamamlandı.
+  5287→
+  5288→
+  5289→

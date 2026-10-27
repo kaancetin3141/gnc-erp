@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useRef, useEffect } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { apiGet, apiPost, apiPatch, apiDelete, qk } from '@/lib/api-client'
+     6→import { useAppStore } from '@/store/app-store'
+     7→import { hasPermission } from '@/lib/rbac'
+     8→import type { Customer, Contact, Activity, Note, Deal, Task, SessionUser, UserListItem } from '@/types'
+     9→
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Label } from '@/components/ui/label'
+    14→import { Textarea } from '@/components/ui/textarea'
+    15→import { Checkbox } from '@/components/ui/checkbox'
+    16→import { Skeleton } from '@/components/ui/skeleton'
+    17→import { Badge } from '@/components/ui/badge'
+    18→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    19→import { Progress } from '@/components/ui/progress'
+    20→import { Separator } from '@/components/ui/separator'
+    21→import {
+    22→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    23→} from '@/components/ui/table'
+    24→import {
+    25→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    26→} from '@/components/ui/select'
+    27→import {
+    28→  Dialog, DialogContent, DialogDescription, DialogFooter,
+    29→  DialogHeader, DialogTitle,
+    30→} from '@/components/ui/dialog'
+    31→import {
+    32→  Tooltip, TooltipContent, TooltipTrigger,
+    33→} from '@/components/ui/tooltip'
+    34→import {
+    35→  Tabs, TabsContent, TabsList, TabsTrigger,
+    36→} from '@/components/ui/tabs'
+    37→import {
+    38→  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    39→  DropdownMenuTrigger, DropdownMenuSeparator,
+    40→} from '@/components/ui/dropdown-menu'
+    41→import { toast } from 'sonner'
+    42→import {
+    43→  ArrowLeft, Phone, Mail, MessageCircle, StickyNote, Plus, Pencil,
+    44→  MapPin, Star, Crown, ShieldCheck, ShieldAlert, Calendar, Clock,
+    45→  TrendingUp, Users, CheckSquare, FileText, MoreVertical, Trash2,
+    46→  Pin, PinOff, ExternalLink, Globe, Building2, User, RefreshCw,
+    47→  CheckCircle2, XCircle, PauseCircle, PhoneCall,
+    48→  MapPinned, Receipt, Printer,
+    49→} from 'lucide-react'
+    50→import {
+    51→  SECTORS, CITIES, SEGMENTS, CUSTOMER_STATUS, CUSTOMER_SOURCES,
+    52→  ACTIVITY_TYPES, ACTIVITY_OUTCOMES, DEAL_STAGES, TASK_PRIORITIES,
+    53→  TASK_STATUSES, CURRENCIES, TAG_COLOR_CLASSES, getLabel, getColor,
+    54→} from '@/lib/constants'
+    55→import {
+    56→  formatPhone, whatsappLink, telLink, formatCurrency, formatRelative,
+    57→  formatDate, formatDateTime, daysSince, initials, getActivityStatusColor,
+    58→} from '@/lib/format'
+    59→import { cn } from '@/lib/utils'
+    60→
+    61→// ---- Tipler ----
+    62→interface Customer360Data extends Customer {
+    63→  contacts: Contact[]
+    64→  activities: Activity[]
+    65→  notes: Note[]
+    66→  deals: Deal[]
+    67→  tasks: Task[]
+    68→}
+    69→interface UsersResponse {
+    70→  items: UserListItem[]
+    71→  total: number
+    72→}
+    73→
+    74→// ---- Aktivite ikon eşlemesi ----
+    75→const ACTIVITY_ICON_MAP: Record<string, typeof Phone> = {
+    76→  arama: PhoneCall, toplanti: Users, email: Mail, whatsapp: MessageCircle,
+    77→  not: StickyNote, ziyaret: MapPin, gorev: CheckSquare,
+    78→}
+    79→const ACTIVITY_ICON_COLORS: Record<string, string> = {
+    80→  arama: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40',
+    81→  toplanti: 'text-violet-600 bg-violet-50 dark:bg-violet-950/40',
+    82→  email: 'text-sky-600 bg-sky-50 dark:bg-sky-950/40',
+    83→  whatsapp: 'text-green-600 bg-green-50 dark:bg-green-950/40',
+    84→  not: 'text-amber-600 bg-amber-50 dark:bg-amber-950/40',
+    85→  ziyaret: 'text-rose-600 bg-rose-50 dark:bg-rose-950/40',
+    86→  gorev: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40',
+    87→}
+    88→const OUTCOME_BADGE: Record<string, { color: string; icon: typeof CheckCircle2; label: string }> = {
+    89→  basarili: { color: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40', icon: CheckCircle2, label: 'Başarılı' },
+    90→  basarisiz: { color: 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950/40', icon: XCircle, label: 'Başarısız' },
+    91→  ertelendi: { color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950/40', icon: PauseCircle, label: 'Ertelendi' },
+    92→  callback: { color: 'text-sky-600 bg-sky-50 border-sky-200 dark:bg-sky-950/40', icon: PhoneCall, label: 'Geri Aranacak' },
+    93→}
+    94→
+    95→// =========================================================
+    96→//   AKTİVİTE EKLEME DIALOG
+    97→// =========================================================
+    98→function ActivityDialog({
+    99→  open, onOpenChange, customerId,
+   100→}: {
+   101→  open: boolean
+   102→  onOpenChange: (v: boolean) => void
+   103→  customerId: string
+   104→}) {
+   105→  const qc = useQueryClient()
+   106→  const [type, setType] = useState('arama')
+   107→  const [subject, setSubject] = useState('')
+   108→  const [detail, setDetail] = useState('')
+   109→  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 16))
+   110→  const [duration, setDuration] = useState('15')
+   111→  const [outcome, setOutcome] = useState('basarili')
+   112→  const [submitting, setSubmitting] = useState(false)
+   113→
+   114→  // Reset when opening
+   115→  useEffect(() => {
+   116→    if (open) {
+   117→      setType('arama'); setSubject(''); setDetail('')
+   118→      setDate(new Date().toISOString().slice(0, 16))
+   119→      setDuration('15'); setOutcome('basarili')
+   120→    }
+   121→  }, [open])
+   122→
+   123→  const submit = async () => {
+   124→    if (!subject.trim()) {
+   125→      toast.error('Konu gerekli')
+   126→      return
+   127→    }
+   128→    setSubmitting(true)
+   129→    try {
+   130→      await apiPost(`/api/customers/${customerId}/activities`, {
+   131→        type, subject: subject.trim(), detail: detail.trim() || null,
+   132→        date: new Date(date).toISOString(),
+   133→        durationMin: parseInt(duration) || 0, outcome,
+   134→      })
+   135→      toast.success('Aktivite eklendi')
+   136→      qc.invalidateQueries({ queryKey: qk.customer(customerId) })
+   137→      qc.invalidateQueries({ queryKey: ['dashboard'] })
+   138→      onOpenChange(false)
+   139→    } catch (e) {
+   140→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+   141→    } finally {
+   142→      setSubmitting(false)
+   143→    }
+   144→  }
+   145→
+   146→  return (
+   147→    <Dialog open={open} onOpenChange={onOpenChange}>
+   148→      <DialogContent className="sm:max-w-lg">
+   149→        <DialogHeader>
+   150→          <DialogTitle>Aktivite Ekle</DialogTitle>
+   151→          <DialogDescription>Bu müşteri için yeni bir aktivite kaydı oluşturun</DialogDescription>
+   152→        </DialogHeader>
+   153→        <div className="space-y-3 py-2">
+   154→          <div className="grid grid-cols-2 gap-3">
+   155→            <div className="space-y-1.5">
+   156→              <Label className="text-xs">Tip</Label>
+   157→              <Select value={type} onValueChange={setType}>
+   158→                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   159→                <SelectContent>
+   160→                  {ACTIVITY_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+   161→                </SelectContent>
+   162→              </Select>
+   163→            </div>
+   164→            <div className="space-y-1.5">
+   165→              <Label className="text-xs">Sonuç</Label>
+   166→              <Select value={outcome} onValueChange={setOutcome}>
+   167→                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   168→                <SelectContent>
+   169→                  {ACTIVITY_OUTCOMES.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+   170→                </SelectContent>
+   171→              </Select>
+   172→            </div>
+   173→          </div>
+   174→          <div className="space-y-1.5">
+   175→            <Label className="text-xs">Konu *</Label>
+   176→            <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Örn. Fiyat teklifi görüşmesi" />
+   177→          </div>
+   178→          <div className="space-y-1.5">
+   179→            <Label className="text-xs">Detay</Label>
+   180→            <Textarea
+   181→              value={detail}
+   182→              onChange={(e) => setDetail(e.target.value)}
+   183→              rows={3}
+   184→              placeholder="Aktivite detayları..."
+   185→            />
+   186→          </div>
+   187→          <div className="grid grid-cols-2 gap-3">
+   188→            <div className="space-y-1.5">
+   189→              <Label className="text-xs">Tarih & Saat</Label>
+   190→              <Input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
+   191→            </div>
+   192→            <div className="space-y-1.5">
+   193→              <Label className="text-xs">Süre (dk)</Label>
+   194→              <Input type="number" value={duration} onChange={(e) => setDuration(e.target.value)} min={0} />
+   195→            </div>
+   196→          </div>
+   197→        </div>
+   198→        <DialogFooter>
+   199→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>İptal</Button>
+   200→          <Button onClick={submit} disabled={submitting || !subject.trim()}>
+   201→            {submitting && <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />}
+   202→            Kaydet
+   203→          </Button>
+   204→        </DialogFooter>
+   205→      </DialogContent>
+   206→    </Dialog>
+   207→  )
+   208→}
+   209→
+   210→// =========================================================
+   211→//   FIRSAT EKLEME DIALOG
+   212→// =========================================================
+   213→function DealDialog({
+   214→  open, onOpenChange, customerId, defaultOwnerId,
+   215→}: {
+   216→  open: boolean
+   217→  onOpenChange: (v: boolean) => void
+   218→  customerId: string
+   219→  defaultOwnerId?: string
+   220→}) {
+   221→  const qc = useQueryClient()
+   222→  const [title, setTitle] = useState('')
+   223→  const [value, setValue] = useState('')
+   224→  const [currency, setCurrency] = useState('TRY')
+   225→  const [stage, setStage] = useState('yeni')
+   226→  const [probability, setProbability] = useState('10')
+   227→  const [expectedCloseDate, setExpectedCloseDate] = useState('')
+   228→  const [submitting, setSubmitting] = useState(false)
+   229→
+   230→  useEffect(() => {
+   231→    if (open) {
+   232→      setTitle(''); setValue(''); setCurrency('TRY'); setStage('yeni')
+   233→      setProbability('10'); setExpectedCloseDate('')
+   234→    }
+   235→  }, [open])
+   236→
+   237→  // Sahne → olasılık senkronizasyonu
+   238→  useEffect(() => {
+   239→    const s = DEAL_STAGES.find((x) => x.value === stage)
+   240→    if (s) setProbability(String(s.probability))
+   241→  }, [stage])
+   242→
+   243→  const submit = async () => {
+   244→    if (!title.trim()) { toast.error('Fırsat başlığı gerekli'); return }
+   245→    setSubmitting(true)
+   246→    try {
+   247→      await apiPost('/api/deals', {
+   248→        title: title.trim(),
+   249→        customerId,
+   250→        value: parseFloat(value) || 0,
+   251→        currency,
+   252→        stage,
+   253→        probability: parseInt(probability) || 0,
+   254→        expectedCloseDate: expectedCloseDate ? new Date(expectedCloseDate).toISOString() : null,
+   255→        ownerId: defaultOwnerId || null,
+   256→      })
+   257→      toast.success('Fırsat oluşturuldu')
+   258→      qc.invalidateQueries({ queryKey: qk.customer(customerId) })
+   259→      qc.invalidateQueries({ queryKey: ['dashboard'] })
+   260→      onOpenChange(false)
+   261→    } catch (e) {
+   262→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+   263→    } finally {
+   264→      setSubmitting(false)
+   265→    }
+   266→  }
+   267→
+   268→  return (
+   269→    <Dialog open={open} onOpenChange={onOpenChange}>
+   270→      <DialogContent className="sm:max-w-lg">
+   271→        <DialogHeader>
+   272→          <DialogTitle>Yeni Fırsat</DialogTitle>
+   273→          <DialogDescription>Bu müşteri için yeni bir satış fırsatı açın</DialogDescription>
+   274→        </DialogHeader>
+   275→        <div className="space-y-3 py-2">
+   276→          <div className="space-y-1.5">
+   277→            <Label className="text-xs">Başlık *</Label>
+   278→            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Örn. Yıllık bakım sözleşmesi" />
+   279→          </div>
+   280→          <div className="grid grid-cols-3 gap-3">
+   281→            <div className="col-span-2 space-y-1.5">
+   282→              <Label className="text-xs">Değer</Label>
+   283→              <Input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" />
+   284→            </div>
+   285→            <div className="space-y-1.5">
+   286→              <Label className="text-xs">Para Birimi</Label>
+   287→              <Select value={currency} onValueChange={setCurrency}>
+   288→                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   289→                <SelectContent>
+   290→                  {CURRENCIES.map((c) => <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>)}
+   291→                </SelectContent>
+   292→              </Select>
+   293→            </div>
+   294→          </div>
+   295→          <div className="grid grid-cols-2 gap-3">
+   296→            <div className="space-y-1.5">
+   297→              <Label className="text-xs">Aşama</Label>
+   298→              <Select value={stage} onValueChange={setStage}>
+   299→                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   300→                <SelectContent>
+   301→                  {DEAL_STAGES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+   302→                </SelectContent>
+   303→              </Select>
+   304→            </div>
+   305→            <div className="space-y-1.5">
+   306→              <Label className="text-xs">Olasılık (%)</Label>
+   307→              <Input type="number" min={0} max={100} value={probability} onChange={(e) => setProbability(e.target.value)} />
+   308→            </div>
+   309→          </div>
+   310→          <div className="space-y-1.5">
+   311→            <Label className="text-xs">Tahmini Kapanış</Label>
+   312→            <Input type="date" value={expectedCloseDate} onChange={(e) => setExpectedCloseDate(e.target.value)} />
+   313→          </div>
+   314→        </div>
+   315→        <DialogFooter>
+   316→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>İptal</Button>
+   317→          <Button onClick={submit} disabled={submitting || !title.trim()}>
+   318→            {submitting && <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />}
+   319→            Fırsat Aç
+   320→          </Button>
+   321→        </DialogFooter>
+   322→      </DialogContent>
+   323→    </Dialog>
+   324→  )
+   325→}
+   326→
+   327→// =========================================================
+   328→//   GÖREV EKLEME DIALOG
+   329→// =========================================================
+   330→function TaskDialog({
+   331→  open, onOpenChange, customerId, users, defaultAssigneeId,
+   332→}: {
+   333→  open: boolean
+   334→  onOpenChange: (v: boolean) => void
+   335→  customerId: string
+   336→  users: UserListItem[]
+   337→  defaultAssigneeId?: string
+   338→}) {
+   339→  const qc = useQueryClient()
+   340→  const [title, setTitle] = useState('')
+   341→  const [dueDate, setDueDate] = useState(() => {
+   342→    const d = new Date(); d.setDate(d.getDate() + 1)
+   343→    return d.toISOString().slice(0, 10)
+   344→  })
+   345→  const [priority, setPriority] = useState('orta')
+   346→  const [assigneeId, setAssigneeId] = useState(defaultAssigneeId || '')
+   347→  const [submitting, setSubmitting] = useState(false)
+   348→
+   349→  useEffect(() => {
+   350→    if (open) {
+   351→      setTitle(''); setPriority('orta')
+   352→      const d = new Date(); d.setDate(d.getDate() + 1)
+   353→      setDueDate(d.toISOString().slice(0, 10))
+   354→      setAssigneeId(defaultAssigneeId || '')
+   355→    }
+   356→  }, [open, defaultAssigneeId])
+   357→
+   358→  const submit = async () => {
+   359→    if (!title.trim()) { toast.error('Görev başlığı gerekli'); return }
+   360→    if (!dueDate) { toast.error('Bitiş tarihi gerekli'); return }
+   361→    setSubmitting(true)
+   362→    try {
+   363→      await apiPost('/api/tasks', {
+   364→        title: title.trim(),
+   365→        dueDate: new Date(dueDate).toISOString(),
+   366→        assigneeId: assigneeId || null,
+   367→        customerId,
+   368→        priority,
+   369→      })
+   370→      toast.success('Görev oluşturuldu')
+   371→      qc.invalidateQueries({ queryKey: qk.customer(customerId) })
+   372→      qc.invalidateQueries({ queryKey: ['dashboard'] })
+   373→      onOpenChange(false)
+   374→    } catch (e) {
+   375→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+   376→    } finally {
+   377→      setSubmitting(false)
+   378→    }
+   379→  }
+   380→
+   381→  return (
+   382→    <Dialog open={open} onOpenChange={onOpenChange}>
+   383→      <DialogContent className="sm:max-w-lg">
+   384→        <DialogHeader>
+   385→          <DialogTitle>Görev Oluştur</DialogTitle>
+   386→          <DialogDescription>Bu müşteri için yeni bir görev tanımlayın</DialogDescription>
+   387→        </DialogHeader>
+   388→        <div className="space-y-3 py-2">
+   389→          <div className="space-y-1.5">
+   390→            <Label className="text-xs">Başlık *</Label>
+   391→            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Örn. Teklif takip et" />
+   392→          </div>
+   393→          <div className="grid grid-cols-2 gap-3">
+   394→            <div className="space-y-1.5">
+   395→              <Label className="text-xs">Bitiş Tarihi *</Label>
+   396→              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+   397→            </div>
+   398→            <div className="space-y-1.5">
+   399→              <Label className="text-xs">Öncelik</Label>
+   400→              <Select value={priority} onValueChange={setPriority}>
+   401→                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   402→                <SelectContent>
+   403→                  {TASK_PRIORITIES.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+   404→                </SelectContent>
+   405→              </Select>
+   406→            </div>
+   407→          </div>
+   408→          <div className="space-y-1.5">
+   409→            <Label className="text-xs">Atanan</Label>
+   410→            <Select value={assigneeId || '__me__'} onValueChange={(v) => setAssigneeId(v === '__me__' ? '' : v)}>
+   411→              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   412→              <SelectContent>
+   413→                <SelectItem value="__me__">Bana ata</SelectItem>
+   414→                {users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+   415→              </SelectContent>
+   416→            </Select>
+   417→          </div>
+   418→        </div>
+   419→        <DialogFooter>
+   420→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>İptal</Button>
+   421→          <Button onClick={submit} disabled={submitting || !title.trim()}>
+   422→            {submitting && <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />}
+   423→            Oluştur
+   424→          </Button>
+   425→        </DialogFooter>
+   426→      </DialogContent>
+   427→    </Dialog>
+   428→  )
+   429→}
+   430→
+   431→// =========================================================
+   432→//   KİŞİ EKLEME DIALOG
+   433→// =========================================================
+   434→function ContactDialog({
+   435→  open, onOpenChange, customerId,
+   436→}: {
+   437→  open: boolean
+   438→  onOpenChange: (v: boolean) => void
+   439→  customerId: string
+   440→}) {
+   441→  const qc = useQueryClient()
+   442→  const [name, setName] = useState('')
+   443→  const [position, setPosition] = useState('')
+   444→  const [email, setEmail] = useState('')
+   445→  const [phone, setPhone] = useState('')
+   446→  const [isPrimary, setIsPrimary] = useState(false)
+   447→  const [submitting, setSubmitting] = useState(false)
+   448→
+   449→  useEffect(() => {
+   450→    if (open) {
+   451→      setName(''); setPosition(''); setEmail(''); setPhone(''); setIsPrimary(false)
+   452→    }
+   453→  }, [open])
+   454→
+   455→  const submit = async () => {
+   456→    if (!name.trim()) { toast.error('Kişi adı gerekli'); return }
+   457→    setSubmitting(true)
+   458→    try {
+   459→      await apiPost(`/api/customers/${customerId}/contacts`, {
+   460→        name: name.trim(),
+   461→        position: position.trim() || null,
+   462→        email: email.trim() || null,
+   463→        phone: phone.trim() || null,
+   464→        isPrimary,
+   465→      })
+   466→      toast.success('Kişi eklendi')
+   467→      qc.invalidateQueries({ queryKey: qk.customer(customerId) })
+   468→      onOpenChange(false)
+   469→    } catch (e) {
+   470→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+   471→    } finally {
+   472→      setSubmitting(false)
+   473→    }
+   474→  }
+   475→
+   476→  return (
+   477→    <Dialog open={open} onOpenChange={onOpenChange}>
+   478→      <DialogContent className="sm:max-w-lg">
+   479→        <DialogHeader>
+   480→          <DialogTitle>Yeni Kişi</DialogTitle>
+   481→          <DialogDescription>Bu müşteri için yeni iletişim kişisi ekleyin</DialogDescription>
+   482→        </DialogHeader>
+   483→        <div className="space-y-3 py-2">
+   484→          <div className="grid grid-cols-2 gap-3">
+   485→            <div className="space-y-1.5">
+   486→              <Label className="text-xs">Ad Soyad *</Label>
+   487→              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ahmet Yılmaz" />
+   488→            </div>
+   489→            <div className="space-y-1.5">
+   490→              <Label className="text-xs">Pozisyon</Label>
+   491→              <Input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="Genel Müdür" />
+   492→            </div>
+   493→          </div>
+   494→          <div className="grid grid-cols-2 gap-3">
+   495→            <div className="space-y-1.5">
+   496→              <Label className="text-xs">E-posta</Label>
+   497→              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ahmet@firma.com" />
+   498→            </div>
+   499→            <div className="space-y-1.5">
+   500→              <Label className="text-xs">Telefon</Label>
+   501→              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+90 532..." />
+   502→            </div>
+   503→          </div>
+   504→          <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+   505→            <Checkbox id="primary" checked={isPrimary} onCheckedChange={(v) => setIsPrimary(!!v)} />
+   506→            <Label htmlFor="primary" className="cursor-pointer text-sm">Birincil kişi olarak işaretle</Label>
+   507→          </div>
+   508→        </div>
+   509→        <DialogFooter>
+   510→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>İptal</Button>
+   511→          <Button onClick={submit} disabled={submitting || !name.trim()}>
+   512→            {submitting && <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />}
+   513→            Ekle
+   514→          </Button>
+   515→        </DialogFooter>
+   516→      </DialogContent>
+   517→    </Dialog>
+   518→  )
+   519→}
+   520→
+   521→// =========================================================
+   522→//   MÜŞTERİ DÜZENLEME DIALOG
+   523→// =========================================================
+   524→function EditCustomerDialog({
+   525→  open, onOpenChange, customer,
+   526→}: {
+   527→  open: boolean
+   528→  onOpenChange: (v: boolean) => void
+   529→  customer: Customer360Data
+   530→}) {
+   531→  const qc = useQueryClient()
+   532→  const [form, setForm] = useState({
+   533→    name: '', sector: 'Diğer', segment: 'standart', city: '',
+   534→    phone: '', email: '', web: '', taxNumber: '',
+   535→    source: 'manuel', status: 'aktif', kvkkConsent: false, tags: '',
+   536→    address: '',
+   537→  })
+   538→  const [submitting, setSubmitting] = useState(false)
+   539→
+   540→  useEffect(() => {
+   541→    if (open && customer) {
+   542→      setForm({
+   543→        name: customer.name || '',
+   544→        sector: customer.sector || 'Diğer',
+   545→        segment: customer.segment || 'standart',
+   546→        city: customer.city || '',
+   547→        phone: customer.phone || '',
+   548→        email: customer.email || '',
+   549→        web: customer.web || '',
+   550→        taxNumber: customer.taxNumber || '',
+   551→        source: customer.source || 'manuel',
+   552→        status: customer.status || 'aktif',
+   553→        kvkkConsent: customer.kvkkConsent || false,
+   554→        tags: Array.isArray(customer.tags) ? customer.tags.join(', ') : '',
+   555→        address: customer.address || '',
+   556→      })
+   557→    }
+   558→  }, [open, customer])
+   559→
+   560→  const submit = async () => {
+   561→    if (!form.name.trim()) { toast.error('Müşteri adı gerekli'); return }
+   562→    setSubmitting(true)
+   563→    try {
+   564→      const tags = form.tags.split(',').map((t) => t.trim()).filter(Boolean)
+   565→      await apiPatch(`/api/customers/${customer.id}`, {
+   566→        name: form.name.trim(),
+   567→        sector: form.sector,
+   568→        segment: form.segment,
+   569→        city: form.city || null,
+   570→        phone: form.phone || null,
+   571→        email: form.email || null,
+   572→        web: form.web || null,
+   573→        taxNumber: form.taxNumber || null,
+   574→        source: form.source,
+   575→        status: form.status,
+   576→        kvkkConsent: form.kvkkConsent,
+   577→        tags,
+   578→        address: form.address || null,
+   579→      })
+   580→      toast.success('Müşteri güncellendi')
+   581→      qc.invalidateQueries({ queryKey: qk.customer(customer.id) })
+   582→      qc.invalidateQueries({ queryKey: ['customers'] })
+   583→      onOpenChange(false)
+   584→    } catch (e) {
+   585→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+   586→    } finally {
+   587→      setSubmitting(false)
+   588→    }
+   589→  }
+   590→
+   591→  return (
+   592→    <Dialog open={open} onOpenChange={onOpenChange}>
+   593→      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto custom-scroll">
+   594→        <DialogHeader>
+   595→          <DialogTitle>Müşteri Düzenle</DialogTitle>
+   596→          <DialogDescription>{customer.name} bilgilerini güncelleyin</DialogDescription>
+   597→        </DialogHeader>
+   598→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+   599→          <div className="sm:col-span-2 space-y-1.5">
+   600→            <Label>Müşteri Adı *</Label>
+   601→            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+   602→          </div>
+   603→          <div className="space-y-1.5">
+   604→            <Label>Sektör</Label>
+   605→            <Select value={form.sector} onValueChange={(v) => setForm((f) => ({ ...f, sector: v }))}>
+   606→              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   607→              <SelectContent>{SECTORS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+   608→            </Select>
+   609→          </div>
+   610→          <div className="space-y-1.5">
+   611→            <Label>Segment</Label>
+   612→            <Select value={form.segment} onValueChange={(v) => setForm((f) => ({ ...f, segment: v }))}>
+   613→              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   614→              <SelectContent>{SEGMENTS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+   615→            </Select>
+   616→          </div>
+   617→          <div className="space-y-1.5">
+   618→            <Label>Şehir</Label>
+   619→            <Select value={form.city || '__none__'} onValueChange={(v) => setForm((f) => ({ ...f, city: v === '__none__' ? '' : v }))}>
+   620→              <SelectTrigger className="w-full"><SelectValue placeholder="Seçin" /></SelectTrigger>
+   621→              <SelectContent>
+   622→                <SelectItem value="__none__">— Seçilmedi —</SelectItem>
+   623→                {CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+   624→              </SelectContent>
+   625→            </Select>
+   626→          </div>
+   627→          <div className="space-y-1.5">
+   628→            <Label>Kaynak</Label>
+   629→            <Select value={form.source} onValueChange={(v) => setForm((f) => ({ ...f, source: v }))}>
+   630→              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   631→              <SelectContent>{CUSTOMER_SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+   632→            </Select>
+   633→          </div>
+   634→          <div className="space-y-1.5">
+   635→            <Label>Telefon</Label>
+   636→            <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+   637→          </div>
+   638→          <div className="space-y-1.5">
+   639→            <Label>E-posta</Label>
+   640→            <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+   641→          </div>
+   642→          <div className="space-y-1.5">
+   643→            <Label>Web</Label>
+   644→            <Input value={form.web} onChange={(e) => setForm((f) => ({ ...f, web: e.target.value }))} />
+   645→          </div>
+   646→          <div className="space-y-1.5">
+   647→            <Label>Vergi / TC No</Label>
+   648→            <Input value={form.taxNumber} onChange={(e) => setForm((f) => ({ ...f, taxNumber: e.target.value }))} />
+   649→          </div>
+   650→          <div className="space-y-1.5">
+   651→            <Label>Durum</Label>
+   652→            <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+   653→              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   654→              <SelectContent>{CUSTOMER_STATUS.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+   655→            </Select>
+   656→          </div>
+   657→          <div className="sm:col-span-2 space-y-1.5">
+   658→            <Label>Adres</Label>
+   659→            <Textarea rows={2} value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
+   660→          </div>
+   661→          <div className="sm:col-span-2 space-y-1.5">
+   662→            <Label>Etiketler</Label>
+   663→            <Input value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} placeholder="virgülle ayırın" />
+   664→          </div>
+   665→          <div className="sm:col-span-2 flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+   666→            <Checkbox id="kvkk2" checked={form.kvkkConsent} onCheckedChange={(v) => setForm((f) => ({ ...f, kvkkConsent: !!v }))} />
+   667→            <Label htmlFor="kvkk2" className="cursor-pointer font-medium">KVKK Aydınlatma Onayı</Label>
+   668→          </div>
+   669→        </div>
+   670→        <DialogFooter>
+   671→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>İptal</Button>
+   672→          <Button onClick={submit} disabled={submitting || !form.name.trim()}>
+   673→            {submitting && <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />}
+   674→            Güncelle
+   675→          </Button>
+   676→        </DialogFooter>
+   677→      </DialogContent>
+   678→    </Dialog>
+   679→  )
+   680→}
+   681→
+   682→// =========================================================
+   683→//   TIMELINE (Zaman Çizelgesi)
+   684→// =========================================================
+   685→function TimelineTab({
+   686→  customer, onAdd,
+   687→}: {
+   688→  customer: Customer360Data
+   689→  onAdd: () => void
+   690→}) {
+   691→  const activities = customer.activities ?? []
+   692→  if (activities.length === 0) {
+   693→    return (
+   694→      <div className="text-center py-12">
+   695→        <div className="w-14 h-14 mx-auto rounded-full bg-muted flex items-center justify-center mb-3">
+   696→          <Clock className="w-7 h-7 text-muted-foreground/40" />
+   697→        </div>
+   698→        <p className="text-sm text-muted-foreground">Henüz aktivite kaydı yok</p>
+   699→        <Button size="sm" variant="outline" className="mt-3" onClick={onAdd}>
+   700→          <Plus className="w-4 h-4 mr-1.5" /> İlk Aktivite
+   701→        </Button>
+   702→      </div>
+   703→    )
+   704→  }
+   705→  return (
+   706→    <div className="space-y-1">
+   707→      <div className="flex justify-end mb-2">
+   708→        <Button size="sm" onClick={onAdd}>
+   709→          <Plus className="w-4 h-4 mr-1.5" /> Aktivite Ekle
+   710→        </Button>
+   711→      </div>
+   712→      <div className="relative pl-8">
+   713→        {/* Dikey çizgi */}
+   714→        <div className="absolute left-3 top-2 bottom-2 w-px bg-gradient-to-b from-emerald-200 via-slate-200 to-transparent dark:from-emerald-900 dark:via-slate-800" />
+   715→        {activities.map((act, idx) => {
+   716→          const Icon = ACTIVITY_ICON_MAP[act.type] ?? Phone
+   717→          const iconColor = ACTIVITY_ICON_COLORS[act.type] ?? 'text-slate-600 bg-slate-50'
+   718→          const out = act.outcome ? OUTCOME_BADGE[act.outcome] : null
+   719→          return (
+   720→            <div key={act.id} className="relative pb-5 last:pb-0">
+   721→              {/* Nokta/ikon */}
+   722→              <div className={cn(
+   723→                'absolute -left-7 top-1 w-8 h-8 rounded-full flex items-center justify-center ring-4 ring-background',
+   724→                iconColor,
+   725→              )}>
+   726→                <Icon className="w-4 h-4" />
+   727→              </div>
+   728→              <Card className={cn('hover:shadow-sm transition-shadow', idx === 0 && 'border-emerald-200 dark:border-emerald-900')}>
+   729→                <CardContent className="p-3">
+   730→                  <div className="flex items-start justify-between gap-2 flex-wrap">
+   731→                    <div className="min-w-0 flex-1">
+   732→                      <div className="flex items-center gap-2 flex-wrap">
+   733→                        <span className="font-medium text-sm">{act.subject}</span>
+   734→                        <Badge variant="outline" className="text-[10px] px-1.5">
+   735→                          {getLabel(ACTIVITY_TYPES, act.type)}
+   736→                        </Badge>
+   737→                        {out && (
+   738→                          <Badge variant="outline" className={cn('text-[10px] px-1.5', out.color)}>
+   739→                            <out.icon className="w-3 h-3 mr-1" />
+   740→                            {out.label}
+   741→                          </Badge>
+   742→                        )}
+   743→                      </div>
+   744→                      {act.detail && (
+   745→                        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{act.detail}</p>
+   746→                      )}
+   747→                      <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground flex-wrap">
+   748→                        <span className="inline-flex items-center gap-1">
+   749→                          <Calendar className="w-3 h-3" />
+   750→                          {formatDateTime(act.date)}
+   751→                        </span>
+   752→                        {act.durationMin > 0 && (
+   753→                          <span className="inline-flex items-center gap-1">
+   754→                            <Clock className="w-3 h-3" />
+   755→                            {act.durationMin} dk
+   756→                          </span>
+   757→                        )}
+   758→                        {act.user?.name && (
+   759→                          <span className="inline-flex items-center gap-1">
+   760→                            <User className="w-3 h-3" />
+   761→                            {act.user.name}
+   762→                          </span>
+   763→                        )}
+   764→                      </div>
+   765→                    </div>
+   766→                  </div>
+   767→                </CardContent>
+   768→              </Card>
+   769→            </div>
+   770→          )
+   771→        })}
+   772→      </div>
+   773→    </div>
+   774→  )
+   775→}
+   776→
+   777→// =========================================================
+   778→//   DEALS (Fırsatlar)
+   779→// =========================================================
+   780→function DealsTab({
+   781→  customer, onAdd,
+   782→}: {
+   783→  customer: Customer360Data
+   784→  onAdd: () => void
+   785→}) {
+   786→  const deals = customer.deals ?? []
+   787→  if (deals.length === 0) {
+   788→    return (
+   789→      <div className="text-center py-10">
+   790→        <TrendingUp className="w-10 h-10 mx-auto text-muted-foreground/30 mb-2" />
+   791→        <p className="text-sm text-muted-foreground">Bu müşteri için açık fırsat yok</p>
+   792→        <Button size="sm" variant="outline" className="mt-3" onClick={onAdd}>
+   793→          <Plus className="w-4 h-4 mr-1.5" /> Fırsat Aç
+   794→        </Button>
+   795→      </div>
+   796→    )
+   797→  }
+   798→  const totalValue = deals
+   799→    .filter((d) => d.stage !== 'kaybedildi')
+   800→    .reduce((sum, d) => sum + d.value, 0)
+   801→  return (
+   802→    <div className="space-y-3">
+   803→      <div className="flex items-center justify-between gap-2 flex-wrap">
+   804→        <div className="flex items-center gap-2 text-sm">
+   805→          <span className="text-muted-foreground">Toplam potansiyel:</span>
+   806→          <span className="font-bold text-emerald-600">{formatCurrency(totalValue, 'TRY')}</span>
+   807→          <span className="text-muted-foreground text-xs">({deals.length} fırsat)</span>
+   808→        </div>
+   809→        <Button size="sm" onClick={onAdd}>
+   810→          <Plus className="w-4 h-4 mr-1.5" /> Fırsat Aç
+   811→        </Button>
+   812→      </div>
+   813→      <div className="grid sm:grid-cols-2 gap-3">
+   814→        {deals.map((d) => {
+   815→          const stageColor = getColor(DEAL_STAGES, d.stage)
+   816→          return (
+   817→            <Card key={d.id} className="hover:shadow-sm transition-shadow">
+   818→              <CardContent className="p-4">
+   819→                <div className="flex items-start justify-between gap-2">
+   820→                  <div className="min-w-0 flex-1">
+   821→                    <div className="font-medium text-sm truncate">{d.title}</div>
+   822→                    <div className="text-lg font-bold mt-1">{formatCurrency(d.value, d.currency)}</div>
+   823→                  </div>
+   824→                  <Badge variant="outline" className={cn('text-[10px] px-1.5 shrink-0', stageColor)}>
+   825→                    {getLabel(DEAL_STAGES, d.stage)}
+   826→                  </Badge>
+   827→                </div>
+   828→                <div className="mt-3">
+   829→                  <div className="flex items-center justify-between text-xs mb-1">
+   830→                    <span className="text-muted-foreground">Olasılık</span>
+   831→                    <span className="font-medium">{d.probability}%</span>
+   832→                  </div>
+   833→                  <Progress value={d.probability} className="h-1.5" />
+   834→                </div>
+   835→                <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground flex-wrap">
+   836→                  {d.expectedCloseDate && (
+   837→                    <span className="inline-flex items-center gap-1">
+   838→                      <Calendar className="w-3 h-3" />
+   839→                      {formatDate(d.expectedCloseDate)}
+   840→                    </span>
+   841→                  )}
+   842→                  {d.owner?.name && (
+   843→                    <span className="inline-flex items-center gap-1">
+   844→                      <User className="w-3 h-3" />
+   845→                      {d.owner.name}
+   846→                    </span>
+   847→                  )}
+   848→                </div>
+   849→              </CardContent>
+   850→            </Card>
+   851→          )
+   852→        })}
+   853→      </div>
+   854→    </div>
+   855→  )
+   856→}
+   857→
+   858→// =========================================================
+   859→//   CONTACTS (Kişiler)
+   860→// =========================================================
+   861→function ContactsTab({
+   862→  customer, onAdd,
+   863→}: {
+   864→  customer: Customer360Data
+   865→  onAdd: () => void
+   866→}) {
+   867→  const qc = useQueryClient()
+   868→  const contacts = customer.contacts ?? []
+   869→
+   870→  const deleteContact = async (contactId: string) => {
+   871→    try {
+   872→      await apiDelete(`/api/customers/${customer.id}/contacts?contactId=${contactId}`)
+   873→      toast.success('Kişi silindi')
+   874→      qc.invalidateQueries({ queryKey: qk.customer(customer.id) })
+   875→    } catch (e) {
+   876→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+   877→    }
+   878→  }
+   879→
+   880→  return (
+   881→    <div className="space-y-3">
+   882→      <div className="flex justify-end">
+   883→        <Button size="sm" onClick={onAdd}>
+   884→          <Plus className="w-4 h-4 mr-1.5" /> Kişi Ekle
+   885→        </Button>
+   886→      </div>
+   887→      {contacts.length === 0 ? (
+   888→        <div className="text-center py-10">
+   889→          <Users className="w-10 h-10 mx-auto text-muted-foreground/30 mb-2" />
+   890→          <p className="text-sm text-muted-foreground">Kayıtlı kişi yok</p>
+   891→        </div>
+   892→      ) : (
+   893→        <div className="rounded-md border">
+   894→          <Table>
+   895→            <TableHeader>
+   896→              <TableRow className="bg-muted/40">
+   897→                <TableHead className="pl-4">Kişi</TableHead>
+   898→                <TableHead className="hidden sm:table-cell">Pozisyon</TableHead>
+   899→                <TableHead className="hidden md:table-cell">E-posta</TableHead>
+   900→                <TableHead>Telefon</TableHead>
+   901→                <TableHead className="text-right pr-4">İşlem</TableHead>
+   902→              </TableRow>
+   903→            </TableHeader>
+   904→            <TableBody>
+   905→              {contacts.map((c) => (
+   906→                <TableRow key={c.id}>
+   907→                  <TableCell className="pl-4">
+   908→                    <div className="flex items-center gap-2">
+   909→                      <Avatar className="w-7 h-7">
+   910→                        <AvatarFallback className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+   911→                          {initials(c.name)}
+   912→                        </AvatarFallback>
+   913→                      </Avatar>
+   914→                      <div className="min-w-0">
+   915→                        <div className="text-sm font-medium truncate flex items-center gap-1.5">
+   916→                          {c.name}
+   917→                          {c.isPrimary && (
+   918→                            <Tooltip>
+   919→                              <TooltipTrigger asChild>
+   920→                                <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+   921→                              </TooltipTrigger>
+   922→                              <TooltipContent>Birincil kişi</TooltipContent>
+   923→                            </Tooltip>
+   924→                          )}
+   925→                        </div>
+   926→                        <div className="text-xs text-muted-foreground sm:hidden">{c.position || '—'}</div>
+   927→                      </div>
+   928→                    </div>
+   929→                  </TableCell>
+   930→                  <TableCell className="hidden sm:table-cell text-sm text-muted-foreground">{c.position || '—'}</TableCell>
+   931→                  <TableCell className="hidden md:table-cell text-sm">
+   932→                    {c.email ? (
+   933→                      <a href={`mailto:${c.email}`} className="text-sky-600 hover:underline inline-flex items-center gap-1">
+   934→                        <Mail className="w-3 h-3" />
+   935→                        <span className="truncate max-w-[160px]">{c.email}</span>
+   936→                      </a>
+   937→                    ) : '—'}
+   938→                  </TableCell>
+   939→                  <TableCell className="text-sm">
+   940→                    {c.phone ? (
+   941→                      <a href={telLink(c.phone)} className="text-emerald-600 hover:underline inline-flex items-center gap-1">
+   942→                        <Phone className="w-3 h-3" />
+   943→                        {formatPhone(c.phone)}
+   944→                      </a>
+   945→                    ) : '—'}
+   946→                  </TableCell>
+   947→                  <TableCell className="text-right pr-4">
+   948→                    <DropdownMenu>
+   949→                      <DropdownMenuTrigger asChild>
+   950→                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+   951→                          <MoreVertical className="w-4 h-4" />
+   952→                        </Button>
+   953→                      </DropdownMenuTrigger>
+   954→                      <DropdownMenuContent align="end">
+   955→                        {c.phone && (
+   956→                          <DropdownMenuItem asChild>
+   957→                            <a href={telLink(c.phone)}><Phone className="w-3.5 h-3.5 mr-2" /> Ara</a>
+   958→                          </DropdownMenuItem>
+   959→                        )}
+   960→                        {c.phone && (
+   961→                          <DropdownMenuItem asChild>
+   962→                            <a href={whatsappLink(c.phone)} target="_blank" rel="noreferrer">
+   963→                              <MessageCircle className="w-3.5 h-3.5 mr-2" /> WhatsApp
+   964→                            </a>
+   965→                          </DropdownMenuItem>
+   966→                        )}
+   967→                        {c.email && (
+   968→                          <DropdownMenuItem asChild>
+   969→                            <a href={`mailto:${c.email}`}><Mail className="w-3.5 h-3.5 mr-2" /> E-posta</a>
+   970→                          </DropdownMenuItem>
+   971→                        )}
+   972→                        <DropdownMenuSeparator />
+   973→                        <DropdownMenuItem className="text-red-600" onClick={() => deleteContact(c.id)}>
+   974→                          <Trash2 className="w-3.5 h-3.5 mr-2" /> Sil
+   975→                        </DropdownMenuItem>
+   976→                      </DropdownMenuContent>
+   977→                    </DropdownMenu>
+   978→                  </TableCell>
+   979→                </TableRow>
+   980→              ))}
+   981→            </TableBody>
+   982→          </Table>
+   983→        </div>
+   984→      )}
+   985→    </div>
+   986→  )
+   987→}
+   988→
+   989→// =========================================================
+   990→//   TASKS (Görevler)
+   991→// =========================================================
+   992→function TasksTab({
+   993→  customer, onAdd,
+   994→}: {
+   995→  customer: Customer360Data
+   996→  onAdd: () => void
+   997→}) {
+   998→  const tasks = customer.tasks ?? []
+   999→  if (tasks.length === 0) {
+  1000→    return (
+  1001→      <div className="text-center py-10">
+  1002→        <CheckSquare className="w-10 h-10 mx-auto text-muted-foreground/30 mb-2" />
+  1003→        <p className="text-sm text-muted-foreground">Bu müşteri için görev yok</p>
+  1004→        <Button size="sm" variant="outline" className="mt-3" onClick={onAdd}>
+  1005→          <Plus className="w-4 h-4 mr-1.5" /> Görev Oluştur
+  1006→        </Button>
+  1007→      </div>
+  1008→    )
+  1009→  }
+  1010→  return (
+  1011→    <div className="space-y-3">
+  1012→      <div className="flex justify-end">
+  1013→        <Button size="sm" onClick={onAdd}>
+  1014→          <Plus className="w-4 h-4 mr-1.5" /> Görev Oluştur
+  1015→        </Button>
+  1016→      </div>
+  1017→      <div className="grid sm:grid-cols-2 gap-3">
+  1018→        {tasks.map((t) => {
+  1019→          const prioColor = getColor(TASK_PRIORITIES, t.priority)
+  1020→          const stColor = getColor(TASK_STATUSES, t.status)
+  1021→          const dueDate = new Date(t.dueDate)
+  1022→          const overdue = t.status === 'acik' && dueDate.getTime() < Date.now()
+  1023→          return (
+  1024→            <Card key={t.id} className={cn('hover:shadow-sm transition-shadow', overdue && 'border-red-300 dark:border-red-900')}>
+  1025→              <CardContent className="p-3">
+  1026→                <div className="flex items-start gap-2">
+  1027→                  <div className={cn('w-1 self-stretch rounded-full',
+  1028→                    t.priority === 'acil' ? 'bg-red-500' :
+  1029→                    t.priority === 'yuksek' ? 'bg-amber-500' :
+  1030→                    t.priority === 'orta' ? 'bg-sky-500' : 'bg-gray-400')}
+  1031→                  />
+  1032→                  <div className="flex-1 min-w-0">
+  1033→                    <div className="flex items-center justify-between gap-2">
+  1034→                      <span className={cn('text-sm font-medium truncate', t.status === 'tamamlandi' && 'line-through text-muted-foreground')}>
+  1035→                        {t.title}
+  1036→                      </span>
+  1037→                      {t.status === 'tamamlandi' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+  1038→                    </div>
+  1039→                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+  1040→                      <Badge variant="outline" className={cn('text-[10px] px-1.5', prioColor)}>
+  1041→                        {getLabel(TASK_PRIORITIES, t.priority)}
+  1042→                      </Badge>
+  1043→                      <Badge variant="outline" className={cn('text-[10px] px-1.5', stColor)}>
+  1044→                        {getLabel(TASK_STATUSES, t.status)}
+  1045→                      </Badge>
+  1046→                    </div>
+  1047→                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
+  1048→                      <span className={cn('inline-flex items-center gap-1', overdue && 'text-red-600 font-medium')}>
+  1049→                        <Calendar className="w-3 h-3" />
+  1050→                        {formatDate(t.dueDate)}
+  1051→                        {overdue && ' (Gecikmiş)'}
+  1052→                      </span>
+  1053→                      {t.assignee?.name && (
+  1054→                        <span className="inline-flex items-center gap-1">
+  1055→                          <User className="w-3 h-3" />
+  1056→                          {t.assignee.name}
+  1057→                        </span>
+  1058→                      )}
+  1059→                    </div>
+  1060→                  </div>
+  1061→                </div>
+  1062→              </CardContent>
+  1063→            </Card>
+  1064→          )
+  1065→        })}
+  1066→      </div>
+  1067→    </div>
+  1068→  )
+  1069→}
+  1070→
+  1071→// =========================================================
+  1072→//   FILES (Dosyalar) — Functional attachment upload/list/delete
+  1073→// =========================================================
+  1074→interface Attachment {
+  1075→  id: string
+  1076→  customerId: string
+  1077→  fileName: string
+  1078→  fileType: string
+  1079→  fileSize: number
+  1080→  url: string
+  1081→  uploadedBy: string | null
+  1082→  createdAt: string
+  1083→}
+  1084→
+  1085→const FILE_ICONS: Record<string, string> = {
+  1086→  'image/': '🖼️',
+  1087→  'application/pdf': '📄',
+  1088→  'application/msword': '📝',
+  1089→  'application/vnd.openxmlformats-officedocument': '📝',
+  1090→  'application/vnd.ms-excel': '📊',
+  1091→  'application/zip': '🗜️',
+  1092→  'text/': '📃',
+  1093→}
+  1094→
+  1095→function getFileIcon(fileType: string): string {
+  1096→  for (const [prefix, icon] of Object.entries(FILE_ICONS)) {
+  1097→    if (fileType.startsWith(prefix)) return icon
+  1098→  }
+  1099→  return '📎'
+  1100→}
+  1101→
+  1102→function formatFileSize(bytes: number): string {
+  1103→  if (bytes === 0) return '0 B'
+  1104→  const k = 1024
+  1105→  const sizes = ['B', 'KB', 'MB', 'GB']
+  1106→  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  1107→  return `${Math.round((bytes / Math.pow(k, i)) * 10) / 10} ${sizes[i]}`
+  1108→}
+  1109→
+  1110→function FilesTab({ customerId }: { customerId: string }) {
+  1111→  const queryClient = useQueryClient()
+  1112→  const fileInputRef = useRef<HTMLInputElement>(null)
+  1113→  const [uploading, setUploading] = useState(false)
+  1114→  const [dragOver, setDragOver] = useState(false)
+  1115→  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  1116→
+  1117→  const { data: attachments = [], isLoading } = useQuery<Attachment[]>({
+  1118→    queryKey: ['attachments', customerId],
+  1119→    queryFn: () => apiGet(`/api/customers/${customerId}/attachments`),
+  1120→  })
+  1121→
+  1122→  const handleFiles = async (files: FileList | null) => {
+  1123→    if (!files || files.length === 0) return
+  1124→    const file = files[0]
+  1125→    // 5MB limit
+  1126→    if (file.size > 5 * 1024 * 1024) {
+  1127→      toast.error('Dosya çok büyük', { description: 'Maksimum 5MB yükleyebilirsiniz' })
+  1128→      return
+  1129→    }
+  1130→    setUploading(true)
+  1131→    try {
+  1132→      // Convert to base64 data URL
+  1133→      const reader = new FileReader()
+  1134→      reader.onload = async () => {
+  1135→        const dataUrl = reader.result as string
+  1136→        try {
+  1137→          await apiPost(`/api/customers/${customerId}/attachments`, {
+  1138→            fileName: file.name,
+  1139→            fileType: file.type,
+  1140→            fileSize: file.size,
+  1141→            url: dataUrl,
+  1142→          })
+  1143→          toast.success('Dosya yüklendi', { description: file.name })
+  1144→          queryClient.invalidateQueries({ queryKey: ['attachments', customerId] })
+  1145→        } catch (e) {
+  1146→          toast.error('Yükleme başarısız', { description: e instanceof Error ? e.message : '' })
+  1147→        } finally {
+  1148→          setUploading(false)
+  1149→        }
+  1150→      }
+  1151→      reader.onerror = () => {
+  1152→        toast.error('Dosya okunamadı')
+  1153→        setUploading(false)
+  1154→      }
+  1155→      reader.readAsDataURL(file)
+  1156→    } catch (e) {
+  1157→      toast.error('Yükleme başarısız')
+  1158→      setUploading(false)
+  1159→    }
+  1160→  }
+  1161→
+  1162→  const handleDelete = async (id: string, name: string) => {
+  1163→    try {
+  1164→      await apiDelete(`/api/attachments/${id}`)
+  1165→      toast.success('Dosya silindi', { description: name })
+  1166→      queryClient.invalidateQueries({ queryKey: ['attachments', customerId] })
+  1167→    } catch (e) {
+  1168→      toast.error('Silme başarısız')
+  1169→    }
+  1170→  }
+  1171→
+  1172→  const handleDrop = (e: React.DragEvent) => {
+  1173→    e.preventDefault()
+  1174→    setDragOver(false)
+  1175→    handleFiles(e.dataTransfer.files)
+  1176→  }
+  1177→
+  1178→  return (
+  1179→    <div className="space-y-4">
+  1180→      {/* Upload zone */}
+  1181→      <Card
+  1182→        className={`border-2 border-dashed transition-all cursor-pointer ${
+  1183→          dragOver ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20' : 'border-border hover:border-emerald-300'
+  1184→        }`}
+  1185→        onClick={() => fileInputRef.current?.click()}
+  1186→        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+  1187→        onDragLeave={() => setDragOver(false)}
+  1188→        onDrop={handleDrop}
+  1189→      >
+  1190→        <CardContent className="p-6 text-center">
+  1191→          <input
+  1192→            ref={fileInputRef}
+  1193→            type="file"
+  1194→            className="hidden"
+  1195→            onChange={(e) => handleFiles(e.target.files)}
+  1196→            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+  1197→          />
+  1198→          <div className="w-12 h-12 mx-auto rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center mb-3">
+  1199→            {uploading ? (
+  1200→              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+  1201→            ) : (
+  1202→              <FileText className="w-6 h-6 text-emerald-600" />
+  1203→            )}
+  1204→          </div>
+  1205→          <h3 className="font-medium text-sm">
+  1206→            {uploading ? 'Yükleniyor...' : 'Dosya yüklemek için tıkla veya sürükle'}
+  1207→          </h3>
+  1208→          <p className="text-xs text-muted-foreground mt-1">
+  1209→            PDF, Görsel, Word, Excel · Maks 5MB
+  1210→          </p>
+  1211→        </CardContent>
+  1212→      </Card>
+  1213→
+  1214→      {/* Attachments list */}
+  1215→      {isLoading ? (
+  1216→        <div className="space-y-2">
+  1217→          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16" />)}
+  1218→        </div>
+  1219→      ) : attachments.length === 0 ? (
+  1220→        <div className="py-8 text-center">
+  1221→          <FileText className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+  1222→          <p className="text-sm text-muted-foreground">Henüz dosya yok</p>
+  1223→          <p className="text-xs text-muted-foreground/70 mt-1">
+  1224→            Sözleşme, teklif, fatura ve belgeleri buraya yükleyin
+  1225→          </p>
+  1226→        </div>
+  1227→      ) : (
+  1228→        <div className="space-y-2">
+  1229→          {attachments.map((att) => (
+  1230→            <Card key={att.id} className="hover:shadow-sm transition-shadow group">
+  1231→              <CardContent className="p-3 flex items-center gap-3">
+  1232→                <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-xl shrink-0">
+  1233→                  {getFileIcon(att.fileType)}
+  1234→                </div>
+  1235→                <div className="flex-1 min-w-0">
+  1236→                  <div className="text-sm font-medium truncate">{att.fileName}</div>
+  1237→                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+  1238→                    <span>{formatFileSize(att.fileSize)}</span>
+  1239→                    <span>·</span>
+  1240→                    <span>{new Date(att.createdAt).toLocaleDateString('tr-TR')}</span>
+  1241→                  </div>
+  1242→                </div>
+  1243→                <div className="flex items-center gap-1 shrink-0">
+  1244→                  <Tooltip>
+  1245→                    <TooltipTrigger asChild>
+  1246→                      <Button
+  1247→                        variant="ghost"
+  1248→                        size="icon"
+  1249→                        className="h-8 w-8"
+  1250→                        onClick={(e) => { e.stopPropagation(); setPreviewUrl(att.url) }}
+  1251→                      >
+  1252→                        <ExternalLink className="w-4 h-4" />
+  1253→                      </Button>
+  1254→                    </TooltipTrigger>
+  1255→                    <TooltipContent>Önizle</TooltipContent>
+  1256→                  </Tooltip>
+  1257→                  <Tooltip>
+  1258→                    <TooltipTrigger asChild>
+  1259→                      <Button
+  1260→                        variant="ghost"
+  1261→                        size="icon"
+  1262→                        className="h-8 w-8 hover:text-red-600"
+  1263→                        onClick={(e) => { e.stopPropagation(); handleDelete(att.id, att.fileName) }}
+  1264→                      >
+  1265→                        <Trash2 className="w-4 h-4" />
+  1266→                      </Button>
+  1267→                    </TooltipTrigger>
+  1268→                    <TooltipContent>Sil</TooltipContent>
+  1269→                  </Tooltip>
+  1270→                </div>
+  1271→              </CardContent>
+  1272→            </Card>
+  1273→          ))}
+  1274→        </div>
+  1275→      )}
+  1276→
+  1277→      {/* Preview dialog */}
+  1278→      {previewUrl && (
+  1279→        <Dialog open={!!previewUrl} onOpenChange={(open) => { if (!open) setPreviewUrl(null) }}>
+  1280→          <DialogContent className="max-w-3xl max-h-[80vh]">
+  1281→            <DialogHeader>
+  1282→              <DialogTitle>Dosya Önizleme</DialogTitle>
+  1283→            </DialogHeader>
+  1284→            <div className="flex items-center justify-center max-h-[60vh] overflow-auto">
+  1285→              {previewUrl.startsWith('data:image/') ? (
+  1286→                <img src={previewUrl} alt="Önizleme" className="max-w-full max-h-[60vh] object-contain" />
+  1287→              ) : previewUrl.startsWith('data:application/pdf') ? (
+  1288→                <iframe src={previewUrl} className="w-full h-[60vh]" title="PDF Önizleme" />
+  1289→              ) : (
+  1290→                <div className="text-center py-12">
+  1291→                  <FileText className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
+  1292→                  <p className="text-sm text-muted-foreground">Bu dosya türü tarayıcıda önizlenemez</p>
+  1293→                  <Button asChild className="mt-3" size="sm">
+  1294→                    <a href={previewUrl} download>İndir</a>
+  1295→                  </Button>
+  1296→                </div>
+  1297→              )}
+  1298→            </div>
+  1299→          </DialogContent>
+  1300→        </Dialog>
+  1301→      )}
+  1302→    </div>
+  1303→  )
+  1304→}
+  1305→
+  1306→// =========================================================
+  1307→//   MAP (Harita) — SVG tabanlı görsel placeholder
+  1308→// =========================================================
+  1309→function MapTab({ customer }: { customer: Customer360Data }) {
+  1310→  const hasCoords = customer.lat !== null && customer.lng !== null
+  1311→  // Türkiye merkezi yaklaşık: 39.0 N, 35.0 E
+  1312→  // Lat/Lng → SVG koordinat (basit lineer transform)
+  1313→  const projectLat = (lat: number) => {
+  1314→    // Türkiye lat aralığı ~36-42
+  1315→    const minLat = 35.5, maxLat = 42.5
+  1316→    return 100 - ((lat - minLat) / (maxLat - minLat)) * 100
+  1317→  }
+  1318→  const projectLng = (lng: number) => {
+  1319→    // Türkiye lng aralığı ~26-45
+  1320→    const minLng = 25, maxLng = 45
+  1321→    return ((lng - minLng) / (maxLng - minLng)) * 100
+  1322→  }
+  1323→
+  1324→  if (!hasCoords) {
+  1325→    return (
+  1326→      <Card>
+  1327→        <CardContent className="p-10 text-center">
+  1328→          <div className="w-14 h-14 mx-auto rounded-full bg-muted flex items-center justify-center mb-3">
+  1329→            <MapPin className="w-7 h-7 text-muted-foreground/40" />
+  1330→          </div>
+  1331→          <h3 className="font-semibold">Konum bilgisi yok</h3>
+  1332→          <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+  1333→            Bu müşteri için enlem/boylam bilgisi tanımlı değil. Müşteriyi düzenleyerek
+  1334→            konum ekleyebilirsiniz.
+  1335→          </p>
+  1336→        </CardContent>
+  1337→      </Card>
+  1338→    )
+  1339→  }
+  1340→
+  1341→  const x = projectLng(customer.lng as number)
+  1342→  const y = projectLat(customer.lat as number)
+  1343→  return (
+  1344→    <Card className="overflow-hidden">
+  1345→      <CardHeader className="pb-2">
+  1346→        <div className="flex items-center justify-between">
+  1347→          <CardTitle className="text-base flex items-center gap-2">
+  1348→            <MapPinned className="w-4 h-4 text-emerald-600" />
+  1349→            Müşteri Konumu
+  1350→          </CardTitle>
+  1351→          {customer.city && (
+  1352→            <Badge variant="outline" className="text-xs">
+  1353→              <MapPin className="w-3 h-3 mr-1" />
+  1354→              {customer.city}
+  1355→            </Badge>
+  1356→          )}
+  1357→        </div>
+  1358→      </CardHeader>
+  1359→      <CardContent>
+  1360→        <div className="relative w-full aspect-[4/3] rounded-lg overflow-hidden border bg-gradient-to-br from-emerald-50 via-sky-50 to-slate-100 dark:from-emerald-950/30 dark:via-sky-950/30 dark:to-slate-900">
+  1361→          {/* SVG: Türkiye silüeti (basitleştirilmiş) */}
+  1362→          <svg
+  1363→            viewBox="0 0 100 75"
+  1364→            className="absolute inset-0 w-full h-full"
+  1365→            preserveAspectRatio="xMidYMid meet"
+  1366→          >
+  1367→            {/* Grid */}
+  1368→            <defs>
+  1369→              <pattern id="grid" width="5" height="5" patternUnits="userSpaceOnUse">
+  1370→                <path d="M 5 0 L 0 0 0 5" fill="none" stroke="currentColor" strokeWidth="0.1" className="text-slate-300 dark:text-slate-700" />
+  1371→              </pattern>
+  1372→            </defs>
+  1373→            <rect width="100" height="75" fill="url(#grid)" />
+  1374→            {/* Türkiye silüeti (basit) */}
+  1375→            <path
+  1376→              d="M 15 30 Q 20 25 28 26 L 38 24 Q 45 22 55 24 L 70 25 Q 80 27 88 32 L 92 38 Q 90 42 85 43 L 75 42 L 65 44 Q 55 46 45 45 L 35 47 Q 25 48 18 45 Q 12 40 15 30 Z"
+  1377→              fill="currentColor"
+  1378→              className="text-emerald-100 dark:text-emerald-900/30"
+  1379→              stroke="currentColor"
+  1380→              strokeWidth="0.3"
+  1381→            />
+  1382→            {/* Pin */}
+  1383→            <g transform={`translate(${x}, ${y * 0.75})`}>
+  1384→              <circle r="2" className="fill-emerald-500/30 animate-ping" />
+  1385→              <circle r="1.2" className="fill-emerald-600" />
+  1386→              <circle r="0.5" className="fill-white" />
+  1387→            </g>
+  1388→            {/* Pin label */}
+  1389→            <g transform={`translate(${x}, ${y * 0.75})`}>
+  1390→              <text
+  1391→                x="2.5" y="1"
+  1392→                className="fill-emerald-700 dark:fill-emerald-300 font-semibold"
+  1393→                fontSize="2"
+  1394→              >
+  1395→                {customer.city || customer.name}
+  1396→              </text>
+  1397→            </g>
+  1398→          </svg>
+  1399→          {/* Koordinat etiketi */}
+  1400→          <div className="absolute bottom-2 left-2 px-2 py-1 rounded bg-background/80 backdrop-blur-sm border text-[10px] font-mono">
+  1401→            {customer.lat?.toFixed(4)}, {customer.lng?.toFixed(4)}
+  1402→          </div>
+  1403→          {/* Ölçek */}
+  1404→          <div className="absolute top-2 right-2 px-2 py-1 rounded bg-background/80 backdrop-blur-sm border text-[10px] text-muted-foreground">
+  1405→            Türkiye · Yaklaşık
+  1406→          </div>
+  1407→        </div>
+  1408→        {customer.address && (
+  1409→          <div className="mt-3 flex items-start gap-2 text-sm">
+  1410→            <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+  1411→            <span className="text-muted-foreground">{customer.address}</span>
+  1412→          </div>
+  1413→        )}
+  1414→      </CardContent>
+  1415→    </Card>
+  1416→  )
+  1417→}
+  1418→
+  1419→// =========================================================
+  1420→//   ANA BİLEŞEN — Customer360
+  1421→// =========================================================
+  1422→export function Customer360() {
+  1423→  const { user, setView, selectedCustomerId } = useAppStore()
+  1424→  const [tab, setTab] = useState('timeline')
+  1425→  const [activityOpen, setActivityOpen] = useState(false)
+  1426→  const [dealOpen, setDealOpen] = useState(false)
+  1427→  const [taskOpen, setTaskOpen] = useState(false)
+  1428→  const [contactOpen, setContactOpen] = useState(false)
+  1429→  const [editOpen, setEditOpen] = useState(false)
+  1430→  const noteInputRef = useRef<HTMLTextAreaElement>(null)
+  1431→
+  1432→  const { data: customer, isLoading } = useQuery({
+  1433→    queryKey: qk.customer(selectedCustomerId || ''),
+  1434→    queryFn: () => apiGet<Customer360Data>(`/api/customers/${selectedCustomerId}`),
+  1435→    enabled: !!selectedCustomerId,
+  1436→  })
+  1437→
+  1438→  const { data: usersData } = useQuery({
+  1439→    queryKey: qk.users,
+  1440→    queryFn: () => apiGet<UsersResponse>('/api/users'),
+  1441→  })
+  1442→
+  1443→  // "Not Ekle" hızlı eylem → notes sekmesi + focus
+  1444→  const focusNotes = () => {
+  1445→    setTab('notes')
+  1446→    setTimeout(() => {
+  1447→      noteInputRef.current?.focus()
+  1448→      noteInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  1449→    }, 100)
+  1450→  }
+  1451→
+  1452→  if (!selectedCustomerId) {
+  1453→    return (
+  1454→      <div className="text-center py-20">
+  1455→        <p className="text-muted-foreground">Müşteri seçilmedi</p>
+  1456→        <Button variant="outline" size="sm" className="mt-3" onClick={() => setView('customers')}>
+  1457→          <ArrowLeft className="w-4 h-4 mr-1.5" /> Müşteri Listesine Dön
+  1458→        </Button>
+  1459→      </div>
+  1460→    )
+  1461→  }
+  1462→
+  1463→  if (isLoading || !customer) {
+  1464→    return (
+  1465→      <div className="space-y-4 animate-fade-in">
+  1466→        <Skeleton className="h-8 w-32" />
+  1467→        <Skeleton className="h-32 w-full" />
+  1468→        <Skeleton className="h-9 w-full" />
+  1469→        <div className="space-y-3">
+  1470→          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
+  1471→        </div>
+  1472→      </div>
+  1473→    )
+  1474→  }
+  1475→
+  1476→  const canEdit = hasPermission(user as SessionUser | null, 'customers.edit')
+  1477→  const daysSinceActivity = daysSince(customer.lastActivityAt)
+  1478→  const activityStatus = getActivityStatusColor(daysSinceActivity)
+  1479→  const segColor = getColor(SEGMENTS, customer.segment)
+  1480→  const stColor = getColor(CUSTOMER_STATUS, customer.status)
+  1481→
+  1482→  const waText = `Merhaba ${customer.name},`
+  1483→  const tagColorList = ['emerald', 'amber', 'violet', 'sky', 'rose', 'teal']
+  1484→
+  1485→  return (
+  1486→    <div className="space-y-4 animate-fade-in">
+  1487→      {/* Geri butonu */}
+  1488→      <Button
+  1489→        variant="ghost"
+  1490→        size="sm"
+  1491→        onClick={() => setView('customers')}
+  1492→        className="text-muted-foreground hover:text-foreground"
+  1493→      >
+  1494→        <ArrowLeft className="w-4 h-4 mr-1.5" />
+  1495→        Müşteri Listesi
+  1496→      </Button>
+  1497→
+  1498→      {/* Üst header kartı */}
+  1499→      <Card className="overflow-hidden">
+  1500→        <CardContent className="p-5">
+  1501→          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+  1502→            {/* Sol: Kimlik + rozetler */}
+  1503→            <div className="flex-1 min-w-0">
+  1504→              <div className="flex items-start gap-3">
+  1505→                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0 shadow-sm">
+  1506→                  <Building2 className="w-6 h-6 text-white" />
+  1507→                </div>
+  1508→                <div className="min-w-0 flex-1">
+  1509→                  <div className="flex items-center gap-2 flex-wrap">
+  1510→                    <h1 className="text-xl lg:text-2xl font-bold tracking-tight break-words">{customer.name}</h1>
+  1511→                    {canEdit && (
+  1512→                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditOpen(true)}>
+  1513→                        <Pencil className="w-3.5 h-3.5" />
+  1514→                      </Button>
+  1515→                    )}
+  1516→                  </div>
+  1517→                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+  1518→                    <Badge variant="outline" className={cn('text-[10px] px-1.5', stColor)}>
+  1519→                      {getLabel(CUSTOMER_STATUS, customer.status)}
+  1520→                    </Badge>
+  1521→                    <Badge variant="outline" className={cn('text-[10px] px-1.5', segColor)}>
+  1522→                      {customer.segment === 'vip' && <Crown className="w-3 h-3 mr-1" />}
+  1523→                      {getLabel(SEGMENTS, customer.segment)}
+  1524→                    </Badge>
+  1525→                    <Badge variant="outline" className="text-[10px] px-1.5 text-slate-600 bg-slate-50 border-slate-200">
+  1526→                      <ExternalLink className="w-3 h-3 mr-1" />
+  1527→                      {getLabel(CUSTOMER_SOURCES, customer.source)}
+  1528→                    </Badge>
+  1529→                    {customer.kvkkConsent ? (
+  1530→                      <Tooltip>
+  1531→                        <TooltipTrigger asChild>
+  1532→                          <Badge variant="outline" className="text-[10px] px-1.5 text-emerald-600 bg-emerald-50 border-emerald-200">
+  1533→                            <ShieldCheck className="w-3 h-3 mr-1" /> KVKK
+  1534→                          </Badge>
+  1535→                        </TooltipTrigger>
+  1536→                        <TooltipContent>KVKK onayı alınmış{customer.kvkkConsentAt ? ` · ${formatDate(customer.kvkkConsentAt)}` : ''}</TooltipContent>
+  1537→                      </Tooltip>
+  1538→                    ) : (
+  1539→                      <Tooltip>
+  1540→                        <TooltipTrigger asChild>
+  1541→                          <Badge variant="outline" className="text-[10px] px-1.5 text-amber-600 bg-amber-50 border-amber-200">
+  1542→                            <ShieldAlert className="w-3 h-3 mr-1" /> KVKK Yok
+  1543→                          </Badge>
+  1544→                        </TooltipTrigger>
+  1545→                        <TooltipContent>KVKK onayı alınmamış</TooltipContent>
+  1546→                      </Tooltip>
+  1547→                    )}
+  1548→                    {customer.sector && (
+  1549→                      <Badge variant="outline" className="text-[10px] px-1.5 text-muted-foreground">
+  1550→                        {customer.sector}
+  1551→                      </Badge>
+  1552→                    )}
+  1553→                  </div>
+  1554→                  {/* Etiketler */}
+  1555→                  {Array.isArray(customer.tags) && customer.tags.length > 0 && (
+  1556→                    <div className="flex flex-wrap gap-1 mt-2">
+  1557→                      {customer.tags.map((t, i) => (
+  1558→                        <span
+  1559→                          key={t + i}
+  1560→                          className={cn(
+  1561→                            'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border',
+  1562→                            TAG_COLOR_CLASSES[tagColorList[i % tagColorList.length]] || TAG_COLOR_CLASSES.gray,
+  1563→                          )}
+  1564→                        >
+  1565→                          {t}
+  1566→                        </span>
+  1567→                      ))}
+  1568→                    </div>
+  1569→                  )}
+  1570→                </div>
+  1571→              </div>
+  1572→
+  1573→              {/* Sorumlu + iletişim durumu */}
+  1574→              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+  1575→                <div className="flex items-center gap-2">
+  1576→                  <Avatar className="w-8 h-8">
+  1577→                    <AvatarFallback className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+  1578→                      {initials(customer.owner?.name || user?.name)}
+  1579→                    </AvatarFallback>
+  1580→                  </Avatar>
+  1581→                  <div className="min-w-0">
+  1582→                    <div className="text-[10px] text-muted-foreground">Sorumlu</div>
+  1583→                    <div className="text-xs font-medium truncate">{customer.owner?.name || 'Atanmamış'}</div>
+  1584→                  </div>
+  1585→                </div>
+  1586→                <div>
+  1587→                  <div className="text-[10px] text-muted-foreground">Son İletişim</div>
+  1588→                  <div className={cn('inline-flex items-center gap-1.5 text-xs font-medium px-1.5 py-0.5 rounded', activityStatus.bg, activityStatus.color)}>
+  1589→                    <span className={cn('w-1.5 h-1.5 rounded-full', activityStatus.color.replace('text-', 'bg-'))} />
+  1590→                    {customer.lastActivityAt ? `${daysSinceActivity} gün önce` : 'Yok'}
+  1591→                  </div>
+  1592→                </div>
+  1593→                {customer.phone && (
+  1594→                  <div>
+  1595→                    <div className="text-[10px] text-muted-foreground">Telefon</div>
+  1596→                    <a href={telLink(customer.phone)} className="text-xs font-medium text-emerald-600 hover:underline truncate block">
+  1597→                      {formatPhone(customer.phone)}
+  1598→                    </a>
+  1599→                  </div>
+  1600→                )}
+  1601→                {customer.email && (
+  1602→                  <div className="min-w-0">
+  1603→                    <div className="text-[10px] text-muted-foreground">E-posta</div>
+  1604→                    <a href={`mailto:${customer.email}`} className="text-xs font-medium text-sky-600 hover:underline truncate block">
+  1605→                      {customer.email}
+  1606→                    </a>
+  1607→                  </div>
+  1608→                )}
+  1609→              </div>
+  1610→
+  1611→              {/* Alt detaylar */}
+  1612→              <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground flex-wrap">
+  1613→                {customer.city && (
+  1614→                  <span className="inline-flex items-center gap-1">
+  1615→                    <MapPin className="w-3 h-3" /> {customer.city}
+  1616→                  </span>
+  1617→                )}
+  1618→                {customer.web && (
+  1619→                  <a href={customer.web.startsWith('http') ? customer.web : `https://${customer.web}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground">
+  1620→                    <Globe className="w-3 h-3" /> {customer.web}
+  1621→                  </a>
+  1622→                )}
+  1623→                {customer.taxNumber && (
+  1624→                  <span className="inline-flex items-center gap-1">
+  1625→                    <FileText className="w-3 h-3" /> {customer.taxNumber}
+  1626→                  </span>
+  1627→                )}
+  1628→                <span className="inline-flex items-center gap-1">
+  1629→                  <Calendar className="w-3 h-3" /> Kayıt: {formatDate(customer.createdAt)}
+  1630→                </span>
+  1631→              </div>
+  1632→            </div>
+  1633→
+  1634→            {/* Sağ: Hızlı aksiyonlar */}
+  1635→            <div className="flex flex-wrap gap-2 lg:flex-col lg:w-auto">
+  1636→              {customer.phone && (
+  1637→                <>
+  1638→                  <Button size="sm" asChild>
+  1639→                    <a href={telLink(customer.phone)}>
+  1640→                      <Phone className="w-4 h-4 mr-1.5" /> Ara
+  1641→                    </a>
+  1642→                  </Button>
+  1643→                  <Button size="sm" variant="outline" asChild>
+  1644→                    <a href={whatsappLink(customer.phone, waText)} target="_blank" rel="noreferrer">
+  1645→                      <MessageCircle className="w-4 h-4 mr-1.5 text-green-600" /> WhatsApp
+  1646→                    </a>
+  1647→                  </Button>
+  1648→                </>
+  1649→              )}
+  1650→              {customer.email && (
+  1651→                <Button size="sm" variant="outline" asChild>
+  1652→                  <a href={`mailto:${customer.email}`}>
+  1653→                    <Mail className="w-4 h-4 mr-1.5 text-sky-600" /> E-posta
+  1654→                  </a>
+  1655→                </Button>
+  1656→              )}
+  1657→              <Button size="sm" variant="outline" onClick={focusNotes}>
+  1658→                <StickyNote className="w-4 h-4 mr-1.5 text-amber-600" /> Not Ekle
+  1659→              </Button>
+  1660→              {hasPermission(user as SessionUser | null, 'tasks.manage') && (
+  1661→                <Button size="sm" variant="outline" onClick={() => setTaskOpen(true)}>
+  1662→                  <CheckSquare className="w-4 h-4 mr-1.5 text-indigo-600" /> Görev Oluştur
+  1663→                </Button>
+  1664→              )}
+  1665→              {hasPermission(user as SessionUser | null, 'deals.manage') && (
+  1666→                <Button size="sm" variant="outline" onClick={() => setDealOpen(true)}>
+  1667→                  <TrendingUp className="w-4 h-4 mr-1.5 text-emerald-600" /> Fırsat Aç
+  1668→                </Button>
+  1669→              )}
+  1670→            </div>
+  1671→          </div>
+  1672→        </CardContent>
+  1673→      </Card>
+  1674→
+  1675→      {/* Tabs */}
+  1676→      <Tabs value={tab} onValueChange={setTab}>
+  1677→        <div className="overflow-x-auto -mx-1 px-1">
+  1678→          <TabsList className="w-fit">
+  1679→            <TabsTrigger value="timeline" className="text-xs sm:text-sm">
+  1680→              <Clock className="w-3.5 h-3.5 mr-1" /> Zaman Çizelgesi
+  1681→              {customer.activities?.length > 0 && (
+  1682→                <span className="ml-1 text-[10px] text-muted-foreground">({customer.activities.length})</span>
+  1683→              )}
+  1684→            </TabsTrigger>
+  1685→            <TabsTrigger value="notes" className="text-xs sm:text-sm">
+  1686→              <StickyNote className="w-3.5 h-3.5 mr-1" /> Notlar
+  1687→              {customer.notes?.length > 0 && (
+  1688→                <span className="ml-1 text-[10px] text-muted-foreground">({customer.notes.length})</span>
+  1689→              )}
+  1690→            </TabsTrigger>
+  1691→            <TabsTrigger value="deals" className="text-xs sm:text-sm">
+  1692→              <TrendingUp className="w-3.5 h-3.5 mr-1" /> Fırsatlar
+  1693→              {customer.deals?.length > 0 && (
+  1694→                <span className="ml-1 text-[10px] text-muted-foreground">({customer.deals.length})</span>
+  1695→              )}
+  1696→            </TabsTrigger>
+  1697→            <TabsTrigger value="contacts" className="text-xs sm:text-sm">
+  1698→              <Users className="w-3.5 h-3.5 mr-1" /> Kişiler
+  1699→              {customer.contacts?.length > 0 && (
+  1700→                <span className="ml-1 text-[10px] text-muted-foreground">({customer.contacts.length})</span>
+  1701→              )}
+  1702→            </TabsTrigger>
+  1703→            <TabsTrigger value="tasks" className="text-xs sm:text-sm">
+  1704→              <CheckSquare className="w-3.5 h-3.5 mr-1" /> Görevler
+  1705→              {customer.tasks?.length > 0 && (
+  1706→                <span className="ml-1 text-[10px] text-muted-foreground">({customer.tasks.length})</span>
+  1707→              )}
+  1708→            </TabsTrigger>
+  1709→            <TabsTrigger value="files" className="text-xs sm:text-sm">
+  1710→              <FileText className="w-3.5 h-3.5 mr-1" /> Dosyalar
+  1711→            </TabsTrigger>
+  1712→            <TabsTrigger value="quotes" className="text-xs sm:text-sm">
+  1713→              <Receipt className="w-3.5 h-3.5 mr-1" /> Teklifler
+  1714→            </TabsTrigger>
+  1715→            <TabsTrigger value="invoices" className="text-xs sm:text-sm">
+  1716→              <FileText className="w-3.5 h-3.5 mr-1" /> Faturalar
+  1717→            </TabsTrigger>
+  1718→            <TabsTrigger value="map" className="text-xs sm:text-sm">
+  1719→              <MapPin className="w-3.5 h-3.5 mr-1" /> Harita
+  1720→            </TabsTrigger>
+  1721→          </TabsList>
+  1722→        </div>
+  1723→
+  1724→        <TabsContent value="timeline" className="mt-3">
+  1725→          <Card>
+  1726→            <CardContent className="p-4">
+  1727→              <TimelineTab customer={customer} onAdd={() => setActivityOpen(true)} />
+  1728→            </CardContent>
+  1729→          </Card>
+  1730→        </TabsContent>
+  1731→        <TabsContent value="notes" className="mt-3">
+  1732→          <Card>
+  1733→            <CardContent className="p-4">
+  1734→              {/* Burada not input'unun referansı için bir wrapper */}
+  1735→              <NotesTabWithRef customer={customer} noteInputRef={noteInputRef} />
+  1736→            </CardContent>
+  1737→          </Card>
+  1738→        </TabsContent>
+  1739→        <TabsContent value="deals" className="mt-3">
+  1740→          <Card>
+  1741→            <CardContent className="p-4">
+  1742→              <DealsTab customer={customer} onAdd={() => setDealOpen(true)} />
+  1743→            </CardContent>
+  1744→          </Card>
+  1745→        </TabsContent>
+  1746→        <TabsContent value="contacts" className="mt-3">
+  1747→          <Card>
+  1748→            <CardContent className="p-4">
+  1749→              <ContactsTab customer={customer} onAdd={() => setContactOpen(true)} />
+  1750→            </CardContent>
+  1751→          </Card>
+  1752→        </TabsContent>
+  1753→        <TabsContent value="tasks" className="mt-3">
+  1754→          <Card>
+  1755→            <CardContent className="p-4">
+  1756→              <TasksTab customer={customer} onAdd={() => setTaskOpen(true)} />
+  1757→            </CardContent>
+  1758→          </Card>
+  1759→        </TabsContent>
+  1760→        <TabsContent value="files" className="mt-3">
+  1761→          <FilesTab customerId={selectedCustomerId} />
+  1762→        </TabsContent>
+  1763→        <TabsContent value="quotes" className="mt-3">
+  1764→          <QuotesTab customerId={selectedCustomerId} />
+  1765→        </TabsContent>
+  1766→        <TabsContent value="invoices" className="mt-3">
+  1767→          <InvoicesTab customerId={selectedCustomerId} />
+  1768→        </TabsContent>
+  1769→        <TabsContent value="map" className="mt-3">
+  1770→          <MapTab customer={customer} />
+  1771→        </TabsContent>
+  1772→      </Tabs>
+  1773→
+  1774→      {/* Dialogs */}
+  1775→      <ActivityDialog open={activityOpen} onOpenChange={setActivityOpen} customerId={customer.id} />
+  1776→      <DealDialog open={dealOpen} onOpenChange={setDealOpen} customerId={customer.id} defaultOwnerId={customer.ownerId || user?.id} />
+  1777→      <TaskDialog
+  1778→        open={taskOpen}
+  1779→        onOpenChange={setTaskOpen}
+  1780→        customerId={customer.id}
+  1781→        users={usersData?.items ?? []}
+  1782→        defaultAssigneeId={user?.id}
+  1783→      />
+  1784→      <ContactDialog open={contactOpen} onOpenChange={setContactOpen} customerId={customer.id} />
+  1785→      <EditCustomerDialog open={editOpen} onOpenChange={setEditOpen} customer={customer} />
+  1786→    </div>
+  1787→  )
+  1788→}
+  1789→
+  1790→// =========================================================
+  1791→//   NotesTab + ref wrapper (dışarıdan focus için)
+  1792→// =========================================================
+  1793→function NotesTabWithRef({
+  1794→  customer, noteInputRef,
+  1795→}: {
+  1796→  customer: Customer360Data
+  1797→  noteInputRef: React.RefObject<HTMLTextAreaElement | null>
+  1798→}) {
+  1799→  // NotesTab içeride kendi textarea'ını kullanıyor; ref'i prop olarak iletelim
+  1800→  const qc = useQueryClient()
+  1801→  const [content, setContent] = useState('')
+  1802→  const [submitting, setSubmitting] = useState(false)
+  1803→  const notes = customer.notes ?? []
+  1804→
+  1805→  const addNote = async () => {
+  1806→    if (!content.trim()) return
+  1807→    setSubmitting(true)
+  1808→    try {
+  1809→      await apiPost(`/api/customers/${customer.id}/notes`, { content: content.trim() })
+  1810→      toast.success('Not eklendi')
+  1811→      setContent('')
+  1812→      qc.invalidateQueries({ queryKey: qk.customer(customer.id) })
+  1813→    } catch (e) {
+  1814→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+  1815→    } finally {
+  1816→      setSubmitting(false)
+  1817→    }
+  1818→  }
+  1819→
+  1820→  const togglePin = async (note: Note) => {
+  1821→    try {
+  1822→      await apiPatch(`/api/customers/${customer.id}/notes`, {
+  1823→        noteId: note.id, isPinned: !note.isPinned, content: note.content,
+  1824→      })
+  1825→      toast.success(note.isPinned ? 'Not sabitlenmesi kaldırıldı' : 'Not sabitlendi')
+  1826→      qc.invalidateQueries({ queryKey: qk.customer(customer.id) })
+  1827→    } catch (e) {
+  1828→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+  1829→    }
+  1830→  }
+  1831→
+  1832→  const deleteNote = async (noteId: string) => {
+  1833→    try {
+  1834→      await apiDelete(`/api/customers/${customer.id}/notes?noteId=${noteId}`)
+  1835→      toast.success('Not silindi')
+  1836→      qc.invalidateQueries({ queryKey: qk.customer(customer.id) })
+  1837→    } catch (e) {
+  1838→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+  1839→    }
+  1840→  }
+  1841→
+  1842→  return (
+  1843→    <div className="space-y-3">
+  1844→      <Card className="bg-muted/30 border-dashed">
+  1845→        <CardContent className="p-3">
+  1846→          <Textarea
+  1847→            ref={noteInputRef}
+  1848→            value={content}
+  1849→            onChange={(e) => setContent(e.target.value)}
+  1850→            placeholder="Yeni notunuzu buraya yazın... (Ctrl+Enter ile kaydet)"
+  1851→            rows={3}
+  1852→            onKeyDown={(e) => {
+  1853→              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') addNote()
+  1854→            }}
+  1855→          />
+  1856→          <div className="flex justify-between items-center mt-2">
+  1857→            <span className="text-xs text-muted-foreground">
+  1858→              {content.length > 0 && `${content.length} karakter`}
+  1859→            </span>
+  1860→            <Button size="sm" onClick={addNote} disabled={submitting || !content.trim()}>
+  1861→              {submitting ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <StickyNote className="w-3.5 h-3.5 mr-1" />}
+  1862→              Not Ekle
+  1863→            </Button>
+  1864→          </div>
+  1865→        </CardContent>
+  1866→      </Card>
+  1867→
+  1868→      {notes.length === 0 ? (
+  1869→        <div className="text-center py-10">
+  1870→          <StickyNote className="w-10 h-10 mx-auto text-muted-foreground/30 mb-2" />
+  1871→          <p className="text-sm text-muted-foreground">Henüz not eklenmemiş</p>
+  1872→        </div>
+  1873→      ) : (
+  1874→        <div className="space-y-2">
+  1875→          {notes.map((note) => (
+  1876→            <Card
+  1877→              key={note.id}
+  1878→              className={cn(
+  1879→                'hover:shadow-sm transition-shadow',
+  1880→                note.isPinned && 'border-amber-200 bg-amber-50/30 dark:bg-amber-950/10 dark:border-amber-900/50',
+  1881→              )}
+  1882→            >
+  1883→              <CardContent className="p-3">
+  1884→                <div className="flex items-start gap-2">
+  1885→                  <div className="flex-1 min-w-0">
+  1886→                    <p className="text-sm whitespace-pre-wrap break-words">{note.content}</p>
+  1887→                    <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+  1888→                      <Avatar className="w-5 h-5">
+  1889→                        <AvatarFallback className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+  1890→                          {initials(note.user?.name || '?')}
+  1891→                        </AvatarFallback>
+  1892→                      </Avatar>
+  1893→                      <span>{note.user?.name || 'Bilinmiyor'}</span>
+  1894→                      <span>·</span>
+  1895→                      <span>{formatRelative(note.createdAt)}</span>
+  1896→                      {note.isPinned && (
+  1897→                        <Badge variant="outline" className="text-[9px] px-1 h-4 text-amber-600 border-amber-200">
+  1898→                          <Pin className="w-2.5 h-2.5 mr-0.5" />Sabit
+  1899→                        </Badge>
+  1900→                      )}
+  1901→                    </div>
+  1902→                  </div>
+  1903→                  <div className="flex gap-1">
+  1904→                    <Tooltip>
+  1905→                      <TooltipTrigger asChild>
+  1906→                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => togglePin(note)}>
+  1907→                          {note.isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+  1908→                        </Button>
+  1909→                      </TooltipTrigger>
+  1910→                      <TooltipContent>{note.isPinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}</TooltipContent>
+  1911→                    </Tooltip>
+  1912→                    <DropdownMenu>
+  1913→                      <DropdownMenuTrigger asChild>
+  1914→                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+  1915→                          <MoreVertical className="w-3.5 h-3.5" />
+  1916→                        </Button>
+  1917→                      </DropdownMenuTrigger>
+  1918→                      <DropdownMenuContent align="end">
+  1919→                        <DropdownMenuItem className="text-red-600" onClick={() => deleteNote(note.id)}>
+  1920→                          <Trash2 className="w-3.5 h-3.5 mr-2" /> Sil
+  1921→                        </DropdownMenuItem>
+  1922→                      </DropdownMenuContent>
+  1923→                    </DropdownMenu>
+  1924→                  </div>
+  1925→                </div>
+  1926→              </CardContent>
+  1927→            </Card>
+  1928→          ))}
+  1929→        </div>
+  1930→      )}
+  1931→    </div>
+  1932→  )
+  1933→}
+  1934→
+  1935→// =========================================================
+  1936→//   QUOTES (Teklifler) — Customer's quotes tab
+  1937→// =========================================================
+  1938→interface QuoteItem {
+  1939→  id: string
+  1940→  number: string
+  1941→  status: string
+  1942→  subtotal: number
+  1943→  taxTotal: number
+  1944→  total: number
+  1945→  currency: string
+  1946→  issueDate: string
+  1947→  validUntil: string | null
+  1948→  invoice: { id: string; number: string; status: string } | null
+  1949→}
+  1950→
+  1951→const QUOTE_STATUS_BADGES: Record<string, string> = {
+  1952→  taslak: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900/40 dark:text-slate-300',
+  1953→  gonderildi: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300',
+  1954→  onaylandi: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300',
+  1955→  reddedildi: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300',
+  1956→  faturalandi: 'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300',
+  1957→}
+  1958→const QUOTE_STATUS_LABELS: Record<string, string> = {
+  1959→  taslak: 'Taslak', gonderildi: 'Gönderildi', onaylandi: 'Onaylandı',
+  1960→  reddedildi: 'Reddedildi', faturalandi: 'Faturalandı',
+  1961→}
+  1962→
+  1963→function QuotesTab({ customerId }: { customerId: string }) {
+  1964→  const { data: quotes = [], isLoading } = useQuery<QuoteItem[]>({
+  1965→    queryKey: ['customer-quotes', customerId],
+  1966→    queryFn: () => apiGet(`/api/quotes?customerId=${customerId}&limit=50`),
+  1967→    select: (data: unknown) => (Array.isArray(data) ? data : (data as { items?: QuoteItem[] }).items ?? []),
+  1968→  })
+  1969→
+  1970→  const [printQuote, setPrintQuote] = useState<QuoteItem | null>(null)
+  1971→
+  1972→  if (isLoading) {
+  1973→    return <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
+  1974→  }
+  1975→
+  1976→  if (quotes.length === 0) {
+  1977→    return (
+  1978→      <div className="py-8 text-center">
+  1979→        <Receipt className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+  1980→        <p className="text-sm text-muted-foreground">Bu müşteri için teklif yok</p>
+  1981→        <p className="text-xs text-muted-foreground/70 mt-1">Teklifler modülünden yeni teklif oluşturun</p>
+  1982→      </div>
+  1983→    )
+  1984→  }
+  1985→
+  1986→  return (
+  1987→    <>
+  1988→      <div className="space-y-2">
+  1989→        {quotes.map((q) => (
+  1990→          <div key={q.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors">
+  1991→            <div className="w-10 h-10 rounded-lg bg-violet-50 dark:bg-violet-950/30 flex items-center justify-center shrink-0">
+  1992→              <Receipt className="w-5 h-5 text-violet-600" />
+  1993→            </div>
+  1994→            <div className="flex-1 min-w-0">
+  1995→              <div className="flex items-center gap-2">
+  1996→                <span className="text-sm font-medium font-mono">{q.number}</span>
+  1997→                <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0 h-4.5', QUOTE_STATUS_BADGES[q.status] ?? '')}>
+  1998→                  {QUOTE_STATUS_LABELS[q.status] ?? q.status}
+  1999→                </Badge>
+  2000→              </div>
+
+[showing lines 1-2000 of 2251; use offset=2001 with limit to continue reading]

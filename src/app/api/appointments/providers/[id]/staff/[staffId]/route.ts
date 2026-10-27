@@ -3,9 +3,11 @@ import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
 
-async function getProviderForUser(providerId: string, tenantId: string) {
+// Kapsam: superadmin tümü (platform deseni — üst provider route'u ile
+// aynı kural), diğer roller yalnız kendi tenant'ı → kapsam dışı 404
+async function getProviderForUser(providerId: string, tenantId: string, isSuperAdmin = false) {
   const provider = await db.serviceProvider.findUnique({ where: { id: providerId } })
-  if (!provider || provider.tenantId !== tenantId) return null
+  if (!provider || (provider.tenantId !== tenantId && !isSuperAdmin)) return null
   return provider
 }
 
@@ -27,7 +29,7 @@ export async function PATCH(
   if (authErr) return authErr
 
   const { id, staffId } = await params
-  const provider = await getProviderForUser(id, user!.tenantId)
+  const provider = await getProviderForUser(id, user!.tenantId, user!.role === 'superadmin')
   if (!provider) return err('İşletme bulunamadı', 404)
 
   const staff = await getStaffForProvider(staffId, id)
@@ -82,7 +84,7 @@ export async function DELETE(
   if (authErr) return authErr
 
   const { id, staffId } = await params
-  const provider = await getProviderForUser(id, user!.tenantId)
+  const provider = await getProviderForUser(id, user!.tenantId, user!.role === 'superadmin')
   if (!provider) return err('İşletme bulunamadı', 404)
 
   const staff = await getStaffForProvider(staffId, id)

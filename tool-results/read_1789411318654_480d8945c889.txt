@@ -1,0 +1,1175 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo } from 'react'
+     4→import { useQuery } from '@tanstack/react-query'
+     5→import { apiGet } from '@/lib/api-client'
+     6→import { cn } from '@/lib/utils'
+     7→import { useAppStore } from '@/store/app-store'
+     8→import { ROLE_LABELS, ALL_PERMISSIONS } from '@/lib/rbac'
+     9→import type { Role, PermissionKey, UserListItem, Customer } from '@/types'
+    10→
+    11→import {
+    12→  Card, CardContent, CardHeader, CardTitle, CardDescription,
+    13→} from '@/components/ui/card'
+    14→import { Button } from '@/components/ui/button'
+    15→import { Input } from '@/components/ui/input'
+    16→import { Badge } from '@/components/ui/badge'
+    17→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    18→import { Skeleton } from '@/components/ui/skeleton'
+    19→import { Separator } from '@/components/ui/separator'
+    20→import { ScrollArea } from '@/components/ui/scroll-area'
+    21→import {
+    22→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    23→} from '@/components/ui/table'
+    24→import {
+    25→  Tooltip, TooltipContent, TooltipTrigger,
+    26→} from '@/components/ui/tooltip'
+    27→import {
+    28→  Collapsible, CollapsibleContent, CollapsibleTrigger,
+    29→} from '@/components/ui/collapsible'
+    30→import {
+    31→  ShieldCheck, Users, Crown, Briefcase, Package, ChevronRight, ChevronDown,
+    32→  Search, RefreshCw, Building2, MapPin, Mail, Phone,
+    33→  Eye, Edit3, BarChart3, ListTree, Activity, Clock, Hash,
+    34→  CircleUser, Layers, Coffee, Store,
+    35→} from 'lucide-react'
+    36→import { initials, formatRelative } from '@/lib/format'
+    37→import {
+    38→  CUSTOMER_TYPES, CustomerTypeBadge, getCustomerTypeMeta,
+    39→  type CustomerTypeKey,
+    40→} from './customer-type-badge'
+    41→import { CustomerTypeDialog } from './customer-type-dialog'
+    42→import { RoleAssignDialog } from './role-assign-dialog'
+    43→
+    44→// ─── API tipleri ────────────────────────────────────────────────
+    45→interface OverviewResponse {
+    46→  customerByType: Record<string, number>
+    47→  userByRole: Record<string, number>
+    48→  systemStats: {
+    49→    totalCustomers: number
+    50→    totalUsers: number
+    51→    totalDeals: number
+    52→    totalOrders: number
+    53→    totalInvoices: number
+    54→    totalTasks: number
+    55→    totalLeads: number
+    56→    totalProducts: number
+    57→    openTasks: number
+    58→    openDealsCount: number
+    59→    openDealsValue: number
+    60→    pendingInvoices: number
+    61→  }
+    62→  recentActivity: {
+    63→    id: string
+    64→    actorId: string | null
+    65→    actor?: { id: string; name: string } | null
+    66→    action: string
+    67→    entity: string
+    68→    entityId: string | null
+    69→    createdAt: string
+    70→  }[]
+    71→  generatedAt: string
+    72→}
+    73→
+    74→interface CustomerListResponse {
+    75→  items: Customer[]
+    76→  total: number
+    77→  limit: number
+    78→  offset: number
+    79→}
+    80→interface UsersResponse {
+    81→  items: UserListItem[]
+    82→  total: number
+    83→}
+    84→
+    85→// ─── Rol görsel eşlemesi ────────────────────────────────────────
+    86→const ROLE_TREE_GROUPS: {
+    87→  id: string
+    88→  label: string
+    89→  icon: typeof Crown
+    90→  color: string
+    91→  roles: { role: Role; emoji: string }[]
+    92→}[] = [
+    93→  {
+    94→    id: 'yonetim',
+    95→    label: 'Yönetim',
+    96→    icon: Crown,
+    97→    color: 'text-amber-600',
+    98→    roles: [
+    99→      { role: 'superadmin', emoji: '👑' },
+   100→      { role: 'admin', emoji: '🛡️' },
+   101→      { role: 'manager', emoji: '📋' },
+   102→    ],
+   103→  },
+   104→  {
+   105→    id: 'satis',
+   106→    label: 'Satış',
+   107→    icon: Briefcase,
+   108→    color: 'text-emerald-600',
+   109→    roles: [
+   110→      { role: 'rep', emoji: '💼' },
+   111→      { role: 'readonly', emoji: '👀' },
+   112→    ],
+   113→  },
+   114→  {
+   115→    id: 'operasyon',
+   116→    label: 'Operasyon',
+   117→    icon: Package,
+   118→    color: 'text-violet-600',
+   119→    roles: [
+   120→      { role: 'stock', emoji: '📦' },
+   121→    ],
+   122→  },
+   123→  {
+   124→    id: 'kafe',
+   125→    label: 'Kafe',
+   126→    icon: Coffee,
+   127→    color: 'text-amber-600',
+   128→    roles: [
+   129→      { role: 'kasa', emoji: '☕' },
+   130→      { role: 'barmen', emoji: '🍹' },
+   131→      { role: 'komi', emoji: '🍽️' },
+   132→    ],
+   133→  },
+   134→  {
+   135→    id: 'market',
+   136→    label: 'Market',
+   137→    icon: Store,
+   138→    color: 'text-emerald-600',
+   139→    roles: [
+   140→      { role: 'kasiyer', emoji: '🧾' },
+   141→      { role: 'depo_sorumlusu', emoji: '🏭' },
+   142→    ],
+   143→  },
+   144→]
+   145→
+   146→// ─── Sol panel: ağaç ─────────────────────────────────────────────
+   147→type TreeSelection =
+   148→  | { kind: 'all' }
+   149→  | { kind: 'customerType'; value: CustomerTypeKey }
+   150→  | { kind: 'userRole'; value: Role }
+   151→
+   152→function TreePanel({
+   153→  overview,
+   154→  selection,
+   155→  onSelect,
+   156→}: {
+   157→  overview: OverviewResponse | undefined
+   158→  selection: TreeSelection
+   159→  onSelect: (s: TreeSelection) => void
+   160→}) {
+   161→  const [customersOpen, setCustomersOpen] = useState(true)
+   162→  const [usersOpen, setUsersOpen] = useState(true)
+   163→
+   164→  const totalCustomers = overview
+   165→    ? Object.values(overview.customerByType).reduce((s, n) => s + n, 0)
+   166→    : 0
+   167→  const totalUsers = overview
+   168→    ? Object.values(overview.userByRole).reduce((s, n) => s + n, 0)
+   169→    : 0
+   170→
+   171→  return (
+   172→    <div className="space-y-1">
+   173→      {/* Tüm müşteriler */}
+   174→      <Collapsible open={customersOpen} onOpenChange={setCustomersOpen}>
+   175→        <div className="px-2 py-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+   176→          <Users className="w-3.5 h-3.5" />
+   177→          <span className="flex-1">Müşteriler</span>
+   178→          <span className="tabular-nums">{totalCustomers}</span>
+   179→        </div>
+   180→        <CollapsibleContent>
+   181→          <div className="space-y-0.5 mb-2">
+   182→            <TreeRow
+   183→              active={selection.kind === 'all'}
+   184→              onClick={() => onSelect({ kind: 'all' })}
+   185→              icon={<BarChart3 className="w-4 h-4" />}
+   186→              label="Tüm Müşteriler"
+   187→              count={totalCustomers}
+   188→              tone="text-slate-600 dark:text-slate-300"
+   189→              dotClass="bg-slate-400"
+   190→            />
+   191→            {CUSTOMER_TYPES.map((t) => {
+   192→              const Icon = t.icon
+   193→              const count = overview?.customerByType[t.value] ?? 0
+   194→              return (
+   195→                <TreeRow
+   196→                  key={t.value}
+   197→                  active={selection.kind === 'customerType' && selection.value === t.value}
+   198→                  onClick={() => onSelect({ kind: 'customerType', value: t.value })}
+   199→                  icon={<Icon className="w-4 h-4" />}
+   200→                  label={t.label}
+   201→                  count={count}
+   202→                  tone={t.color.split(' ')[0]}
+   203→                  dotClass={t.dot}
+   204→                />
+   205→              )
+   206→            })}
+   207→          </div>
+   208→        </CollapsibleContent>
+   209→      </Collapsible>
+   210→
+   211→      <Separator className="my-2" />
+   212→
+   213→      {/* Kullanıcılar */}
+   214→      <Collapsible open={usersOpen} onOpenChange={setUsersOpen}>
+   215→        <CollapsibleTrigger asChild>
+   216→          <button className="w-full px-2 py-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground transition-colors">
+   217→            {usersOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+   218→            <CircleUser className="w-3.5 h-3.5" />
+   219→            <span className="flex-1 text-left">Kullanıcılar</span>
+   220→            <span className="tabular-nums">{totalUsers}</span>
+   221→          </button>
+   222→        </CollapsibleTrigger>
+   223→        <CollapsibleContent>
+   224→          <div className="space-y-1.5">
+   225→            {ROLE_TREE_GROUPS.map((group) => {
+   226→              const GroupIcon = group.icon
+   227→              const groupTotal = group.roles.reduce(
+   228→                (s, r) => s + (overview?.userByRole[r.role] ?? 0),
+   229→                0,
+   230→              )
+   231→              return (
+   232→                <div key={group.id}>
+   233→                  <div className={cn('px-2 py-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide', group.color)}>
+   234→                    <GroupIcon className="w-3 h-3" />
+   235→                    <span className="flex-1">{group.label}</span>
+   236→                    <span className="tabular-nums text-muted-foreground">{groupTotal}</span>
+   237→                  </div>
+   238→                  <div className="space-y-0.5">
+   239→                    {group.roles.map((r) => (
+   240→                      <TreeRow
+   241→                        key={r.role}
+   242→                        active={selection.kind === 'userRole' && selection.value === r.role}
+   243→                        onClick={() => onSelect({ kind: 'userRole', value: r.role })}
+   244→                        icon={<span className="text-sm leading-none">{r.emoji}</span>}
+   245→                        label={ROLE_LABELS[r.role]}
+   246→                        count={overview?.userByRole[r.role] ?? 0}
+   247→                        tone="text-foreground"
+   248→                        dotClass="bg-muted-foreground/50"
+   249→                        indent
+   250→                      />
+   251→                    ))}
+   252→                  </div>
+   253→                </div>
+   254→              )
+   255→            })}
+   256→          </div>
+   257→        </CollapsibleContent>
+   258→      </Collapsible>
+   259→    </div>
+   260→  )
+   261→}
+   262→
+   263→function TreeRow({
+   264→  active, onClick, icon, label, count, tone, dotClass, indent,
+   265→}: {
+   266→  active: boolean
+   267→  onClick: () => void
+   268→  icon: React.ReactNode
+   269→  label: string
+   270→  count: number
+   271→  tone: string
+   272→  dotClass: string
+   273→  indent?: boolean
+   274→}) {
+   275→  return (
+   276→    <button
+   277→      onClick={onClick}
+   278→      data-active={active}
+   279→      className={cn(
+   280→        'w-full relative flex items-center gap-2 pr-2 py-1.5 rounded-md text-sm transition-colors group',
+   281→        indent ? 'pl-7' : 'pl-2',
+   282→        active
+   283→          ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-medium'
+   284→          : 'hover:bg-muted/60 text-foreground/80',
+   285→      )}
+   286→    >
+   287→      {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-emerald-600 rounded-r-full" />}
+   288→      <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotClass)} />
+   289→      <span className={cn('shrink-0', tone)}>{icon}</span>
+   290→      <span className="flex-1 text-left truncate">{label}</span>
+   291→      <span className="text-[11px] tabular-nums text-muted-foreground group-hover:text-foreground">
+   292→        {count}
+   293→      </span>
+   294→    </button>
+   295→  )
+   296→}
+   297→
+   298→// ─── Orta panel: müşteri tablosu ─────────────────────────────────
+   299→function CustomerTable({
+   300→  customers, isLoading, onSelectCustomer, selectedId, onChangeType,
+   301→}: {
+   302→  customers: Customer[]
+   303→  isLoading: boolean
+   304→  onSelectCustomer: (c: Customer) => void
+   305→  selectedId: string | null
+   306→  onChangeType: (c: Customer) => void
+   307→}) {
+   308→  if (isLoading) {
+   309→    return (
+   310→      <div className="p-4 space-y-2">
+   311→        {[...Array(6)].map((_, i) => (
+   312→          <Skeleton key={i} className="h-10 w-full" />
+   313→        ))}
+   314→      </div>
+   315→    )
+   316→  }
+   317→  if (customers.length === 0) {
+   318→    return (
+   319→      <div className="p-8 text-center text-sm text-muted-foreground">
+   320→        <Users className="w-10 h-10 mx-auto mb-2 text-muted-foreground/40" />
+   321→        Bu filtrede müşteri yok.
+   322→      </div>
+   323→    )
+   324→  }
+   325→  return (
+   326→    <Table>
+   327→      <TableHeader>
+   328→        <TableRow className="bg-muted/50 hover:bg-muted/50">
+   329→          <TableHead className="pl-3 min-w-[200px] text-xs uppercase tracking-wider text-muted-foreground">Müşteri</TableHead>
+   330→          <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Tür</TableHead>
+   331→          <TableHead className="hidden md:table-cell text-xs uppercase tracking-wider text-muted-foreground">Sektör</TableHead>
+   332→          <TableHead className="hidden lg:table-cell text-xs uppercase tracking-wider text-muted-foreground">Şehir</TableHead>
+   333→          <TableHead className="hidden lg:table-cell text-xs uppercase tracking-wider text-muted-foreground">Sorumlu</TableHead>
+   334→          <TableHead className="hidden md:table-cell text-xs uppercase tracking-wider text-muted-foreground">Durum</TableHead>
+   335→          <TableHead className="text-right pr-3 text-xs uppercase tracking-wider text-muted-foreground">İşlem</TableHead>
+   336→        </TableRow>
+   337→      </TableHeader>
+   338→      <TableBody>
+   339→        {customers.map((c) => {
+   340→          const meta = getCustomerTypeMeta(c.customerType)
+   341→          return (
+   342→            <TableRow
+   343→              key={c.id}
+   344→              onClick={() => onSelectCustomer(c)}
+   345→              className={cn(
+   346→                'cursor-pointer group',
+   347→                selectedId === c.id && 'bg-emerald-50/60 dark:bg-emerald-950/20',
+   348→              )}
+   349→            >
+   350→              <TableCell className="pl-3">
+   351→                <div className="flex items-center gap-2.5 min-w-0">
+   352→                  {c.logo ? (
+   353→                    // eslint-disable-next-line @next/next/no-img-element
+   354→                    <img src={c.logo} alt={c.name} className="w-8 h-8 rounded-lg object-cover border border-border shrink-0" />
+   355→                  ) : (
+   356→                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center shrink-0">
+   357→                      <Building2 className="w-4 h-4 text-slate-500" />
+   358→                    </div>
+   359→                  )}
+   360→                  <div className="min-w-0">
+   361→                    <div className="font-medium text-sm truncate max-w-[200px]">{c.name}</div>
+   362→                    {c._count && (
+   363→                      <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+   364→                        <Layers className="w-2.5 h-2.5" />
+   365→                        {c._count.deals} fırsat · {c._count.activities} aktivite
+   366→                      </div>
+   367→                    )}
+   368→                  </div>
+   369→                </div>
+   370→              </TableCell>
+   371→              <TableCell>
+   372→                <CustomerTypeBadge type={c.customerType} />
+   373→              </TableCell>
+   374→              <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{c.sector}</TableCell>
+   375→              <TableCell className="hidden lg:table-cell text-xs">
+   376→                {c.city ? (
+   377→                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+   378→                    <MapPin className="w-3 h-3" />{c.city}
+   379→                  </span>
+   380→                ) : '—'}
+   381→              </TableCell>
+   382→              <TableCell className="hidden lg:table-cell text-xs">
+   383→                {c.owner ? (
+   384→                  <span className="truncate inline-block max-w-[120px] text-muted-foreground">{c.owner.name}</span>
+   385→                ) : <span className="text-muted-foreground">—</span>}
+   386→              </TableCell>
+   387→              <TableCell className="hidden md:table-cell">
+   388→                <Badge
+   389→                  variant="outline"
+   390→                  className={cn(
+   391→                    'text-[10px] px-1.5',
+   392→                    c.status === 'aktif'
+   393→                      ? 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/40'
+   394→                      : 'text-slate-600 bg-slate-50 border-slate-200',
+   395→                  )}
+   396→                >
+   397→                  {c.status}
+   398→                </Badge>
+   399→              </TableCell>
+   400→              <TableCell className="text-right pr-3">
+   401→                <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+   402→                  <Tooltip>
+   403→                    <TooltipTrigger asChild>
+   404→                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => onSelectCustomer(c)}>
+   405→                        <Eye className="w-4 h-4" />
+   406→                      </Button>
+   407→                    </TooltipTrigger>
+   408→                    <TooltipContent>Detay</TooltipContent>
+   409→                  </Tooltip>
+   410→                  <Tooltip>
+   411→                    <TooltipTrigger asChild>
+   412→                      <Button
+   413→                        variant="ghost"
+   414→                        size="sm"
+   415→                        className="h-8 px-2 text-xs"
+   416→                        onClick={() => onChangeType(c)}
+   417→                      >
+   418→                        <Edit3 className="w-3.5 h-3.5 mr-1" />
+   419→                        <span className="hidden sm:inline">Tür</span>
+   420→                      </Button>
+   421→                    </TooltipTrigger>
+   422→                    <TooltipContent>Tür Değiştir</TooltipContent>
+   423→                  </Tooltip>
+   424→                </div>
+   425→              </TableCell>
+   426→            </TableRow>
+   427→          )
+   428→        })}
+   429→      </TableBody>
+   430→    </Table>
+   431→  )
+   432→}
+   433→
+   434→// ─── Orta panel: kullanıcı tablosu ───────────────────────────────
+   435→function UserTable({
+   436→  users, isLoading, onSelectUser, selectedId, onChangeRole, currentActorId,
+   437→}: {
+   438→  users: UserListItem[]
+   439→  isLoading: boolean
+   440→  onSelectUser: (u: UserListItem) => void
+   441→  selectedId: string | null
+   442→  onChangeRole: (u: UserListItem) => void
+   443→  currentActorId: string
+   444→}) {
+   445→  if (isLoading) {
+   446→    return (
+   447→      <div className="p-4 space-y-2">
+   448→        {[...Array(6)].map((_, i) => (
+   449→          <Skeleton key={i} className="h-10 w-full" />
+   450→        ))}
+   451→      </div>
+   452→    )
+   453→  }
+   454→  if (users.length === 0) {
+   455→    return (
+   456→      <div className="p-8 text-center text-sm text-muted-foreground">
+   457→        <CircleUser className="w-10 h-10 mx-auto mb-2 text-muted-foreground/40" />
+   458→        Bu rolde kullanıcı yok.
+   459→      </div>
+   460→    )
+   461→  }
+   462→  return (
+   463→    <Table>
+   464→      <TableHeader>
+   465→        <TableRow className="bg-muted/50 hover:bg-muted/50">
+   466→          <TableHead className="pl-3 min-w-[200px] text-xs uppercase tracking-wider text-muted-foreground">Kullanıcı</TableHead>
+   467→          <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Rol</TableHead>
+   468→          <TableHead className="hidden md:table-cell text-xs uppercase tracking-wider text-muted-foreground">Yönetici</TableHead>
+   469→          <TableHead className="hidden lg:table-cell text-xs uppercase tracking-wider text-muted-foreground">Yetki</TableHead>
+   470→          <TableHead className="hidden md:table-cell text-xs uppercase tracking-wider text-muted-foreground">Durum</TableHead>
+   471→          <TableHead className="text-right pr-3 text-xs uppercase tracking-wider text-muted-foreground">İşlem</TableHead>
+   472→        </TableRow>
+   473→      </TableHeader>
+   474→      <TableBody>
+   475→        {users.map((u) => (
+   476→          <TableRow
+   477→            key={u.id}
+   478→            onClick={() => onSelectUser(u)}
+   479→            className={cn(
+   480→              'cursor-pointer group',
+   481→              selectedId === u.id && 'bg-emerald-50/60 dark:bg-emerald-950/20',
+   482→            )}
+   483→          >
+   484→            <TableCell className="pl-3">
+   485→              <div className="flex items-center gap-2.5 min-w-0">
+   486→                <Avatar className="w-8 h-8 shrink-0">
+   487→                  <AvatarImage src={u.avatarUrl ?? undefined} alt={u.name} />
+   488→                  <AvatarFallback className="text-[11px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+   489→                    {initials(u.name)}
+   490→                  </AvatarFallback>
+   491→                </Avatar>
+   492→                <div className="min-w-0">
+   493→                  <div className="font-medium text-sm truncate max-w-[180px]">
+   494→                    {u.name}
+   495→                    {u.id === currentActorId && (
+   496→                      <span className="ml-1.5 text-[10px] text-emerald-600 font-normal">(siz)</span>
+   497→                    )}
+   498→                  </div>
+   499→                  <div className="text-[10px] text-muted-foreground truncate max-w-[180px]">{u.email}</div>
+   500→                </div>
+   501→              </div>
+   502→            </TableCell>
+   503→            <TableCell>
+   504→              <Badge
+   505→                variant="outline"
+   506→                className="text-[10px] px-1.5 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60"
+   507→              >
+   508→                {ROLE_LABELS[u.role]}
+   509→              </Badge>
+   510→            </TableCell>
+   511→            <TableCell className="hidden md:table-cell text-xs">
+   512→              {u.manager ? (
+   513→                <span className="truncate inline-block max-w-[120px] text-muted-foreground">{u.manager.name}</span>
+   514→              ) : <span className="text-muted-foreground">—</span>}
+   515→            </TableCell>
+   516→            <TableCell className="hidden lg:table-cell text-xs text-muted-foreground tabular-nums">
+   517→              {u.permissions.length} yetki
+   518→              {u._count?.subordinates ? ` · ${u._count.subordinates} ast` : ''}
+   519→            </TableCell>
+   520→            <TableCell className="hidden md:table-cell">
+   521→              <Badge
+   522→                variant="outline"
+   523→                className={cn(
+   524→                  'text-[10px] px-1.5',
+   525→                  u.status === 'active'
+   526→                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/40'
+   527→                    : 'text-slate-600 bg-slate-50 border-slate-200',
+   528→                )}
+   529→              >
+   530→                {u.status === 'active' ? 'Aktif' : u.status === 'passive' ? 'Pasif' : u.status}
+   531→              </Badge>
+   532→            </TableCell>
+   533→            <TableCell className="text-right pr-3">
+   534→              <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+   535→                <Tooltip>
+   536→                  <TooltipTrigger asChild>
+   537→                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => onSelectUser(u)}>
+   538→                      <Eye className="w-4 h-4" />
+   539→                    </Button>
+   540→                  </TooltipTrigger>
+   541→                  <TooltipContent>Detay</TooltipContent>
+   542→                </Tooltip>
+   543→                <Tooltip>
+   544→                  <TooltipTrigger asChild>
+   545→                    <Button
+   546→                      variant="ghost"
+   547→                      size="sm"
+   548→                      className="h-8 px-2 text-xs"
+   549→                      onClick={() => onChangeRole(u)}
+   550→                      disabled={u.id === currentActorId}
+   551→                    >
+   552→                      <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+   553→                      <span className="hidden sm:inline">Rol</span>
+   554→                    </Button>
+   555→                  </TooltipTrigger>
+   556→                  <TooltipContent>Rol Değiştir</TooltipContent>
+   557→                </Tooltip>
+   558→              </div>
+   559→            </TableCell>
+   560→          </TableRow>
+   561→        ))}
+   562→      </TableBody>
+   563→    </Table>
+   564→  )
+   565→}
+   566→
+   567→// ─── Sağ panel: müşteri detayı ───────────────────────────────────
+   568→function CustomerDetail({ customer, onOpen360, onChangeType }: {
+   569→  customer: Customer
+   570→  onOpen360: () => void
+   571→  onChangeType: () => void
+   572→}) {
+   573→  const meta = getCustomerTypeMeta(customer.customerType)
+   574→  const Icon = meta.icon
+   575→  return (
+   576→    <div className="space-y-4">
+   577→      {/* Üst kart */}
+   578→      <div className="rounded-lg border bg-card p-4">
+   579→        <div className="flex items-start gap-3">
+   580→          {customer.logo ? (
+   581→            // eslint-disable-next-line @next/next/no-img-element
+   582→            <img src={customer.logo} alt={customer.name} className="w-14 h-14 rounded-xl object-cover border border-border" />
+   583→          ) : (
+   584→            <div className={cn('w-14 h-14 rounded-xl flex items-center justify-center', meta.color)}>
+   585→              <Icon className="w-6 h-6" />
+   586→            </div>
+   587→          )}
+   588→          <div className="flex-1 min-w-0">
+   589→            <h3 className="font-semibold text-base truncate">{customer.name}</h3>
+   590→            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+   591→              <CustomerTypeBadge type={customer.customerType} size="md" />
+   592→              <Badge variant="outline" className="text-[10px] px-1.5">
+   593→                {customer.sector}
+   594→              </Badge>
+   595→            </div>
+   596→            <div className="mt-1.5 text-xs text-muted-foreground flex items-center gap-3 flex-wrap">
+   597→              {customer.city && (
+   598→                <span className="inline-flex items-center gap-1">
+   599→                  <MapPin className="w-3 h-3" />{customer.city}
+   600→                </span>
+   601→              )}
+   602→              {customer.phone && (
+   603→                <span className="inline-flex items-center gap-1">
+   604→                  <Phone className="w-3 h-3" />{customer.phone}
+   605→                </span>
+   606→              )}
+   607→              {customer.email && (
+   608→                <span className="inline-flex items-center gap-1 truncate max-w-[160px]">
+   609→                  <Mail className="w-3 h-3" />{customer.email}
+   610→                </span>
+   611→              )}
+   612→            </div>
+   613→          </div>
+   614→        </div>
+   615→        <div className="mt-3 flex gap-2">
+   616→          <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={onOpen360}>
+   617→            <Eye className="w-3.5 h-3.5 mr-1" /> 360° Görünüm
+   618→          </Button>
+   619→          <Button size="sm" className="h-7 text-xs flex-1 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={onChangeType}>
+   620→            <Edit3 className="w-3.5 h-3.5 mr-1" /> Tür Değiştir
+   621→          </Button>
+   622→        </div>
+   623→      </div>
+   624→
+   625→      {/* İstatistikler */}
+   626→      <div className="grid grid-cols-2 gap-2">
+   627→        <StatBox label="Fırsat" value={customer._count?.deals ?? 0} icon={Briefcase} tone="text-emerald-600" />
+   628→        <StatBox label="Aktivite" value={customer._count?.activities ?? 0} icon={Activity} tone="text-amber-600" />
+   629→        <StatBox label="Görev" value={customer._count?.tasks ?? 0} icon={ListTree} tone="text-violet-600" />
+   630→        <StatBox label="İletişim" value={customer._count?.contacts ?? 0} icon={Users} tone="text-slate-600" />
+   631→      </div>
+   632→
+   633→      {/* Açıklama */}
+   634→      <div className="rounded-lg border bg-muted/20 p-3">
+   635→        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+   636→          Tür Bilgisi
+   637→        </div>
+   638→        <p className="text-xs text-foreground/80">
+   639→          <span className="font-medium">{meta.emoji} {meta.label}:</span> {meta.description}
+   640→        </p>
+   641→        <p className="text-[11px] text-muted-foreground mt-1.5">
+   642→          Müşteri {formatRelative(customer.createdAt)} tarihinde eklendi.
+   643→          {customer.lastActivityAt && (
+   644→            <> Son aktivite: {formatRelative(customer.lastActivityAt)}.</>
+   645→          )}
+   646→        </p>
+   647→      </div>
+   648→    </div>
+   649→  )
+   650→}
+   651→
+   652→// ─── Sağ panel: kullanıcı detayı ─────────────────────────────────
+   653→function UserDetail({ user, onChangeRole }: {
+   654→  user: UserListItem
+   655→  onChangeRole: () => void
+   656→}) {
+   657→  // Yetki grupları
+   658→  const permByGroup = useMemo(() => {
+   659→    const map: Record<string, { key: PermissionKey; label: string }[]> = {}
+   660→    for (const p of ALL_PERMISSIONS) {
+   661→      if (user.permissions.includes(p.key)) {
+   662→        if (!map[p.group]) map[p.group] = []
+   663→        map[p.group].push({ key: p.key, label: p.label })
+   664→      }
+   665→    }
+   666→    return map
+   667→  }, [user.permissions])
+   668→
+   669→  return (
+   670→    <div className="space-y-4">
+   671→      {/* Üst kart */}
+   672→      <div className="rounded-lg border bg-card p-4">
+   673→        <div className="flex items-start gap-3">
+   674→          <Avatar className="w-14 h-14 shrink-0">
+   675→            <AvatarImage src={user.avatarUrl ?? undefined} alt={user.name} />
+   676→            <AvatarFallback className="text-base bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+   677→              {initials(user.name)}
+   678→            </AvatarFallback>
+   679→          </Avatar>
+   680→          <div className="flex-1 min-w-0">
+   681→            <h3 className="font-semibold text-base truncate">{user.name}</h3>
+   682→            {user.title && (
+   683→              <div className="text-xs text-muted-foreground truncate">{user.title}</div>
+   684→            )}
+   685→            <div className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+   686→              <Mail className="w-3 h-3" />{user.email}
+   687→            </div>
+   688→            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+   689→              <Badge variant="outline" className="text-[10px] px-1.5 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60">
+   690→                {ROLE_LABELS[user.role]}
+   691→              </Badge>
+   692→              <Badge
+   693→                variant="outline"
+   694→                className={cn(
+   695→                  'text-[10px] px-1.5',
+   696→                  user.status === 'active'
+   697→                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/40'
+   698→                    : 'text-slate-600 bg-slate-50 border-slate-200',
+   699→                )}
+   700→              >
+   701→                {user.status === 'active' ? 'Aktif' : user.status}
+   702→              </Badge>
+   703→            </div>
+   704→          </div>
+   705→        </div>
+   706→        {user.manager && (
+   707→          <div className="mt-3 text-xs text-muted-foreground flex items-center gap-1.5">
+   708→            <Crown className="w-3.5 h-3.5" />
+   709→            Yönetici: <span className="font-medium text-foreground">{user.manager.name}</span>
+   710→          </div>
+   711→        )}
+   712→        <Button size="sm" className="mt-3 w-full h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" onClick={onChangeRole}>
+   713→          <ShieldCheck className="w-3.5 h-3.5 mr-1.5" /> Rol / Yetki Düzenle
+   714→        </Button>
+   715→      </div>
+   716→
+   717→      {/* İstatistikler */}
+   718→      <div className="grid grid-cols-2 gap-2">
+   719→        <StatBox label="Müşteri" value={user._count?.ownedCustomers ?? 0} icon={Building2} tone="text-emerald-600" />
+   720→        <StatBox label="Fırsat" value={user._count?.ownedDeals ?? 0} icon={Briefcase} tone="text-amber-600" />
+   721→        <StatBox label="Ast" value={user._count?.subordinates ?? 0} icon={Users} tone="text-violet-600" />
+   722→        <StatBox label="Görev" value={user._count?.assignedTasks ?? 0} icon={ListTree} tone="text-slate-600" />
+   723→      </div>
+   724→
+   725→      {/* Yetkiler */}
+   726→      <div className="rounded-lg border bg-card p-3">
+   727→        <div className="flex items-center justify-between mb-2">
+   728→          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+   729→            Tanımlı Yetkiler
+   730→          </div>
+   731→          <span className="text-[10px] tabular-nums text-muted-foreground">
+   732→            {user.permissions.length}
+   733→          </span>
+   734→        </div>
+   735→        <ScrollArea className="max-h-72">
+   736→          <div className="space-y-2 pr-1">
+   737→            {Object.entries(permByGroup).map(([group, perms]) => (
+   738→              <div key={group}>
+   739→                <div className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-1">
+   740→                  {group}
+   741→                </div>
+   742→                <div className="flex flex-wrap gap-1">
+   743→                  {perms.map((p) => (
+   744→                    <Badge
+   745→                      key={p.key}
+   746→                      variant="outline"
+   747→                      className="text-[10px] px-1.5 h-5 font-normal bg-background"
+   748→                    >
+   749→                      {p.label}
+   750→                    </Badge>
+   751→                  ))}
+   752→                </div>
+   753→              </div>
+   754→            ))}
+   755→            {user.permissions.length === 0 && (
+   756→              <div className="text-xs text-muted-foreground italic">Yetki tanımlı değil.</div>
+   757→            )}
+   758→          </div>
+   759→        </ScrollArea>
+   760→      </div>
+   761→
+   762→      {/* Ast kullanıcılar */}
+   763→      {user.subordinates && user.subordinates.length > 0 && (
+   764→        <div className="rounded-lg border bg-card p-3">
+   765→          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+   766→            Ast Kullanıcılar ({user.subordinates.length})
+   767→          </div>
+   768→          <div className="space-y-1">
+   769→            {user.subordinates.map((s) => (
+   770→              <div key={s.id} className="flex items-center gap-2 text-xs">
+   771→                <Avatar className="w-5 h-5">
+   772→                  <AvatarFallback className="text-[9px] bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+   773→                    {initials(s.name)}
+   774→                  </AvatarFallback>
+   775→                </Avatar>
+   776→                <span className="flex-1 truncate">{s.name}</span>
+   777→                <Badge variant="outline" className="text-[9px] px-1 h-4">
+   778→                  {ROLE_LABELS[s.role]}
+   779→                </Badge>
+   780→              </div>
+   781→            ))}
+   782→          </div>
+   783→        </div>
+   784→      )}
+   785→    </div>
+   786→  )
+   787→}
+   788→
+   789→function StatBox({
+   790→  label, value, icon: Icon, tone,
+   791→}: {
+   792→  label: string
+   793→  value: number
+   794→  icon: typeof Users
+   795→  tone: string
+   796→}) {
+   797→  return (
+   798→    <div className="rounded-lg border bg-card p-2.5">
+   799→      <div className="flex items-center justify-between">
+   800→        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</span>
+   801→        <Icon className={cn('w-3.5 h-3.5', tone)} />
+   802→      </div>
+   803→      <div className="text-lg font-bold tabular-nums mt-0.5">{value}</div>
+   804→    </div>
+   805→  )
+   806→}
+   807→
+   808→// ─── Son aktivite zaman çizelgesi (center alt) ───────────────────
+   809→function RecentActivity({ activities }: { activities: OverviewResponse['recentActivity'] }) {
+   810→  if (!activities || activities.length === 0) {
+   811→    return (
+   812→      <div className="p-4 text-center text-xs text-muted-foreground">
+   813→        Son aktivite yok.
+   814→      </div>
+   815→    )
+   816→  }
+   817→  return (
+   818→    <div className="space-y-1.5">
+   819→      {activities.slice(0, 8).map((a) => (
+   820→        <div key={a.id} className="flex items-start gap-2 text-xs p-2 rounded-md hover:bg-muted/40">
+   821→          <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 flex items-center justify-center shrink-0 text-[10px] font-semibold">
+   822→            {a.actor?.name ? initials(a.actor.name) : '?'}
+   823→          </div>
+   824→          <div className="flex-1 min-w-0">
+   825→            <div className="flex items-center gap-1.5 flex-wrap">
+   826→              <span className="font-medium text-foreground truncate max-w-[120px]">
+   827→                {a.actor?.name ?? 'Sistem'}
+   828→              </span>
+   829→              <Badge variant="outline" className="text-[9px] px-1 h-4 font-normal">
+   830→                {a.action}
+   831→              </Badge>
+   832→              <span className="text-muted-foreground text-[10px]">{a.entity}</span>
+   833→            </div>
+   834→            <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+   835→              <Clock className="w-2.5 h-2.5" />
+   836→              {formatRelative(a.createdAt)}
+   837→            </div>
+   838→          </div>
+   839→        </div>
+   840→      ))}
+   841→    </div>
+   842→  )
+   843→}
+   844→
+   845→// ─── Ana AdminPanel ──────────────────────────────────────────────
+   846→export function AdminPanel() {
+   847→  const { user, openCustomer } = useAppStore()
+   848→  const [selection, setSelection] = useState<TreeSelection>({ kind: 'all' })
+   849→  const [search, setSearch] = useState('')
+   850→  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+   851→  const [selectedUser, setSelectedUser] = useState<UserListItem | null>(null)
+   852→  const [typeDialogCustomer, setTypeDialogCustomer] = useState<Customer | null>(null)
+   853→  const [roleDialogUser, setRoleDialogUser] = useState<UserListItem | null>(null)
+   854→
+   855→  // Overview verisi
+   856→  const { data: overview, isLoading: overviewLoading, refetch: refetchOverview, isFetching: overviewFetching } = useQuery({
+   857→    queryKey: ['admin-overview'],
+   858→    queryFn: () => apiGet<OverviewResponse>('/api/admin/overview'),
+   859→    refetchInterval: 30_000,
+   860→  })
+   861→
+   862→  // Müşteri listesi (customerType seçilince veya 'all')
+   863→  const customerQueryParams = useMemo(() => {
+   864→    const p: Record<string, string> = { limit: '200' }
+   865→    if (selection.kind === 'customerType') p.customerType = selection.value
+   866→    if (search) p.search = search
+   867→    return p
+   868→  }, [selection, search])
+   869→
+   870→  const { data: customersData, isLoading: customersLoading } = useQuery({
+   871→    queryKey: ['admin', 'customers', customerQueryParams],
+   872→    queryFn: () => {
+   873→      const qs = new URLSearchParams(customerQueryParams).toString()
+   874→      return apiGet<CustomerListResponse>(`/api/customers?${qs}`)
+   875→    },
+   876→    enabled: selection.kind === 'all' || selection.kind === 'customerType',
+   877→  })
+   878→
+   879→  // Kullanıcı listesi (userRole seçilince)
+   880→  const userQueryParams = useMemo(() => {
+   881→    const p: Record<string, string> = {}
+   882→    if (selection.kind === 'userRole') p.role = selection.value
+   883→    if (search) p.search = search
+   884→    return p
+   885→  }, [selection, search])
+   886→
+   887→  const { data: usersData, isLoading: usersLoading } = useQuery({
+   888→    queryKey: ['admin', 'users', userQueryParams],
+   889→    queryFn: () => {
+   890→      const qs = new URLSearchParams(userQueryParams).toString()
+   891→      return apiGet<UsersResponse>(`/api/admin/users?${qs}`)
+   892→    },
+   893→    enabled: selection.kind === 'userRole',
+   894→  })
+   895→
+   896→  const customers = customersData?.items ?? []
+   897→  const users = usersData?.items ?? []
+   898→
+   899→  const isCustomerMode = selection.kind === 'all' || selection.kind === 'customerType'
+   900→
+   901→  const handleSelect = (s: TreeSelection) => {
+   902→    setSelection(s)
+   903→    setSelectedCustomer(null)
+   904→    setSelectedUser(null)
+   905→    setSearch('')
+   906→  }
+   907→
+   908→  const handleSelectCustomer = (c: Customer) => {
+   909→    setSelectedCustomer(c)
+   910→    setSelectedUser(null)
+   911→  }
+   912→  const handleSelectUser = (u: UserListItem) => {
+   913→    setSelectedUser(u)
+   914→    setSelectedCustomer(null)
+   915→  }
+   916→
+   917→  const handleOpenCustomer360 = () => {
+   918→    if (selectedCustomer) {
+   919→      openCustomer(selectedCustomer.id)
+   920→    }
+   921→  }
+   922→
+   923→  const handleUpdatedCustomer = (updated: Customer) => {
+   924→    setSelectedCustomer(updated)
+   925→    setTypeDialogCustomer(null)
+   926→    refetchOverview()
+   927→  }
+   928→  const handleUpdatedUser = (updated: UserListItem) => {
+   929→    setSelectedUser(updated)
+   930→    setRoleDialogUser(null)
+   931→    refetchOverview()
+   932→  }
+   933→
+   934→  // Toplam sayaçlar header için
+   935→  const totalCustomers = overview
+   936→    ? Object.values(overview.customerByType).reduce((s, n) => s + n, 0)
+   937→    : 0
+   938→  const totalUsers = overview
+   939→    ? Object.values(overview.userByRole).reduce((s, n) => s + n, 0)
+   940→    : 0
+   941→
+   942→  // Center başlığı
+   943→  const centerTitle = useMemo(() => {
+   944→    if (selection.kind === 'all') return 'Tüm Müşteriler'
+   945→    if (selection.kind === 'customerType') {
+   946→      return getCustomerTypeMeta(selection.value).label
+   947→    }
+   948→    if (selection.kind === 'userRole') return ROLE_LABELS[selection.value]
+   949→    return 'Liste'
+   950→  }, [selection])
+   951→
+   952→  const centerCount = isCustomerMode ? customers.length : users.length
+   953→
+   954→  return (
+   955→    <div className="space-y-4 animate-fade-in">
+   956→      {/* Header */}
+   957→      <div className="flex items-start justify-between flex-wrap gap-3">
+   958→        <div>
+   959→          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   960→            <ShieldCheck className="w-6 h-6 text-emerald-600" />
+   961→            Admin Paneli
+   962→          </h2>
+   963→          <p className="text-sm text-muted-foreground mt-0.5">
+   964→            Müşteri türleri ve kullanıcı rolleri tek ekrandan yönetilir ·{' '}
+   965→            <span className="font-medium text-foreground">{totalCustomers}</span> müşteri ·{' '}
+   966→            <span className="font-medium text-foreground">{totalUsers}</span> kullanıcı
+   967→          </p>
+   968→        </div>
+   969→        <Button variant="outline" size="sm" onClick={() => refetchOverview()} disabled={overviewFetching}>
+   970→          <RefreshCw className={cn('w-4 h-4 mr-1.5', overviewFetching && 'animate-spin')} />
+   971→          Yenile
+   972→        </Button>
+   973→      </div>
+   974→
+   975→      {/* Sistem istatistik mini kartlar */}
+   976→      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+   977→        <SystemStat
+   978→          label="Müşteri" value={overview?.systemStats.totalCustomers}
+   979→          icon={Building2} color="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+   980→        />
+   981→        <SystemStat
+   982→          label="Fırsat" value={overview?.systemStats.totalDeals}
+   983→          icon={Briefcase} color="bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+   984→        />
+   985→        <SystemStat
+   986→          label="Sipariş" value={overview?.systemStats.totalOrders}
+   987→          icon={Package} color="bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+   988→        />
+   989→        <SystemStat
+   990→          label="Fatura" value={overview?.systemStats.totalInvoices}
+   991→          icon={Hash} color="bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+   992→        />
+   993→        <SystemStat
+   994→          label="Açık Görev" value={overview?.systemStats.openTasks}
+   995→          icon={ListTree} color="bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+   996→        />
+   997→        <SystemStat
+   998→          label="Lead" value={overview?.systemStats.totalLeads}
+   999→          icon={MapPin} color="bg-slate-100 text-slate-700 dark:bg-slate-800/40 dark:text-slate-300"
+  1000→        />
+  1001→      </div>
+  1002→
+  1003→      {/* 3 kolon layout */}
+  1004→      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+  1005→        {/* Sol: Ağaç */}
+  1006→        <Card className="lg:col-span-3 xl:col-span-3 h-fit lg:sticky lg:top-4">
+  1007→          <CardHeader className="pb-2">
+  1008→            <CardTitle className="text-sm flex items-center gap-1.5">
+  1009→              <ListTree className="w-4 h-4 text-emerald-600" />
+  1010→              Tür & Rol Ağacı
+  1011→            </CardTitle>
+  1012→            <CardDescription className="text-xs">
+  1013→              Müşteri türü veya kullanıcı rolü seçerek filtreleyin
+  1014→            </CardDescription>
+  1015→          </CardHeader>
+  1016→          <CardContent className="pt-0">
+  1017→            {overviewLoading ? (
+  1018→              <div className="space-y-2">
+  1019→                {[...Array(8)].map((_, i) => (
+  1020→                  <Skeleton key={i} className="h-6 w-full" />
+  1021→                ))}
+  1022→              </div>
+  1023→            ) : (
+  1024→              <TreePanel
+  1025→                overview={overview}
+  1026→                selection={selection}
+  1027→                onSelect={handleSelect}
+  1028→              />
+  1029→            )}
+  1030→          </CardContent>
+  1031→        </Card>
+  1032→
+  1033→        {/* Orta: Liste */}
+  1034→        <Card className="lg:col-span-5 xl:col-span-5">
+  1035→          <CardHeader className="pb-2">
+  1036→            <div className="flex items-center justify-between gap-2">
+  1037→              <div className="min-w-0">
+  1038→                <CardTitle className="text-sm truncate">{centerTitle}</CardTitle>
+  1039→                <CardDescription className="text-xs">
+  1040→                  {centerCount} kayıt listeleniyor
+  1041→                </CardDescription>
+  1042→              </div>
+  1043→              <div className="relative w-32 sm:w-48">
+  1044→                <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+  1045→                <Input
+  1046→                  value={search}
+  1047→                  onChange={(e) => setSearch(e.target.value)}
+  1048→                  placeholder="Ara..."
+  1049→                  className="h-8 text-xs pl-7"
+  1050→                />
+  1051→              </div>
+  1052→            </div>
+  1053→          </CardHeader>
+  1054→          <CardContent className="p-0">
+  1055→            {isCustomerMode ? (
+  1056→              <CustomerTable
+  1057→                customers={customers}
+  1058→                isLoading={customersLoading}
+  1059→                onSelectCustomer={handleSelectCustomer}
+  1060→                selectedId={selectedCustomer?.id ?? null}
+  1061→                onChangeType={setTypeDialogCustomer}
+  1062→              />
+  1063→            ) : (
+  1064→              <UserTable
+  1065→                users={users}
+  1066→                isLoading={usersLoading}
+  1067→                onSelectUser={handleSelectUser}
+  1068→                selectedId={selectedUser?.id ?? null}
+  1069→                onChangeRole={setRoleDialogUser}
+  1070→                currentActorId={user?.id ?? ''}
+  1071→              />
+  1072→            )}
+  1073→          </CardContent>
+  1074→        </Card>
+  1075→
+  1076→        {/* Sağ: Detay */}
+  1077→        <Card className="lg:col-span-4 xl:col-span-4 h-fit lg:sticky lg:top-4">
+  1078→          <CardHeader className="pb-2">
+  1079→            <CardTitle className="text-sm flex items-center gap-1.5">
+  1080→              <Eye className="w-4 h-4 text-emerald-600" />
+  1081→              Detay
+  1082→            </CardTitle>
+  1083→            <CardDescription className="text-xs">
+  1084→              {selectedCustomer
+  1085→                ? 'Müşteri özeti'
+  1086→                : selectedUser
+  1087→                ? 'Kullanıcı özeti'
+  1088→                : 'Detay için bir kayıt seçin'}
+  1089→            </CardDescription>
+  1090→          </CardHeader>
+  1091→          <CardContent>
+  1092→            {selectedCustomer ? (
+  1093→              <CustomerDetail
+  1094→                customer={selectedCustomer}
+  1095→                onOpen360={handleOpenCustomer360}
+  1096→                onChangeType={() => setTypeDialogCustomer(selectedCustomer)}
+  1097→              />
+  1098→            ) : selectedUser ? (
+  1099→              <UserDetail
+  1100→                user={selectedUser}
+  1101→                onChangeRole={() => setRoleDialogUser(selectedUser)}
+  1102→              />
+  1103→            ) : (
+  1104→              <div className="py-10 text-center">
+  1105→                <div className="w-14 h-14 mx-auto rounded-full bg-muted flex items-center justify-center mb-3">
+  1106→                  <Eye className="w-6 h-6 text-muted-foreground/40" />
+  1107→                </div>
+  1108→                <p className="text-sm text-muted-foreground">
+  1109→                  Soldaki listeden bir müşteri veya kullanıcı seçin.
+  1110→                </p>
+  1111→              </div>
+  1112→            )}
+  1113→          </CardContent>
+  1114→        </Card>
+  1115→      </div>
+  1116→
+  1117→      {/* Son Aktiviteler */}
+  1118→      <Card>
+  1119→        <CardHeader className="pb-2">
+  1120→          <CardTitle className="text-sm flex items-center gap-1.5">
+  1121→            <Activity className="w-4 h-4 text-emerald-600" />
+  1122→            Son Aktiviteler
+  1123→          </CardTitle>
+  1124→          <CardDescription className="text-xs">
+  1125→            Sistem genelindeki son 10 denetim kaydı
+  1126→          </CardDescription>
+  1127→        </CardHeader>
+  1128→        <CardContent>
+  1129→          <RecentActivity activities={overview?.recentActivity ?? []} />
+  1130→        </CardContent>
+  1131→      </Card>
+  1132→
+  1133→      {/* Diyaloglar */}
+  1134→      <CustomerTypeDialog
+  1135→        key={`type-${typeDialogCustomer?.id ?? 'none'}`}
+  1136→        open={!!typeDialogCustomer}
+  1137→        onOpenChange={(v) => !v && setTypeDialogCustomer(null)}
+  1138→        customer={typeDialogCustomer}
+  1139→        onUpdated={handleUpdatedCustomer}
+  1140→      />
+  1141→      <RoleAssignDialog
+  1142→        key={`role-${roleDialogUser?.id ?? 'none'}`}
+  1143→        open={!!roleDialogUser}
+  1144→        onOpenChange={(v) => !v && setRoleDialogUser(null)}
+  1145→        user={roleDialogUser}
+  1146→        actorRole={user?.role as Role}
+  1147→        onUpdated={handleUpdatedUser}
+  1148→      />
+  1149→    </div>
+  1150→  )
+  1151→}
+  1152→
+  1153→function SystemStat({
+  1154→  label, value, icon: Icon, color,
+  1155→}: {
+  1156→  label: string
+  1157→  value: number | undefined
+  1158→  icon: typeof Users
+  1159→  color: string
+  1160→}) {
+  1161→  return (
+  1162→    <div className="rounded-lg border bg-card p-2.5">
+  1163→      <div className="flex items-center justify-between mb-0.5">
+  1164→        <span className="text-[10px] text-muted-foreground uppercase tracking-wide truncate">{label}</span>
+  1165→        <div className={cn('w-5 h-5 rounded flex items-center justify-center', color)}>
+  1166→          <Icon className="w-3 h-3" />
+  1167→        </div>
+  1168→      </div>
+  1169→      <div className="text-base font-bold tabular-nums">
+  1170→        {value === undefined ? <Skeleton className="h-4 w-8" /> : value}
+  1171→      </div>
+  1172→    </div>
+  1173→  )
+  1174→}
+  1175→

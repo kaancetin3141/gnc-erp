@@ -1,0 +1,502 @@
+  4241→  const range = url.searchParams.get('range') || '6m'
+  4242→  const { rangeStart, rangeEnd } = computeRange(range)
+  4243→
+  4244→  if (sector === 'crm') {
+  4245→    // Mevcut tüm CRM sorgularını buraya taşı, rangeStart/rangeEnd ile filtrele
+  4246→    const crmData = await getCrmReportsData(user, visFilter, rangeStart, rangeEnd)
+  4247→    return ok({ sector, range, ...crmData })
+  4248→  }
+  4249→
+  4250→  const visFilter = await getVisibilityFilter(user!)
+  4251→  let sectorData: SectorReportsData
+  4252→  if (sector === 'cafe') sectorData = await getCafeReportsData(user!.tenantId, rangeStart, rangeEnd, visFilter)
+  4253→  else if (sector === 'market') sectorData = await getMarketReportsData(...)
+  4254→  else if (sector === 'site') sectorData = await getSiteReportsData(...)
+  4255→  else if (sector === 'appointments') sectorData = await getAppointmentReportsData(...)
+  4256→
+  4257→  return ok({ sector, range, ...sectorData })
+  4258→}
+  4259→```
+  4260→
+  4261→Önemli iyileştirmeler:
+  4262→- Tarih aralığı parametre olarak kabul edilir (`?range=7d|30d|90d|6m|1y|all`) — şu anki cosmetic bug düzeltilmiş olur.
+  4263→- CRM dışı sektörlerde gereksiz CRM sorguları çalışmaz (performans).
+  4264→- Yanıt `sector` alanı içerir (frontend dispatch için).
+  4265→
+  4266→#### B2. `/home/z/my-project/src/components/reports/reports-view.tsx` (~2376→~150 satır parent + ~2200 satır CRM içeriği)
+  4267→Dashboard-view.tsx pattern kopyası — parçala:
+  4268→
+  4269→1. **Mevcut 10 bölümü `CrmReports` component'ine taşı** (aynı dosyada veya yeni `crm-reports.tsx`):
+  4270→   - `function CrmReports({ data }: { data: ReportsData })` — KpiSummary, SalesFunnelCard, RevenueTrendCard, WinLossAnalysisCard, MapsConversionCard, ActivityPerformanceCard, RepPerformanceCard, TopCustomersCard, StaleCustomersCard, ErpMetricsCard — hepsi `CrmReports` içinde. Mevcut `ReportsView()` gövdesinin içeriği.
+  4271→   - `DailyReportView` Dialog'u CRM-only (başka sektörlerde gösterilmez — kafe/market/site/randevu'da gün sonu aktivite raporu farklı bir içeriğe sahip olurdu, MVP'de gizlenir).
+  4272→
+  4273→2. **`ReportsView` parent** (~150 satır, mevcut dosyanın başı):
+  4274→   ```tsx
+  4275→   export function ReportsView() {
+  4276→     const user = useAppStore((s) => s.user)
+  4277→     const sector = getTenantSector(user?.tenant.name)
+  4278→     const [dateRange, setDateRange] = useState('6m')
+  4279→     const { data, isLoading } = useQuery({
+  4280→       queryKey: ['reports', dateRange, sector],
+  4281→       queryFn: () => apiGet(`/api/reports?range=${dateRange}`),
+  4282→       enabled: user?.role !== 'stock',
+  4283→     })
+  4284→
+  4285→     if (user?.role === 'stock') return <StockForbiddenCard />
+  4286→     if (isLoading || !data) return <ReportsSkeleton sector={sector} />
+  4287→     if (isError) return <ErrorCard refetch={refetch} />
+  4288→
+  4289→     return (
+  4290→       <div className="space-y-6 animate-fade-in pb-6">
+  4291→         <ReportsHeader sector={sector} dateRange={dateRange} onDateChange={setDateRange} />
+  4292→         {sector === 'crm' && <CrmReports data={data} />}
+  4293→         {sector === 'cafe' && data.cafe && <CafeReports data={{ sector: 'cafe', cafe: data.cafe }} />}
+  4294→         {sector === 'market' && data.market && <MarketReports data={{ sector: 'market', market: data.market }} />}
+  4295→         {sector === 'site' && data.site && <SiteReports data={{ sector: 'site', site: data.site }} />}
+  4296→         {sector === 'appointments' && data.appointments && (
+  4297→           <AppointmentsReports data={{ sector: 'appointments', appointments: data.appointments }} />
+  4298→         )}
+  4299→       </div>
+  4300→     )
+  4301→   }
+  4302→   ```
+  4303→
+  4304→3. **`ReportsHeader`** — sektör bazlı başlık + alt başlık + dateRange Select (sadece CRM'de "Gün Sonu Raporu" butonu + "Tümünü Dışa Aktar" butonu göster; diğer sektörlerde sadece dateRange + CSV/XLSX export).
+  4305→
+  4306→4. **`ReportsSkeleton`** — sektör-bazlı (KPI grid 4 + 3-5 bölüm kartı).
+  4307→
+  4308→#### B3. `/home/z/my-project/src/lib/api-client.ts` (satır 71)
+  4309→Query key'i parametre destekler hale getir:
+  4310→
+  4311→```ts
+  4312→reports: (range?: string) => ['reports', range ?? '6m'] as const,
+  4313→```
+  4314→
+  4315→Mevcut `qk.reports` kullanan noktalar güncellenir (sadece `reports-view.tsx:238` çağrısı `qk.reports` — `qk.reports(dateRange)` olarak güncellenir).
+  4316→
+  4317→### C. Backend Sorgu Detayları (reports-sectors.ts içeriği)
+  4318→
+  4319→#### `getCafeReportsData(tenantId, rangeStart, rangeEnd, visFilter?)`
+  4320→```ts
+  4321→const cafes = await db.cafe.findMany({ where: { tenantId }, select: {...} })
+  4322→const orders = await db.cafeOrder.findMany({
+  4323→  where: { cafeId: { in: cafeIds }, createdAt: { gte: rangeStart, lt: rangeEnd }, status: 'odendi' },
+  4324→  select: { cafeId: true, total: true, type: true, createdAt: true,
+  4325→            items: { select: { name: true, qty: true, unitPrice: true } } },
+  4326→})
+  4327→// hourly breakdown: order.createdAt.getHours() → groupBy
+  4328→// orderTypeMix: order.type → groupBy
+  4329→// topItems: items flatten + groupBy name → sum qty, sum(qty*unitPrice)
+  4330→// perCafe: groupBy cafeId → sum total, count, avg
+  4331→// dailyRevenue: groupBy date (yyyy-mm-dd)
+  4332→// totalTables: sum cafe.tableCount; activeTables: CafeTable status count
+  4333→```
+  4334→
+  4335→#### `getMarketReportsData(tenantId, rangeStart, rangeEnd, visFilter?)`
+  4336→```ts
+  4337→const markets = await db.market.findMany({ where: { tenantId } })
+  4338→const txs = await db.marketTransaction.findMany({
+  4339→  where: { marketId: { in: marketIds }, createdAt: { gte: rangeStart, lt: rangeEnd } },
+  4340→  select: { id: true, total: true, subtotal: true, paymentMethod: true, userId: true, createdAt: true,
+  4341→            items: { select: { name: true, qty: true, unitPrice: true } } },
+  4342→})
+  4343→// paymentMethodMix: groupBy paymentMethod
+  4344→// topProducts: items flatten + groupBy name → sum qty, sum(qty*unitPrice)
+  4345→// cashierPerformance: groupBy userId → join users
+  4346→// stockTurnover: per product → soldQty (from tx items) / currentStock (from Product.stock)
+  4347→//                daysOfCover = currentStock / (soldQty / daysInRange)
+  4348→// dailyRevenue: groupBy date
+  4349→// lowStockProducts: Product where stock <= minStock
+  4350→```
+  4351→
+  4352→#### `getSiteReportsData(tenantId, rangeStart, rangeEnd, visFilter?)`
+  4353→```ts
+  4354→const sites = await db.site.findMany({ where: { tenantId } })
+  4355→const dues = await db.siteDues.findMany({
+  4356→  where: { siteId: { in: siteIds }, OR: [{ paidDate: { gte, lt } }, { expectedDate: { gte, lt } }] },
+  4357→  select: { amount: true, status: true, paidDate: true, expectedDate: true, siteId: true },
+  4358→})
+  4359→const complaints = await db.siteComplaint.findMany({
+  4360→  where: { siteId: { in: siteIds }, createdAt: { gte, lt } },
+  4361→  select: { id: true, category: true, priority: true, status: true, createdAt: true, resolvedAt: true, assigneeId: true, residentId: true },
+  4362→})
+  4363→const residents = await db.siteResident.findMany({ where: { siteId: { in: siteIds } }, select: { createdAt: true } })
+  4364→// monthlyCollection: groupBy month → sum amount where status='odendi'
+  4365→// complaintStats: total/open/resolved + avg (resolvedAt - createdAt) hours
+  4366→// byCategory: groupBy category + avg hours
+  4367→// byPriority: groupBy priority
+  4368→// residentGrowth: groupBy createdAt month → cumulative running total
+  4369→// staffWorkload: groupBy assigneeId → count + resolvedCount
+  4370→```
+  4371→
+  4372→#### `getAppointmentReportsData(tenantId, rangeStart, rangeEnd, visFilter?)`
+  4373→```ts
+  4374→const appts = await db.appointment.findMany({
+  4375→  where: { tenantId, date: { gte: rangeStart, lt: rangeEnd } },
+  4376→  select: { id: true, status: true, serviceId: true, staffId: true, date: true, price: true,
+  4377→            service: { select: { name: true } }, staff: { select: { id: true, name: true } } },
+  4378→})
+  4379→// noShow: status IN ('iptal', 'gelmedi', 'gelmedi') — seed/status değerleri doğrulanmalı
+  4380→// dailyAppointments: groupBy date
+  4381→// revenueByService: groupBy service.name → count, sum(price), avg(price)
+  4382→// staffPerformance: groupBy staffId → total, completed, cancelled, noShow, revenue
+  4383→// busyHours: groupBy (dayOfWeek, hour) → count
+  4384→```
+  4385→
+  4386→### D. Doğrulama Adımları (Refactor sonrası)
+  4387→1. `bun run lint` 0 hata
+  4388→2. `npx tsc --noEmit` 0 hata
+  4389→3. 5 tenant için agent-browser testi:
+  4390→   - CRM (Demir Yıldız / Anadolu Satış) → 10 CRM bölümü + Gün Sonu Raporu
+  4391→   - Kafe (Şık Kafe) → KPI + 5 bölüm (hourly breakdown görünür)
+  4392→   - Market (Anadolu Market) → KPI + 6 bölüm (cashier table görünür)
+  4393→   - Site (Park Sitesi) → KPI + 5 bölüm (monthlyCollection + complaint resolution)
+  4394→   - Randevu (Şık Kuaför) → KPI + 5 bölüm (no-show rate + busy hours)
+  4395→4. CSV/XLSX export her sektörde çalışıyor
+  4396→5. Date range Select gerçekten API'ye parametre geçiyor (network sekmesinde `?range=7d` görünür)
+  4397→6. `stock` rolü hala 403 + ShieldX kartı görüyor
+  4398→7. Rep rolü hala kendi performansını görüyor (CRM sektöründe)
+  4399→
+  4400→## 7. Bulgu ve Riskler
+  4401→
+  4402→- ⚠️ **dateRange state cosmetic** (satır 233, 317): `useState('6m')` set edilir ama `apiGet('/api/reports')` çağrısına GEÇİLMEZ. Backend sabit pencere (6 ay revenue, 30 gün activities) kullanır. Refactor sırasında düzeltilmeli — `?range=${dateRange}` eklenmeli ve backend tüm sorgular için `rangeStart/rangeEnd` hesaplamalı.
+  4403→- ⚠️ **reports-view.tsx tek dosya 2376 satır** — `CrmReports` component'ine taşınırsa dosya boyutu kontrol altına alınır. Diğer sektör component'leri ayrı dosyada (`sector-reports.tsx`) olmalı.
+  4404→- ⚠️ **Appointment status değerleri doğrulanmalı**: no-show rate için `status='iptal'` veya `status='gelmedi'` değerlerinden hangileri kullanılıyor? Prisma şema + seed dosyası incelenmeli.
+  4405→- ⚠️ **Site şikayetleri `resolvedAt` alanı**: Prisma şemasında var mı yok mu doğrulanmalı (yoksa `complaintStats.avgResolutionHours` hesaplanamaz, fallback olarak `closedAt` veya `updatedAt` kullanılabilir).
+  4406→- ✅ **Daily Report Dialog CRM-only kalmalı**: Kafe/Market için ayrı gün sonu raporu (vardiya kapanış) yazılabilir ama MVP'de gizlenir.
+  4407→- ✅ **app-shell.tsx:174 ProtectedView** sarmalı değiştirilmemeli — `ReportsView` parent sektör tespitini kendisi yapar (Dashboard pattern ile aynı).
+  4408→- ✅ **RBAC**: `reports.view` permission tüm sektörlerde geçerli. `stock` rolü her sektörde 403 almalı.
+  4409→- ✅ **Renkler**: dashboard-sectors.tsx ile uyumlu — Kafe=amber, Market=emerald, Site=violet, Randevu=pink, CRM=sky.
+  4410→
+  4411→## Sonraki Adımlar (Build agent'ına)
+  4412→1. `/home/z/my-project/src/lib/reports-sectors.ts` oluştur — 4 fetcher
+  4413→2. `/home/z/my-project/src/components/reports/types.ts` oluştur — 4 sektör + union tipi
+  4414→3. `/home/z/my-project/src/components/reports/sector-reports.tsx` oluştur — 4 component + shared KpiCard/EmptyState/ExportButtons
+  4415→4. `/home/z/my-project/src/app/api/reports/route.ts` güncelle — `getTenantSector` + sector branch + `?range=` parametresi
+  4416→5. `/home/z/my-project/src/components/reports/reports-view.tsx`'i parçala — `ReportsView` parent + `CrmReports` (mevcut 10 bölümün sarmalı)
+  4417→6. `/home/z/my-project/src/lib/api-client.ts:71` güncelle — `qk.reports(range)` parametreli
+  4418→7. Prisma şema doğrulama: `Appointment.status` enum değerleri + `SiteComplaint.resolvedAt` alanı
+  4419→8. 5 sektör için agent-browser testi
+  4420→9. `bun run lint` + `npx tsc --noEmit` 0 hata
+  4421→
+  4422→---
+  4423→Task ID: RESEARCH-2
+  4424→Agent: Explore
+  4425→Task: Site modülünde "Daire Ekle" özelliği için mevcut durum analizi (READ-ONLY, hiçbir dosya değiştirilmedi).
+  4426→
+  4427→## Özet
+  4428→Site modülünün API katmanı **tamamen hazır** (Block/Apartment/Resident için GET/POST/PATCH/DELETE uçları mevcut, `site.manage` izniyle korumalı). Eksik olan yalnızca **UI katmanı**: `site-view.tsx`'te `CreateSiteDialog` (boş durumda) ve aidat toplu-oluşturma/ödendi-toggle/WhatsApp-link aksiyonları var; ama **hiçbir "Daire Ekle" / "Blok Ekle" / "Sakin Ekle" / "Personel Ekle" / "Duyuru Ekle" dialogu yok**. Kullanıcı site admini olarak (`admin@parksitesi.com`) `site.manage` iznine sahip, yani POST `/api/site/[id]/apartments` çağrısı yapabilir; sadece UI'da buton/dialog eksik. Ayrıca seed'de tenant+admin var ama hiç `db.site/block/apartment/resident.create` yok → site-view empty-state'i tetikleniyor.
+  4429→
+  4430→## 1. İncelenen Dosyalar
+  4431→
+  4432→### Site UI bileşenleri
+  4433→- `/home/z/my-project/src/components/site/site-view.tsx` (346 satır) — yönetici paneli: 5 sekme (Genel Bakış / Aidatlar / Personel / Duyurular / Şikayetler). Tüm site yönetimi tek dosyada.
+  4434→- `/home/z/my-project/src/components/site/resident-portal.tsx` — sakin giriş paneli (sakin tarafı; yönetici tarafı için alakasız).
+  4435→
+  4436→### Site API endpointleri (14 dosya)
+  4437→- `/home/z/my-project/src/app/api/site/route.ts` — GET (site listesi) / POST (yeni site) — `requireAuth` (sadece login).
+  4438→- `/home/z/my-project/src/app/api/site/[id]/route.ts` — GET (detay: blocks+siteStaff+announcements+duesStats) / PATCH / DELETE — `requireAuth`.
+  4439→- `/home/z/my-project/src/app/api/site/[id]/apartments/route.ts` — GET (daire listesi, `site.view`) / **POST (yeni daire, `site.manage`)** ⭐.
+  4440→- `/home/z/my-project/src/app/api/site/[id]/apartments/[apartmentId]/route.ts` — **PATCH / DELETE** (`site.manage`).
+  4441→- `/home/z/my-project/src/app/api/site/[id]/blocks/route.ts` — GET (blok listesi + her bloğun daireleri) / POST (yeni blok, `site.manage`).
+  4442→- `/home/z/my-project/src/app/api/site/[id]/blocks/[blockId]/route.ts` — PATCH / DELETE (`site.manage`).
+  4443→- `/home/z/my-project/src/app/api/site/[id]/residents/route.ts` — GET / POST (yeni sakin, `site.manage`).
+  4444→- `/home/z/my-project/src/app/api/site/[id]/residents/[residentId]/route.ts` — PATCH / DELETE.
+  4445→- `/home/z/my-project/src/app/api/site/[id]/dues/route.ts` — GET / POST (toplu aidat).
+  4446→- `/home/z/my-project/src/app/api/site/[id]/dues/[duesId]/route.ts` — PATCH / DELETE.
+  4447→- `/home/z/my-project/src/app/api/site/[id]/dues/send-reminders/route.ts` — POST (WhatsApp link üretimi).
+  4448→- `/home/z/my-project/src/app/api/site/[id]/staff/route.ts` — GET / POST.
+  4449→- `/home/z/my-project/src/app/api/site/[id]/announcements/route.ts` — GET / POST.
+  4450→- `/home/z/my-project/src/app/api/site/[id]/complaints/route.ts` — GET / POST.
+  4451→
+  4452→### Prisma şeması (`/home/z/my-project/prisma/schema.prisma`, satır 1005-1160)
+  4453→- `Site` (satır 1009): id, tenantId, name, address, city, district, phone, email, managerName, dueDay (Int @default(5)), defaultDueAmount (Float @default(0)), currency, isActive; relations: blocks[], siteStaff[], dues[], announcements[], complaints[].
+  4454→- `Block` (satır 1035): id, siteId, name ("A Blok"), floors (Int @default(5)); relation: apartments[].
+  4455→- `Apartment` (satır 1047): id, blockId, siteId, **number** (String — "1", "2A"), **floor** (Int?), **type** (String @default("daire") — `daire | dukkan | depo`), **area** (Float? — m²), residentId (String? @unique); relations: block, resident (Resident?), dues[].
+  4456→- `Resident` (satır 1064): id, tenantId, siteId, name, email, phone, password, type (`mal_sahibi | kiraci`), isOwner (Boolean @default(true)), isActive; relations: apartment (Apartment?), dues[], complaints[], messages[].
+  4457→- `Dues` (1086), `SiteStaff` (1114), `Announcement` (1130), `Complaint` (1145), `ResidentMessage` (1163).
+  4458→
+  4459→## 2. Mevcut CRUD Kapasitesi (UI)
+  4460→
+  4461→### `site-view.tsx` içindeki tek CRUD aksiyonları (yalnızca 4):
+  4462→1. **`CreateSiteDialog`** (satır 300-345) — yalnızca hiç site yokken gösterilir (satır 74-85 empty-state). `apiPost("/api/site", form)` çağırır. Basit create-only, edit modu yok.
+  4463→2. **Aidat "Bu Ay Aidat Oluştur"** (satır 151-159) — `apiPost("/api/site/${siteId}/dues", { generateAll:true, amount })`. Toplu otomatik oluşturma — form/dialog DEĞİL.
+  4464→3. **Aidat "Ödendi" toggle** (satır 210-213) — `apiPatch("/api/site/${siteId}/dues/${d.id}", { status:"odendi" })`.
+  4465→4. **WhatsApp link** (satır 215-217) — sadece `whatsappLink()` ile `window.open()`.
+  4466→
+  4467→### EKSİK CRUD dialogları (hiçbiri yok):
+  4468→- ❌ **CreateBlockDialog** (Blok Ekle)
+  4469→- ❌ **CreateApartmentDialog** (Daire Ekle) ← KULLANICININ İSTEDİĞİ
+  4470→- ❌ **EditApartmentDialog**
+  4471→- ❌ **DeleteApartmentButton**
+  4472→- ❌ **CreateResidentDialog** (Sakin Ekle) — Resident POST/PATCH API'leri hazır ama UI yok.
+  4473→- ❌ **CreateStaffDialog** (Personel Ekle) — Personel tabı sadece listeleme (satır 231-253).
+  4474→- ❌ **CreateAnnouncementDialog** (Duyuru Ekle) — Duyurular tabı sadece listeleme (satır 256-269).
+  4475→- ❌ **CreateComplaintDialog** — Şikayetler tabı sadece listeleme (satır 272-294), cevap paneli yok.
+  4476→
+  4477→### Gösterilen tablolar/listeler (site-view.tsx):
+  4478→- Genel Bakış tab: 4 stats kart (Blok/Personel/Açık Şikayet/Duyuru) + "Blok & Daireler" kartı (satır 133-144) — sadece blok adı + daire sayısı, tıklama/edit YOK.
+  4479→- Aidatlar tab: Table — Daire, Sakin, Tutar, Son Tarih, Durum, İşlem.
+  4480→- Personel tab: salt-okunur kart grid.
+  4481→- Duyurular tab: salt-okunur kart listesi.
+  4482→- Şikayetler tab: salt-okunur kart listesi, cevap GUI'si yok.
+  4483→
+  4484→## 3. "Daire Ekle" API Durumu: TAMAMEN HAZIR ✅
+  4485→
+  4486→### `POST /api/site/[id]/apartments` (route.ts satır 47-88):
+  4487→- **Permission**: `site.manage` (satır 49) — site admininde mevcut.
+  4488→- **Tenant kontrolü**: `checkSite()` (satır 5-9) — site.tenantId == user.tenantId değilse 404.
+  4489→- **Body alanları**: `blockId` (zorunlu), `number` (zorunlu, trim), `floor` (Int? optional), `type` (optional, default "daire"), `area` (Float? optional).
+  4490→- **Validasyonlar**:
+  4491→  - `blockId` yoksa 400 "Blok seçimi gerekli".
+  4492→  - `number` boşsa 400 "Daire numarası gerekli".
+  4493→  - `block.siteId !== id` ise 400 "Blok bu siteye ait değil".
+  4494→  - Aynı `blockId`+`number` kombinasyonu varsa 400 "Bu blokta aynı numaraya sahip daire zaten var".
+  4495→- **Oluşturma**: `db.apartment.create({ data: { siteId:id, blockId, number:trim, floor, type:type||"daire", area } })` (satır 73-85).
+  4496→- **Response**: oluşturulan apartment + `block` (id+name) include ile.
+  4497→
+  4498→### `GET /api/site/[id]/apartments` (route.ts satır 15-42):
+  4499→- **Permission**: `site.view`.
+  4500→- **Query params**: `blockId`, `type`.
+  4501→- **Includes**: `block` (id+name), `resident` (id+name+phone+email+type+isActive), `_count.dues`.
+  4502→- **orderBy**: `[{ block: { name: "asc" } }, { number: "asc" }]`.
+  4503→- **Response**: `{ items: apartments }`.
+  4504→
+  4505→### `PATCH /api/site/[id]/apartments/[apartmentId]` (satır 17-63):
+  4506→- Body: `number`, `floor`, `type`, `area`, `blockId`, `residentId` (null olabilir).
+  4507→- Validasyon: yeni blok aynı siteye ait olmalı; resident bu siteye ait olmalı.
+  4508→
+  4509→### `DELETE /api/site/[id]/apartments/[apartmentId]` (satır 68-81):
+  4510→- `site.manage` gerekir. Apartment silinince `Dues`'lar da cascade silinir (şema satır 1091 `onDelete: Cascade`).
+  4511→
+  4512→### `GET /api/site/[id]/blocks` (blocks/route.ts satır 14-37):
+  4513→- Her bloğun içinde `apartments` (resident ile birlikte) ve `_count.apartments` döner — CreateApartmentDialog'un blok dropdown veri kaynağı.
+  4514→
+  4515→### `POST /api/site/[id]/blocks` (blocks/route.ts satır 42-64):
+  4516→- Body: `name` (zorunlu), `floors` (Int, default 5).
+  4517→- CreateApartmentDialog açıldığında hiç blok yoksa, kullanıcıya "Blok Ekle" shortcut'ı göstermek için kullanılabilir.
+  4518→
+  4519→## 4. Dialog Bileşen Deseni (Temsili Örnek)
+  4520→
+  4521→### En temiz örnek: `/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx` (327 satır)
+  4522→İmza: `export function ProductFormDialog({ open, onOpenChange, editProduct }: { open: boolean; onOpenChange: (v:boolean)=>void; editProduct?: Product | null })`
+  4523→
+  4524→Desen adımları:
+  4525→1. **State**: `const [form, setForm] = useState<ProductForm>(EMPTY_FORM)` + `const [submitting, setSubmitting] = useState(false)`.
+  4526→2. **useEffect ile init** (satır 71-92): `if (open) { editProduct ? setForm(...) : setForm(EMPTY_FORM) }`. Dependency: `[open, editProduct]`.
+  4527→3. **handleSubmit** (satır 94-141): validasyon (`if (!form.name.trim()) { toast.error("..."); return }`) → `setSubmitting(true)` → try { editProduct ? `apiPatch` : `apiPost`; `qc.invalidateQueries({ queryKey: ["products"] })` (+ editProduct ise `["product", id]`); `onOpenChange(false)` } catch (e) { `toast.error(e.message)` } finally { `setSubmitting(false)` }.
+  4528→4. **JSX** (satır 143-326): `<Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto custom-scroll"><DialogHeader><DialogTitle>...</DialogTitle><DialogDescription>...</DialogDescription></DialogHeader>` sonra `<div className="grid grid-cols-2 gap-4 py-2">` içinde form alanları; sonunda `<DialogFooter><Button variant="outline" onClick={()=>onOpenChange(false)} disabled={submitting}>İptal</Button><Button onClick={handleSubmit} disabled={submitting || !form.name.trim()}>{submitting && <RefreshCw className="w-4 h-4 mr-1.5 animate-spin"/>}{editProduct ? "Güncelle" : "Ürün Ekle"}</Button></DialogFooter></DialogContent></Dialog>`.
+  4529→5. **Form alanı deseni**: `<div className="space-y-1.5"><Label className="text-xs">Ürün Adı *</Label><Input id="..." value={form.name} onChange={(e)=>setForm({...form, name:e.target.value})} placeholder="..."/></div>`.
+  4530→6. **Select deseni**: `<Select value={form.currency} onValueChange={(v)=>setForm({...form, currency:v})}><SelectTrigger className="w-full"><SelectValue/></SelectTrigger><SelectContent>{items.map((c)=>(<SelectItem key={c.code} value={c.code}>{c.symbol} {c.code} — {c.label}</SelectItem>))}</SelectContent></Select>`.
+  4531→
+  4532→### Diğer temsili örnek: `/home/z/my-project/src/components/customers/customer-list.tsx` satır 138-459 (`CustomerFormDialog`)
+  4533→- Aynı `open/onOpenChange/editCustomer` props deseni.
+  4534→- Aynı `useEffect` init + `handleSubmit` + `DialogFooter` yapısı.
+  4535→- `qc.invalidateQueries({ queryKey: qk.customer(editCustomer.id) })` ve `qc.invalidateQueries({ queryKey: ["customers"] })`.
+  4536→
+  4537→### Mevcut `site-view.tsx` içindeki `CreateSiteDialog` (satır 300-345):
+  4538→- Daha basit (sadece create, edit modu yok).
+  4539→- Form state: `useState({ name:"", address:"", city:"", phone:"", managerName:"", dueDay:"5", defaultDueAmount:"500" })`.
+  4540→- `handleSave` (satır 305-314): `setSaving(true)` → try { `await apiPost("/api/site", form)`; `toast.success`; `onCreated()`; `setOpen(false)` } catch { `toast.error` } finally { `setSaving(false)` }.
+  4541→- Trigger buton: `<Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={()=>setOpen(true)}><Plus className="w-4 h-4 mr-1.5"/> Site Ekle</Button>`.
+  4542→- DialogContent: `max-w-md` (daha dar).
+  4543→- Trigger buton + Dialog yan yana `<> ... </>` fragment içinde.
+  4544→- `onCreated` callback prop ile parent `qc.invalidateQueries({ queryKey: ["sites"] })` çağırıyor.
+  4545→
+  4546→## 5. API Client + Form Validation Deseni
+  4547→
+  4548→### `/home/z/my-project/src/lib/api-client.ts` (75 satır):
+  4549→- `ApiError` class (status + details ile).
+  4550→- `apiGet<T>(path)`, `apiPost<T>(path, body?)`, `apiPatch<T>(path, body)`, `apiDelete<T>(path)`.
+  4551→- Otomatik `x-gnc-session` header ekler `useAppStore.getState().sessionId`'den.
+  4552→- Başarısızsa `throw new ApiError(data.error || "İstek başarısız", res.status, data.details)`.
+  4553→- **NOT**: React Query key helper `qk` Sadece CRM entities (customers/leads/deals/tasks/users/dashboard/reports/mapsSearches/templates) içerir. Site için `qk` yok — `qc.invalidateQueries({ queryKey: ["site", siteId] })` veya `["sites"]` gibi raw string key kullanılır (mevcut `site-view.tsx` böyle yapıyor satır 49, 53, 155, 211).
+  4554→
+  4555→### Validation deseni (tüm codebase):
+  4556→- Client tarafında minimal: sadece `if (!form.name.trim()) { toast.error("... gerekli"); return }`.
+  4557→- API tarafında gerçek validasyon (yukarıdaki apartments/route.ts satır 60-71).
+  4558→- Hatalar API'den `err("mesaj", 400)` ile döner; client `try/catch` ile yakalar ve `toast.error(e.message)` gösterir.
+  4559→
+  4560→### Query key desenleri (mevcut site-view.tsx):
+  4561→- `["sites"]` — site listesi (satır 47).
+  4562→- `["site", siteId]` — site detayı (satır 53).
+  4563→- `["dues", siteId, currentMonth, currentYear]` — aylık aidat (satır 60).
+  4564→- `["complaints", siteId]` — şikayetler (satır 67).
+  4565→- Önerilen ek keyler: `["apartments", siteId]` ve `["blocks", siteId]`.
+  4566→
+  4567→## 6. RBAC — `site.manage` İzni
+  4568→
+  4569→### `/home/z/my-project/src/lib/rbac.ts`:
+  4570→- `superadmin` rolünde `site.view`, `site.manage` var (satır 34).
+  4571→- `admin` rolü sadece temel yetkiler içerir (satır 42-48) — sektörel yetkiler `getAdminPermissionsForTenant()` ile tenant adından türetilir (satır 124-164). Tenant adında `"site"`/`"apartman"`/`"yönetim"` geçiyorsa `[...base, "site.view", "site.manage"]` döner (satır 146-148).
+  4572→- `ALL_PERMISSIONS` (satır 230-231): `site.view` → "Site Yönetimi modülünü görüntüle"; `site.manage` → "Site yönet (daire, sakin, aidat, personel)".
+  4573→- API route'larında `user.permissions.includes("site.manage")` şeklinde kontrol ediliyor (apartments/route.ts satır 49, 22, 73; blocks/route.ts satır 16, 22, 50; residents/route.ts satır 23, 55, 28, 116).
+  4574→
+  4575→### `/home/z/my-project/src/lib/auth.ts` (satır 54-81):
+  4576→- Admin rolündeki kullanıcının tenant adı taranır; `"site"`/`"apartman"` geçiyorsa session'a otomatik `site.view` + `site.manage` eklenir (satır 64-66).
+  4577→- Yani "Site Yöneticisi" (admin@parksitesi.com) "Daire Ekle" butonunu gösterecek ve POST `/api/site/[id]/apartments` çağırabilecek — yetki sorunu YOK.
+  4578→
+  4579→## 7. Seed Verisi Notu (worklog satır 3376 ile uyumlu)
+  4580→
+  4581→### `/home/z/my-project/src/lib/seed.ts` (1414 satır):
+  4582→- Satır 391-404: `tenantSite` ("Park Sitesi Yönetimi") için admin user `siteAdmin` oluşturulur (email: admin@parksitesi.com, ad: "Site Yöneticisi", role: admin, permissions: `getAdminPermissionsForTenant(tenantSite.name)` → site.view + site.manage).
+  4583→- **AMA**: seed dosyasında hiç `db.site.create()`, `db.block.create()`, `db.apartment.create()`, `db.resident.create()` çağrısı YOK.
+  4584→- Yani login sonrası `GET /api/site` boş array döner → `site-view.tsx` satır 74-85 empty-state tetiklenir → "Henüz site kaydı yok" + "Site Ekle" butonu gösterilir.
+  4585→- Kullanıcı önce site oluşturmalı (CreateSiteDialog), sonra daire ekleyemiyor çünkü "Daire Ekle" UI butonu/dialogu yok.
+  4586→
+  4587→## 8. "Daire Ekle" Özelliği Eklemek İçin Gereken Tüm Bilgiler
+  4588→
+  4589→### A. Yeni dialog bileşeni önerisi: `/home/z/my-project/src/components/site/apartment-form-dialog.tsx` (yeni dosya)
+  4590→
+  4591→İmza deseni (ProductFormDialog'dan):
+  4592→```tsx
+  4593→export function ApartmentFormDialog({ open, onOpenChange, editApartment, siteId }: {
+  4594→  open: boolean
+  4595→  onOpenChange: (v: boolean) => void
+  4596→  editApartment?: Apartment | null
+  4597→  siteId: string
+  4598→})
+  4599→```
+  4600→
+  4601→Form alanları (EMPTY_FORM):
+  4602→- `blockId: ""` (zorunlu — Select)
+  4603→- `number: ""` (zorunlu — Input text)
+  4604→- `floor: ""` (optional — Input number)
+  4605→- `type: "daire"` (Select — daire/dükkan/depo)
+  4606→- `area: ""` (optional — Input number, m²)
+  4607→
+  4608→Form gönderim:
+  4609→- POST: `apiPost("/api/site/${siteId}/apartments", { blockId, number, floor: parseInt(floor)||null, type, area: parseFloat(area)||null })`.
+  4610→- PATCH: `apiPatch("/api/site/${siteId}/apartments/${editApartment.id}`, { number, floor, type, area, blockId, residentId }).
+  4611→- Başarı: `qc.invalidateQueries({ queryKey: ["site", siteId] })` (site detail blocks._count.apartments güncellenmesi için) + `qc.invalidateQueries({ queryKey: ["apartments", siteId] })`.
+  4612→
+  4613→Blok seçimi için gerekli query:
+  4614→```tsx
+  4615→const { data: blocksData } = useQuery({
+  4616→  queryKey: ["blocks", siteId],
+  4617→  queryFn: () => apiGet<{ items: Block[] }>(`/api/site/${siteId}/blocks`),
+  4618→  enabled: !!siteId && open,
+  4619→})
+  4620→const blocks = blocksData?.items ?? []
+  4621→```
+  4622→Not: `GET /api/site/[id]/blocks` zaten her bloğun içinde `apartments` (resident ile) döndürdüğü için bu endpoint hem blok listesi hem daire listesi için kullanılabilir.
+  4623→
+  4624→### B. `site-view.tsx` içinde yapılacak değişiklikler
+  4625→
+  4626→1. **Yeni tab ekle** (Daireler için) — TabsList'e (satır 102-108) ekle:
+  4627→   ```tsx
+  4628→   <TabsTrigger value="apartments" className="text-xs">Daireler</TabsTrigger>
+  4629→   ```
+  4630→   VEYA mevcut "Genel Bakış"taki "Blok & Daireler" kartını (satır 133-144) zenginleştir.
+  4631→
+  4632→2. **Apartments tab içeriği** — yeni TabsContent:
+  4633→   - Top toolbar: `<Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={()=>setAptDialogOpen(true)}><Plus/> Daire Ekle</Button>` + (opsiyonel) `<Button size="sm" variant="outline" onClick={()=>setBlockDialogOpen(true)}><Plus/> Blok Ekle</Button>`.
+  4634→   - Filter: blok dropdown (`?blockId=...` query'si ile).
+  4635→   - Table: Daire No, Blok, Kat, Tür, Alan (m²), Sakin, İşlem (Düzenle/Sil).
+  4636→
+  4637→3. **Query + state ekleme** (site-view.tsx üst kısım):
+  4638→   ```tsx
+  4639→   const [aptDialogOpen, setAptDialogOpen] = useState(false)
+  4640→   const [editApt, setEditApt] = useState<Apartment | null>(null)
+  4641→   const { data: apartments = [] } = useQuery({
+  4642→     queryKey: ["apartments", siteId],
+  4643→     queryFn: () => apiGet<{ items: any[] }>(`/api/site/${siteId}/apartments`),
+  4644→     enabled: !!siteId && tab === "apartments",
+  4645→   })
+  4646→   ```
+  4647→
+  4648→4. **Trigger + Dialog render** (Component return sonunda, `</Tabs>` kapanışından önce):
+  4649→   ```tsx
+  4650→   <ApartmentFormDialog
+  4651→     open={aptDialogOpen}
+  4652→     onOpenChange={(v)=>{setAptDialogOpen(v); if(!v) setEditApt(null)}}
+  4653→     editApartment={editApt}
+  4654→     siteId={siteId!}
+  4655→   />
+  4656→   ```
+  4657→
+  4658→### C. Import dekorları site-view.tsx satır 5-20'de zaten var:
+  4659→- `apiGet, apiPost, apiPatch, apiDelete` ✅ (satır 5)
+  4660→- `Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter` ✅ (satır 14)
+  4661→- `Input, Label, Select, Button, Badge, Table, Tabs` ✅ (satır 7-16)
+  4662→- `Plus` ikonu ✅ (satır 20)
+  4663→- `toast` ✅ (satır 17)
+  4664→- `useState` ✅ (satır 3)
+  4665→- `useQuery, useQueryClient` ✅ (satır 4)
+  4666→- **Yeni eklenecek**: `ApartmentFormDialog` import (yeni dosyadan), `Edit`, `Trash2` ikonları (lucide-react'ten).
+  4667→
+  4668→### D. SiteData interface (satır 22-30) zaten `blocks` içeriyor (her blok için `_count.apartments`). Apartments tab'ı için ayrı `GET /api/site/[id]/apartments` çağrısı önerilir (daha zengin veri: her daire için resident, floor, type, area).
+  4669→
+  4670→### E. Apartment `type` enum değerleri (şema yorum satırı satır 1054):
+  4671→- `daire` (default)
+  4672→- `dukkan`
+  4673→- `depo`
+  4674→
+  4675→## 9. Doğrulama
+  4676→- ✅ Tüm site API endpointleri okundu (14 dosya).
+  4677→- ✅ Prisma şeması doğrulandı (Site, Block, Apartment, Resident — satır 1005-1083).
+  4678→- ✅ Mevcut CRUD/UI kapasitesi netleştirildi (sadece CreateSiteDialog var; daire/blok/sakin/personel/duyuru dialogları YOK).
+  4679→- ✅ Dialog deseni örnekleri raporlandı (ProductFormDialog, CustomerFormDialog, CreateSiteDialog).
+  4680→- ✅ API client + validation deseni raporlandı (apiGet/Post/Patch/Delete + raw string query keys).
+  4681→- ✅ RBAC `site.manage` izni Site admininde mevcut (rbac.ts satır 147, auth.ts satır 64-66).
+  4682→- ✅ Seed durumu doğrulandı (tenant + admin user var, ama Site/Block/Apartment kaydı YOK — worklog satır 3376 ile uyumlu).
+  4683→- ✅ Hiçbir dosya değiştirilmedi (READ-ONLY).
+  4684→
+  4685→## 10. Sonraki Aksiyon Önerileri
+  4686→- **BUILD görevi**: `src/components/site/apartment-form-dialog.tsx` oluştur (ProductFormDialog desenini takip ederek).
+  4687→- **BUILD görevi**: `site-view.tsx` içinde yeni "Daireler" tab'ı ekle; Plus butonu + tablo + edit/sil action'ları.
+  4688→- **BUILD görevi** (önerilen): `CreateBlockDialog` da ekle — çünkü hiç blok yoksa daire eklenemiyor (POST `/api/site/[id]/apartments` `blockId` zorunlu 400 hatası verir).
+  4689→- **SEED görevi**: seed.ts'e demo Site + 2-3 Block + ~10 Apartment + ~5 Resident ekle (Park Sitesi Yönetimi tenant'ı için) — empty-state'i atlamak ve demo deneyimi tamamlamak için.
+  4690→- **BUILD görevi** (opsiyonel ileride): CreateResidentDialog, CreateStaffDialog, CreateAnnouncementDialog da ekle (API'leri hazır, sadece UI eksik).
+  4691→
+  4692→---
+  4693→Task ID: RESEARCH-4
+  4694→Agent: Explore
+  4695→Date: 2025-09-12
+  4696→Task: Deep feature audit vs competitors (HubSpot, Zoho, Salesforce, Pipedrive, Insightly; SAP B1, Logo, Mikro; SambaPOS, Omnia; ShopiGo, Forenza; aidattakipsistemi, Blok Görevlisi, Aidat.ai; SimplyBook, Fresha). Bu araştırma ONLY-REPORT görevi; hiçbir dosya değiştirilmedi.
+  4697→
+  4698→## Kapsam
+  4699→GNC CRM+ERP+Süperapp'in tüm modüllerini ve "must-have" özellik listesini gerçek dünya rakipleriyle karşılaştırmalı olarak denetle. Pratik, Next.js + Prisma stack'inde uygulanabilecek eksik özellikleri önceliklendirilmiş olarak raporla.
+  4700→
+  4701→## 1. Modül Envanteri — `src/components/` (top-level klasörler)
+  4702→- **ai/** (1) — ai-panel (AI önceliklendirme, otomatik atama)
+  4703→- **admin/** (4) — admin-panel, customer-type-badge, customer-type-dialog, role-assign-dialog
+  4704→- **app/** (6) — app-shell, command-palette, login-screen, notification-center, sidebar, topbar
+  4705→- **appointments/** (7) — appointment-calendar, appointment-list, appointments-view, public-booking, provider-settings, service-manager, staff-manager
+  4706→- **cafe/** (7) — cafe-bar-screen, cafe-kasa-screen, cafe-menu-manager, cafe-order-screen, cafe-reports, cafe-table-layout, cafe-view
+  4707→- **chat/** (1) — chat-view (1-1 + broadcast)
+  4708→- **customers/** (2) — customer-360, customer-list
+  4709→- **dashboard/** (3 + widgets/7) — dashboard-view, sector-dashboards, types + weather/messages/news/currency/streak/types/widgets-section
+  4710→- **erp/** (6 view + parts/19) — invoices, orders, parts, production, products, quotes + parts/dialog/table/stats/utils
+  4711→- **expenses/** (1) — expenses-view
+  4712→- **market/** (8) — market-pos-screen, market-purchase, market-reports, market-sales-list, market-shelves, market-stock-count, market-stock-view, market-view
+  4713→- **maps/** (1) — lead-mining-view
+  4714→- **providers/** (2) — query-provider, theme-provider
+  4715→- **reports/** (2) — daily-report, reports-view
+  4716→- **settings/** (2) — template-picker-dialog, templates-view
+  4717→- **site/** (2) — resident-portal, site-view
+  4718→- **tasks/** (1) — tasks-view
+  4719→- **users/** (3) — permission-tree, settings-view, users-view
+  4720→- **ui/** (~45) — shadcn primitives (button, dialog, sheet, sidebar, table, ...)
+  4721→
+  4722→## 2. API Routes Envanteri — `src/app/api/`
+  4723→~28 resource grubu: `admin` (overview/users/assign-role), `ai` (prioritize/auto-assign), `appointments` (public/providers + per-provider CRUD), `attachments`, `auth`, `automation` (route + stale-customer-tasks), `cafe` (10 route), `customers` (CRUD + activities/notes/deals/contacts/attachments), `deals`, `expenses`, `invoices`, `leads`, `maps` (search/import), `market` (POS/sales/returns/shifts/barcodes/lookup/shelves/stock-counts/purchases), `messages`, `notifications`, `orders` (+tracking), `products` (+stock), `production`, `proforma`, `quotes`, `reports` (+daily), `search`, `seed`, `settings`, `site` (CRUD + blocks/apartments/residents/dues/send-reminders/staff/announcements/complaints), `tasks`, `templates` (CRUD + seed), `users` (CRUD + activities), `widgets`, `dashboard`, `resident-auth`, `resident-portal` (dues/announcements/complaints).
+  4724→
+  4725→## 3. Must-Have Özellik Denetimi (29 madde)
+  4726→
+  4727→| # | Özellik | Durum | Kanıt / Not |
+  4728→|---|---|---|---|
+  4729→| 1 | Bulk import/export (CSV/Excel) | ⚠️ PARTIAL | Export ✓ — `toCSV()` + `downloadFile()` (`lib/format.ts`) tüm ERP/Market/Reports'ta. Import ✗ — yalnızca `/api/maps/import` lead'ler için; müşteri/ürün/sipariş için YOK. XLSX lib yok (reports-view `.xls` uzantılı tab-separated fake). |
+  4730→| 2 | Audit log viewer UI | ⚠️ PARTIAL | Model + `writeAuditLog()` 12+ route'ta çağrılıyor (site, expenses, automation, quotes, messages, ...). UI `settings-view.tsx` → `AuditTab` satır 619 **MOCK_AUDIT** sabit listesini gösteriyor (8 sahte kayıt). Gerçek `/api/audit` endpoint yok. |
+  4731→| 3 | Recurring tasks / automation rules | ⚠️ PARTIAL | Task'ta `autoGenerated` Boolean var; `/api/automation/stale-customer-tasks` ile tek seferlik "iletişimsiz müşteri" görevi üretiyor. Tekrarlayan görev (cron pattern) yok. Expense'te `recurring` alanı var ama cron işleyici yok. General automation rule engine yok. |
+  4732→| 4 | Customer segmentation / tagging | ⚠️ PARTIAL | `Customer.segment` enum (4 değer: vip/kurumsal/standart/potansiyel) ✓. `Customer.tags` String JSON array — UI free-text virgülle. **Tag modeli boşta** — `id/name/color` alanları var ama Customer ile ilişki tablosu YOK; Customer.tags `String` düz array. Akıllı segment (koşul bazlı) yok. |
+  4733→| 5 | WhatsApp / SMS template sending | ⚠️ PARTIAL | `MessageTemplate` modeli (whatsapp/email/sms types) ✓; UI'lar `whatsappLink()` (`lib/format.ts:111`) ile `wa.me` linki açıyor. **Gerçek WhatsApp Cloud API yok. SMS gateway yok.** `/api/site/[id]/dues/send-reminders` yalnızca link listesi döner. |
+  4734→| 6 | Email integration / SMTP | ✗ YOK | `package.json`'da `nodemailer`/`@react-email` YOK. Tüm e-posta `mailto:` linkiyle açılıyor (`send-dialog.tsx:117`). |
+  4735→| 7 | Calendar integration (Google/Outlook) | ✗ YOK | `googleapis`, iCal/ics üretimi, calendar sync YOK. |
+  4736→| 8 | Custom dashboard widgets | ⚠️ PARTIAL | 5 widget hard-coded: weather, messages, news, currency, streak (`widgets-section.tsx`). Ekle/çıkar/sırala özelleştirme yok; kullanıcı tanımlı widget yok. |
+  4737→| 9 | Saved filters / saved views | ✗ YOK | `SavedFilter` modeli yok; customer-list'ta 8+ filtre var ama "Bu filtreyi kaydet" butonu yok. |
+  4738→| 10 | Notifications preferences (per-user) | ⚠️ PARTIAL | `notification.email/inApp/staleCustomerAlert/taskReminder/taskReminderHours` **tenant** seviyesinde TenantSetting. Per-user tercih yok. `Notification` modeli yok; bildirimler `notifications/route.ts`'te dinamik hesaplanıyor, okundu durumu localStorage (`gnc-notifications-read`). |
+  4739→| 11 | Multi-language support | ✗ YOK | `next-intl` (^4.3.4) `package.json`'da yüklü **ama kullanılmıyor**. Tüm UI string'leri hardcoded Türkçe. `useFormatter` yok. |
+  4740→| 12 | Mobile responsive | ✓ VAR | `hooks/use-mobile.ts` + sidebar Sheet pattern, `sm:/md:/lg:` breakpoints her yerde, `app-shell.tsx` overlay davranışları. |
+
+[showing lines 4241-4740 of 4954; use offset=4741 with limit to continue reading]

@@ -1,0 +1,252 @@
+/home/z/my-project/src/components/membership/membership-tab.tsx:263:                placeholder="Müşteri adı / telefon ara…"
+/home/z/my-project/src/components/membership/membership-tab.tsx:271:                <SelectValue placeholder="Durum" />
+/home/z/my-project/src/components/membership/membership-tab.tsx:434:              <Input value={pkgForm.name} onChange={(e) => setPkgForm({ ...pkgForm, name: e.target.value })} placeholder="Örn: 4 Seans Saç Bakımı" />
+/home/z/my-project/src/components/membership/membership-tab.tsx:438:              <Textarea rows={2} value={pkgForm.description} onChange={(e) => setPkgForm({ ...pkgForm, description: e.target.value })} placeholder="Paket içeriği…" />
+/home/z/my-project/src/components/membership/membership-tab.tsx:443:                <Input type="number" min="0" value={pkgForm.price} onChange={(e) => setPkgForm({ ...pkgForm, price: e.target.value })} placeholder="1500" />
+/home/z/my-project/src/components/membership/membership-tab.tsx:477:              <Input value={sellForm.customerName} onChange={(e) => setSellForm({ ...sellForm, customerName: e.target.value })} placeholder="Ad Soyad" />
+/home/z/my-project/src/components/membership/membership-tab.tsx:481:              <Input value={sellForm.customerPhone} onChange={(e) => setSellForm({ ...sellForm, customerPhone: e.target.value })} placeholder="05xx…" />
+/home/z/my-project/src/components/membership/membership-tab.tsx:485:              <Input value={sellForm.notes} onChange={(e) => setSellForm({ ...sellForm, notes: e.target.value })} placeholder="Opsiyonel not…" />
+/home/z/my-project/src/components/tasks/tasks-view.tsx:60:  Download, ListTodo, LayoutGrid, ChevronDown, Check, ChevronsUpDown,
+/home/z/my-project/src/components/tasks/tasks-view.tsx:378:            placeholder="İsim, telefon, e-posta ara…"
+/home/z/my-project/src/components/tasks/tasks-view.tsx:577:              placeholder="Örn: Müşteriyi ara, teklif gönder…"
+/home/z/my-project/src/components/tasks/tasks-view.tsx:590:              placeholder="Detay, bağlam, notlar…"
+/home/z/my-project/src/components/tasks/tasks-view.tsx:624:                  <SelectValue placeholder="Kişi seç" />
+/home/z/my-project/src/components/tasks/tasks-view.tsx:639:                  <SelectValue placeholder="Öncelik seç" />
+/home/z/my-project/src/components/tasks/tasks-view.tsx:1043:    placeholderData: (prev) => prev,
+/home/z/my-project/src/components/tasks/tasks-view.tsx:1234:                  placeholder="Görev ara…"
+/home/z/my-project/src/components/tasks/tasks-view.tsx:1246:                    <SelectValue placeholder="Tüm kişiler" />
+/home/z/my-project/src/components/tasks/tasks-view.tsx:1272:                  <ListTodo className="w-4 h-4" />
+/home/z/my-project/src/components/users/users-view.tsx:284:            <Input id="u-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Örn. Ahmet Yılmaz" />
+/home/z/my-project/src/components/users/users-view.tsx:288:            <Input id="u-email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="ahmet@sirket.com" />
+/home/z/my-project/src/components/users/users-view.tsx:305:            <Input id="u-title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="Satış Müdürü" />
+/home/z/my-project/src/components/users/users-view.tsx:309:            <Input id="u-phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="+90 5xx xxx xx xx" />
+/home/z/my-project/src/components/users/users-view.tsx:315:                <SelectValue placeholder="Yönetici seçin" />
+/home/z/my-project/src/components/users/users-view.tsx:558:              <SelectValue placeholder="Kullanıcı seçin" />
+/home/z/my-project/src/components/users/users-view.tsx:701:              <SelectValue placeholder="Kullanıcı seçin" />
+/home/z/my-project/src/components/users/users-view.tsx:1281:                  placeholder="İsim veya e-posta ara…"
+/home/z/my-project/src/components/users/users-view.tsx:1289:                  <SelectValue placeholder="Rol" />
+/home/z/my-project/src/components/users/users-view.tsx:1300:                  <SelectValue placeholder="Durum" />
+/home/z/my-project/src/components/maps/lead-mining-view.tsx:257:                <SelectValue placeholder="Kullanıcı seçin" />
+/home/z/my-project/src/components/maps/lead-mining-view.tsx:463:              placeholder="Not ekle — örn. 'Aradım, fiyat bilgisi istedi'..."
+/home/z/my-project/src/components/maps/lead-mining-view.tsx:816:                    placeholder="Arama sorgusu (örn: diş kliniği)"
+/home/z/my-project/src/components/maps/lead-mining-view.tsx:829:                    placeholder="Şehir / bölge (örn: Berlin)"
+/home/z/my-project/src/components/cafe/cafe-menu-manager.tsx:433:                placeholder="Örn: İçecekler"
+/home/z/my-project/src/components/cafe/cafe-menu-manager.tsx:444:                placeholder="☕"
+/home/z/my-project/src/components/cafe/cafe-menu-manager.tsx:475:                  placeholderIcon="package"
+/home/z/my-project/src/components/cafe/cafe-menu-manager.tsx:486:                placeholder="Örn: Cappuccino"
+/home/z/my-project/src/components/cafe/cafe-menu-manager.tsx:497:                placeholder="Kısa açıklama..."
+/home/z/my-project/src/components/cafe/cafe-menu-manager.tsx:549:                placeholder="Örn: 1 shot espresso + 150ml süt köpüğü. Kakao tozu serpin."
+/home/z/my-project/src/components/cafe/cafe-view.tsx:380:              placeholder="Örn: Merkez Kafe"
+/home/z/my-project/src/components/cafe/cafe-view.tsx:390:              placeholder="Kafe adresi"
+/home/z/my-project/src/components/cafe/cafe-view.tsx:400:              placeholder="+90 5xx xxx xx xx"
+/home/z/my-project/src/components/users/settings-view.tsx:117:              <Input id="c-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+90 5xx xxx xx xx" />
+/home/z/my-project/src/components/users/settings-view.tsx:707:            placeholder="Aktör, varlık veya ID ara…"
+/home/z/my-project/src/components/users/settings-view.tsx:714:              <SelectValue placeholder="İşlem" />
+/home/z/my-project/src/components/cafe/cafe-order-screen.tsx:334:                            <SelectValue placeholder="Masa seçin..." />
+/home/z/my-project/src/components/cafe/cafe-order-screen.tsx:356:                        placeholder="Müşteri adı (opsiyonel)"
+/home/z/my-project/src/components/cafe/cafe-order-screen.tsx:480:                              placeholder="Not: az şekerli..."
+/home/z/my-project/src/components/cafe/cafe-order-screen.tsx:515:                    placeholder="Sipariş notu (genel)"
+/home/z/my-project/src/components/cafe/cafe-table-layout.tsx:434:                placeholder="Örn: M1, Teras-1"
+/home/z/my-project/src/components/reports/daily-report.tsx:27:  PhoneCall, XCircle, ListTodo, Building2,
+/home/z/my-project/src/components/reports/daily-report.tsx:347:                  <SelectValue placeholder="Temsilci seçin" />
+/home/z/my-project/src/components/reports/daily-report.tsx:488:                      <ListTodo className="w-4 h-4 text-violet-600" />
+/home/z/my-project/src/components/erp/orders-view.tsx:179:                  placeholder="Sipariş no veya müşteri ara..."
+/home/z/my-project/src/components/erp/export-docs-tab.tsx:179:              placeholder="Şirket veya sipariş no ara..."
+/home/z/my-project/src/components/reports/reports-view.tsx:2165:// Loading skeleton — sektör bazlı placeholder sayısı
+/home/z/my-project/src/components/reports/reports-view.tsx:2186:      {/* Section placeholders */}
+/home/z/my-project/src/components/erp/irsaliye-view.tsx:224:                  placeholder="İrsaliye no, müşteri veya takip no ara..."
+/home/z/my-project/src/components/settings/smtp-settings.tsx:130:              <Input id="smtp-host" placeholder="smtp.gmail.com" value={host} onChange={(e) => setHost(e.target.value)} />
+/home/z/my-project/src/components/settings/smtp-settings.tsx:134:              <Input id="smtp-port" type="number" placeholder="587" value={port} onChange={(e) => setPort(e.target.value)} />
+/home/z/my-project/src/components/settings/smtp-settings.tsx:149:              <Input id="smtp-user" type="email" placeholder="fatura@sirketiniz.com" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} />
+/home/z/my-project/src/components/settings/smtp-settings.tsx:159:                  placeholder={data?.hasPassword ? '••••••••' : 'Şifre'}
+/home/z/my-project/src/components/settings/smtp-settings.tsx:180:            <Input id="smtp-from" placeholder='"ABC Faturalar" <fatura@sirketiniz.com>' value={from} onChange={(e) => setFrom(e.target.value)} />
+/home/z/my-project/src/components/settings/smtp-settings.tsx:221:                placeholder="adres@sirketiniz.com"
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:207:            <Field label="Şirket Adı" value={form.companyName || ''} onChange={(v) => setForm({ ...form, companyName: v })} placeholder="Anadolu Satış A.Ş." />
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:208:            <Field label="Adres" value={form.companyAddress || ''} onChange={(v) => setForm({ ...form, companyAddress: v })} placeholder="Merkez Mah. İş Cad. No:1 İstanbul" />
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:210:              <Field label="Telefon" value={form.companyPhone || ''} onChange={(v) => setForm({ ...form, companyPhone: v })} placeholder="+90 212 123 45 67" />
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:211:              <Field label="E-posta" value={form.companyEmail || ''} onChange={(v) => setForm({ ...form, companyEmail: v })} placeholder="info@sirket.com" />
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:214:              <Field label="Web" value={form.companyWeb || ''} onChange={(v) => setForm({ ...form, companyWeb: v })} placeholder="www.sirket.com" />
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:215:              <Field label="VKN/TCKN" value={form.taxNumber || ''} onChange={(v) => setForm({ ...form, taxNumber: v })} placeholder="1234567890" />
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:217:            <Field label="Vergi Dairesi" value={form.taxOffice || ''} onChange={(v) => setForm({ ...form, taxOffice: v })} placeholder="Mecidiyeköy V.D." />
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:235:                placeholder="Bu fatura elektronik olarak düzenlenmiştir"
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:245:                placeholder="Ödeme 30 gün içinde yapılmalıdır. Geç ödemeler için faiz işletilir."
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:283:                }} placeholder="İş Bankası" />
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:288:                }} placeholder="TR12 0001 0002 0003 0004 0005 06" mono />
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:293:                }} placeholder="Anadolu Satış A.Ş." />
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:327:                placeholder="Yetkili İmza"
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:515:function Field({ label, value, onChange, placeholder, mono }: {
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:519:  placeholder?: string
+/home/z/my-project/src/components/settings/invoice-template/invoice-template-editor.tsx:528:        placeholder={placeholder}
+/home/z/my-project/src/components/settings/template-picker-dialog.tsx:203:                placeholder="Şablon ara…"
+/home/z/my-project/src/components/settings/templates-view.tsx:222:              placeholder="Şablon adı veya içerik ara…"
+/home/z/my-project/src/components/settings/templates-view.tsx:516:              placeholder="Örn. Hoş geldin mesajı"
+/home/z/my-project/src/components/settings/templates-view.tsx:568:                placeholder="E-posta konusu"
+/home/z/my-project/src/components/settings/templates-view.tsx:584:              placeholder="Mesajınızı yazın… Değişkenler için aşağıdaki butonları kullanın."
+/home/z/my-project/src/components/dashboard/dashboard-view.tsx:755:    placeholderData: keepPreviousData,
+/home/z/my-project/src/components/dashboard/dashboard-view.tsx:817:                <SelectValue placeholder="Tüm müşteriler" />
+/home/z/my-project/src/components/erp/parts/send-dialog.tsx:559:                  placeholder="Varsayılan mesaj kullanılır..."
+/home/z/my-project/src/components/dashboard/widgets/social-widget.tsx:117:    const realAccounts = accounts.filter((a) => a.authMethod !== 'mock' && a.hasAccessToken).length
+/home/z/my-project/src/components/dashboard/widgets/widgets-section.tsx:43:    placeholderData: (prev) => prev, // şehir değişiminde layout zıplamasın
+/home/z/my-project/src/components/dashboard/widgets/types.ts:42:  link?: string // RSS'te var, mock'ta yok
+/home/z/my-project/src/components/dashboard/widgets/types.ts:47:  source: 'rss' | 'mock'
+/home/z/my-project/src/components/market/market-view.tsx:388:              placeholder="Örn: Merkez Market"
+/home/z/my-project/src/components/market/market-view.tsx:398:              placeholder="Market adresi"
+/home/z/my-project/src/components/market/market-view.tsx:408:              placeholder="+90 5xx xxx xx xx"
+/home/z/my-project/src/components/market/market-shelves.tsx:255:                  <SelectTrigger className="mt-1"><SelectValue placeholder="Ürün seçin..." /></SelectTrigger>
+/home/z/my-project/src/components/market/market-shelves.tsx:377:                placeholder="Örn: A1, B-3, C2"
+/home/z/my-project/src/components/market/market-shelves.tsx:387:                placeholder="Örn: İçecekler, Atıştırmalık"
+/home/z/my-project/src/components/market/market-shelves.tsx:396:                placeholder="Örn: 1, A, Soğuk"
+/home/z/my-project/src/components/market/market-purchase.tsx:361:                <Input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Tedarikçi adı" className="mt-1" />
+/home/z/my-project/src/components/market/market-purchase.tsx:365:                <Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="Örn: IRS-2024-001" className="mt-1" />
+/home/z/my-project/src/components/market/market-purchase.tsx:379:                    placeholder="Barkod okutun ve Enter'a basın..."
+/home/z/my-project/src/components/market/market-purchase.tsx:410:                              placeholder="Ürün adı"
+/home/z/my-project/src/components/market/market-purchase.tsx:459:                placeholder="Opsiyonel..."
+/home/z/my-project/src/components/market/market-stock-view.tsx:194:                placeholder="Ürün adı, barkod veya SKU..."
+/home/z/my-project/src/components/market/market-stock-view.tsx:337:                placeholder="Örn: Bozuk ürün, hediye, sayım farkı..."
+/home/z/my-project/src/components/market/market-stock-count.tsx:212:            placeholder="Ürün ara..."
+/home/z/my-project/src/components/market/market-stock-count.tsx:253:                              placeholder="—"
+/home/z/my-project/src/components/market/market-sales-list.tsx:415:                    placeholder="0"
+/home/z/my-project/src/components/market/market-sales-list.tsx:431:                placeholder="Örn: Müşteri memnuniyetsizliği, bozuk ürün..."
+/home/z/my-project/src/components/erp/parts/order-form-dialog.tsx:166:                  <SelectValue placeholder="Müşteri seçin..." />
+/home/z/my-project/src/components/erp/parts/order-form-dialog.tsx:186:                  <SelectValue placeholder={form.customerId ? 'Teklif seç (opsiyonel)...' : 'Önce müşteri seçin'} />
+/home/z/my-project/src/components/erp/parts/order-form-dialog.tsx:266:              placeholder="Sipariş ile ilgili notlar (opsiyonel)..."
+/home/z/my-project/src/components/market/market-pos-screen.tsx:418:                    placeholder="Barkod okutun veya ürün adı girin..."
+/home/z/my-project/src/components/market/market-pos-screen.tsx:565:                      placeholder="0"
+/home/z/my-project/src/components/market/market-pos-screen.tsx:632:                    placeholder="0"
+/home/z/my-project/src/components/market/market-pos-screen.tsx:680:                      placeholder="0"
+/home/z/my-project/src/components/market/market-pos-screen.tsx:691:                      placeholder="0"
+/home/z/my-project/src/components/market/market-pos-screen.tsx:794:              placeholder="Ürün adı veya barkod..."
+/home/z/my-project/src/components/market/market-pos-screen.tsx:967:                placeholder="0"
+/home/z/my-project/src/components/market/market-pos-screen.tsx:997:                  placeholder="0"
+/home/z/my-project/src/components/market/market-pos-screen.tsx:1011:              placeholder="Opsiyonel not..."
+/home/z/my-project/src/components/expenses/expenses-view.tsx:147:          <SelectTrigger className="w-[160px] h-9"><SelectValue placeholder="Kategori" /></SelectTrigger>
+/home/z/my-project/src/components/expenses/expenses-view.tsx:154:          <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="Durum" /></SelectTrigger>
+/home/z/my-project/src/components/expenses/expenses-view.tsx:324:            <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Gider açıklaması" />
+/home/z/my-project/src/components/expenses/expenses-view.tsx:350:              <Input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} placeholder="Firma adı" />
+/home/z/my-project/src/components/expenses/expenses-view.tsx:354:              <Input value={form.invoiceNo} onChange={(e) => setForm({ ...form, invoiceNo: e.target.value })} placeholder="Fatura/irsaliye no" />
+/home/z/my-project/src/components/expenses/expenses-view.tsx:360:              <SelectTrigger className="h-9"><SelectValue placeholder="Tekrarlamıyor" /></SelectTrigger>
+/home/z/my-project/src/components/chat/chat-view.tsx:310:                      placeholder="Meslektaş ara…"
+/home/z/my-project/src/components/chat/chat-view.tsx:523:            placeholder="Numara veya müşteri ara…"
+/home/z/my-project/src/components/chat/chat-view.tsx:1042:            placeholder={`${otherUser.name} kişisine mesaj yaz…`}
+/home/z/my-project/src/components/erp/parts/order-detail-dialog.tsx:399:                              <SelectValue placeholder="Adım seçin..." />
+/home/z/my-project/src/components/erp/parts/order-detail-dialog.tsx:423:                          placeholder="Not (opsiyonel)..."
+/home/z/my-project/src/components/public/public-booking-flow.tsx:454:              placeholder="İşletme, şehir veya hizmet ara..."
+/home/z/my-project/src/components/public/public-booking-flow.tsx:1255:                  placeholder="Adınız Soyadınız"
+/home/z/my-project/src/components/public/public-booking-flow.tsx:1268:                  placeholder="+90 5xx xxx xx xx"
+/home/z/my-project/src/components/public/public-booking-flow.tsx:1281:                  placeholder="email@örnek.com"
+/home/z/my-project/src/components/public/public-booking-flow.tsx:1292:                  placeholder="Özel istekleriniz..."
+/home/z/my-project/src/components/app/command-palette.tsx:181:            placeholder="Müşteri, fırsat, görev ara... veya sayfaya git"
+/home/z/my-project/src/components/app/command-palette.tsx:182:            className="flex-1 h-14 bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
+/home/z/my-project/src/components/app/login-screen.tsx:209:                  <div className="font-medium text-amber-900 mb-1">Demo verisi henüz oluşturulmadı</div>
+/home/z/my-project/src/components/app/login-screen.tsx:214:                    {seeding ? 'Oluşturuluyor...' : 'Demo Verisi Oluştur'}
+/home/z/my-project/src/components/app/login-screen.tsx:237:                    placeholder="ornek@gncinc.com"
+/home/z/my-project/src/components/app/login-screen.tsx:255:                    placeholder="••••••••"
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:215:              placeholderIcon="package"
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:226:              placeholder="Örn. CRM Pro Paket"
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:237:              placeholder="CRM-PRO"
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:248:              placeholder="Yazılım, Hizmet, Donanım..."
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:259:              placeholder="Ürün açıklaması..."
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:318:              placeholder="adet, saat, kg, lt..."
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:385:                    placeholder="0"
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:417:                  placeholder="0.0"
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:433:                    <SelectValue placeholder="Seçiniz..." />
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:451:                    <SelectValue placeholder="Seçiniz..." />
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:471:                  placeholder="0"
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:486:                    <SelectValue placeholder="Seçiniz..." />
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:503:                  placeholder="Örn. 1234567890"
+/home/z/my-project/src/components/erp/parts/product-form-dialog.tsx:517:                  placeholder="Örn. satin altın, kirmizi, lacivert, antrasit..."
+/home/z/my-project/src/components/site/resident-portal.tsx:50:              <div><Label className="text-xs">Telefon</Label><Input value={loginForm.phone} onChange={e => setLoginForm({ ...loginForm, phone: e.target.value })} placeholder="+90 5xx xxx xx xx" /></div>
+/home/z/my-project/src/components/site/resident-portal.tsx:51:              <div><Label className="text-xs">Şifre</Label><Input type="password" value={loginForm.password} onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} placeholder="••••" onKeyDown={e => e.key === 'Enter' && handleLogin()} /></div>
+/home/z/my-project/src/components/site/block-form-dialog.tsx:119:              placeholder="Örn. A Blok, B Blok, Çelik Blok"
+/home/z/my-project/src/components/site/block-form-dialog.tsx:132:              placeholder="Örn. 5, 8, 12"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:276:                      <SelectValue placeholder={blocksLoading ? 'Yükleniyor...' : 'Blok seçin'} />
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:295:                    placeholder="Örn. 1, 2A, 12"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:310:                    placeholder="Örn. 1, 2, 3 (boş bırakılabilir)"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:344:                    placeholder="Örn. 85, 120.5 (boş bırakılabilir)"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:369:                      placeholder="Örn. Ayşe Kaya"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:381:                      placeholder="+90 5xx xxx xx xx"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:393:                      placeholder="orne@eposta.com"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:404:                      placeholder="11 hane"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:416:                      placeholder="Mal sahibiyle ilgili notlar..."
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:459:                          placeholder="Örn. Mustafa Demir"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:471:                          placeholder="+90 5xx xxx xx xx"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:483:                          placeholder="kiraci@eposta.com"
+/home/z/my-project/src/components/site/apartment-form-dialog.tsx:516:                          placeholder="Kiracıyla ilgili notlar..."
+/home/z/my-project/src/components/ui/textarea.tsx:10:        "border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 flex field-sizing-content min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+/home/z/my-project/src/components/ui/command.tsx:76:          "placeholder:text-muted-foreground flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+/home/z/my-project/src/components/erp/parts/quote-form-dialog.tsx:242:                  <SelectValue placeholder="Müşteri seçin..." />
+/home/z/my-project/src/components/erp/parts/quote-form-dialog.tsx:326:                                <SelectValue placeholder="Ürün seç (opsiyonel)..." />
+/home/z/my-project/src/components/erp/parts/quote-form-dialog.tsx:339:                              placeholder="Açıklama..."
+/home/z/my-project/src/components/erp/parts/quote-form-dialog.tsx:352:                            placeholder="0"
+/home/z/my-project/src/components/erp/parts/quote-form-dialog.tsx:363:                            placeholder="0.00"
+/home/z/my-project/src/components/erp/parts/quote-form-dialog.tsx:385:                            placeholder="0"
+/home/z/my-project/src/components/ui/select.tsx:40:        "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-fit items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+/home/z/my-project/src/components/erp/parts/product-detail-dialog.tsx:126:            placeholder="0"
+/home/z/my-project/src/components/erp/parts/product-detail-dialog.tsx:134:            placeholder="Örn. Alım, Satış, Sayım farkı..."
+/home/z/my-project/src/components/ui/input.tsx:11:        "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input flex h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+/home/z/my-project/src/components/ui/photo-upload.tsx:41:  placeholderIcon?: 'building' | 'package' | 'user'
+/home/z/my-project/src/components/ui/photo-upload.tsx:52:  placeholderIcon = variant === 'avatar' ? 'user' : 'building',
+/home/z/my-project/src/components/ui/photo-upload.tsx:122:  const PlaceholderIcon =
+/home/z/my-project/src/components/ui/photo-upload.tsx:123:    placeholderIcon === 'package' ? Package :
+/home/z/my-project/src/components/ui/photo-upload.tsx:124:    placeholderIcon === 'user' ? User : Building2
+/home/z/my-project/src/components/ui/photo-upload.tsx:160:                  <PlaceholderIcon
+/home/z/my-project/src/components/ui/input-otp.tsx:47:  const { char, hasFakeCaret, isActive } = inputOTPContext?.slots[index] ?? {}
+/home/z/my-project/src/components/ui/input-otp.tsx:60:      {hasFakeCaret && (
+/home/z/my-project/src/components/erp/parts/invoice-form-dialog.tsx:205:                  <SelectValue placeholder="Müşteri seçin..." />
+/home/z/my-project/src/components/erp/parts/invoice-form-dialog.tsx:298:                                    <SelectValue placeholder="Ürün seç (opsiyonel)..." />
+/home/z/my-project/src/components/erp/parts/invoice-form-dialog.tsx:311:                                  placeholder="Açıklama..."
+/home/z/my-project/src/components/erp/parts/invoice-form-dialog.tsx:324:                                placeholder="0"
+/home/z/my-project/src/components/erp/parts/invoice-form-dialog.tsx:335:                                placeholder="0.00"
+/home/z/my-project/src/components/erp/parts/invoice-form-dialog.tsx:357:                                placeholder="0"
+/home/z/my-project/src/components/erp/quotes-view.tsx:188:                  placeholder="Teklif no veya müşteri ara..."
+/home/z/my-project/src/components/erp/products-view.tsx:210:                placeholder="Ürün adı, SKU veya kategori ara..."
+/home/z/my-project/src/components/erp/products-view.tsx:224:                <SelectValue placeholder="Kategori" />
+/home/z/my-project/src/components/erp/invoices-view.tsx:317:                  placeholder="Fatura no veya müşteri ara..."
+/home/z/my-project/src/components/erp/export-doc-pdf-dialog.tsx:204:                <Input className="h-9" value={form.destinationCountry} placeholder="DE"
+/home/z/my-project/src/components/erp/export-doc-pdf-dialog.tsx:209:                <Input className="h-9" value={form.carrierName} placeholder="Nakliye A.Ş."
+/home/z/my-project/src/components/erp/export-doc-pdf-dialog.tsx:214:                <Input className="h-9" value={form.portOfLoading} placeholder="İstanbul (Ambarlı)"
+/home/z/my-project/src/components/erp/export-doc-pdf-dialog.tsx:219:                <Input className="h-9" value={form.portOfDischarge} placeholder="Hamburg"
+/home/z/my-project/src/components/erp/export-doc-pdf-dialog.tsx:224:                <Input className="h-9" value={form.vehiclePlate} placeholder="16 ABC 123"
+/home/z/my-project/src/components/erp/export-doc-pdf-dialog.tsx:231:                    <Input className="h-9" value={form.vesselName} placeholder="MSC Olivia"
+/home/z/my-project/src/components/erp/export-doc-pdf-dialog.tsx:236:                    <Input className="h-9" value={form.containerNo} placeholder="MSCU1234567"
+/home/z/my-project/src/components/erp/export-doc-pdf-dialog.tsx:244:                  <Input className="h-9" value={form.insuranceCompany} placeholder="Anadolu Sigorta"
+/home/z/my-project/src/components/erp/depo-siparis-view.tsx:168:                  placeholder="Sipariş no veya müşteri ara..."
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:307:                  <SelectValue placeholder="Müşteri seçin" />
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:323:                  <SelectValue placeholder="Siparişten otomatik doldur" />
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:384:                            <SelectValue placeholder="—" />
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:399:                          placeholder="Açıklama"
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:423:                          placeholder="kg"
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:479:                      <SelectValue placeholder="Seçin" />
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:494:                    placeholder="örn. 1234567890"
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:503:                    placeholder="Adres"
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:519:                        <SelectValue placeholder="—" />
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:535:                      placeholder="0"
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:546:                    placeholder="20"
+/home/z/my-project/src/components/erp/irsaliye-form-dialog.tsx:560:              placeholder="Opsiyonel not"
+/home/z/my-project/src/components/erp/documents-view.tsx:382:                  placeholder="Şirket veya sipariş no ara..."
+/home/z/my-project/src/components/erp/production-view.tsx:213:                placeholder="Ürün, müşteri veya sipariş no ara..."
+/home/z/my-project/src/components/appointments/staff-manager.tsx:382:                placeholderIcon="user"
+/home/z/my-project/src/components/appointments/staff-manager.tsx:391:                    placeholder="Örn: Ahmet Usta"
+/home/z/my-project/src/components/appointments/staff-manager.tsx:401:                    placeholder="Usta Berber"
+/home/z/my-project/src/components/appointments/staff-manager.tsx:411:                    placeholder="+90 5xx..."
+/home/z/my-project/src/components/appointments/staff-manager.tsx:421:                    placeholder="Kısa biyografi (uzmanlık alanları, deneyim...)"
+/home/z/my-project/src/components/appointments/provider-settings.tsx:175:              placeholderIcon="building"
+/home/z/my-project/src/components/appointments/provider-settings.tsx:184:                  placeholder="Örn: Şık Kuaför Salonu"
+/home/z/my-project/src/components/appointments/provider-settings.tsx:212:                  placeholder="+90 216 ..."
+/home/z/my-project/src/components/appointments/provider-settings.tsx:222:                  placeholder="info@..."
+/home/z/my-project/src/components/appointments/provider-settings.tsx:232:                  placeholder="İstanbul"
+/home/z/my-project/src/components/appointments/provider-settings.tsx:242:                  placeholder="Kadıköy"
+/home/z/my-project/src/components/appointments/provider-settings.tsx:252:                  placeholder="Tam adres"
+/home/z/my-project/src/components/appointments/customer-manager.tsx:139:          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="İsim, telefon veya e-posta ile ara..." className="h-9 pl-8" />
+/home/z/my-project/src/components/appointments/customer-manager.tsx:508:        <div><Label className="text-xs">Ad Soyad *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Müşteri adı" /></div>
+/home/z/my-project/src/components/appointments/customer-manager.tsx:509:        <div><Label className="text-xs">Telefon *</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+90 5xx xxx xx xx" /></div>
+/home/z/my-project/src/components/appointments/customer-manager.tsx:512:        <div><Label className="text-xs">E-posta</Label><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@ornek.com" /></div>
+/home/z/my-project/src/components/appointments/customer-manager.tsx:513:        <div><Label className="text-xs">Doğum günü (MM-DD)</Label><Input value={form.birthday} onChange={(e) => setForm({ ...form, birthday: e.target.value })} placeholder="05-23" /></div>
+/home/z/my-project/src/components/appointments/customer-manager.tsx:515:      <div><Label className="text-xs">Adres</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Mahalle, sokak, ilçe" /></div>
+/home/z/my-project/src/components/appointments/customer-manager.tsx:516:      <div><Label className="text-xs">Etiketler (virgülle ayır)</Label><Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="VIP, Sabit müşteri, Saç boyası" /></div>
+/home/z/my-project/src/components/appointments/customer-manager.tsx:517:      <div><Label className="text-xs">Kalıcı Not</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Tercihler, alerji, özel istekler..." className="h-16" /></div>
+/home/z/my-project/src/components/appointments/reject-dialog.tsx:113:              placeholder="Örn: O saatte yoğunluk var, personel izinli, kapalıyız..."
+/home/z/my-project/src/app/api/seed/route.ts:6:// POST /api/seed — demo verisini yükle
+/home/z/my-project/src/app/api/seed/route.ts:14://    login ekranındaki "demo verisi yükle" butonu buna bağlı)
+
+[Showing results with pagination = limit: 250]

@@ -1,0 +1,788 @@
+    60→  workingHours: string
+    61→}
+    62→
+    63→interface AvailabilityResponse {
+    64→  slots: string[]
+    65→  workingHours: DaySchedule | undefined
+    66→  dayKey: string
+    67→  serviceDuration: number
+    68→}
+    69→
+    70→interface BookResponse {
+    71→  id: string
+    72→  customerName: string
+    73→  customerPhone: string
+    74→  customerEmail: string | null
+    75→  date: string
+    76→  endTime: string | null
+    77→  status: string
+    78→  price: number
+    79→  staff?: { name: string; title: string | null; photo: string | null } | null
+    80→  service?: { name: string; duration: number; price: number } | null
+    81→}
+    82→
+    83→// ============================================================
+    84→// Public Booking
+    85→// ============================================================
+    86→
+    87→interface PublicBookingProps {
+    88→  providerId: string
+    89→  onExit?: () => void
+    90→}
+    91→
+    92→const STEPS = [
+    93→  { num: 1, label: 'Hizmet' },
+    94→  { num: 2, label: 'Personel' },
+    95→  { num: 3, label: 'Tarih & Saat' },
+    96→  { num: 4, label: 'Bilgiler' },
+    97→  { num: 5, label: 'Onay' },
+    98→]
+    99→
+   100→export function PublicBooking({ providerId, onExit }: PublicBookingProps) {
+   101→  const qc = useQueryClient()
+   102→  const [step, setStep] = useState(1)
+   103→  const [selectedService, setSelectedService] = useState<Service | null>(null)
+   104→  const [selectedStaff, setSelectedStaff] = useState<Staff | 'any' | null>(null)
+   105→  const [selectedDate, setSelectedDate] = useState<string>('')
+   106→  const [selectedTime, setSelectedTime] = useState<string>('')
+   107→  const [customer, setCustomer] = useState({
+   108→    name: '',
+   109→    phone: '',
+   110→    email: '',
+   111→    note: '',
+   112→  })
+   113→  const [booking, setBooking] = useState(false)
+   114→  const [booked, setBooked] = useState<BookResponse | null>(null)
+   115→  const [honeypot, setHoneypot] = useState('')
+   116→
+   117→  // Provider + services + staff (public endpoint)
+   118→  const { data, isLoading } = useQuery({
+   119→    queryKey: ['public-provider', providerId],
+   120→    queryFn: async () => {
+   121→      const res = await fetch(`/api/appointments/public/providers/${providerId}`)
+   122→      const json = await res.json()
+   123→      if (!res.ok) throw new Error(json.error || 'İşletme bulunamadı')
+   124→      return json as {
+   125→        provider: Provider
+   126→        staff: Staff[]
+   127→        services: Service[]
+   128→      }
+   129→    },
+   130→    enabled: !!providerId,
+   131→  })
+   132→
+   133→  const provider = data?.provider
+   134→  const services = data?.services ?? []
+   135→  const staffList = data?.staff ?? []
+   136→
+   137→  const workingHours: WorkingHours = useMemo(() => {
+   138→    if (!provider?.workingHours) return {}
+   139→    try {
+   140→      return JSON.parse(provider.workingHours) as WorkingHours
+   141→    } catch {
+   142→      return {}
+   143→    }
+   144→  }, [provider])
+   145→
+   146→  // Group services by category
+   147→  const servicesByCat = useMemo(() => {
+   148→    const map = new Map<string, Service[]>()
+   149→    for (const s of services) {
+   150→      const cat = s.category || 'Diğer'
+   151→      if (!map.has(cat)) map.set(cat, [])
+   152→      map.get(cat)!.push(s)
+   153→    }
+   154→    return Array.from(map.entries())
+   155→  }, [services])
+   156→
+   157→  // Eligible staff for the selected service
+   158→  const eligibleStaff = useMemo(() => {
+   159→    if (!selectedService) return []
+   160→    return staffList.filter((s) => s.serviceIds.includes(selectedService.id))
+   161→  }, [selectedService, staffList])
+   162→
+   163→  // Default date — today
+   164→  useEffect(() => {
+   165→    if (!selectedDate) {
+   166→      const t = new Date()
+   167→      setSelectedDate(t.toISOString().slice(0, 10))
+   168→    }
+   169→  }, [selectedDate])
+   170→
+   171→  // Availability for selected date/staff/service
+   172→  const { data: availData, isLoading: availLoading } = useQuery({
+   173→    queryKey: ['public-availability', providerId, selectedDate, selectedStaff, selectedService?.id],
+   174→    queryFn: async () => {
+   175→      const staffIdParam = selectedStaff === 'any' || !selectedStaff
+   176→        ? 'any'
+   177→        : (selectedStaff as Staff).id
+   178→      const params = new URLSearchParams({
+   179→        date: selectedDate,
+   180→        serviceId: selectedService!.id,
+   181→        staffId: staffIdParam,
+   182→      })
+   183→      const res = await fetch(
+   184→        `/api/appointments/public/providers/${providerId}/availability?${params.toString()}`,
+   185→      )
+   186→      const json = await res.json()
+   187→      if (!res.ok) throw new Error(json.error || 'Müsaitlik bilgisi alınamadı')
+   188→      return json as AvailabilityResponse
+   189→    },
+   190→    enabled: !!providerId && !!selectedService && !!selectedDate && step >= 3,
+   191→  })
+   192→
+   193→  function selectService(s: Service) {
+   194→    setSelectedService(s)
+   195→    setSelectedStaff(null)
+   196→    setSelectedTime('')
+   197→    setStep(2)
+   198→  }
+   199→
+   200→  function selectStaff(s: Staff | 'any') {
+   201→    setSelectedStaff(s)
+   202→    setSelectedTime('')
+   203→    setStep(3)
+   204→  }
+   205→
+   206→  function selectTime(t: string) {
+   207→    setSelectedTime(t)
+   208→    setStep(4)
+   209→  }
+   210→
+   211→  async function handleBook() {
+   212→    if (!selectedService || !selectedDate || !selectedTime) {
+   213→      toast.error('Lütfen tüm adımları tamamlayın')
+   214→      return
+   215→    }
+   216→    if (!customer.name.trim() || !customer.phone.trim()) {
+   217→      toast.error('Ad soyad ve telefon gerekli')
+   218→      return
+   219→    }
+   220→    setBooking(true)
+   221→    try {
+   222→      const [y, m, d] = selectedDate.split('-').map(Number)
+   223→      const [hh, mm] = selectedTime.split(':').map(Number)
+   224→      const start = new Date(y, m - 1, d, hh, mm, 0, 0)
+   225→      const res = await fetch(
+   226→        `/api/appointments/public/providers/${providerId}/book`,
+   227→        {
+   228→          method: 'POST',
+   229→          headers: { 'Content-Type': 'application/json' },
+   230→          body: JSON.stringify({
+   231→            staffId: selectedStaff === 'any' ? 'any' : (selectedStaff as Staff).id,
+   232→            serviceId: selectedService.id,
+   233→            customerName: customer.name,
+   234→            customerPhone: customer.phone,
+   235→            customerEmail: customer.email || undefined,
+   236→            customerNote: customer.note || undefined,
+   237→            date: start.toISOString(),
+   238→            website: honeypot,
+   239→          }),
+   240→        },
+   241→      )
+   242→      const json = await res.json()
+   243→      if (!res.ok) throw new Error(json.error || 'Randevu oluşturulamadı')
+   244→      setBooked(json as BookResponse)
+   245→      setStep(5)
+   246→      qc.invalidateQueries({ queryKey: ['public-availability', providerId] })
+   247→      toast.success('Randevunuz oluşturuldu!')
+   248→    } catch (e) {
+   249→      toast.error(e instanceof Error ? e.message : 'Randevu oluşturulamadı')
+   250→    } finally {
+   251→      setBooking(false)
+   252→    }
+   253→  }
+   254→
+   255→  function reset() {
+   256→    setStep(1)
+   257→    setSelectedService(null)
+   258→    setSelectedStaff(null)
+   259→    setSelectedTime('')
+   260→    setCustomer({ name: '', phone: '', email: '', note: '' })
+   261→    setBooked(null)
+   262→  }
+   263→
+   264→  // Generate next 14 days for date selector
+   265→  const dateOptions = useMemo(() => {
+   266→    const dates: { value: string; label: string; dayLabel: string; isClosed: boolean }[] = []
+   267→    const today = new Date()
+   268→    today.setHours(0, 0, 0, 0)
+   269→    for (let i = 0; i < 14; i++) {
+   270→      const d = new Date(today.getTime() + i * 86400000)
+   271→      const dk = dayKeyFromDate(d)
+   272→      const sched = workingHours[dk]
+   273→      const isClosed = !sched || sched.closed
+   274→      dates.push({
+   275→        value: d.toISOString().slice(0, 10),
+   276→        label: d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }),
+   277→        dayLabel: i === 0 ? 'Bugün' : i === 1 ? 'Yarın' : d.toLocaleDateString('tr-TR', { weekday: 'short' }),
+   278→        isClosed,
+   279→      })
+   280→    }
+   281→    return dates
+   282→  }, [workingHours])
+   283→
+   284→  if (isLoading) {
+   285→    return (
+   286→      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-emerald-950/20 dark:via-background dark:to-teal-950/20 p-4 sm:p-6">
+   287→        <div className="max-w-2xl mx-auto space-y-4">
+   288→          <Skeleton className="h-20 w-full" />
+   289→          <Skeleton className="h-12 w-full" />
+   290→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   291→            <Skeleton className="h-32 w-full" />
+   292→            <Skeleton className="h-32 w-full" />
+   293→          </div>
+   294→        </div>
+   295→      </div>
+   296→    )
+   297→  }
+   298→
+   299→  if (!provider) {
+   300→    return (
+   301→      <div className="min-h-screen flex items-center justify-center p-6">
+   302→        <Card className="p-8 text-center max-w-md">
+   303→          <p className="text-sm text-muted-foreground">İşletme bulunamadı veya aktif değil.</p>
+   304→          {onExit && (
+   305→            <Button onClick={onExit} variant="outline" className="mt-4">
+   306→              <ChevronLeft className="w-4 h-4 mr-1" /> Geri Dön
+   307→            </Button>
+   308→          )}
+   309→        </Card>
+   310→      </div>
+   311→    )
+   312→  }
+   313→
+   314→  const typeMeta = getProviderTypeMeta(provider.type)
+   315→
+   316→  // SUCCESS SCREEN
+   317→  if (booked) {
+   318→    const d = new Date(booked.date)
+   319→    const end = booked.endTime ? new Date(booked.endTime) : null
+   320→    const waText = `Merhaba ${booked.customerName}, ${d.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} tarihindeki randevunuz onaylanmıştır. ${provider.name}`
+   321→    const waLink = whatsappLink(booked.customerPhone, waText)
+   322→
+   323→    return (
+   324→      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-emerald-950/20 dark:via-background dark:to-teal-950/20 p-4 sm:p-6">
+   325→        <div className="max-w-xl mx-auto">
+   326→          <Card className="overflow-hidden">
+   327→            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-6 text-center text-white">
+   328→              <div className="w-16 h-16 mx-auto bg-white/20 rounded-full flex items-center justify-center mb-3">
+   329→                <CheckCircle2 className="w-10 h-10" />
+   330→              </div>
+   331→              <h1 className="text-2xl font-bold">Randevunuz Oluşturuldu!</h1>
+   332→              <p className="text-sm text-white/90 mt-1">
+   333→                {booked.status === 'onaylandi' ? 'Onaylandı' : 'Onay bekliyor'} · {provider.name}
+   334→              </p>
+   335→            </div>
+   336→            <CardContent className="p-6 space-y-4">
+   337→              <div className="bg-muted/30 rounded-lg p-4 space-y-3">
+   338→                <div className="flex items-center gap-3">
+   339→                  <CalendarIcon className="w-5 h-5 text-emerald-600 shrink-0" />
+   340→                  <div>
+   341→                    <div className="font-semibold">
+   342→                      {d.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+   343→                    </div>
+   344→                    <div className="text-sm text-muted-foreground">
+   345→                      {String(d.getHours()).padStart(2, '0')}:{String(d.getMinutes()).padStart(2, '0')}
+   346→                      {end && ` - ${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`}
+   347→                    </div>
+   348→                  </div>
+   349→                </div>
+   350→                <div className="grid grid-cols-2 gap-3 text-sm">
+   351→                  <div className="flex items-center gap-2">
+   352→                    <Scissors className="w-4 h-4 text-muted-foreground" />
+   353→                    <div>
+   354→                      <div className="text-xs text-muted-foreground">Hizmet</div>
+   355→                      <div className="font-medium">{booked.service?.name ?? '—'}</div>
+   356→                    </div>
+   357→                  </div>
+   358→                  <div className="flex items-center gap-2">
+   359→                    <User className="w-4 h-4 text-muted-foreground" />
+   360→                    <div>
+   361→                      <div className="text-xs text-muted-foreground">Personel</div>
+   362→                      <div className="font-medium">{booked.staff?.name ?? 'Herhangi biri'}</div>
+   363→                    </div>
+   364→                  </div>
+   365→                  <div className="flex items-center gap-2 col-span-2">
+   366→                    <Tag className="w-4 h-4 text-muted-foreground" />
+   367→                    <div>
+   368→                      <div className="text-xs text-muted-foreground">Tutar</div>
+   369→                      <div className="font-semibold text-emerald-700 dark:text-emerald-300">
+   370→                        {formatCurrency(booked.price)}
+   371→                      </div>
+   372→                    </div>
+   373→                  </div>
+   374→                </div>
+   375→              </div>
+   376→
+   377→              <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20 p-3">
+   378→                <div className="flex items-center gap-2 mb-2">
+   379→                  <Sparkles className="w-4 h-4 text-emerald-600" />
+   380→                  <span className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+   381→                    Hatırlatma için WhatsApp
+   382→                  </span>
+   383→                </div>
+   384→                <p className="text-xs text-muted-foreground mb-2">
+   385→                  Randevu detaylarını telefonunuza gönderin:
+   386→                </p>
+   387→                <Button asChild className="w-full bg-emerald-600 hover:bg-emerald-700">
+   388→                  <a href={waLink} target="_blank" rel="noopener noreferrer">
+   389→                    <MessageCircle className="w-4 h-4 mr-2" />
+   390→                    WhatsApp ile Hatırlat
+   391→                  </a>
+   392→                </Button>
+   393→              </div>
+   394→
+   395→              <div className="rounded-lg border p-3 text-sm">
+   396→                <div className="flex items-center gap-2 mb-1">
+   397→                  <Store className="w-4 h-4 text-emerald-600" />
+   398→                  <span className="font-medium">{provider.name}</span>
+   399→                </div>
+   400→                {provider.address && (
+   401→                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+   402→                    <MapPin className="w-3 h-3" />
+   403→                    {provider.address}
+   404→                  </div>
+   405→                )}
+   406→                {provider.phone && (
+   407→                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+   408→                    <Phone className="w-3 h-3" />
+   409→                    {provider.phone}
+   410→                  </div>
+   411→                )}
+   412→              </div>
+   413→
+   414→              <div className="flex gap-2">
+   415→                <Button variant="outline" className="flex-1" onClick={reset}>
+   416→                  Yeni Randevu
+   417→                </Button>
+   418→                {onExit && (
+   419→                  <Button variant="outline" className="flex-1" onClick={onExit}>
+   420→                    Yönetim Paneline Dön
+   421→                  </Button>
+   422→                )}
+   423→              </div>
+   424→            </CardContent>
+   425→          </Card>
+   426→        </div>
+   427→      </div>
+   428→    )
+   429→  }
+   430→
+   431→  return (
+   432→    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-emerald-950/20 dark:via-background dark:to-teal-950/20 p-4 sm:p-6">
+   433→      <div className="max-w-2xl mx-auto">
+   434→        {/* Header */}
+   435→        <div className="flex items-center gap-3 mb-4">
+   436→          {onExit && (
+   437→            <Button size="icon" variant="ghost" onClick={onExit} className="shrink-0">
+   438→              <ChevronLeft className="w-5 h-5" />
+   439→            </Button>
+   440→          )}
+   441→          {provider.photo ? (
+   442→            <img
+   443→              src={provider.photo}
+   444→              alt={provider.name}
+   445→              className="w-12 h-12 rounded-xl object-cover shrink-0"
+   446→            />
+   447→          ) : (
+   448→            <div className={cn(
+   449→              'w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center text-2xl shrink-0',
+   450→              typeMeta.gradient,
+   451→            )}>
+   452→              {typeMeta.emoji}
+   453→            </div>
+   454→          )}
+   455→          <div className="min-w-0 flex-1">
+   456→            <h1 className="text-lg font-bold truncate">{provider.name}</h1>
+   457→            <p className="text-xs text-muted-foreground truncate">
+   458→              {typeMeta.label}
+   459→              {provider.district && ` · ${provider.district}`}
+   460→              {provider.city && ` / ${provider.city}`}
+   461→            </p>
+   462→          </div>
+   463→        </div>
+   464→
+   465→        {/* Progress */}
+   466→        <div className="mb-4">
+   467→          <div className="flex items-center justify-between">
+   468→            {STEPS.map((s, i) => (
+   469→              <div key={s.num} className="flex items-center flex-1 last:flex-none">
+   470→                <div className="flex flex-col items-center">
+   471→                  <div className={cn(
+   472→                    'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors',
+   473→                    step > s.num
+   474→                      ? 'bg-emerald-600 text-white'
+   475→                      : step === s.num
+   476→                        ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-600'
+   477→                        : 'bg-muted text-muted-foreground',
+   478→                  )}>
+   479→                    {step > s.num ? <Check className="w-3.5 h-3.5" /> : s.num}
+   480→                  </div>
+   481→                  <span className={cn(
+   482→                    'text-[10px] mt-1 hidden sm:block',
+   483→                    step >= s.num ? 'text-foreground font-medium' : 'text-muted-foreground',
+   484→                  )}>
+   485→                    {s.label}
+   486→                  </span>
+   487→                </div>
+   488→                {i < STEPS.length - 1 && (
+   489→                  <div className={cn(
+   490→                    'h-0.5 flex-1 mx-1 transition-colors',
+   491→                    step > s.num ? 'bg-emerald-600' : 'bg-muted',
+   492→                  )} />
+   493→                )}
+   494→              </div>
+   495→            ))}
+   496→          </div>
+   497→        </div>
+   498→
+   499→        {/* Step Content */}
+   500→        <Card>
+   501→          <CardContent className="p-4 sm:p-6">
+   502→            {/* Step 1: Service */}
+   503→            {step === 1 && (
+   504→              <div className="space-y-4">
+   505→                <div>
+   506→                  <h2 className="font-semibold text-lg">Hizmet Seçin</h2>
+   507→                  <p className="text-sm text-muted-foreground">Hangi hizmeti almak istiyorsunuz?</p>
+   508→                </div>
+   509→                {services.length === 0 ? (
+   510→                  <p className="text-sm text-muted-foreground text-center py-8">
+   511→                    Henüz hizmet tanımlanmamış.
+   512→                  </p>
+   513→                ) : (
+   514→                  servicesByCat.map(([cat, items]) => (
+   515→                    <div key={cat}>
+   516→                      <div className="flex items-center gap-2 mb-2">
+   517→                        <Tag className="w-3.5 h-3.5 text-emerald-600" />
+   518→                        <span className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">
+   519→                          {cat}
+   520→                        </span>
+   521→                      </div>
+   522→                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+   523→                        {items.map((s) => (
+   524→                          <button
+   525→                            key={s.id}
+   526→                            type="button"
+   527→                            onClick={() => selectService(s)}
+   528→                            className="text-left p-3 rounded-xl border hover:border-emerald-400 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 transition-all group"
+   529→                          >
+   530→                            <div className="flex items-start gap-3">
+   531→                              {s.photo ? (
+   532→                                <img
+   533→                                  src={s.photo}
+   534→                                  alt={s.name}
+   535→                                  className="w-12 h-12 rounded-lg object-cover shrink-0"
+   536→                                />
+   537→                              ) : (
+   538→                                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-violet-400 to-purple-600 text-white flex items-center justify-center shrink-0">
+   539→                                  <Scissors className="w-5 h-5" />
+   540→                                </div>
+   541→                              )}
+   542→                              <div className="min-w-0 flex-1">
+   543→                                <div className="font-medium text-sm truncate">{s.name}</div>
+   544→                                {s.description && (
+   545→                                  <div className="text-xs text-muted-foreground line-clamp-2">{s.description}</div>
+   546→                                )}
+   547→                                <div className="flex items-center gap-2 mt-1.5 text-xs">
+   548→                                  <span className="flex items-center gap-1 text-muted-foreground">
+   549→                                    <Clock className="w-3 h-3" />
+   550→                                    {s.duration} dk
+   551→                                  </span>
+   552→                                  <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+   553→                                    {formatCurrency(s.price, s.currency)}
+   554→                                  </span>
+   555→                                </div>
+   556→                              </div>
+   557→                            </div>
+   558→                          </button>
+   559→                        ))}
+   560→                      </div>
+   561→                    </div>
+   562→                  ))
+   563→                )}
+   564→              </div>
+   565→            )}
+   566→
+   567→            {/* Step 2: Staff */}
+   568→            {step === 2 && (
+   569→              <div className="space-y-4">
+   570→                <div>
+   571→                  <h2 className="font-semibold text-lg">Personel Seçin</h2>
+   572→                  <p className="text-sm text-muted-foreground">
+   573→                    {selectedService?.name} için kimden randevu almak istersiniz?
+   574→                  </p>
+   575→                </div>
+   576→                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+   577→                  {/* Any staff */}
+   578→                  <button
+   579→                    type="button"
+   580→                    onClick={() => selectStaff('any')}
+   581→                    className="text-left p-3 rounded-xl border hover:border-emerald-400 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 transition-all"
+   582→                  >
+   583→                    <div className="flex items-center gap-3">
+   584→                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 text-white flex items-center justify-center shrink-0">
+   585→                        <Sparkles className="w-5 h-5" />
+   586→                      </div>
+   587→                      <div className="min-w-0 flex-1">
+   588→                        <div className="font-medium text-sm">Herhangi Biri</div>
+   589→                        <div className="text-xs text-muted-foreground">Müsait olan ilk personel</div>
+   590→                      </div>
+   591→                    </div>
+   592→                  </button>
+   593→                  {eligibleStaff.map((s) => (
+   594→                    <button
+   595→                      key={s.id}
+   596→                      type="button"
+   597→                      onClick={() => selectStaff(s)}
+   598→                      className="text-left p-3 rounded-xl border hover:border-emerald-400 hover:bg-emerald-50/30 dark:hover:bg-emerald-950/20 transition-all"
+   599→                    >
+   600→                      <div className="flex items-start gap-3">
+   601→                        {s.photo ? (
+   602→                          <img
+   603→                            src={s.photo}
+   604→                            alt={s.name}
+   605→                            className="w-12 h-12 rounded-full object-cover shrink-0"
+   606→                          />
+   607→                        ) : (
+   608→                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 text-white flex items-center justify-center shrink-0">
+   609→                            <User className="w-5 h-5" />
+   610→                          </div>
+   611→                        )}
+   612→                        <div className="min-w-0 flex-1">
+   613→                          <div className="font-medium text-sm truncate">{s.name}</div>
+   614→                          {s.title && (
+   615→                            <div className="text-xs text-muted-foreground truncate">{s.title}</div>
+   616→                          )}
+   617→                          {s.bio && (
+   618→                            <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{s.bio}</div>
+   619→                          )}
+   620→                        </div>
+   621→                      </div>
+   622→                    </button>
+   623→                  ))}
+   624→                </div>
+   625→                {eligibleStaff.length === 0 && (
+   626→                  <p className="text-sm text-muted-foreground text-center py-4">
+   627→                    Bu hizmeti verebilecek personel bulunamadı.
+   628→                  </p>
+   629→                )}
+   630→                <Button variant="ghost" size="sm" onClick={() => setStep(1)}>
+   631→                  <ChevronLeft className="w-4 h-4 mr-1" /> Geri
+   632→                </Button>
+   633→              </div>
+   634→            )}
+   635→
+   636→            {/* Step 3: Date & Time */}
+   637→            {step === 3 && (
+   638→              <div className="space-y-4">
+   639→                <div>
+   640→                  <h2 className="font-semibold text-lg">Tarih ve Saat</h2>
+   641→                  <p className="text-sm text-muted-foreground">Müsait bir zaman seçin</p>
+   642→                </div>
+   643→
+   644→                {/* Date selector */}
+   645→                <div>
+   646→                  <Label className="text-xs text-muted-foreground">Tarih</Label>
+   647→                  <div className="flex gap-2 overflow-x-auto pb-2 mt-1.5 -mx-1 px-1 custom-scroll">
+   648→                    {dateOptions.map((d) => {
+   649→                      const isSelected = selectedDate === d.value
+   650→                      return (
+   651→                        <button
+   652→                          key={d.value}
+   653→                          type="button"
+   654→                          disabled={d.isClosed}
+   655→                          onClick={() => { setSelectedDate(d.value); setSelectedTime('') }}
+   656→                          className={cn(
+   657→                            'shrink-0 w-16 p-2 rounded-xl border text-center transition-all',
+   658→                            d.isClosed && 'opacity-40 cursor-not-allowed',
+   659→                            isSelected
+   660→                              ? 'border-emerald-600 bg-emerald-600 text-white'
+   661→                              : 'hover:border-emerald-400 hover:bg-emerald-50/30',
+   662→                          )}
+   663→                        >
+   664→                          <div className="text-[10px] uppercase">{d.dayLabel}</div>
+   665→                          <div className="text-sm font-semibold">{d.label}</div>
+   666→                          {d.isClosed && <div className="text-[9px]">kapalı</div>}
+   667→                        </button>
+   668→                      )
+   669→                    })}
+   670→                  </div>
+   671→                </div>
+   672→
+   673→                {/* Time slots */}
+   674→                <div>
+   675→                  <Label className="text-xs text-muted-foreground">
+   676→                    Saat {selectedService && `(${selectedService.duration} dk)`}
+   677→                  </Label>
+   678→                  {availLoading ? (
+   679→                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mt-1.5">
+   680→                      {[1, 2, 3, 4, 5, 6].map((i) => (
+   681→                        <Skeleton key={i} className="h-10 w-full" />
+   682→                      ))}
+   683→                    </div>
+   684→                  ) : availData && availData.slots.length > 0 ? (
+   685→                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mt-1.5">
+   686→                      {availData.slots.map((t) => {
+   687→                        const isSelected = selectedTime === t
+   688→                        return (
+   689→                          <button
+   690→                            key={t}
+   691→                            type="button"
+   692→                            onClick={() => selectTime(t)}
+   693→                            className={cn(
+   694→                              'h-10 rounded-lg border text-sm font-medium transition-all',
+   695→                              isSelected
+   696→                                ? 'bg-emerald-600 text-white border-emerald-600'
+   697→                                : 'hover:border-emerald-400 hover:bg-emerald-50/30',
+   698→                            )}
+   699→                          >
+   700→                            {t}
+   701→                          </button>
+   702→                        )
+   703→                      })}
+   704→                    </div>
+   705→                  ) : (
+   706→                    <div className="text-center py-6 text-sm text-muted-foreground">
+   707→                      Bu gün için müsait saat yok. Lütfen başka bir gün seçin.
+   708→                    </div>
+   709→                  )}
+   710→                </div>
+   711→
+   712→                <Button variant="ghost" size="sm" onClick={() => setStep(2)}>
+   713→                  <ChevronLeft className="w-4 h-4 mr-1" /> Geri
+   714→                </Button>
+   715→              </div>
+   716→            )}
+   717→
+   718→            {/* Step 4: Customer Info */}
+   719→            {step === 4 && (
+   720→              <div className="space-y-4">
+   721→                <div>
+   722→                  <h2 className="font-semibold text-lg">İletişim Bilgileri</h2>
+   723→                  <p className="text-sm text-muted-foreground">Randevu onayı için bilgilerinizi girin</p>
+   724→                </div>
+   725→
+   726→                {/* Summary */}
+   727→                <div className="bg-muted/30 rounded-lg p-3 text-sm space-y-1">
+   728→                  <div className="flex items-center gap-2">
+   729→                    <Scissors className="w-3.5 h-3.5 text-emerald-600" />
+   730→                    <span>{selectedService?.name}</span>
+   731→                  </div>
+   732→                  <div className="flex items-center gap-2">
+   733→                    <User className="w-3.5 h-3.5 text-emerald-600" />
+   734→                    <span>
+   735→                      {selectedStaff === 'any' || !selectedStaff
+   736→                        ? 'Herhangi biri'
+   737→                        : selectedStaff.name}
+   738→                    </span>
+   739→                  </div>
+   740→                  <div className="flex items-center gap-2">
+   741→                    <CalendarIcon className="w-3.5 h-3.5 text-emerald-600" />
+   742→                    <span>
+   743→                      {new Date(selectedDate + 'T00:00:00').toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+   744→                      {' · '}
+   745→                      {selectedTime}
+   746→                    </span>
+   747→                  </div>
+   748→                  <div className="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-300">
+   749→                    <Tag className="w-3.5 h-3.5" />
+   750→                    <span>{formatCurrency(selectedService?.price ?? 0)}</span>
+   751→                  </div>
+   752→                </div>
+   753→
+   754→                <div className="space-y-3">
+   755→                  <div>
+   756→                    <Label htmlFor="c-name">Ad Soyad *</Label>
+   757→                    <Input
+   758→                      id="c-name"
+   759→                      value={customer.name}
+   760→                      onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))}
+   761→                      placeholder="Adınız Soyadınız"
+   762→                      className="mt-1 h-11"
+   763→                      autoComplete="name"
+   764→                    />
+   765→                  </div>
+   766→                  <div>
+   767→                    <Label htmlFor="c-phone">Telefon *</Label>
+   768→                    <Input
+   769→                      id="c-phone"
+   770→                      type="tel"
+   771→                      value={customer.phone}
+   772→                      onChange={(e) => setCustomer((c) => ({ ...c, phone: e.target.value }))}
+   773→                      placeholder="+90 5xx xxx xx xx"
+   774→                      className="mt-1 h-11"
+   775→                      autoComplete="tel"
+   776→                    />
+   777→                  </div>
+   778→                  <div>
+   779→                    <Label htmlFor="c-email">E-posta (opsiyonel)</Label>
+   780→                    <Input
+   781→                      id="c-email"
+   782→                      type="email"
+   783→                      value={customer.email}
+   784→                      onChange={(e) => setCustomer((c) => ({ ...c, email: e.target.value }))}
+   785→                      placeholder="email@örnek.com"
+   786→                      className="mt-1 h-11"
+   787→                      autoComplete="email"
+   788→                    />
+   789→                  </div>
+   790→                  <div>
+   791→                    <Label htmlFor="c-note">Not (opsiyonel)</Label>
+   792→                    <Textarea
+   793→                      id="c-note"
+   794→                      value={customer.note}
+   795→                      onChange={(e) => setCustomer((c) => ({ ...c, note: e.target.value }))}
+   796→                      placeholder="Özel istekleriniz..."
+   797→                      className="mt-1 resize-none"
+   798→                      rows={2}
+   799→                    />
+   800→                  </div>
+   801→                  {/* Honeypot */}
+   802→                  <input
+   803→                    type="text"
+   804→                    name="website"
+   805→                    value={honeypot}
+   806→                    onChange={(e) => setHoneypot(e.target.value)}
+   807→                    className="hidden"
+   808→                    tabIndex={-1}
+   809→                    autoComplete="off"
+   810→                    aria-hidden="true"
+   811→                  />
+   812→                </div>
+   813→
+   814→                <div className="flex gap-2">
+   815→                  <Button variant="ghost" onClick={() => setStep(3)} className="flex-1">
+   816→                    <ChevronLeft className="w-4 h-4 mr-1" /> Geri
+   817→                  </Button>
+   818→                  <Button
+   819→                    onClick={handleBook}
+   820→                    disabled={booking || !customer.name.trim() || !customer.phone.trim()}
+   821→                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 h-11"
+   822→                  >
+   823→                    {booking ? 'Oluşturuluyor...' : 'Randevuyu Onayla'}
+   824→                  </Button>
+   825→                </div>
+   826→              </div>
+   827→            )}
+   828→
+   829→            {/* Step 5: Success handled above */}
+   830→          </CardContent>
+   831→        </Card>
+   832→
+   833→        {/* Footer info */}
+   834→        <p className="text-center text-xs text-muted-foreground mt-4">
+   835→          <Store className="w-3 h-3 inline mr-1" />
+   836→          {provider.name} · {provider.phone && (
+   837→            <>
+   838→              <Phone className="w-3 h-3 inline mx-1" />
+   839→              {formatPhone(provider.phone)}
+   840→            </>
+   841→          )}
+   842→        </p>
+   843→      </div>
+   844→    </div>
+   845→  )
+   846→}
+   847→

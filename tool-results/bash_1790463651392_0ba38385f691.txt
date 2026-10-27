@@ -1,0 +1,300 @@
+
+### Faz 9: Şablonu tüm PDF'lere uygula
+- InvoicePdfDialog + ProformaPdfGenerator + QuoteDetailDialog + IrsaliyePdfDialog + PrintDocument
+- Her birine PdfHeader + PdfFooter entegre et
+- Renk + ağırlık + varyant gösterimi
+
+### Faz 10: Test + worklog güncelle (bu dosya)
+
+## Kullanıcı Taleplerine Karşılık
+1. ✅ Depocu sipariş göremez sorunu → depo_sorumlusu + stock rollerine `orders.view` yetkisi eklendi
+2. ✅ Siparişlerde fiyat depocuya gözükmesin → DepoSiparisView (fiyat gizli)
+3. ✅ Depocu irsaliye oluşturabilsin → `irsaliye.manage` yetkisi + İrsaliyeFormDialog
+4. ✅ İrsaliyede fiyat yazmasın (fatura gibi) → İrsaliye PDF'de fiyat yok
+5. ✅ İrsaliye PDF görüntüleme → IrsaliyePdfDialog
+6. ✅ Üretim durumu önizleme → order-production-preview.tsx (✅/🔄/⏳)
+7. ✅ Ürüne renk + ağırlık ekle → Product.color + Product.weight + Product.packagingWeight
+8. ✅ Renk faturada, ağırlık+renk çeki listesi/irsaliyede → InvoiceLine/IrsaliyeLine.color + weight
+9. ✅ Şirket fatura şablonu → InvoiceTemplate model + API + UI + canlı önizleme
+10. ✅ Çeki listesi/irsaliyede net + brüt ağırlık → Irsaliye.totalNetWeight + totalGrossWeight
+11. ✅ Program Admini demo kullanıcı → Program Admini (superadmin, GNC-001)
+12. ✅ Diğer adminlerden Admin Paneli kalsır → admin.access sadece superadmin'de
+13. ✅ Dağıtım Merkezi sadece Program Admininde → sidebar'da sadece superadmin'de
+14. ✅ Şirket adminleri sadece kendi sektörünü görsün → getVisiblePermissionGroups
+15. ✅ Public randevu web sitesi → /?booking=... (login gerekmez, herkes alabilsin)
+16. ✅ Sadece rezervasyon (ödeme yok) → POST /api/public/appointments
+17. ✅ Daire sahibi bilgileri → apartment-form-dialog + Resident modeline tcKimlikNo, notes
+18. ✅ Kiracı için ek bilgi sayfası → apartment-form-dialog'da Kiracı Bilgileri bölümü
+19. ✅ Cafe masa drag-drop fix → e.currentTarget + try/catch
+20. ✅ Faturada şirket bilgisi yazsın → PdfFooter (companyName, address, phone, email, web, taxNumber)
+21. ✅ Fatura oluşturan kişi kendi logosunu eklesin → InvoiceTemplate.logoUrl + upload
+22. ✅ Sayfa altında şirket bilgileri → PdfFooter
+
+## Lint
+- ✅ `bun run lint` — 0 errors, 9 pre-existing warnings
+
+## Kalan İşler (kullanıcı sonraki talebinde yapılacak)
+- InvoicePdfDialog/ProformaPdfGenerator/IrsaliyePdfDialog'a PdfHeader+PdfFooter entegrasyonu (Faz 9 detayı)
+- Sipariş durum akışı takibi (hazirlaniyor → onaylandı → uretimde → sevk → teslim)
+- Stok hareketleri otomatik (irsaliye onayı → stok düşümü)
+- Depo dashboard'ı özel view
+- Kargo takip linki SMS/WhatsApp
+
+---
+Task ID: 1
+Agent: Z.ai Code (Ana Orkestratör)
+Task: Kullanıcının 5 talebi — (1) Teklife PDF görüntüsü, (2) Teklifler varsayılan proforma → gönderilince teklif, (3) İrsaliyeler yerine Belge Yönetimi sayfası (şirket→sipariş→yetkiye göre belge butonları, otomatik belge), (4) PDF şablonunun yeni PDF'lere uygulanmaması sorununun çözümü, (5) Randevu otomatik onay slidebar'ı + onay sonrası WhatsApp bilgilendirme
+
+Work Log:
+- Upload edilen workspace arşivi (/home/z/my-project/upload/workspace-*.tar) projeye açıldı; eksik bağımlılıklar (papaparse, xlsx, react-dropzone, sharp) bun install ile kuruldu
+- Prisma: ServiceProvider.autoApprove Boolean @default(true) eklendi, db:push yapıldı
+- RBAC: Yeni 'invoices.view' permission'ı tanımlandı; manager (müdür) rolüne orders.view + irsaliye.view + invoices.view; superadmin ve CRM-admin'e invoices.view verildi. Depocu (stock/depo_sorumlusu) yalnızca orders.view + irsaliye.view ile bırakıldı (fatura göremez)
+- Quotes API: POST /api/quotes artık isProforma=true + PRO-YYYY-NNN numarası ile oluşturuyor; PATCH /api/quotes/[id] ve /api/proforma/[id] status='gonderildi' olduğunda kaydı otomatik TEKLİFE dönüştürüyor (isProforma=false + yeni TKL-YYYY-NNN numarası). /api/quotes'a ?type=proforma|teklif filtresi eklendi. PATCH onaylandi durumunda otomatik Order + tracking step oluşturma eklendi (proforma akışıyla parite)
+- Yeni QuotePdfDialog (src/components/erp/parts/quote-pdf-dialog.tsx): TEKLİF + PROFORMA birleşik, şablonlu PDF önizleme; QuoteDetailDialog'taki "PDF" butonu artık proforma olmayan tekliflerde de çalışıyor
+- Yeni generate-document API (src/app/api/orders/[id]/generate-document/route.ts): {type: invoice|irsaliye|packing_list} — siparişten otomatik belge üretir (teklif satırları → üretim kalemleri → fallback sırasıyla), fatura otomatik stok çıkışı yapar, çeki listesi CL-YYYY-NNN numarası üretir; mevcut belge varsa yeniden üretmez
+- Yeni DocumentsView (src/components/erp/documents-view.tsx): Sidebar'daki "İrsaliyeler" sayfasının yerine "Belge Yönetimi" geçti. Şirketler (müşteriler) altında siparişler listelenir; her siparişte YETKİYE GÖRE Fatura/İrsaliye/Çeki Listesi butonları (müdür: 3'ü, depocu: sadece irsaliye+çeki listesi), belge durum rozetleri, özet kartları. 2. sekmede eski İrsaliye Listesi korunuyor. Sidebar + app-shell güncellendi
+- PDF Şablon fix (kullanıcının ana şikayeti): (a) /api/settings/invoice-template GET artık settings.manage değil sadece auth gerektiriyor — satış/müdür/depocu 403 alıyordu, bu yüzden şablon hiç uygulanamıyordu; (b) pdf-template.tsx'e DEFAULT_TPL + resolveTpl + TemplateA4Page (margin/font/fontSize/textColor uygulayan sarmalayıcı) eklendi, PdfHeader top-center logo varyantı kazandı; (c) InvoicePdfDialog, IrsaliyePdfDialog, PackingListPdfDialog, QuotePdfDialog hepsi PdfHeader/PdfFooter/TemplateA4Page kullanıyor; (d) kullanılmayan ProformaPdfGenerator silindi
+- Yeni PackingListPdfDialog (parts/packing-list-pdf-dialog.tsx): fiyatsız çeki listesi PDF'i — ürün, miktar, renk, birim/toplam ağırlık, teslim eden/alan imza alanları
+- Randevu: Public book API provider.autoApprove'a saygı duyuyor (kapalıysa veya çalışma saatleri dışındaysa 'beklemede'); provider PATCH autoApprove kabul ediyor + workingHours objesini JSON.stringify ediyor (önceden 500 veren gizli bug); provider-settings'e "Randevuları otomatik onayla" Switch'i eklendi (açık=yeşil/kapalı=amber açıklamalı) ve appointments-view'a "İşletme Ayarları" sekmesi olarak bağlandı (önceden orphan component'ti); appointment PATCH reminderSent kabul ediyor; Randevular listesi/kartlarına beklemede için hızlı "Onayla", onaylandı için WhatsApp yeşil "WhatsApp ile Bilgi Gönder" butonu (wa.me detaylı onay mesajı + reminderSent işaretleme) eklendi; public booking success ekranı beklemede durumu için "Onay Bekleniyor" bilgilendirmesi gösteriyor
+- Agent Browser ile uçtan uca doğrulama: müdür girişinde Belge Yönetimi 3 buton görünüyor + fatura/irsaliye/çeki listesi otomatik üretimi PDF önizleme ile çalışıyor (kullanıcının kendi logosu/mavi rengi/banka bilgileri şablondan geliyor); depocu girişinde yalnızca İrsaliye+Çeki Listesi butonları ve fiyat sütunu yok; PRO-2026-001 oluşturuldu → gönderildi → TKL-2026-001'e dönüştü; autoApprove kapalıyken public booking 'beklemede' (pazar günü de doğru şekilde), açıkken pazartesi booking 'onaylandi'; Onayla → WhatsApp Bilgi Gönder akışı toast ile doğrulandı
+- Orders API: orders.view sahipleri (müdür/depocu) şirket geneli siparişleri görür; irsaliyeler + invoice.packingListNo include edildi (depo serileştirmesi fiyatsız)
+
+Stage Summary:
+- Kullanıcının 5 talebi tamamen implement edildi ve browser'da doğrulandı; lint 0 error (9 pre-existing warning)
+- Kritik kök neden bulundu: PDF şablonunun uygulanmama nedeni izin hatasıydı (template GET 403) + Faz 9 entegrasyonunun hiç yapılmamış olması — ikisi de giderildi
+- Gizli bug'lar giderildi: workingHours objesi 500'u, orphan ProviderSettings, müdürün sipariş/irsaliye erişim eksikliği
+- Risk: QuotesView'daki eski TKL numaralı kayıtlar (dönüşüm öncesi) teklif olarak görünür; dağıtım öncesi tüm tenant'larda InvoiceTemplate kaydı yoksa varsayılan şablon kullanılır (DEFAULT_TPL güvenli fallback)
+- Sonraki adım önerileri: WhatsApp otomasyonu için Business API entegrasyonu, belgelere toplu PDF indirme, irsaliye onayında otomatik stok düşümü, appointment hatırlatma cron'u
+
+---
+Task ID: 2
+Agent: Z.ai Code (WebDevReview Cron Turu 2)
+Task: Proje durumu değerlendirmesi + QA + hata düzeltme + yeni özellikler (irsaliye sevk stok akışı, CSV dışa aktarma, kargo takip linki) + stil iyileştirmeleri
+
+Work Log:
+- QA: lint 0 error (9 pre-existing warning), dev.log temiz, agent-browser ile depocu/admin girişlerinde Belge Yönetimi regresyon testi — sorun yok
+- BUG FIX: PDF önizleme diyalogları max-w-3xl (768px) < A4 (210mm ≈ 794px) olduğu için içerik sağdan kesiliyordu → QuotePdfDialog, InvoicePdfDialog, IrsaliyePdfDialog, PackingListPdfDialog max-w-4xl yapıldı
+- BUG FIX: IrsaliyeDetailDialog'daki yeni Sevk Akışı butonları "qc is not defined" hatası veriyordu → bileşene useQueryClient eklendi, toast + invalidasyonlar çalışıyor
+- FEATURE (Faz 8 kalıntısı): İrsaliye OTOMATİK STOK AKIŞI — PATCH /api/irsaliye/[id]:
+  · status → sevk_edildi olduğunda kalemlerdeki ürünler için otomatik StockMovement 'cikis' + Product.stock düşümü (stokta olan kadar, çift düşme korumalı)
+  · sevk/teslim'den taslak/hazir/iptal'e geri alındığında otomatik 'giris' + stok iadesi
+  · Uçtan uca doğrulandı: stok 13 → sevk(-3) → 10 → geri al(+3) → 13; StockMovement kayıtları "İrsaliye sevkıyesi: IRS-XXX" / "İrsaliye geri alındı" gerekçeleriyle DB'de
+- FEATURE: SİPARİŞ DURUM SENKRONU — irsaliye sevk_edildi/teslim_edildi olduğunda bağlı sipariş otomatik sevk_yapildi/teslim_edildi olur + OrderTrackingStep oluşturulur
+- FEATURE: İrsaliye detayına SEVK AKIŞI hızlı aksiyon barı: "Sevk Et (stok otomatik düşer)" → "Teslim Alındı" → "Geri Al (Stok İade)" + İptal; toast'ta kaç kalem için stok güncellendiği gösterilir
+- FEATURE: Kargo takip linki — getCarrierTrackingUrl() (Yurtiçi, Aras, MNG, PTT, UPS, FedEx, DHL); irsaliye detay "Kargoyu Takip Et" linki + irsaliye PDF'inde "Online Takip" linki
+- FEATURE: Belge Yönetimi'ne "CSV Dışa Aktar" (export.data yetkili) — sipariş + fatura/irsaliye/çeki listesi durumları; depo rolünde tutar kolonu hariç
+- STYLE: Şirket kartı başlıklarına gradient + belge özet rozetleri (Fatura/İrsaliye/Çeki sayıları, izne göre gizli), globals.css'e mobil A4 ölçekleme (<=900px genişlik %100, padding 6mm) — mobil PDF önizleme artık taşmıyor
+
+Stage Summary:
+- Tur 2 tamlandı: 2 bug fix + 4 yeni özellik + stil iyileştirmeleri, hepsi browser'da doğrulandı
+- Stok akışı artık gerçek ERP davranışı: sevk = stok çıkış, geri al = iade, sipariş durumu otomatik senkron
+- Risk: Mevcut irsaliyelerde productId'siz kalemler stok akışına girmez (beklenen); ürün stoku 0 ise sevkide düşüm atlanır (negatif stok yok — bilinçli davranış)
+- Sonraki tur önerileri: appointment hatırlatma cron mini-servisi, teklif/sipariş PDF toplu indirme (zip), dashboard'a "bekleyen sevkiyatlar" widget'ı, irsaliye CSV/Excel ihracı
+
+---
+Task ID: 3
+Agent: Z.ai Code (WebDevReview Cron Turu 3)
+Task: Proje durumu değerlendirmesi + agent-browser QA + hata düzeltmeleri + yeni özellikler (Bekleyen Sevkiyatlar widget'ı, randevu hatırlatma cron servisi, Excel ihracı) + stil iyileştirmeleri
+
+Work Log:
+- QA: lint temizlendi (9 pre-existing "unused eslint-disable" warningu --fix ile giderildi → 0 error 0 warning); dev.log incelendi; agent-browser ile regresyon testi — Belge Yönetimi müdür görünümü (3 belge butonu) ve depocu görünümü (fiyatsız, sadece İrsaliye+Çeki Listesi) doğru çalışıyor
+- BUG FIX (QA bulgusu): Topbar VIEW_TITLES haritasında irsaliye/orders/quotes/invoices/erp/production/expenses/chat/appointments/site/market/social/distribution/admin/resident-portal görünümleri eksikti → tüm AppView değerleri için başlık eklendi; artık üst barda "Belge Yönetimi", "Siparişler" vb. doğru başlıklar görünüyor
+- OPS BULGUSU: Next.js dev server OOM (2.2GB RSS) ile ölmüştü ve otomatik yeniden başlamamıştı; ayrıca sandıkta `setsid/nohup &` ile başlatılan next dev süreci ~30-60s içinde sessizce öldürülmekte. Güvenilir yöntem: `( ... & )` çift-fork subshell. Sunucu `NODE_OPTIONS=--max-old-space-size=2048` ile yeniden ayağa kaldırıldı ve stabil
+- FEATURE: Dashboard "Bekleyen Sevkiyatlar" widget'ı — GET /api/dashboard'a `shipments` alanı eklendi (status in hazirlaniyor/onaylandi/uretimde olan siparişler, termin tarihine göre sıralı, max 8). Yeni PendingShipmentsWidget (dashboard-view.tsx): gradient Truck ikonu, durum rozetleri (getOrderStatusMeta), termin geçti uyarı rozeti (kırmızı, animate-pulse), tutar, tıklanınca Siparişler'e gider; header'daki buton Belge Yönetimi'ne açar
+- GİZLİLİK FIX: depo rolü (stock VE depo_sorumlusu) için dashboard shipments sorgusunda totalAmount/currency alanları döndürülmüyor (canSeeAmounts = invoices.view || erp.manage); browser'da doğrulandı — müdür tutar görüyor, depocu görmüyor. Depo rolü kısıtlı ekranına da widget eklendi (tutarsız)
+- FEATURE: Randevu hatırlatma otomasyonu — yeni POST/GET /api/cron/reminders (x-cron-secret header zorunlu, CRON_SECRET .env'e eklendi): önümüzdeki 24 saatteki onaylı randevulara reminderSent işareti + müşteri/işletme WhatsApp hatırlatma linki üretimi + audit log; 2+ saat onay bekleyen randevuları tespit edip escalation kaydı yazıyor
+- FEATURE: Yeni mini-service mini-services/appointment-reminders (port 3011, node-cron */30 dk, /run-now manuel tetikleme endpoint'i, /health). İlk çalışmada doğrulandı: 1 hatırlatma işaretlendi (EFSF62PX, WhatsApp linki üretildi), 1 onay bekleyen tespit edildi (04E85MQ8); audit log'a `action=reminder` kayıtları düştü
+- FEATURE: Bildirim akışına randevu bildirimleri — GET /api/notifications artık (a) onay bekleyen randevular (urgent) ve (b) önümüzdeki 24 saatteki onaylı randevular (info/warning) döndürüyor; NotificationCenter'a takvim ikonları (CalendarClock/CalendarCheck), tip etiketleri ve tıklanınca Randevular görünümüne yönlendirme eklendi. Kuaför Yöneticisi girişinde zil rozeti "3" göründü, popover ve yönlendirme browser'da doğrulandı
+- FEATURE: İrsaliye Listesi'ne Excel ihracı — IrsaliyeView header'ına "Excel" butonu (xlsx kütüphanesi, otomatik kolon genişlikleri): İrsaliye No, Tarih, Müşteri, Sipariş No, Durum, Net/Brüt Ağırlık, Palet, Taşıyıcı, Takip No, Not kolonları; "4 irsaliye Excel olarak indirildi" toast'ı ile doğrulandı
+- STYLE: Widget kartlarında gradient ikon + hover shadow geçişleri, satır hover:bg-muted, divide-y liste, max-h + custom-scroll; test siparişleri (SIP-2026-002/003) gerçekçi not + termin tarihleriyle güncellendi (widget demosu kalıcı ve anlamlı)
+
+Stage Summary:
+- Tur 3 tamamlandı: 1 gizli privacy bug fix + 1 topbar başlık fix'i + 3 yeni özellik (sevkiyat widget'ı, hatırlatma cron zinciri, Excel ihracı) + lint 0/0
+- Hatırlatma zinciri uçtan uca: cron servisi → secret'lı API → reminderSent işaretleme → WhatsApp linki → audit log → in-app bildirim → tıkla → Randevular ekranı
+- Risk: sandbox'ta dev server yönetimi kırılgan (OOM geçmişi; manuel başlatma için çift-fork gerekli) — sonraki turda sunucu ölürse `(cd /home/z/my-project && NODE_OPTIONS="--max-old-space-size=2048" nohup npx next dev -p 3000 >> dev.log 2>&1 &)` kullanılmalı; Chrome bellek yerken QA sırasında browser kapatılmalı
+- Risk: cron-automation (port 3010) servisi şu an çalışmıyor (boot'ta crash olmuş olabilir) — bir sonraki turda log'undan kontrol edilmeli
+- Sonraki tur önerileri: şirket bazlı toplu belge yazdırma (combined print view), WhatsApp Business API entegrasyonu (üretilen linklerin otomatik gönderimi), bekleyen sevkiyat widget'ından hızlı "İrsaliye Üret" aksiyonu, appointment hatırlatma e-posta kanalı
+---
+Task ID: 4
+Agent: Z.ai Code (WebDevReview Cron Turu 4)
+Task: Proje durumu değerlendirmesi + agent-browser QA + hata düzeltmeleri + yeni özellikler (Birleşik Belge Yazdırma, Bekleyen Sevkiyatlar hızlı İrsaliye Üret aksiyonu) + stil/responsive iyileştirmeleri
+
+Work Log:
+- OPS: cron-automation (port 3010) servisi node_modules eksikliğinden çökmüş → bun install + restart ile ayağa kaldırıldı (health 200); appointment-reminders (3011) çalışıyor
+- QA: lint 0/0; dev.log temiz; agent-browser ile müdür/depocu/admin girişleri, Belge Yönetimi, Teklifler, Randevular İşletme Ayarları regresyonu — önceki tur özelliklerinin hepsi sağlam
+- BUG FIX (KRİTİK, kök neden): shadcn DialogContent varsayılanı `sm:max-w-lg`, tailwind-merge sadece AYNI variant'ta çakışma çözdüğü için önceki turun `max-w-4xl` eklemesi HİÇBİR dialog'da etkili olmamış (hepsi 512px'de kalıyordu, PDF toplamları "Ara Top/KDV To" şeklinde kesiliyordu) → 29 dialog'da genişlikler `sm:max-w-*` variant'ına çevrildi (sed ile sistematik): ERP PDF dialog'ları (invoice/irsaliye/packing/quote detail+form), order/production, customers, reports, market, site, appointments, admin, command-palette. Doğrulandı: fatura PDF artık 896px, toplamlar + PdfFooter (banka/iban/imza) tam görünüyor
+- BUG FIX (gizli, kullanıcının "depocu çeki listesi görsün" talebi): generate-document API'sinde packing_list için invoices.view/erp.manage zorunluydu → depocu Çeki Listesi butonunu GÖRÜYOR ama tıklayınca 403 alıyordu (tur 1'de yalnızca buton görünürlüğü test edilmişti) → packing_list artık irsaliye.view ile de üretiliyor; AYNI anda GET /api/invoices/[id] de depocuya 403 veriyordu → PackingListPdfDialog veri çekemiyordu; ikisi de düzeltildi. Gizlilik: depocu (invoices.view yok) yanıtlarda fiyat alanları API tarafında sıfırlanıyor (stripInvoicePrices + invoice GET fiyat temizliği) — çeki listesi doğası gereği fiyatsız
+- FEATURE: Birleşik Belge Yazdırma — yeni CombinedOrderPrintDialog (parts/combined-docs-print-dialog.tsx): Belge Yönetimi'nde her siparişte "Tümü" butonu; yetkiye göre eksik belgeleri sırayla otomatik üretir (idempotent generate-document), Fatura → İrsaliye → Çeki Listesi'ni tek dialog'da alt alta render eder, her belge `print:break-after-page` ile AYRI A4 sayfasına yazdırılır; üretim checklist rozetleri (FAT-XXX ✓ / IRS-XXX ✓ / CL-XXX ✓), progress + hata durumu; müdürde 3 sayfa, depocuda 2 sayfa (fiyatsız) doğrulandı
+- FEATURE: Dashboard "Bekleyen Sevkiyatlar" widget'ına HIZLI AKSİYON — her satırda "İrsaliye Üret" butonu (irsaliye.view yetkisi olanlara: müdür/depocu/admin); tıklayınca otomatik irsaliye üretir (toast: numara) + IrsaliyePdfDialog'u dashboard üzerinde açar; stopPropagation ile satır tıklamasından ayrıştı; e2e doğrulandı: SIP-2026-003 → IRS-2026-005 üretildi + PDF şablonlu açıldı
+- STYLE: Birleşik dialog'da sayfa araları kesik çizgili ayraçlar (ekranda) / gerçek sayfa kırılımı (baskıda); widget butonu violet renk paletiyle Belge Yönetimi ile uyumlu; mobil 390px'te Belge Yönetimi 2 kolonlu istatistik grid'i + kompakt header doğrulandı; lint 0 error 0 warning
+- OPS NOTU: Yeni dosya eklenince Turbopack uzun oturumlarda "module factory is not available" HMR bozulması yapabiliyor → dev server restart (pkill + double-fork nohup) ile temizlendi; restart sonrası tüm akışlar yeniden doğrulandı
+
+Stage Summary:
+- Tur 4 tamamlandı: 1 kritik kök-neden bug fix (29 dialog'un fiilen dar kalması) + 2 gizli 403 bug fix (depocu çeki listesi) + 2 yeni özellik (birleşik belge yazdırma, widget hızlı irsaliye) + responsive/baskı stilleri; lint 0/0
+- Kullanıcının 5 orijinal talebi + sonraki 3 turun özellikleri tümüyle çalışıyor; PDF çıktıları artık hem tam genişlikte önizleniyor hem şablona uyuyor
+- Risk: dev server uzun oturumda OOM/geçmişinde Turbopack HMR bozulması var — sahne kararsızsa restart tek çare; Chrome QA'da bellek tükettiği için agent-browser close önerilir
+- Risk: depocu çeki listesi istediğinde siparişin faturası yoksa otomatik oluşturuluyor (fiyatlar DB'de var, API'de maskelenir) — fatura numarası sırası depocu tetiklemesiyle de ilerleyebilir; bilinçli tasarım ("belge otomatik") fakat iş sürecinde tartışılacak olabilir
+- Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (link üretimi mevcut), teklif→sipariş kabul/red akışında müşteri portalı, irsaliye CSV/Excel dışa aktarımının fatura/çeki listesine genişletilmesi, dashboard'a aylık sevk/adet grafiği
+
+---
+Task ID: 5
+Agent: Z.ai Code (WebDevReview Cron Turu 5)
+Task: Proje durumu değerlendirmesi + agent-browser QA + hata düzeltmeleri + yeni özellikler (6 aylık Sevk & Sipariş Trendi grafiği, teklif WhatsApp gönderimi, gerçek Excel ihracı, geçerlilik rozetleri) + stil/responsive iyileştirmeleri
+
+Work Log:
+- QA (regresyon): lint 0/0; tüm servisler sağlıklı (app 3000, cron-automation 3010, appointment-reminders 3011); agent-browser ile admin girişinde Dashboard/Genel Bakış (hero, KPI, Bekleyen Sevkiyatlar, İş Dünyası Haberleri), Teklifler (proforma/teklif filtreleri), Belge Yönetimi (şirket→sipariş→belge butonları), Faturalar — hepsi sorunsuz; console hatası yok
+- BUG FIX (gizli): serializeForDepo sipariş yanından invoice.packingListNo alanını kırpyorudu → depocu Belge Yönetimi'nde "ÇEKİ LİSTELİ 0" görüyordu (admin 3 görüyordu) ve sipariş başlığındaki CL-XXX rozeti kayıptı → packingListNo depo yanıtına eklendi (fiyat bilgisi değil, belge numarası); depocu artık "ÇEKİ LİSTELİ 3" görüyor — browser'da doğrulandı
+- BUG FIX: buildProformaWhatsAppMessage tarihinde ay off-by-one (d.getMonth() +1'siz) → Ekim "09" yerine "08" yazıyordu; her iki mesaj üreticide düzeltildi (teklif mesajında "Teklif Geçerliliği: 30.10.2026" doğru doğrulandı)
+- FEATURE: Dashboard "Sevk & Sipariş Trendi" widget'ı — GET /api/dashboard'a shipmentsTrend alanı (son 6 ay: aylık yeni sipariş adedi, sevk edilen irsaliye adedi, TRY bazlı fatura cirosu — sabit kurlar USD42/EUR45/GBP52, yalnızca invoices.view/erp.manage sahiplerine). Yeni ShipmentsTrendWidget: recharts ComposedChart (mor gradient bar = yeni sipariş, mavi çizgi = sevk edilen, yeşil alan = ciro), çift Y ekseni (adet solda, ciro sağda gizli), Sevk Oranı + 6 Ay Ciro özet rozetleri, boş durum ekranı. Doğrulama: IRS-2026-005 UI'dan "Sevk Et" ile sevildi (stok akışı regresyonu da ✔) → Sevk Oranı %33, çizgi Eyl'de 1'e yükseldi
+- FEATURE: Teklif (non-proforma) WhatsApp/e-posta gönderimi — SendDialog artık hem proformaId hem quoteId ile çalışıyor (isProformaDoc flag'i: /api/proforma vs /api/quotes uçları, durum PATCH'i doğru endpoint'e); QuoteDetailDialog "Gönder" butonu artık tekliflerde de görünüyor; buildQuoteWhatsAppMessage eklendi (teklif odaklı metin); e2e doğrulandı: TKL-2026-002 → Gönder → "Teklif Gönder" diyalogu, WhatsApp kanalı seçili, telefon +90 539 604 53 18, teklif mesajı önizlemede
+- FEATURE: Gerçek Excel (.xlsx) ihracı — yeni paylaşılan util src/lib/excel-export.ts (exportRowsToExcel: otomatik kolon genişliği, toast, filename-sheetName); Faturalar + Teklifler CSV'den xlsx'e yükseltildi (Teklifler'e "Tür" kolonu: Proforma/Teklif), İrsaliye aynı util'e taşındı (kod tekrarı giderildi); browser'da "5 fatura Excel olarak indirildi" + "2 teklif Excel olarak indirildi" toast'ları doğrulandı
+- FEATURE: Teklif listesinde geçerlilik rozetleri — validUntil < bugün ve taslak/gönderildi ise kırmızı "Süresi geçti", ≤7 gün ise amber "N gün kaldı / Son gün" (AlertTriangle/Clock ikonlu); PATCH ile 3 gün sonra test edildi → "⏱ 4 gün kaldı" rozeti göründü, ardından 30.10'a geri alındı
+- STYLE/MOBILE: Bekleyen Sevkiyatlar satırında sipariş no font-mono + whitespace-nowrap (mobilde 3 satıra kırılıyordu), termin tarihi mobilde gizli (hidden sm:block — overdue rozeti yine görünür), tarih nowrap; trend widget header'ı mobilde düzgün sarıyor (390px doğrulandı)
+- OPS: dev server tur içinde 2 kez öldü/takıldı (mobil girişte CSS chunk request'i sonsuz bekledi → sayfa stilsiz render oldu; bu bir kod hatası DEĞİL, sunucu donmasıydı). pkill + double-fork nohup + NODE_OPTIONS=2048 ile restart; restart sonrası tüm akışlar yeniden doğrulandı ve CSS 200
+
+Stage Summary:
+- Tur 5 tamamlandı: 2 bug fix (depo packingListNo gizliliği/açığı, tarih off-by-one) + 4 yeni özellik (trend grafiği, teklif WhatsApp, xlsx ihracı, geçerlilik rozetleri) + mobil stil iyileştirmeleri; lint 0/0
+- Sevk & Sipariş Trendi depocuda cirosuz (yalnızca adet + sevk oranı) — gizlilik korunuyor; stock rolü kısıtlı ekranında trend yok (beklenen)
+- Risk: dev server kararlılığı hâlâ kırılgan (tur içinde 2 restart); uzun QA oturumlarında browser kapatılmalı, sunucu ölürse çift-fork restart kullanılmalı
+- Risk: trend ciro hesabı sabit kur kullanıyor (demo) — gerçek kur entegrasyonu gerektiğinde exchange API bağlanmalı
+- Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (mevcut link üretimi + mesaj şablonları hazır), şirket bazlı toplu belge yazdırma (combined print şirket seviyesi), trend grafiğine dönem seçici (3/6/12 ay), fatura "hızlı ödendi işaretle" aksiyonu
+---
+Task ID: 6
+Agent: Z.ai Code (WebDevReview Cron Turu 6)
+Task: Proje durumu değerlendirmesi + agent-browser QA + yeni özellikler (Fatura hızlı tahsilat aksiyonları, Bekleyen Tahsilat KPI'ı, trend grafiğinde 3/6/12 ay dönem seçici) + stil/responsive iyileştirmeleri
+
+Work Log:
+- QA (değerlendirme): tüm servisler sağlıklı (app 3000, cron-automation 3010, appointment-reminders 3011); lint 0/0; agent-browser ile admin girişinde Dashboard, Teklifler, Faturalar, Belge Yönetimi regresyonu — önceki turların tüm özellikleri sağlam, console hatası yok → proje stabil, yeni özellik turuna geçildi
+- OPS: tur içinde dev server Turbopack Fast-Refresh döngüsüne takıldı (sayfa 0 button ile stuck — worklog'daki bilinen risk) → pkill + double-fork nohup restart ile çözüldü; restart sonrası localStorage oturumu korundu, tüm akışlar yeniden doğrulandı
+- FEATURE: Fatura HIZLI TAHSİLAT AKSİYONLARI — InvoiceTable her satırına "..." (MoreHorizontal) dropdown menüsü: (a) "Ödendi Olarak İşaretle" (odeme_bekliyor/gecikti için → PATCH status=odendi, paidDate otomatik), (b) "Ödemeyi Geri Al" (odendi için → status=odeme_bekliyor), (c) "Ödeme Hatırlat (WhatsApp)" — detay API'sinden müşteri telefonunu çekip wa.me linki yeni sekmede açar (vadesi geçmişse ayrı "vadesi geçmiştir" mesaj metni), (d) "Vade Uzat +7 Gün" (dueDate yoksa bugünden hesaplar). buildInvoiceWhatsAppMessage invoice-utils'a eklendi (₺/€/$/£ simgeli, vade tarihli, gecikme senaryolu). Menü başlığında fatura no + tutar, iptal faturada disabled bilgi satırı, busy durumunda Loader2 spin
+- FEATURE: Faturalar istatistik satırına 6. kart "Bekleyen Tahsilat" — odeme_bekliyor + gecikti faturalarının TRY bazlı toplamı (sabit kur USD42/EUR45/GBP52), fuchsia-pink gradient; grid lg:grid-cols-6'e genişletildi; kompakt format (>=1M "X,X M ₺", altında tam "167.900 ₺")
+- FEATURE: Sevk & Sipariş Trendi widget'ına DÖNEM SEÇİCİ — API artık 12 aylık trend döneriyor (trendStart 11 ay geri, 12 bucket); widget'ta segmented control (3 Ay / 6 Ay / 12 Ay, aria-pressed, bg-muted+shadow aktif stil), görünür dilim son N ay; "Son N ay" alt başlığı, "N Ay Ciro" rozeti ve Sevk Oranı seçilen döneme göre yeniden hesaplanıyor
+- STYLE: StatCard value responsive (text-lg sm:text-xl, truncate→break-words — mobilde "167.900 ₺" tam görünür); dropdown menü font-mono başlık + renkli aksiyon item'ları (emerald ödeme onayı, amber geri alma); mobil 390px'te 6 istatistik kartı 2 kolon + filtre chip'leri doğrulandı
+- DOĞRULAMA (agent-browser e2e): FAT-2026-005 "Ödendi İşaretle" → durum rozeti Ödendi + paidDate 19.09.2026 + KPI'lar canlı güncellendi (Bekleyen 4→3, Tahsilat 167,9→155,4 bin ₺); "Ödemeyi Geri Al" → eski duruma döndü; FAT-2026-004 "Vade Uzat" → vade —'den 26.09.2026'ya; FAT-2026-003 "Hatırlat" → api.whatsapp.com sekmesi açıldı (phone=905482642912, tutar/vade doğru mesajda); trend 3 Ay → Tem/Ağu/Eyl + "3 Ay Ciro", 12 Ay → 12 ay X ekseni; lint 0/0
+
+Stage Summary:
+- Tur 6 tamamlandı: 3 yeni özellik (fatura hızlı tahsilat menüsü, Bekleyen Tahsilat KPI'ı, trend dönem seçici) + 1 mobil stil fix (StatCard taşma) + stabilite restart operasyonu; lint 0 error 0 warning
+- Tahsilat akışı artık liste içinden 2 tıkla yönetiliyor: ödeme onayı/geri alma, WhatsApp hatırlatma (gerçek wa.me linki), vade uzatma — tümü audit log'a düşen mevcut PATCH zincirini kullanıyor
+- Risk: dev server uzun oturumda Fast-Refresh döngüsü riski sürüyor (bu turda 1 restart yapıldı) — sahne donarsa çift-fork restart tek çare
+- Risk: Bekleyen Tahsilat ve trend ciro sabit kur kullanıyor (demo) — gerçek kur entegrasyonu gerektiğinde exchange API bağlanmalı
+- Sonraki tur önerileri: fatura detay/WhatsApp hatırlatma geçmişinin activity olarak müşteriye kaydı, şirket bazlı toplu belge yazdırma (combined print şirket seviyesi), tahsilat raporuna yaşlandırma (0-30/31-60/61+ gün), WhatsApp Business API gerçek gönderim
+---
+Task ID: 7
+Agent: Z.ai Code (WebDevReview Cron Turu 7)
+Task: Proje durumu değerlendirmesi + agent-browser QA + yeni özellikler (Tahsilat Yaşlandırma raporu, tahsilat aksiyonlarının müşteri aktivitesine kaydı, şirket bazlı toplu belge yazdırma) + tip güvenliği
+
+Work Log:
+- QA (değerlendirme): tur başında app (3000) ÖLMÜŞ, mini-servisler sağlıklı (3010/3011) → double-fork nohup restart ile ayağa kaldırıldı; lint 0 error 0 warning; agent-browser ile admin girişinde Faturalar (6 KPI + hızlı aksiyonlar) ve Belge Yönetimi (şirket→sipariş→belge butonları) regresyonu — önceki 6 turun tüm özellikleri sağlam
+- FEATURE: TAHSİLAT YAŞLENDİRME (Receivables Aging) — yeni InvoiceAging bileşeni (parts/invoice-aging.tsx): bekleyen faturalar (odeme_bekliyor+gecikti) vade gecikmesine göre 4 kovaya ayrılır (Vadesi Geçmemiş / 1-30 / 31-60 / 61+ gün), her kovada adet + TRY bazlı tutar + toplam içindeki payı (%), yatay yığılmış renkli bar (slate/amber/orange/red), KOVA TIKLANINCA fatura tablosu filtreleniyor (agingFilter state, tekrar tıkla kaldır, Filtreyi kaldır linki); Faturalar sayfasına KPI satırının altına eklendi; KPI'lar yaşlandırma filtresinden bağımsız tüm listeyi hesaplıyor
+- FEATURE: satır içi yaş rozetleri — InvoiceTable Vade kolonunda kırmızı "N gün gecikti" Badge (lg+), Durum kolonunda mobil için text-[9px] gecikme etiketi; overdueDays() yardımcısı invoice-utils'a eklendi (gecikme günü hesabı tek kaynak)
+- FEATURE: MÜŞTERİ AKTİVİTE KAYDI (Müşteri 360 entegrasyonu) — (a) SUNUCU: PATCH /api/invoices/[id] durum/vade değişiminde Activity.createMany + customer.lastActivityAt güncellemesi: 'Ödeme alındı: FAT-XXX' (outcome=basarili), 'Ödeme geri alındı: FAT-XXX', 'Fatura iptal edildi: FAT-XXX', 'Vade güncellendi: FAT-XXX (eski → yeni)'; (b) İSTEMCİ: "Ödeme Hatırlat (WhatsApp)" aksiyonu wa.me sekmesi açtıktan sonra type='whatsapp' aktivitesi POST ediyor ('Ödeme hatırlatması gönderildi: FAT-XXX', detay tutar+vade); doğrulama: 4 akışın tümü DB'ye düştü ve Müşteri 360 Zaman Çizelgesi'nde WhatsApp/Not rozetleriyle, tutar-tarih-kullanıcı bilgisiyle göründü
+- FEATURE: ŞİRKET BAZLI TOPLU BELGE YAZDIRMA — yeni CompanyDocsPrintDialog (parts/company-docs-print-dialog.tsx): Belge Yönetimi'nde şirket başlığına "Tümünü Yazdır" butonu; şirketin TÜM siparişleri için yetkiye göre eksik belgeleri sırayla üretir (idempotent generate-document), canlı ilerleme ("Sipariş 2/5: SIP-… belgeleri hazırlanıyor..."), tek siparişteki hata paketi bozmuyor (uyarı rozeti), özet rozetleri (N sipariş · N fatura · N irsaliye · N çeki listesi · toplam M sayfa), her belge print:break-after-page ile ayrı A4; e2e doğrulandı: Başkent Grup (2 sipariş) → 6 belge (FAT-2026-004/005, IRS-2026-005/006, CL-2026-003/004) tek diyalogda şablonlu render (logo + mavi tema)
+- REFACTOR: ortak A4 belge sayfaları parts/doc-pages.tsx'e çıkarıldı (InvoiceDocPage / IrsaliyeDocPage / PackingDocPage) — CombinedOrderPrintDialog sadeleşti (satır içi 230 satırlık belge render'ı kaldırıldı), iki diyalog aynı sayfa bileşenlerini paylaşıyor; docStepsFor() + DOC_BADGE_CLS + OrderRef export ediliyor
+- STYLE: şirket başlığı <button> → role="button" div'e çevrildi (iç içe buton HTML hatası giderildi; artık başlıkta Tümünü Yazdır butonu duruyor; Enter/Space klavye desteği + aria-expanded); yaşlandırma kartı gradient Hourglass ikonu, aria-pressed kova butonları, mobil 2 kolon / lg 4 kolon grid
+- TİP GÜVENLİĞİ: Invoice.customer tipi genişletildi (phone/address/taxNumber — detay API'sinin gerçek yanıtına uygun; invoices-view'daki önceden var olan 'phone' TS hatasını da çözüyor); doc-pages'ta tpl normalizasyonu (null→undefined); değişen dosyalarda tsc hatası 0 (projedeki diğer tsc hataları önceden var, ilgili dosyalarda yok)
+- VERİ HİJYENİ: test için geçmiş tarihe çekilen 3 faturanın vadesi ve 6 test aktivitesi orijinal haline restore edildi (scripts/restore-invoice-dates.ts geçici script ile, sonra silindi — timeline'da test gürültüsü kalmadı)
+- OPS: tur içinde dev server 2 kez öldü (tsc --noEmit bellek yükü sonrası) → her seferinde çift-fork restart; lint 0/0, tüm özellikler restart sonrası yeniden doğrulandı
+
+Stage Summary:
+- Tur 7 tamamlandı: 3 yeni özellik (yaşlandırma raporu + aktivite zinciri + şirket toplu yazdırma), 1 refactor (ortak belge sayfaları), 1 HTML erişilebilirlik fix'i, tip güvenliği iyileştirmeleri; lint 0 error 0 warning
+- Tahsilat iş akışı artık uçtan uca izlenebilir: ödeme al → müşteri zaman tüneliğine otomatik kayıt; WhatsApp hatırlat → aktivite; vade uzat → aktivite; yaşlandırma kovaları hangi müşterinin kritik durumda olduğunu tek bakışta gösteriyor
+- Şirket toplu yazdırma depocu için de çalışır (canSeeIrsaliye) — fatura sayfaları otomatik atılır, fiyat gizliliği API katmanında korunur
+- Risk: dev server kararlılığı (bu turda 2 restart) — uzun QA'da browser kapatılmalı, tsc çalıştıracaksanız sunucunun ölmesini bekleyin; sahne donarsa çift-fork restart
+- Risk: CompanyDocsPrintDialog şirkette çok sayıda sipariş varsa sıralı üretim uzun sürebilir (her sipariş için 2-3 generate-document + 2 GET); şu anki demo verisiyle (max 2 sipariş/şirket) sorunsuz
+- Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (tüm link üretimleri + mesaj şablonları + aktivite kayıtları hazır), tahsilat yaşlandırmasının Excel ihracı (kolonlar hazır), müşteri 360'a fatura geçmişi/tahsilat özeti kartı, trend grafiğine şirket filtresi
+---
+Task ID: 8
+Agent: Z.ai Code (WebDevReview Cron Turu 8)
+Task: Proje durumu değerlendirmesi + agent-browser QA + yeni özellikler (Müşteri 360 Tahsilat Özeti kartı, yaşlandırma Excel kolonları, yaşlandırma kartında risk istihbaratı) + mobil/responsive doğrulama
+
+Work Log:
+- QA (değerlendirme): tüm servisler sağlıklı (app 3000 + cron 3010/3011); lint 0/0; admin girişinde Tur 1-7 regresyonu temiz (Faturalar KPI + hızlı aksiyonlar, yaşlandırma kartı, Müşteri 360) → proje stabil, yeni özellik turuna geçildi
+- FEATURE: MÜŞTERİ 360 TAHSİLAT ÖZETİ — Customer 360 "Faturalar" sekmesinin en üstüne CollectionSummary kartı eklendi: 4 mini istatistik (Faturalanan / Tahsil Edilen / Bekleyen / Geciken — TRY bazlı, toTry sabit kurla, iptal faturalar hariç), fatura adetleri + oran alt yazıları, TAHSİLAT ORANI progress bar (≥%80 yeşil / ≥%50 amber / altı kırmızı, role=progressbar), gecikme varsa "En eski gecikme: FAT-XXX N gündür" kırmızı uyarı satırı. toTry + overdueDays erp/parts/invoice-utils'tan import edildi (tek kaynak)
+- FEATURE: YAŞLANDIRMA EXCEL KOLONLARI — Faturalar "Dışa Aktar" (.xlsx) iki yeni kolon: "Gecikme (Gün)" (bekleyen/gecikmiş faturalarda gün sayısı, ödenenlerde boş) + "Yaşlandırma" (kova etiketi: Vadesi Geçmemiş / 1-30 / 31-60 / 61+ gün); toast "5 fatura Excel olarak indirildi" doğrulandı
+- FEATURE: YAŞLANDIRMA KARTINDA RİSK İSTİHBARATI — InvoiceAging'e gecikme varsa 2 chip: "En riskli müşteri: X — Y ₺" (gecikmiş TRY toplamı en yüksek müşteri, UserX ikonlu kırmızı) + "En eski gecikme: FAT-XXX — N gün" (Timer ikonlu turuncu); gecikme yoksa chip'ler hiç render edilmez (kalabalık yok)
+- DOĞRULAMA (agent-browser e2e): geçici olarak 2 fatura vadesi geçmişe çekildi (FAT-2026-004 → 20 gün, FAT-2026-003 → 75 gün): (a) yaşlandırma kovaları doğru doldu (1-30: 8.400 ₺ %5, 61+: 27.000 ₺ %16, EUR fatura TRY'ye 45 kurle çevrildi), (b) "En riskli müşteri: Uludağ A.Ş. 27.000 ₺" + "En eski gecikme: FAT-2026-003 75 gün" chip'leri göründü, (c) Uludağ A.Ş. Müşteri 360 → Faturalar sekmesi: Tahsilat Özeti 174.000 ₺ faturalanan / 27.000 ₺ tahsil (%16) / 147.000 ₺ bekleyen / 27.000 ₺ geciken + kırmızı oran çubuğu + FAT-2026-003 75 gün uyarısı — TÜMÜ DOĞRU; test sonrası veriler orijinaline restore edildi + 2 test aktivitesi silindi (geçici script, sonra silindi)
+- STYLE/MOBILE (390px doğrulama): Faturalar KPI grid'i 2 kolon, yaşlandırma kovaları 2 kolon (31-60/61+ alt satırda), filtre chip'leri düzgün sarma, fatura tablosunda Fatura No/Müşteri/Tutar kolonları sığıyor — taşma yok; Tahsilat Özeti kartı 2 kolon istatistik grid'i
+- OPS: tsc/lint bellek yükü sonrası dev server 1 kez öldü → çift-fork restart; lint 0 error 0 warning; değişen dosyalarda tsc hatası yok
+
+Stage Summary:
+- Tur 8 tamamlandı: 3 yeni özellik (Müşteri 360 tahsilat özeti, Excel yaşlandırma kolonları, risk istihbarat chip'leri) + mobil doğrulama; lint 0/0
+- Tahsilat görünürlüğü artık 3 katmanda: (1) Faturalar listesi — yaşlandırma kovaları + satır gecikme rozetleri, (2) Dashboard/istatistik — Bekleyen Tahsilat KPI, (3) Müşteri 360 — müşteri bazlı özet + en eski gecikme uyarısı; Excel çıktısı da aynı yaşlandırma dilimlerini taşıyor
+- Risk: dev server uzun oturumda ölme eğilimi sürüyor (bu turda 1 restart) — sahne donarsa çift-fork restart
+- Risk: Tahsilat Özeti ve yaşlandırma tutarları sabit kur kullanıyor (demo) — gerçek kur entegrasyonunda toTry() tek noktadan güncellenmeli
+- Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (link + şablon + aktivite zinciri hazır), raporlar modülüne tahsilat yaşlandırma raporu sayfası (müşteri bazlı döküm + grafik), fatura detay diyaloğuna hızlı tahsilat aksiyonları (listedenki menünün detaya taşınması), trend grafiğine şirket filtresi
+---
+Task ID: 9
+Agent: Z.ai Code (WebDevReview Cron Turu 9)
+Task: Proje durumu değerlendirmesi + agent-browser QA + yeni özellikler (Raporlara Tahsilat Yaşlandırma Raporu, fatura detay hızlı tahsilat aksiyonları, trend grafiğine şirket filtresi) + stil/responsive iyileştirmeleri
+
+Work Log:
+- QA (değerlendirme): tüm servisler sağlıklı (app 3000, cron-automation 3010, appointment-reminders 3011); lint 0/0; agent-browser ile admin girişinde Dashboard, Raporlar, Faturalar, Belge Yönetimi, Teklifler regresyonu — önceki 8 turun tüm özellikleri sağlam, console hatası yok → bug bulunmadı, yeni özellik turuna geçildi
+- FEATURE: RAPORLAR → TAHSİLAT YAŞLENDİRMA RAPORU (SECTION 11) — yeni AgingReportCard (src/components/reports/aging-report-card.tsx): /api/invoices?limit=200 çekip istemci tarafında müşteri bazlı gruplama; 4 KPI (Toplam Bekleyen TRY / Vadesi Geçmiş + payı % / Gecikmiş Müşteri x/y / tutar ağırlıklı Ort. Gecikme günü); her müşteri satırında yığılmış yaşlandırma barı (4 kova, invoices-view ile aynı renk paleti) + kova kırılım hücreleri + "en eski N gün" rozeti; gecikmiş tutara göre sıralama; müşteri adına tıklayınca Müşteri 360 açılır (openCustomer); CSV + XLSX dışa aktarma (yaşlandırma kolonlarıyla); yetki kapısı erp.manage (fatura liste API'si + Faturalar sidebar ile aynı — invoices.view DEĞİL, müdürde kart görünmez çünkü API 403 verirdi); ref role erişemez (ReportsView zaten engelli); stock role kısıtlı
+- DOĞRULAMA (e2e): FAT-2026-004 vadesi geçici olarak 45 gün geriye çekildi → KPI'lar canlı güncellendi (Vadesi Geçmiş 8,4 bin ₺ %5, Gecikmiş Müşteri 1/2, Ort. Gecikme 45 gün), Başkent Grup sıralamada birinciye yükseldi, 31-60 gün kovasına düştü, "en eski 45 gün" rozeti göründü; CSV export toast'ı ("CSV dışa aktarıldı") doğrulandı; müşteri satırı tıklaması Başkent Grup Müşteri 360'ını açtı; test verisi orijinaline (26.09.2026) restore edildi
+- FEATURE: FATURA DETAY DİYALOGUNA HIZLI TAHSİLAT — liste satırındaki "..." menüsündeki 4 aksiyon artık detay diyalogunda da (Durum Yönetimi altında "Hızlı Tahsilat" bloğu): Ödendi İşaretle / Ödemeyi Geri Al / Hatırlat (WhatsApp) / Vade Uzat +7; renk kodlu outline butonlar (emerald/amber/sky) + Loader2 busy state; WhatsApp hatırlatma wa.me linki + Müşteri 360 aktivite kaydıyla; KRİTİK FIX: diyalog içi durum göstergeleri (başlık rozeti, Durum Yönetimi butonları, Ödendi banner'ı, hızlı aksiyon görünürlüğü) artık canlı detail sorgusundan (d.status) okunuyor — aksiyon sonrası diyalog anında güncelleniyor (önceden prop snapshot'ı yüzünden eskimiş durum gösteriliyordu)
+- DOĞRULAMA (e2e): detayda "Ödendi İşaretle" → durum rozeti Ödendi + "Ödendi — tarih" banner + Geri Al butonu anında göründü; "Ödemeyi Geri Al" → eski duruma döndü; liste satırı da senkron güncellendi; WhatsApp butonu/mevcuditesi doğrulandı (popup testi atlandı)
+- FEATURE: SEVK & SİPARİŞ TRENDİNE ŞİRKET FİLTRESİ — yeni bağımsız hafif uç GET /api/dashboard/trend (opsiyonel ?customerId=, tenant doğrulamalı; 12 aylık trend + filtre listesi + canSeeAmounts gizlilik kuralı dashboard ile aynı); widget'ta müşteri Select'i (Tüm müşteriler + trend penceresinde siparişi olan müşteriler); seçilince keepPreviousData + yarı saydam Loader2 overlay ile yumuşak geçiş; başlık alt yazısı seçili müşteri adını gösterir; Sevk Oranı / N Ay Ciro rozetleri filtreli yeniden hesaplanır; AYNI İSİMLİ müşteriler şehir/segment ekiyle ayırt edilir (seed'de 2 adet "Uludağ A.Ş." var)
+- DOĞRULAMA (e2e): "Başkent Grup" seçildi → Sevk Oranı %50, 6 Ay Ciro 20,9 bin ₺ (yalnızca Başkent faturaları 8.400+12.500 ✓); "Tüm müşteriler"e dönüş → %33 / 194,9 bin ₺; 390px viewport'ta select + dönem seçici tek satıra sığıyor, docWidth 390 (taşma yok)
+- BUG FIX (QA bulgusu): AGING_BUCKETS notdue kısa etiketi "Vadesi gelmemiş" → "Vadesi geçmemiş" (yazım tutarlılığı)
+- STYLE: Faturalar başlığına gradient ikon karesi (amber→orange) + "Yeni Fatura" butonu gradient'e çevrildi; yaşlandırma raporu kartında mobilde kova hücreleri grid-cols-2 (sm+ 4 kolon) — 390px'te tam etiket + tam tutar görünüyor; mobil screenshot'larla (390px) trend widget + yaşlandırma raporu + Faturalar header doğrulandı
+- OPS: Turbopack stale-chunk patolojisi bu turda 2 kez tekrarlandı: (a) yeni modül (aging-report-card) eklenince tam reload'a rağmen ESKİ modül çalıştı (raw fetch 401 → "Veri alınamadı"); (b) çok sayıda HMR sonrası login ekranı useEffect'leri çalışmadı (kullanıcı listesi boş, /api/auth çağrısı hiç atılmadı). Çözüm: pkill + double-fork nohup restart (NODE_OPTIONS=2048) + yeni browser context. Dev restart sonrası tüm akışlar yeniden doğrulandı
+- OPS: tsc/lint bellek yükü izlenmeli; lint 0 error 0 warning; değişen dosyalarda tip hatası yok
+
+Stage Summary:
+- Tur 9 tamamlandı: 3 yeni özellik (Raporlara yaşlandırma raporu sayfası, fatura detay hızlı tahsilat bloğu + canlı durum fix'i, trend grafiğine şirket filtresi + yeni hafif API ucu), 1 yazım fix'i, gradient stil iyileştirmeleri, mobil optimizasyonlar; lint 0/0, console temiz
+- Tahsilat görünürlüğü 4 katmana çıktı: Faturalar listesi (yaşlandırma kartı) → Dashboard KPI → Müşteri 360 özeti → RAPORLAR sayfası (müşteri bazlı döküm + export). Aynı kova mantığı ve renk paleti paylaşılıyor (tek kaynak invoice-aging.tsx)
+- Trend grafiği artık şirket kırılımında; filtre bağımsız uçta (dashboard ana sorgusunu yüklemez) — ileride dönem parametresi de bu uca taşınabilir
+- Risk: dev server Turbopack stale-modül problemi sürüyor (bu turda 2 restart) — özellikle YENİ dosya eklerken ve uzun HMR serilerinde görülüyor; doğrulamadan önce restart + yeni browser context en güvenli yol
+- Risk: yaşlandırma raporu tutarları sabit kur (demo) — gerçek kur entegrasyonunda toTry() tek noktadan güncellenmeli
+- Risk: trend filtre listesi 12 ayda siparişi olan müşterilerle sınırlı (bilinçli); siparişi olmayan müşteri seçilemiyor
+- Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (link + şablon + aktivite zinciri hazır), yaşlandırma raporuna dönem seçici + müşteri 360 derin bağlantı (filtrelenmiş fatura görünümü), trend filtresinden müşteri 360'a geçiş, fatura detayına ödeme geçmişi/activity mini-zaman tüneli
+---
+Task ID: 10
+Agent: Z.ai Code (WebDevReview Cron Turu 10)
+Task: Proje durumu değerlendirmesi + agent-browser QA + WhatsApp Mesaj Merkezi (merkezî mesaj takibi, kuyruk yönetimi, serbest mesaj bestecisi) + QA'da bulunan 2 stil/UX hatasının düzeltilmesi
+
+Work Log:
+- QA (değerlendirme): tüm servisler sağlıklı (app 3000, cron 3010, appointment-reminders 3011); lint 0/0; agent-browser ile admin (Demir Yıldız) girişinde Dashboard, Teklifler (proforma notu görünür), Faturalar (6 KPI + yaşlandırma), Belge Yönetimi (şirket→sipariş hiyerarşisi) regresyonu temiz, console hatası yok → bug yok, yeni özellik turuna geçildi
+- BUG FIX (QA bulgusu 1): Faturalar 6-kolonlu KPI satırında para değerleri sayı ortasından bölünüyordu ("167.900 ₺" → "167.90" / "0 ₺" satır kırılması; Tur 6'daki break-words'un yan etkisi). StatCard'a `compact` prop eklendi: ikon sağ üstte, değer altta tam genişlik tek satır (whitespace-nowrap + ellipsis + tabular-nums, text-base sm:text-lg). InvoiceStats'ın "Bekleyen Tahsilat" ve "Toplam Tutar" kartlarında aktif. e2e doğrulandı: "167.900 ₺" ve "142.100 ₺" tam görünüyor
+- BUG FIX (QA bulgusu 2): PWA "Uygulama Olarak Yükle" banner'ı GİRİŞ EKRANINDA login kartlarının üzerine biniyordu (3 sn gecikmeyle açılıyor, kapatma 7 gün persist ediyor ama ilk ziyarette engelliyor). InstallPromptProvider artık banner'ları yalnızca oturum açıldıktan sonra gösteriyor (useAppStore user gate)
+- FEATURE: WHATSAPP MESAJ MERKEZİ (kapsamlı) — tüm giden WhatsApp mesajlarının merkezî kaydı ve kuyruk yönetimi:
+  - Prisma: yeni `WhatsAppMessage` modeli (tenantId, customerId+customerName snapshot, phone E.164, title, body, contextType: fatura_hatirlatma|teklif_gonderim|proforma_gonderim|randevu_onay|aidat_hatirlatma|serbest, contextId/contextNo, amount/currency, status: kuyrukta|gonderildi|iptal, channel, sentAt, createdBy) + Tenant/Customer ilişkileri; db:push tamamlandı, 3 indeks
+  - API: GET+POST /api/whatsapp/messages (filtreli liste + 4'lü istatistik: total/kuyrukta/gonderildi/bugün; normalizePhone validasyonu, context whitelist), PATCH+DELETE /api/whatsapp/messages/[id] (status geçişi + sentAt otomatik; tenant izolasyonu her ucta); yetki: messages.view
+  - lib/whatsapp-hub.ts: `sendWhatsAppTracked()` — (1) POST kayıt → (2) wa.me sekmesi aç → (3) popup açıldıysa PATCH gonderildi; popup engellenirse kayıt kuyrukta kalır ve "Mesaj Merkezi'nden gönderebilirsiniz" toast'ı gösterilir; `openQueuedWhatsApp()` kuyruktan tek tıkla yeniden gönderim
+  - GÖNDERİCİLER KABLOLANDI: (a) Faturalar liste "..." → Ödeme Hatırlat (invoices-view), (b) Fatura detay Hızlı Tahsilat → Hatırlat (invoice-detail-dialog), (c) Teklif/Proforma Gönder diyaloğu WhatsApp kanalı (send-dialog — waLink memo'su waMessage'a çevrildi), (d) Randevu listesi "WhatsApp ile Bilgi Gönder" (appointment-list) — hepsi artık Merkez kaydı düşürüyor; Müşteri 360 aktivite zinciri korundu
+  - YENİ GÖRÜNÜM: src/components/whatsapp/whatsapp-hub-view.tsx — sidebar CRM grubunda "WhatsApp Merkezi" (MessageSquareText ikonu, messages.view yetkisi, app-shell ProtectedView + AppView 'whatsapp-hub' + store + route'lar bağlandı); 4 istatistik kartı (gradient ikonlu), durum chip filtreleri (Tümü/Kuyrukta/Gönderildi/İptal, aria-pressed), tür Select'i (6 tür), arama (müşteri/telefon/belge no/mesaj), max-h-560 scroll listesi custom-scroll ile; satır: durum ikonu+rozet (kuyrukta amber/gonderildi emerald+gönderim zamanı/iptal slate), tür rozeti, belge no, tutar, telefon (formatPhone), relative zaman, gönderen kullanıcı; mesaj gövdesi line-clamp-2 + "Tamamını göster" genişletme; aksiyonlar: Aç & Gönderildi İşaretle (kuyrukta), Kuyruğa Al (gonderildi), Kopyala (clipboard), İptal (kuyrukta→amber), Sil (red); boş durum ekranı; "Yeni Mesaj" bestecisi diyaloğu (müşteri Select → telefon otomatik doldurma + elle düzenlenebilir, karakter sayacı, serbest mesaj)
+- DOĞRULAMA (agent-browser e2e): (a) Faturalar → FAT-2026-004 "..." → Ödeme Hatırlat: wa.me sekmesi "Chat on WhatsApp with 905576712977" + doğru mesaj ("Tutar: 8.400,00 ₺ • Vade Tarihi: 26.09.2026") açıldı, Merkez'de kayıt oluştu; (b) hub'dan "Aç & Gönderildi İşaretle" → wa.me tekrar açıldı; (c) durum makinesi: İptal aksiyonu → "Mesaj iptal edildi" toast + İptal rozeti + aksiyon seti Kopyala/Sil'e indi; PATCH API ile gonderildi → "Gönderildi az önce" rozeti + Kuyruğa Al butonu göründü; (d) Teklif Gönder (TKL-2026-002, WhatsApp kanalı) → "Anadolu Grup · Teklif Gönderimi · 360 ₺" kaydı; (e) besteci → Serbest Mesaj kaydı (+90 555 111 22 33); istatistikler canlı güncellendi (Toplam 3 / Kuyrukta 2 / Gönderildi 1 / Bugün 1); tür filtresi Teklif Gönderimi → yalnız TKL-2026-002; (f) 390px mobil: header rozeti, 2 kolon istatistik, satır meta sarması, aksiyon butonları 2 satırda dokunmatik boyutta — taşma yok
+- STYLE: hub başlığında gradient ikon karesi + "N kuyrukta" amber rozeti; durum renk paleti mevcut fatura durum diliyle uyumlu; satır hover bg-muted/40; compact StatCard yeni düzeni 6-kolonlu satırda dikey ritmi iyileştirdi; müşteri adı yoksa satır başlığına telefon fallback ("Bilinmeyen alıcı" yerine)
+- OPS: Turbopack stale-modül patolojisi 2 kez görüldü (yeni dosya ekleyince sidebar/view eski modülde kaldı; StatCard düzeni eski render) → pkill + double-fork nohup restart (NODE_OPTIONS=2048) + yeni browser context ile çözüldü; lint 0 error 0 warning
+
+Stage Summary:
+- Tur 10 tamamlandı: WhatsApp Mesaj Merkezi (kayıt+kuyruk+istatistik+filtre+besteci, 4 göndericinin kablolaması), 2 QA bug fix (KPI sayı bölünmesi, login ekranını kapatan PWA banner), mobil doğrulama; lint 0/0
+- WhatsApp gönderimleri artık izlenebilir: her hatırlatma/teklif/proforma/randevu mesajı Merkez'e düşüyor; popup engellenen gönderimler kaybolmuyor — kuyruktan tek tıkla yeniden gönderilebiliyor; durum geçmişi kullanıcı bazlı tutuluyor
+- Demo verisi: FAT-2026-004 hatırlatma (gonderildi), TKL-2026-002 teklif gönderimi + 1 serbest mesaj (kuyrukta) bilerek bırakıldı — Merkez demo dolu geliyor
+- Risk: agent-browser tek sayfa bağlamında window.open sonrası PATCH yarıda kesilebiliyor (gerçek tarayıcıda yeni sekme olduğu için sorun değil); gerçek WhatsApp Cloud API hâlâ yok (wa.me link + kayıt — Business API için channel alanı ve kuyruk altyapısı hazır)
+- Risk: dev server stale-modül problemi sürüyor — yeni dosya eklerken restart + yeni browser context en güvenli yol
+- Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (kuyruk + channel altyapısı bu turda hazır — tek eksik provider credentials), Mesaj Merkezi'ne Excel/CSV dışa aktarma, müşteri 360'a "WhatsApp Gönder" hızlı besteci butonu (mevcut wa.me linklerini tracked'a çevir), site aidat hatırlatıcılarının tracked'a kablolaması, kuyruktaki mesajlar için günlük hatırlatma cron'u (3011 servisine "gönderilmemiş mesaj" bildirimi)
+---
+Task ID: 11
+Agent: Z.ai Code (WebDevReview Cron Turu 11)
+Task: Proje durumu değerlendirmesi + agent-browser QA + WhatsApp takip zincirinin eksiksiz tamamlanması (Merkez Excel ihracı, Müşteri 360 tracked besteci, aidat hatırlatmalarının Merkez kaydı, bildirim kuyruk uyarısı) + 1 QA bug fix + mobil doğrulama
+
+Work Log:
+- QA (değerlendirme): tüm servisler sağlıklı; agent-browser ile admin girişinde Dashboard, Teklifler (proforma notu), Faturalar (6 KPI + "167.900 ₺" bölünmeden), Belge Yönetimi (şirket→sipariş hiyerarşisi), WhatsApp Merkezi regresyonu temiz → 1 küçük bug bulundu, yeni özellik turuna geçildi
+- BUG FIX (QA bulgusu): WhatsApp Merkezi'nde topbar başlığı "GNC CRM" fallback olarak kalıyordu — topbar.tsx VIEW_TITLES map'ine 'whatsapp-hub': 'WhatsApp Merkezi' eklendi; e2e doğrulandı (header artık "WhatsApp Merkezi" gösteriyor)
+- FEATURE A: WHATSAPP MERKEZİ EXCEL İHRAÇI — header'a "Dışa Aktar" butonu (aktif filtrelenmiş liste: durum/tür/arama); exportRowsToExcel ile 11 kolon (Durum, Tür, Müşteri, Telefon, Belge No, Tutar, Başlık, Mesaj, Gönderen, Oluşturulma, Gönderim); boş liste koruması; e2e doğrulandı ("3 kayıt Excel olarak indirildi" toast)
+- FEATURE B: MÜŞTERİ 360 TRACKED WHATSAPP — yeni yeniden kullanılabilir bileşen src/components/whatsapp/quick-composer-dialog.tsx (telefon + mesaj editable, karakter sayacı, sendWhatsAppTracked ile Merkez kaydı); Müşteri 360 header'daki raw wa.me "WhatsApp" butonu bu besteciye çevrildi (waText önyüklü geliyor); "Şablonlu WhatsApp" (template-picker-dialog) da tracked'a geçti (opsiyonel customerId prop'u; müşteri bağlamı varsa Merkez kaydı, yoksa eski davranış); e2e: Uludağ A.Ş. → composer önyüklü (+90 548 264 29 12 + "Merhaba Uludağ A.Ş.,") → gönderim → Merkez'de "Serbest Mesaj — Uludağ A.Ş." kaydı oluştu
+- FEATURE C: AİDAT HATIRLATMALARI MERKEZ KAYDI — send-reminders API'si her hatırlatma için WhatsAppMessage kaydı oluşturuyor (contextType=aidat_hatirlatma, contextNo="Aidat AA/YYYY", tutar+para birimi, blok/daire başlığı, createdByName); yanıt waMessageId taşıyor; site-view toplu hatırlatma her linki açıp açılan kaydı gonderildi işaretliyor (popup engellenirse kuyrukta kalır + toast sayısını raporlar); satır bazlı wa.me linki de aynı akışa çevrildi (artık tracked); İYİLEŞTİRME: toplu hatırlatma filtresi 'odenmedi' + 'gecikti' durumlarını da kapsıyor (geciken aidat en çok hatırlatmayı hak eder); geçersiz telefonlar client-side atlanıyor (link='#' koruması + bilgi toast'ı); e2e (Park Sitesi Yöneticisi): 4 kayıt oluştu (2 odenmedi + 2 gecikti, Aidat 8/2026 + 9/2026, A/B Blok), mesaj metni doğru ("Park Sitesi 9/2026 aidatınızın (750 ₺) son ödeme tarihi 05.09.2026"), kiracı izolasyonu doğrulandı (site hub'ı yalnız kendi kayıtlarını görüyor)
+- FEATURE D: BİLDİRİM KUYRUK UYARISI — /api/notifications'a 'whatsapp_queued' tipi: kuyrukta mesaj sayısı + en eski kayıt (müşteri/belge no + bekleme süresi; ≥24 saatte severity warning); notification-center'da MessageSquareText ikonu + "WhatsApp Kuyruğu" etiketi + tıklanınca whatsapp-hub görünümüne geçiş; e2e: "3 gönderilmemiş WhatsApp mesajı" bildirimi göründü
+- DOĞRULAMA (durum makinesi): agent-browser popup sonrası PATCH yarım kaldığı için (Tour 10'da bilinen sınırlama) PATCH API doğrudan test edildi → 200; UI canlı güncellendi (Kuyrukta 3→2, Gönderildi 1→2, Bugün 1→2)
+- MOBIL (390px doğrulama): WhatsApp Merkezi — header butonları (Dışa Aktar/Yenile/Yeni Mesaj) tek satır, 2 kolon istatistik, filtre chip'leri sarma, docWidth 390 taşma yok
+- OPS (KRİTİK): tur içinde next-server 2 kez OOM öldürüldü (dmesg: "Killed process next-server, anon-rss:2.1GB"; sunucu 4GB); Bash aracı arka plan süreçlerini reap ettiği için normal nohup/setsid yetmedi — ÇÖZÜM: auto-restart.sh watchdog'unu ÇİFT-FORK ile başlatmak: bash -c '(nohup bash auto-restart.sh </dev/null >/dev/null 2>&1 &)' → süreç init'e altın, araç çağrıları arasında hayatta kalıyor; lint sonrası da server sağlıklı kaldı (200)
+- OPS: lint 0 error 0 warning; değişen dosyalarda tip hatası yok
+
+Stage Summary:
+- Tur 11 tamamlandı: 1 bug fix (topbar başlığı), 4 yeni özellik (Merkez Excel ihracı, Müşteri 360 tracked besteci + şablonlu WhatsApp tracked, aidat hatırlatmalarının Merkez kaydı + gecikti kapsaması, bildirim kuyruk uyarısı), mobil doğrulama; lint 0/0
+- WhatsApp takip zinciri artık UÇTAN UCA: fatura hatırlatma, teklif/proforma gönderim, randevu onayı, şablonlu WhatsApp, serbest mesaj, müşteri 360 bestecisi VE aidat hatırlatmaları — hepsi Merkez'e kaydediliyor; popup engellenen her gönderim kuyruktan tek tıkla gönderilebiliyor; kuyrukta bekleyenler bildirim zilinde görünüyor ve tıklayınca Merkeze götürüyor
+- Kiracı izolasyonu Merkez'de doğrulandı: CRM kiracısı (4 kayıt) ve Site kiracısı (4 aidat kaydı) birbirini görmüyor
+- Risk: sunucu belleği dar (4GB) — next-server 2GB'a tırmanabiliyor ve OOM öldürülebiliyor; uzun QA + lint/tsc kombinasyonundan kaçının; sunucu ölürse çift-fork watchdog komutunu kullanın (yukarıda)
+- Risk: agent-browser popup açılınca ana sayfanın fetch promise'leri yarıda kesiliyor — gerçek tarayıcıda sorun değil; testlerde PATCH'i UI akışından veya API'den doğrulayın
+- Sonraki tur önerileri: WhatsApp Business API gerçek gönderim (kuyruk + channel + kayıt altyapısı tamam — tek eksik provider credentials), Mesaj Merkezi'ne tür bazlı toplu işlemler (tüm kuyrukta'ları tek tıkla aç), aidat hatırlatmalarına site bazlı şablon düzenleme, randevu onay bildirimlerinin tracked'a kablolaması (randevu_onay bağlam tipi hazır ama şu an düz wa.me), dashboard'a WhatsApp gönderim istatistik widget'ı

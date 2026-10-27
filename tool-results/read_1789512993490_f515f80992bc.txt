@@ -1,0 +1,2002 @@
+     1→// Demo veri üretimi — GNC CRM
+     2→// 2 şirket, 8 kullanıcı, 30 müşteri, 100 aktivite, leads, deals, tasks, 3 maps araması
+     3→
+     4→import { db } from './db'
+     5→import { getRolePermissions, getAdminPermissionsForTenant, generateEmployeeCode } from './rbac'
+     6→import { mockMapsSearch } from './maps-mock'
+     7→
+     8→const FIRST_NAMES = ['Mehmet', 'Ayşe', 'Mustafa', 'Fatma', 'Ahmet', 'Emine', 'Ali', 'Zeynep', 'Hüseyin', 'Hatice', 'İbrahim', 'Elif', 'Hasan', 'Meryem', 'Murat', 'Sultan']
+     9→const LAST_NAMES = ['Yılmaz', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Yıldız', 'Yıldırım', 'Öztürk', 'Aydın', 'Özdemir', 'Arslan', 'Doğan', 'Kılıç', 'Aslan', 'Çetin', 'Kara']
+    10→
+    11→const COMPANY_SUFFIXES = ['A.Ş.', 'Ltd. Şti.', 'San. Tic.', 'Grup', 'Holding']
+    12→const COMPANY_PREFIXES = [
+    13→  'Anadolu', 'Marmara', 'Ege', 'Akdeniz', 'Karadeniz', 'İstanbul', 'Başkent',
+    14→  'Boğaziçi', 'Çamlıca', 'Uludağ', 'Toros', 'Kapadokya', 'Pamukkale', 'Nemrut',
+    15→  'Yıldız', 'Demir', 'Altın', 'Gümüş', 'Kristal', 'Safir', 'Zümrüt', 'Yakut',
+    16→]
+    17→
+    18→const SECTORS = ['Sağlık', 'Diş Sağlığı', 'Güzellik & Bakım', 'Restoran & Kafe', 'Perakende', 'E-Ticaret', 'İnşaat & Gayrimenkul', 'Otomotiv', 'Eğitim', 'Teknoloji & Yazılım', 'Finans & Muhasebe', 'Hukuk', 'Lojistik & Taşımacılık', 'Üretim', 'Turizm & Otelcilik']
+    19→
+    20→const CITIES = ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya', 'Adana', 'Konya', 'Gaziantep']
+    21→
+    22→const STREETS = ['Atatürk Bulvarı', 'Cumhuriyet Caddesi', 'Gazi Caddesi', 'İnönü Caddesi', 'Fatih Caddesi', 'Mithatpaşa Caddesi', 'Halitpaşa Caddesi', 'Zafer Caddesi']
+    23→
+    24→const TAG_POOL = ['VIP Müşteri', 'Yıllık Sözleşme', 'Ödeme Problemi', 'Teklif Bekliyor', 'Yeni Müşteri', 'Sadık', 'Referans', 'Sıcak Lead', 'Soğuk Lead', 'Fırsat']
+    25→
+    26→function rand<T>(arr: readonly T[]): T {
+    27→  return arr[Math.floor(Math.random() * arr.length)]
+    28→}
+    29→
+    30→function randInt(min: number, max: number): number {
+    31→  return Math.floor(Math.random() * (max - min + 1)) + min
+    32→}
+    33→
+    34→function randomName(): string {
+    35→  return `${rand(FIRST_NAMES)} ${rand(LAST_NAMES)}`
+    36→}
+    37→
+    38→function randomCompanyName(): string {
+    39→  return `${rand(COMPANY_PREFIXES)} ${rand(COMPANY_SUFFIXES)}`
+    40→}
+    41→
+    42→function randomPhone(): string {
+    43→  return `+90 5${randInt(3, 5)}${randInt(0, 9)} ${randInt(100, 999)} ${randInt(10, 99)} ${randInt(10, 99)}`
+    44→}
+    45→
+    46→function randomEmail(name: string): string {
+    47→  const slug = name.toLowerCase()
+    48→    .replace('ı', 'i').replace('ş', 's').replace('ç', 'c')
+    49→    .replace('ğ', 'g').replace('ü', 'u').replace('ö', 'o')
+    50→    .replace(/[^a-z0-9]/g, '.')
+    51→  return `${slug}@${rand(['gmail.com', 'outlook.com', 'hotmail.com', 'yandex.com'])}`
+    52→}
+    53→
+    54→function daysAgo(days: number): Date {
+    55→  const d = new Date()
+    56→  d.setDate(d.getDate() - days)
+    57→  d.setHours(randInt(8, 18), randInt(0, 59))
+    58→  return d
+    59→}
+    60→
+    61→function daysFromNow(days: number): Date {
+    62→  const d = new Date()
+    63→  d.setDate(d.getDate() + days)
+    64→  return d
+    65→}
+    66→
+    67→export async function runSeed(): Promise<{ success: boolean; message: string; counts: Record<string, number> }> {
+    68→  // Önce temizle — bağımlılık sırasına göre
+    69→  // Kafe ERP
+    70→  await db.cafeOrderItem.deleteMany()
+    71→  await db.cafePayment.deleteMany()
+    72→  await db.cafeOrder.deleteMany()
+    73→  await db.menuItem.deleteMany()
+    74→  await db.menuCategory.deleteMany()
+    75→  await db.cafeTable.deleteMany()
+    76→  await db.cafe.deleteMany()
+    77→  // Market ERP
+    78→  await db.marketReturn.deleteMany()
+    79→  await db.marketSaleItem.deleteMany()
+    80→  await db.marketSale.deleteMany()
+    81→  await db.posShift.deleteMany()
+    82→  await db.stockCountItem.deleteMany()
+    83→  await db.stockCount.deleteMany()
+    84→  await db.purchaseItem.deleteMany()
+    85→  await db.purchase.deleteMany()
+    86→  await db.shelfItem.deleteMany()
+    87→  await db.shelf.deleteMany()
+    88→  await db.barcode.deleteMany()
+    89→  await db.market.deleteMany()
+    90→  // ERP
+    91→  await db.productionItem.deleteMany()
+    92→  await db.invoiceLine.deleteMany()
+    93→  await db.invoice.deleteMany()
+    94→  await db.quoteLine.deleteMany()
+    95→  await db.quote.deleteMany()
+    96→  await db.orderTrackingStep.deleteMany()
+    97→  await db.order.deleteMany()
+    98→  await db.stockMovement.deleteMany()
+    99→  await db.product.deleteMany()
+   100→  await db.messageTemplate.deleteMany()
+   101→  await db.tenantSetting.deleteMany()
+   102→  // CRM
+   103→  await db.task.deleteMany()
+   104→  await db.note.deleteMany()
+   105→  await db.activity.deleteMany()
+   106→  await db.deal.deleteMany()
+   107→  await db.contact.deleteMany()
+   108→  await db.lead.deleteMany()
+   109→  await db.mapsSearch.deleteMany()
+   110→  await db.attachment.deleteMany()
+   111→  await db.message.deleteMany()
+   112→  await db.customer.deleteMany()
+   113→  await db.tag.deleteMany()
+   114→  await db.auditLog.deleteMany()
+   115→  await db.user.deleteMany()
+   116→  await db.tenant.deleteMany()
+   117→
+   118→  // Randevu sistemi
+   119→  await db.appointment.deleteMany()
+   120→  await db.staffService.deleteMany()
+   121→  await db.staff.deleteMany()
+   122→  await db.service.deleteMany()
+   123→  await db.serviceProvider.deleteMany()
+   124→
+   125→  // Site yönetimi (delete order: en alt ilişki → en üst)
+   126→  await db.residentMessage.deleteMany()
+   127→  await db.complaint.deleteMany()
+   128→  await db.announcement.deleteMany()
+   129→  await db.dues.deleteMany()
+   130→  await db.siteStaff.deleteMany()
+   131→  await db.apartment.deleteMany()
+   132→  await db.block.deleteMany()
+   133→  await db.resident.deleteMany()
+   134→  await db.site.deleteMany()
+   135→
+   136→
+   137→  // === TENANTS — Her sektör ayrı şirket ===
+   138→  const tenant1 = await db.tenant.create({
+   139→    data: {
+   140→      name: 'Anadolu Satış A.Ş. (CRM/ERP)',
+   141→      plan: 'enterprise',
+   142→      defaultCurrency: 'TRY',
+   143→      country: 'TR',
+   144→    },
+   145→  })
+   146→  const tenant2 = await db.tenant.create({
+   147→    data: {
+   148→      name: 'Ege Ticaret Ltd. Şti. (CRM/ERP)',
+   149→      plan: 'business',
+   150→      defaultCurrency: 'TRY',
+   151→      country: 'TR',
+   152→    },
+   153→  })
+   154→  const tenantCafe = await db.tenant.create({
+   155→    data: {
+   156→      name: 'Şık Kafe & Restoran',
+   157→      plan: 'business',
+   158→      defaultCurrency: 'TRY',
+   159→      country: 'TR',
+   160→    },
+   161→  })
+   162→  const tenantMarket = await db.tenant.create({
+   163→    data: {
+   164→      name: 'Anadolu Market Zinciri',
+   165→      plan: 'business',
+   166→      defaultCurrency: 'TRY',
+   167→      country: 'TR',
+   168→    },
+   169→  })
+   170→  const tenantRandevu = await db.tenant.create({
+   171→    data: {
+   172→      name: 'Şık Kuaför & Güzellik Merkezi',
+   173→      plan: 'business',
+   174→      defaultCurrency: 'TRY',
+   175→      country: 'TR',
+   176→    },
+   177→  })
+   178→  const tenantSite = await db.tenant.create({
+   179→    data: {
+   180→      name: 'Park Sitesi Yönetimi',
+   181→      plan: 'business',
+   182→      defaultCurrency: 'TRY',
+   183→      country: 'TR',
+   184→    },
+   185→  })
+   186→
+   187→  // === USERS ===
+   188→  // Tenant 1: Admin, 2 Müdür, 4 Temsilci
+   189→  const t1Admin = await db.user.create({
+   190→    data: {
+   191→      tenantId: tenant1.id,
+   192→      email: 'demo@anadolu.com',
+   193→      name: 'Demir Yıldız',
+   194→      role: 'admin',
+   195→      permissions: JSON.stringify(getAdminPermissionsForTenant(tenant1.name)),
+   196→      status: 'active',
+   197→      title: 'Satış Direktörü',
+   198→      phone: '+90 532 111 22 33',
+   199→    },
+   200→  })
+   201→
+   202→  const t1Manager1 = await db.user.create({
+   203→    data: {
+   204→      tenantId: tenant1.id,
+   205→      email: 'ayse.kaya@anadolu.com',
+   206→      name: 'Ayşe Kaya',
+   207→      role: 'manager',
+   208→      permissions: JSON.stringify(getRolePermissions('manager')),
+   209→      managerId: t1Admin.id,
+   210→      status: 'active',
+   211→      title: 'Satış Müdürü',
+   212→      phone: '+90 533 222 33 44',
+   213→    },
+   214→  })
+   215→
+   216→  const t1Manager2 = await db.user.create({
+   217→    data: {
+   218→      tenantId: tenant1.id,
+   219→      email: 'mustafa.demir@anadolu.com',
+   220→      name: 'Mustafa Demir',
+   221→      role: 'manager',
+   222→      permissions: JSON.stringify(getRolePermissions('manager')),
+   223→      managerId: t1Admin.id,
+   224→      status: 'active',
+   225→      title: 'Bölge Satış Müdürü',
+   226→      phone: '+90 534 333 44 55',
+   227→    },
+   228→  })
+   229→
+   230→  const t1Reps = []
+   231→  const repNames1 = ['Zeynep Arslan', 'Ahmet Çelik', 'Elif Şahin', 'Burak Öztürk']
+   232→  const repTitles1 = ['Satış Temsilcisi', 'Kıdemli Satış Temsilcisi', 'Satış Temsilcisi', 'Satış Temsilcisi']
+   233→  for (let i = 0; i < repNames1.length; i++) {
+   234→    const manager = i < 2 ? t1Manager1 : t1Manager2
+   235→    const u = await db.user.create({
+   236→      data: {
+   237→        tenantId: tenant1.id,
+   238→        email: randomEmail(repNames1[i]),
+   239→        name: repNames1[i],
+   240→        role: 'rep',
+   241→        permissions: JSON.stringify(getRolePermissions('rep')),
+   242→        managerId: manager.id,
+   243→        status: 'active',
+   244→        title: repTitles1[i],
+   245→        phone: randomPhone(),
+   246→      },
+   247→    })
+   248→    t1Reps.push(u)
+   249→  }
+   250→
+   251→  // Tenant 2: Admin, 1 Müdür, 2 Temsilci
+   252→  const t2Admin = await db.user.create({
+   253→    data: {
+   254→      tenantId: tenant2.id,
+   255→      email: 'demo@egeticaret.com',
+   256→      name: 'Hakan Aydın',
+   257→      role: 'admin',
+   258→      permissions: JSON.stringify(getAdminPermissionsForTenant(tenant2.name)),
+   259→      status: 'active',
+   260→      title: 'Genel Müdür',
+   261→      phone: '+90 535 444 55 66',
+   262→    },
+   263→  })
+   264→
+   265→  const t2Manager = await db.user.create({
+   266→    data: {
+   267→      tenantId: tenant2.id,
+   268→      email: 'selin.kara@egeticaret.com',
+   269→      name: 'Selin Kara',
+   270→      role: 'manager',
+   271→      permissions: JSON.stringify(getRolePermissions('manager')),
+   272→      managerId: t2Admin.id,
+   273→      status: 'active',
+   274→      title: 'Satış Müdürü',
+   275→      phone: '+90 536 555 66 77',
+   276→    },
+   277→  })
+   278→
+   279→  const t2Reps = []
+   280→  const repNames2 = ['Okan Yıldırım', 'Deniz Aslan']
+   281→  for (const name of repNames2) {
+   282→    const u = await db.user.create({
+   283→      data: {
+   284→        tenantId: tenant2.id,
+   285→        email: randomEmail(name),
+   286→        name,
+   287→        role: 'rep',
+   288→        permissions: JSON.stringify(getRolePermissions('rep')),
+   289→        managerId: t2Manager.id,
+   290→        status: 'active',
+   291→        title: 'Satış Temsilcisi',
+   292→        phone: randomPhone(),
+   293→      },
+   294→    })
+   295→    t2Reps.push(u)
+   296→  }
+   297→
+   298→  // === CAFE-ERP: Kafe rolleri — Kafe şirketine (tenantCafe) bağlı ===
+   299→  const cafeAdmin = await db.user.create({
+   300→    data: {
+   301→      tenantId: tenantCafe.id,
+   302→      email: 'admin@sikkafe.com',
+   303→      name: 'Cafe Yöneticisi',
+   304→      role: 'admin',
+   305→      permissions: JSON.stringify(getAdminPermissionsForTenant(tenantCafe.name)),
+   306→      status: 'active',
+   307→      title: 'Kafe İşletmecisi',
+   308→      phone: randomPhone(),
+   309→    },
+   310→  })
+   311→  const t1Kasa = await db.user.create({
+   312→    data: {
+   313→      tenantId: tenantCafe.id,
+   314→      email: 'kasa@sikkafe.com',
+   315→      name: 'Selin Demir',
+   316→      role: 'kasa',
+   317→      permissions: JSON.stringify(getRolePermissions('kasa')),
+   318→      status: 'active',
+   319→      title: 'Kasiyer',
+   320→      phone: randomPhone(),
+   321→    },
+   322→  })
+   323→  const t1Barmen = await db.user.create({
+   324→    data: {
+   325→      tenantId: tenantCafe.id,
+   326→      email: 'barmen@sikkafe.com',
+   327→      name: 'Burak Yıldız',
+   328→      role: 'barmen',
+   329→      permissions: JSON.stringify(getRolePermissions('barmen')),
+   330→      status: 'active',
+   331→      title: 'Barmen',
+   332→      phone: randomPhone(),
+   333→    },
+   334→  })
+   335→  const t1Komi = await db.user.create({
+   336→    data: {
+   337→      tenantId: tenantCafe.id,
+   338→      email: 'komi@sikkafe.com',
+   339→      name: 'Hülya Aydın',
+   340→      role: 'komi',
+   341→      permissions: JSON.stringify(getRolePermissions('komi')),
+   342→      status: 'active',
+   343→      title: 'Komi (Garson)',
+   344→      phone: randomPhone(),
+   345→    },
+   346→  })
+   347→  void t1Kasa; void t1Barmen; void t1Komi
+   348→
+   349→  // === MARKET-ERP: Market rolleri — Market şirketine (tenantMarket) bağlı ===
+   350→  const marketAdmin = await db.user.create({
+   351→    data: {
+   352→      tenantId: tenantMarket.id,
+   353→      email: 'admin@anadolumarket.com',
+   354→      name: 'Market Yöneticisi',
+   355→      role: 'admin',
+   356→      permissions: JSON.stringify(getAdminPermissionsForTenant(tenantMarket.name)),
+   357→      status: 'active',
+   358→      title: 'Market Müdürü',
+   359→      phone: randomPhone(),
+   360→    },
+   361→  })
+   362→  const marketKasiyer = await db.user.create({
+   363→    data: {
+   364→      tenantId: tenantMarket.id,
+   365→      email: 'kasiyer@anadolumarket.com',
+   366→      name: 'Ayşe Kasiyer',
+   367→      role: 'kasiyer',
+   368→      permissions: JSON.stringify(getRolePermissions('kasiyer')),
+   369→      status: 'active',
+   370→      title: 'Kasiyer',
+   371→      phone: randomPhone(),
+   372→    },
+   373→  })
+   374→  const marketDepo = await db.user.create({
+   375→    data: {
+   376→      tenantId: tenantMarket.id,
+   377→      email: 'depo@anadolumarket.com',
+   378→      name: 'Hasan Depo',
+   379→      role: 'depo_sorumlusu',
+   380→      permissions: JSON.stringify(getRolePermissions('depo_sorumlusu')),
+   381→      status: 'active',
+   382→      title: 'Depo Sorumlusu',
+   383→      phone: randomPhone(),
+   384→    },
+   385→  })
+   386→  void marketKasiyer; void marketDepo
+   387→
+   388→  // === RANDEVU: Kuaför şirketi (tenantRandevu) ===
+   389→  const randevuAdmin = await db.user.create({
+   390→    data: {
+   391→      tenantId: tenantRandevu.id,
+   392→      email: 'admin@sikkuaför.com',
+   393→      name: 'Kuaför Yöneticisi',
+   394→      role: 'admin',
+   395→      permissions: JSON.stringify(getAdminPermissionsForTenant(tenantRandevu.name)),
+   396→      status: 'active',
+   397→      title: 'İşletme Sahibii',
+   398→      phone: randomPhone(),
+   399→    },
+   400→  })
+   401→  void randevuAdmin
+   402→
+   403→  // === SITE: Site yönetimi şirketi (tenantSite) ===
+   404→  const siteAdmin = await db.user.create({
+   405→    data: {
+   406→      tenantId: tenantSite.id,
+   407→      email: 'admin@parksitesi.com',
+   408→      name: 'Site Yöneticisi',
+   409→      role: 'admin',
+   410→      permissions: JSON.stringify(getAdminPermissionsForTenant(tenantSite.name)),
+   411→      status: 'active',
+   412→      title: 'Site Yöneticisi',
+   413→      phone: randomPhone(),
+   414→    },
+   415→  })
+   416→  void siteAdmin
+   417→
+   418→  // === SITE: Park Sitesi — demo verileri (1 site, 2 blok, 10 daire, 5 sakin, 12 aidat, 3 duyuru, 3 şikayet, 2 personel) ===
+   419→  const parkSitesi = await db.site.create({
+   420→    data: {
+   421→      tenantId: tenantSite.id,
+   422→      name: 'Park Sitesi',
+   423→      address: 'Atatürk Bulvarı No:120 Kadıköy',
+   424→      city: 'İstanbul',
+   425→      district: 'Kadıköy',
+   426→      phone: '+90 216 555 12 34',
+   427→      email: 'yonetim@parksitesi.com',
+   428→      managerName: 'Mehmet Yılmaz',
+   429→      dueDay: 5,
+   430→      defaultDueAmount: 750,
+   431→      currency: 'TRY',
+   432→      isActive: true,
+   433→    },
+   434→  })
+   435→
+   436→  // 2 blok
+   437→  const blokA = await db.block.create({ data: { siteId: parkSitesi.id, name: 'A Blok', floors: 5 } })
+   438→  const blokB = await db.block.create({ data: { siteId: parkSitesi.id, name: 'B Blok', floors: 6 } })
+   439→
+   440→  // 10 daire (A Blok: 5 daire + 1 depo, B Blok: 3 daire + 1 dükkan)
+   441→  const aptA1 = await db.apartment.create({ data: { siteId: parkSitesi.id, blockId: blokA.id, number: '1', floor: 0, type: 'daire', area: 85 } })
+   442→  const aptA2 = await db.apartment.create({ data: { siteId: parkSitesi.id, blockId: blokA.id, number: '2', floor: 1, type: 'daire', area: 90 } })
+   443→  const aptA3 = await db.apartment.create({ data: { siteId: parkSitesi.id, blockId: blokA.id, number: '3', floor: 2, type: 'daire', area: 95 } })
+   444→  const aptA4 = await db.apartment.create({ data: { siteId: parkSitesi.id, blockId: blokA.id, number: '4', floor: 3, type: 'daire', area: 100 } })
+   445→  const aptA5 = await db.apartment.create({ data: { siteId: parkSitesi.id, blockId: blokA.id, number: '5', floor: 4, type: 'daire', area: 110 } })
+   446→  const aptADepo = await db.apartment.create({ data: { siteId: parkSitesi.id, blockId: blokA.id, number: 'D1', floor: -1, type: 'depo', area: 12 } })
+   447→  const aptB1 = await db.apartment.create({ data: { siteId: parkSitesi.id, blockId: blokB.id, number: '1', floor: 0, type: 'daire', area: 88 } })
+   448→  const aptB2 = await db.apartment.create({ data: { siteId: parkSitesi.id, blockId: blokB.id, number: '2', floor: 1, type: 'daire', area: 92 } })
+   449→  const aptB3 = await db.apartment.create({ data: { siteId: parkSitesi.id, blockId: blokB.id, number: '3', floor: 2, type: 'daire', area: 96 } })
+   450→  const aptBDukkan = await db.apartment.create({ data: { siteId: parkSitesi.id, blockId: blokB.id, number: 'Dükkan 1', floor: 0, type: 'dukkan', area: 45 } })
+   451→
+   452→  // 5 sakin
+   453→  const siteRes1 = await db.resident.create({
+   454→    data: {
+   455→      tenantId: tenantSite.id, siteId: parkSitesi.id,
+   456→      name: 'Ayşe Kaya', email: 'ayse.kaya@gmail.com',
+   457→      phone: '+90 533 222 11 22', type: 'mal_sahibi', isOwner: true, isActive: true,
+   458→    },
+   459→  })
+   460→  const siteRes2 = await db.resident.create({
+   461→    data: {
+   462→      tenantId: tenantSite.id, siteId: parkSitesi.id,
+   463→      name: 'Mustafa Demir', email: 'mustafa.demir@gmail.com',
+   464→      phone: '+90 534 333 44 55', type: 'kiraci', isOwner: false, isActive: true,
+   465→    },
+   466→  })
+   467→  const siteRes3 = await db.resident.create({
+   468→    data: {
+   469→      tenantId: tenantSite.id, siteId: parkSitesi.id,
+   470→      name: 'Fatma Şahin', email: 'fatma.sahin@gmail.com',
+   471→      phone: '+90 535 444 55 66', type: 'mal_sahibi', isOwner: true, isActive: true,
+   472→    },
+   473→  })
+   474→  const siteRes4 = await db.resident.create({
+   475→    data: {
+   476→      tenantId: tenantSite.id, siteId: parkSitesi.id,
+   477→      name: 'Ahmet Çelik', email: 'ahmet.celik@gmail.com',
+   478→      phone: '+90 536 555 66 77', type: 'kiraci', isOwner: false, isActive: true,
+   479→    },
+   480→  })
+   481→  const siteRes5 = await db.resident.create({
+   482→    data: {
+   483→      tenantId: tenantSite.id, siteId: parkSitesi.id,
+   484→      name: 'Zeynep Yıldız', email: 'zeynep.yildiz@gmail.com',
+   485→      phone: '+90 537 666 77 88', type: 'mal_sahibi', isOwner: true, isActive: true,
+   486→    },
+   487→  })
+   488→
+   489→  // Sakinleri dairelere bağla (residentId unique)
+   490→  await db.apartment.update({ where: { id: aptA1.id }, data: { residentId: siteRes1.id } })
+   491→  await db.apartment.update({ where: { id: aptA2.id }, data: { residentId: siteRes2.id } })
+   492→  await db.apartment.update({ where: { id: aptA3.id }, data: { residentId: siteRes3.id } })
+   493→  await db.apartment.update({ where: { id: aptB1.id }, data: { residentId: siteRes4.id } })
+   494→  await db.apartment.update({ where: { id: aptB2.id }, data: { residentId: siteRes5.id } })
+   495→
+   496→  // 12 aidat kaydı (10 bu ay + 2 geçen aydan gecikmiş)
+   497→  const siteNow = new Date()
+   498→  const siteCurMonth = siteNow.getMonth() + 1
+   499→  const siteCurYear = siteNow.getFullYear()
+   500→  const sitePrevMonth = siteCurMonth === 1 ? 12 : siteCurMonth - 1
+   501→  const sitePrevYear = siteCurMonth === 1 ? siteCurYear - 1 : siteCurYear
+   502→  const dueDateFor = (m: number, y: number) => {
+   503→    const d = new Date(y, m - 1, 5, 23, 59, 0)
+   504→    return d
+   505→  }
+   506→
+   507→  const siteDuesAmount = (t: string) => t === 'dukkan' ? 1500 : t === 'depo' ? 250 : parkSitesi.defaultDueAmount
+   508→  const siteDuesRows = [
+   509→    { apt: aptA1, res: siteRes1, status: 'odendi' as const },
+   510→    { apt: aptA2, res: siteRes2, status: 'odenmedi' as const },
+   511→    { apt: aptA3, res: siteRes3, status: 'odendi' as const },
+   512→    { apt: aptA4, res: null, status: 'odenmedi' as const },
+   513→    { apt: aptA5, res: null, status: 'odendi' as const },
+   514→    { apt: aptADepo, res: null, status: 'odenmedi' as const },
+   515→    { apt: aptB1, res: siteRes4, status: 'odendi' as const },
+   516→    { apt: aptB2, res: siteRes5, status: 'odenmedi' as const },
+   517→    { apt: aptB3, res: null, status: 'odendi' as const },
+   518→    { apt: aptBDukkan, res: null, status: 'odenmedi' as const },
+   519→  ]
+   520→  for (const d of siteDuesRows) {
+   521→    const dueDate = dueDateFor(siteCurMonth, siteCurYear)
+   522→    const amount = siteDuesAmount(d.apt.type)
+   523→    await db.dues.create({
+   524→      data: {
+   525→        siteId: parkSitesi.id,
+   526→        apartmentId: d.apt.id,
+   527→        residentId: d.res?.id ?? null,
+   528→        month: siteCurMonth,
+   529→        year: siteCurYear,
+   530→        amount,
+   531→        currency: 'TRY',
+   532→        dueDate,
+   533→        status: d.status,
+   534→        paidDate: d.status === 'odendi' ? new Date(dueDate.getTime() - 86400000) : null,
+   535→        paidAmount: d.status === 'odendi' ? amount : null,
+   536→        paymentMethod: d.status === 'odendi' ? 'bank' : null,
+   537→      },
+   538→    })
+   539→  }
+   540→  // 2 gecikmiş aidat (geçen ay)
+   541→  await db.dues.create({
+   542→    data: {
+   543→      siteId: parkSitesi.id, apartmentId: aptA2.id, residentId: siteRes2.id,
+   544→      month: sitePrevMonth, year: sitePrevYear,
+   545→      amount: parkSitesi.defaultDueAmount, currency: 'TRY',
+   546→      dueDate: dueDateFor(sitePrevMonth, sitePrevYear),
+   547→      status: 'gecikti',
+   548→    },
+   549→  })
+   550→  await db.dues.create({
+   551→    data: {
+   552→      siteId: parkSitesi.id, apartmentId: aptB2.id, residentId: siteRes5.id,
+   553→      month: sitePrevMonth, year: sitePrevYear,
+   554→      amount: parkSitesi.defaultDueAmount, currency: 'TRY',
+   555→      dueDate: dueDateFor(sitePrevMonth, sitePrevYear),
+   556→      status: 'gecikti',
+   557→    },
+   558→  })
+   559→
+   560→  // 3 duyuru
+   561→  await db.announcement.create({
+   562→    data: {
+   563→      siteId: parkSitesi.id,
+   564→      title: 'Genel Kurul Toplantısı',
+   565→      content: 'Değerli sakinler, bu ayın ilk cumartesi günü saat 14:00\'ta genel kurul toplantısı yapılacaktır. Katılımınız rica olunur.',
+   566→      type: 'genel', isPinned: true, publishDate: daysAgo(2),
+   567→    },
+   568→  })
+   569→  await db.announcement.create({
+   570→    data: {
+   571→      siteId: parkSitesi.id,
+   572→      title: 'Asansör Bakım Çalışması',
+   573→      content: 'A Blok asansörü perşembe günü 09:00-13:00 arası bakım çalışması nedeniyle hizmet dışı kalacaktır.',
+   574→      type: 'bakim', isPinned: false, publishDate: daysAgo(5),
+   575→    },
+   576→  })
+   577→  await db.announcement.create({
+   578→    data: {
+   579→      siteId: parkSitesi.id,
+   580→      title: 'Aidat Tahsilatı Devam Ediyor',
+   581→      content: 'Bu ay aidatlarını 5. güne kadar yönetim ofisine veya banka hesabımıza ödeyebilirsiniz.',
+   582→      type: 'aidat', isPinned: false, publishDate: daysAgo(7),
+   583→    },
+   584→  })
+   585→
+   586→  // 3 şikayet
+   587→  await db.complaint.create({
+   588→    data: {
+   589→      siteId: parkSitesi.id, residentId: siteRes1.id,
+   590→      title: 'Sızıntı problemi',
+   591→      description: 'A Blok 1. katta mutfaktan gelen bir su sızıntısı var. Acil yardım.',
+   592→      category: 'su', status: 'acik', priority: 'yuksek',
+   593→    },
+   594→  })
+   595→  await db.complaint.create({
+   596→    data: {
+   597→      siteId: parkSitesi.id, residentId: siteRes2.id,
+   598→      title: 'Asansör gürültüsü',
+   599→      description: 'B Blok asansörü son günlerde çok ses çıkarıyor. Gece rahatsız oluyoruz.',
+   600→      category: 'asansor', status: 'inceleniyor', priority: 'normal',
+   601→      response: 'Teknik ekibimiz perşembe günü bakıma gelecek.', respondedAt: new Date(),
+   602→    },
+   603→  })
+   604→  await db.complaint.create({
+   605→    data: {
+   606→      siteId: parkSitesi.id, residentId: siteRes3.id,
+   607→      title: 'Park yeri işgali',
+   608→      description: 'Misafir araçları misafir park yerine değil, benim yerime park ediyor.',
+   609→      category: 'park', status: 'cozuldu', priority: 'dusuk',
+   610→      response: 'Uyarı levhaları yerleştirildi.', respondedAt: new Date(),
+   611→    },
+   612→  })
+   613→
+   614→  // 2 personel
+   615→  await db.siteStaff.create({
+   616→    data: {
+   617→      siteId: parkSitesi.id, name: 'Hüseyin Arslan', role: 'kapici',
+   618→      phone: '+90 538 111 22 33', salary: 28000, startDate: daysAgo(400), isActive: true,
+   619→    },
+   620→  })
+   621→  await db.siteStaff.create({
+   622→    data: {
+   623→      siteId: parkSitesi.id, name: 'İbrahim Doğan', role: 'guvenlik',
+   624→      phone: '+90 538 444 55 66', salary: 32000, startDate: daysAgo(120), isActive: true,
+   625→    },
+   626→  })
+   627→
+   628→  // ============================================================
+   629→  // CAFE-ERP — Şık Kafe (tenantCafe) için demo veriler
+   630→  // (Cafe Yöneticisi dashboard'ında gerçek ciro gözüksün diye)
+   631→  // 1 Cafe + 5 Masa + 3 Kategori + 12 Menü Kalemi + 7 Ödenmiş Sipariş
+   632→  // ============================================================
+   633→  const sikKafe = await db.cafe.create({
+   634→    data: {
+   635→      tenantId: tenantCafe.id,
+   636→      name: 'Şık Kafe & Restoran — Kadıköy',
+   637→      address: 'Bağdat Caddesi No:142 Kadıköy, İstanbul',
+   638→      phone: '+90 216 555 12 34',
+   639→      tableCount: 0,
+   640→    },
+   641→  })
+   642→
+   643→  // 5 masa
+   644→  const kafeTables: Array<{ id: string; number: string }> = []
+   645→  const kafeTableShapes = ['square', 'round', 'rectangle', 'square', 'round']
+   646→  const kafeTablePositions = [
+   647→    { x: 25, y: 25 }, { x: 50, y: 25 }, { x: 75, y: 25 },
+   648→    { x: 35, y: 60 }, { x: 65, y: 60 },
+   649→  ]
+   650→  for (let i = 0; i < 5; i++) {
+   651→    const t = await db.cafeTable.create({
+   652→      data: {
+   653→        cafeId: sikKafe.id,
+   654→        number: `M${i + 1}`,
+   655→        shape: kafeTableShapes[i],
+   656→        x: kafeTablePositions[i].x,
+   657→        y: kafeTablePositions[i].y,
+   658→        width: kafeTableShapes[i] === 'rectangle' ? 14 : 10,
+   659→        height: 10,
+   660→        capacity: kafeTableShapes[i] === 'rectangle' ? 6 : 4,
+   661→        status: 'bos',
+   662→      },
+   663→    })
+   664→    kafeTables.push({ id: t.id, number: t.number })
+   665→  }
+   666→  await db.cafe.update({ where: { id: sikKafe.id }, data: { tableCount: 5 } })
+   667→
+   668→  // 3 kategori + 12 menü kalemi (Türkçe gerçekçi)
+   669→  const kafeCatIcecek = await db.menuCategory.create({
+   670→    data: { cafeId: sikKafe.id, name: 'İçecekler', icon: '☕', sortOrder: 0 },
+   671→  })
+   672→  const kafeCatAna = await db.menuCategory.create({
+   673→    data: { cafeId: sikKafe.id, name: 'Ana Yemekler', icon: '🍽️', sortOrder: 1 },
+   674→  })
+   675→  const kafeCatTatli = await db.menuCategory.create({
+   676→    data: { cafeId: sikKafe.id, name: 'Tatlılar', icon: '🍰', sortOrder: 2 },
+   677→  })
+   678→
+   679→  const kafeMenuItems = [
+   680→    { cat: kafeCatIcecek, name: 'Çay', price: 8, station: 'bar', prepTime: 2 },
+   681→    { cat: kafeCatIcecek, name: 'Türk Kahvesi', price: 50, station: 'bar', prepTime: 8 },
+   682→    { cat: kafeCatIcecek, name: 'Ayran', price: 15, station: 'bar', prepTime: 2 },
+   683→    { cat: kafeCatIcecek, name: 'Şalgam', price: 20, station: 'bar', prepTime: 3 },
+   684→    { cat: kafeCatAna, name: 'Mercimek Çorbası', price: 55, station: 'kitchen', prepTime: 8 },
+   685→    { cat: kafeCatAna, name: 'Adana Kebap', price: 220, station: 'kitchen', prepTime: 20 },
+   686→    { cat: kafeCatAna, name: 'Lahmacun', price: 90, station: 'kitchen', prepTime: 12 },
+   687→    { cat: kafeCatAna, name: 'Karışık Pide', price: 120, station: 'kitchen', prepTime: 15 },
+   688→    { cat: kafeCatAna, name: 'Beyti Kebap', price: 240, station: 'kitchen', prepTime: 18 },
+   689→    { cat: kafeCatTatli, name: 'Baklava (dilim)', price: 75, station: 'dessert', prepTime: 3 },
+   690→    { cat: kafeCatTatli, name: 'Sütlaç', price: 45, station: 'dessert', prepTime: 3 },
+   691→    { cat: kafeCatTatli, name: 'Künefe', price: 95, station: 'dessert', prepTime: 10 },
+   692→  ]
+   693→  const kafeMenuCreated: Array<{ id: string; name: string; price: number; station: string }> = []
+   694→  for (const it of kafeMenuItems) {
+   695→    const m = await db.menuItem.create({
+   696→      data: {
+   697→        categoryId: it.cat.id,
+   698→        name: it.name,
+   699→        price: it.price,
+   700→        currency: 'TRY',
+   701→        prepTime: it.prepTime,
+   702→        station: it.station,
+   703→        sortOrder: 0,
+   704→        isAvailable: true,
+   705→      },
+   706→    })
+   707→    kafeMenuCreated.push({ id: m.id, name: m.name, price: m.price, station: m.station })
+   708→  }
+   709→
+   710→  // 7 ödenmiş sipariş — son 30 günün içine dağıtılmış
+   711→  // (2 tanesi bugün, 5 tanesi geçmiş 30 günün içine dağılmış)
+   712→  // Her siparişe 2-3 kalem, subtotal/taxTotal/total ve CafePayment girilir.
+   713→  const kafeOrderScenarios = [
+   714→    { daysAgo: 0, hour: 12, tableIdx: 0, items: [{ idx: 5, qty: 1 }, { idx: 0, qty: 2 }, { idx: 9, qty: 1 }], method: 'cash' as const }, // Adana + Çay + Baklava
+   715→    { daysAgo: 0, hour: 19, tableIdx: 1, items: [{ idx: 6, qty: 2 }, { idx: 2, qty: 2 }, { idx: 11, qty: 1 }], method: 'card' as const }, // 2 Lahmacun + 2 Ayran + Künefe
+   716→    { daysAgo: 2, hour: 13, tableIdx: 2, items: [{ idx: 4, qty: 1 }, { idx: 7, qty: 1 }], method: 'card' as const }, // Mercimek + Pide
+   717→    { daysAgo: 5, hour: 14, tableIdx: 3, items: [{ idx: 5, qty: 1 }, { idx: 1, qty: 1 }, { idx: 10, qty: 1 }], method: 'cash' as const }, // Adana + Türk Kahvesi + Sütlaç
+   718→    { daysAgo: 9, hour: 20, tableIdx: 4, items: [{ idx: 8, qty: 1 }, { idx: 3, qty: 1 }, { idx: 9, qty: 2 }], method: 'mixed' as const }, // Beyti + Şalgam + 2 Baklava
+   719→    { daysAgo: 14, hour: 12, tableIdx: 0, items: [{ idx: 4, qty: 2 }, { idx: 1, qty: 2 }], method: 'cash' as const }, // 2 Mercimek + 2 Türk Kahvesi
+   720→    { daysAgo: 22, hour: 18, tableIdx: 1, items: [{ idx: 6, qty: 1 }, { idx: 7, qty: 1 }, { idx: 11, qty: 1 }], method: 'card' as const }, // Lahmacun + Pide + Künefe
+   721→  ]
+   722→
+   723→  for (let i = 0; i < kafeOrderScenarios.length; i++) {
+   724→    const sc = kafeOrderScenarios[i]
+   725→    const orderDate = new Date()
+   726→    orderDate.setDate(orderDate.getDate() - sc.daysAgo)
+   727→    orderDate.setHours(sc.hour, randInt(0, 59), 0, 0)
+   728→
+   729→    let subtotal = 0
+   730→    const itemRows: Array<{ menuItemId: string; name: string; qty: number; unitPrice: number; station: string }> = []
+   731→    for (const it of sc.items) {
+   732→      const m = kafeMenuCreated[it.idx]
+   733→      subtotal += m.price * it.qty
+   734→      itemRows.push({ menuItemId: m.id, name: m.name, qty: it.qty, unitPrice: m.price, station: m.station })
+   735→    }
+   736→    const taxTotal = 0
+   737→    const total = subtotal
+   738→
+   739→    const order = await db.cafeOrder.create({
+   740→      data: {
+   741→        cafeId: sikKafe.id,
+   742→        tableId: kafeTables[sc.tableIdx]?.id ?? null,
+   743→        number: `SK-${String(i + 1).padStart(4, '0')}`,
+   744→        status: 'odendi',
+   745→        type: 'dine_in',
+   746→        subtotal,
+   747→        taxTotal,
+   748→        total,
+   749→        createdById: t1Komi.id,
+   750→        createdAt: orderDate,
+   751→      },
+   752→    })
+   753→    for (const it of itemRows) {
+   754→      await db.cafeOrderItem.create({
+   755→        data: {
+   756→          orderId: order.id,
+   757→          menuItemId: it.menuItemId,
+   758→          name: it.name,
+   759→          qty: it.qty,
+   760→          unitPrice: it.unitPrice,
+   761→          status: 'servis_edildi',
+   762→          station: it.station,
+   763→        },
+   764→      })
+   765→    }
+   766→    await db.cafePayment.create({
+   767→      data: {
+   768→        orderId: order.id,
+   769→        amount: total,
+   770→        method: sc.method,
+   771→        status: 'tamamlandi',
+   772→        createdAt: orderDate,
+   773→      },
+   774→    })
+   775→  }
+   776→  void cafeAdmin
+   777→
+   778→  // ============================================================
+   779→  // MARKET-ERP — Anadolu Market (tenantMarket) için demo veriler
+   780→  // (Market Yöneticisi dashboard'ında gerçek satış gözüksün diye)
+   781→  // 1 Market + 5 Raf + 15 Ürün + 3 Barkod + 3 Vardiya + 18 Satış
+   782→  // ============================================================
+   783→  const anadoluMarket = await db.market.create({
+   784→    data: {
+   785→      tenantId: tenantMarket.id,
+   786→      name: 'Anadolu Market — Kadıköy Şube',
+   787→      address: 'Caferağa Mah. Moda Cad. No:55 Kadıköy, İstanbul',
+   788→      phone: '+90 216 555 22 11',
+   789→      isActive: true,
+   790→    },
+   791→  })
+   792→
+   793→  // 5 raf (spec: create 1 Market, 5 Shelf)
+   794→  const anadoluShelves: Array<{ id: string; code: string }> = []
+   795→  const anadoluShelfDefs = [
+   796→    { code: 'A1', name: 'Ekmek Bölümü', aisle: '1' },
+   797→    { code: 'A2', name: 'Süt Ürünleri', aisle: '1' },
+   798→    { code: 'B1', name: 'Atıştırmalık', aisle: '2' },
+   799→    { code: 'B2', name: 'İçecekler', aisle: '2' },
+   800→    { code: 'C1', name: 'Temel Gıda', aisle: '3' },
+   801→  ]
+   802→  for (const s of anadoluShelfDefs) {
+   803→    const sh = await db.shelf.create({
+   804→      data: { marketId: anadoluMarket.id, code: s.code, name: s.name, aisle: s.aisle },
+   805→    })
+   806→    anadoluShelves.push({ id: sh.id, code: sh.code })
+   807→  }
+   808→
+   809→  // 15 ürün (tenantMarket'a özel)
+   810→  const anadoluProductsData = [
+   811→    { name: 'Tam Buğday Ekmek', sku: 'AMK-EK-01', barcode: '8691110000017', price: 8.5, stock: 80, minStock: 20, category: 'Unlu Mamul', unit: 'adet', taxRate: 1 },
+   812→    { name: 'Süt 1L', sku: 'AMK-SUT-1L', barcode: '8691110000024', price: 23.5, stock: 50, minStock: 15, category: 'Süt Ürünleri', unit: 'lt', taxRate: 1 },
+   813→    { name: 'Yoğurt 1kg', sku: 'AMK-YOG-1K', barcode: '8691110000031', price: 47, stock: 30, minStock: 10, category: 'Süt Ürünleri', unit: 'kg', taxRate: 1 },
+   814→    { name: 'Beyaz Peynir 500g', sku: 'AMK-PEY-500', barcode: '8691110000048', price: 125, stock: 25, minStock: 8, category: 'Süt Ürünleri', unit: 'pk', taxRate: 1 },
+   815→    { name: 'Sütlü Çikolata', sku: 'AMK-CIK-01', barcode: '8691110000055', price: 19.9, stock: 100, minStock: 30, category: 'Atıştırmalık', unit: 'adet', taxRate: 20 },
+   816→    { name: 'Kakaolu Bisküvi', sku: 'AMK-BIS-01', barcode: '8691110000062', price: 14.5, stock: 75, minStock: 25, category: 'Atıştırmalık', unit: 'pk', taxRate: 20 },
+   817→    { name: 'Cola 1L', sku: 'AMK-CC-1L', barcode: '8691110000079', price: 27, stock: 60, minStock: 20, category: 'İçecek', unit: 'lt', taxRate: 20 },
+   818→    { name: 'Doğal Maden Suyu 0.5L', sku: 'AMK-SU-05', barcode: '8691110000086', price: 6, stock: 200, minStock: 50, category: 'İçecek', unit: 'adet', taxRate: 8 },
+   819→    { name: 'Çay 1kg', sku: 'AMK-CAY-1K', barcode: '8691110000093', price: 152, stock: 40, minStock: 10, category: 'İçecek', unit: 'kg', taxRate: 8 },
+   820→    { name: 'Şeker 1kg', sku: 'AMK-SEK-1K', barcode: '8691110000109', price: 30, stock: 90, minStock: 30, category: 'Gıda', unit: 'kg', taxRate: 1 },
+   821→    { name: 'Un 1kg', sku: 'AMK-UN-1K', barcode: '8691110000116', price: 21, stock: 70, minStock: 20, category: 'Gıda', unit: 'kg', taxRate: 1 },
+   822→    { name: 'Ayçiçek Yağı 1L', sku: 'AMK-YAG-1L', barcode: '8691110000123', price: 68, stock: 35, minStock: 10, category: 'Gıda', unit: 'lt', taxRate: 8 },
+   823→    { name: 'Makarna 500g', sku: 'AMK-MAK-500', barcode: '8691110000130', price: 15.25, stock: 110, minStock: 40, category: 'Gıda', unit: 'pk', taxRate: 1 },
+   824→    { name: 'Pirinç 1kg', sku: 'AMK-PRC-1K', barcode: '8691110000147', price: 55, stock: 45, minStock: 15, category: 'Gıda', unit: 'kg', taxRate: 1 },
+   825→    { name: 'Tuvalet Kağıdı 8li', sku: 'AMK-TK-8', barcode: '8691110000154', price: 95, stock: 4, minStock: 8, category: 'Temizlik', unit: 'pk', taxRate: 20 }, // düşük stok
+   826→  ]
+   827→  const anadoluProducts: Array<{ id: string; name: string; price: number; taxRate: number; barcode: string }> = []
+   828→  for (const p of anadoluProductsData) {
+   829→    const prod = await db.product.create({
+   830→      data: {
+   831→        tenantId: tenantMarket.id,
+   832→        name: p.name,
+   833→        sku: p.sku,
+   834→        price: p.price,
+   835→        currency: 'TRY',
+   836→        taxRate: p.taxRate,
+   837→        stock: p.stock,
+   838→        minStock: p.minStock,
+   839→        unit: p.unit,
+   840→        category: p.category,
+   841→      },
+   842→    })
+   843→    anadoluProducts.push({ id: prod.id, name: prod.name, price: prod.price, taxRate: prod.taxRate, barcode: p.barcode })
+   844→  }
+   845→
+   846→  // 3 barkod
+   847→  await db.barcode.create({ data: { marketId: anadoluMarket.id, productId: anadoluProducts[0].id, code: anadoluProducts[0].barcode, type: 'ean13' } })
+   848→  await db.barcode.create({ data: { marketId: anadoluMarket.id, productId: anadoluProducts[6].id, code: anadoluProducts[6].barcode, type: 'ean13' } })
+   849→  await db.barcode.create({ data: { marketId: anadoluMarket.id, productId: anadoluProducts[14].id, code: anadoluProducts[14].barcode, type: 'ean13' } })
+   850→
+   851→  // 3 vardiya: 1 bugün açık, 2 geçen hafta kapalı
+   852→  const openShiftAM = await db.posShift.create({
+   853→    data: {
+   854→      marketId: anadoluMarket.id,
+   855→      userId: marketKasiyer.id,
+   856→      number: 'AM-V-001',
+   857→      status: 'acik',
+   858→      openingCash: 500,
+   859→      openingTime: new Date(new Date().setHours(8, 30, 0, 0)),
+   860→    },
+   861→  })
+   862→  const closedShift1 = await db.posShift.create({
+   863→    data: {
+   864→      marketId: anadoluMarket.id,
+   865→      userId: marketKasiyer.id,
+   866→      number: 'AM-V-002',
+   867→      status: 'kapali',
+   868→      openingCash: 500,
+   869→      closingCash: 1450.50,
+   870→      expectedCash: 1450.50,
+   871→      difference: 0,
+   872→      openingTime: daysAgo(2),
+   873→      closingTime: daysAgo(2),
+   874→    },
+   875→  })
+   876→  const closedShift2 = await db.posShift.create({
+   877→    data: {
+   878→      marketId: anadoluMarket.id,
+   879→      userId: marketKasiyer.id,
+   880→      number: 'AM-V-003',
+   881→      status: 'kapali',
+   882→      openingCash: 500,
+   883→      closingCash: 1820.75,
+   884→      expectedCash: 1820.75,
+   885→      difference: 0,
+   886→      openingTime: daysAgo(6),
+   887→      closingTime: daysAgo(6),
+   888→    },
+   889→  })
+   890→
+   891→  // 18 satış: 3 bugün, 15 geçmiş 30 günün içine dağılmış
+   892→  // Karışık ödeme yöntemleri: cash / card / mixed
+   893→  // Her fişe 2-5 kalem, subtotal/taxTotal/total hesaplanır
+   894→  const amSaleScenarios: Array<{ daysAgo: number; hour: number; items: Array<{ idx: number; qty: number }>; payment: 'cash' | 'card' | 'mixed'; shiftId: string | null }> = [
+   895→    // Bugün (3)
+   896→    { daysAgo: 0, hour: 10, items: [{ idx: 0, qty: 2 }, { idx: 1, qty: 1 }], payment: 'cash', shiftId: openShiftAM.id }, // Ekmek 2 + Süt 1
+   897→    { daysAgo: 0, hour: 13, items: [{ idx: 6, qty: 1 }, { idx: 7, qty: 3 }], payment: 'card', shiftId: openShiftAM.id }, // Cola + 3 Su
+   898→    { daysAgo: 0, hour: 17, items: [{ idx: 12, qty: 2 }, { idx: 9, qty: 1 }, { idx: 13, qty: 1 }], payment: 'mixed', shiftId: openShiftAM.id }, // 2 Makarna + Şeker + Pirinç
+   899→    // Bu hafta (5)
+   900→    { daysAgo: 1, hour: 11, items: [{ idx: 1, qty: 2 }, { idx: 2, qty: 1 }, { idx: 3, qty: 1 }], payment: 'card', shiftId: closedShift1.id }, // 2 Süt + Yoğurt + Peynir
+   901→    { daysAgo: 2, hour: 14, items: [{ idx: 4, qty: 3 }, { idx: 7, qty: 2 }], payment: 'cash', shiftId: closedShift1.id }, // 3 Çikolata + 2 Su
+   902→    { daysAgo: 3, hour: 16, items: [{ idx: 6, qty: 2 }, { idx: 8, qty: 1 }], payment: 'mixed', shiftId: closedShift1.id }, // 2 Cola + Çay
+   903→    { daysAgo: 5, hour: 12, items: [{ idx: 0, qty: 1 }, { idx: 9, qty: 2 }, { idx: 10, qty: 1 }, { idx: 11, qty: 1 }], payment: 'card', shiftId: closedShift2.id }, // Ekmek + 2 Şeker + Un + Yağ
+   904→    { daysAgo: 6, hour: 18, items: [{ idx: 5, qty: 2 }, { idx: 12, qty: 3 }], payment: 'cash', shiftId: closedShift2.id }, // 2 Bisküvi + 3 Makarna
+   905→    // Geçen 30 gün (10)
+   906→    { daysAgo: 8, hour: 10, items: [{ idx: 0, qty: 2 }, { idx: 1, qty: 1 }, { idx: 2, qty: 1 }], payment: 'cash', shiftId: null },
+   907→    { daysAgo: 10, hour: 11, items: [{ idx: 7, qty: 6 }, { idx: 6, qty: 1 }], payment: 'card', shiftId: null }, // 6 Su + Cola
+   908→    { daysAgo: 12, hour: 15, items: [{ idx: 9, qty: 2 }, { idx: 13, qty: 1 }, { idx: 12, qty: 2 }], payment: 'mixed', shiftId: null },
+   909→    { daysAgo: 14, hour: 19, items: [{ idx: 6, qty: 2 }, { idx: 4, qty: 2 }], payment: 'cash', shiftId: null },
+   910→    { daysAgo: 17, hour: 13, items: [{ idx: 1, qty: 3 }, { idx: 11, qty: 1 }], payment: 'card', shiftId: null },
+   911→    { daysAgo: 20, hour: 17, items: [{ idx: 0, qty: 3 }, { idx: 8, qty: 1 }], payment: 'cash', shiftId: null },
+   912→    { daysAgo: 23, hour: 12, items: [{ idx: 10, qty: 2 }, { idx: 9, qty: 2 }, { idx: 11, qty: 1 }], payment: 'mixed', shiftId: null },
+   913→    { daysAgo: 25, hour: 16, items: [{ idx: 2, qty: 1 }, { idx: 3, qty: 1 }], payment: 'card', shiftId: null },
+   914→    { daysAgo: 28, hour: 18, items: [{ idx: 6, qty: 1 }, { idx: 7, qty: 5 }], payment: 'cash', shiftId: null },
+   915→    { daysAgo: 30, hour: 11, items: [{ idx: 4, qty: 4 }, { idx: 5, qty: 2 }, { idx: 13, qty: 1 }, { idx: 14, qty: 1 }], payment: 'mixed', shiftId: null },
+   916→  ]
+   917→
+   918→  for (let i = 0; i < amSaleScenarios.length; i++) {
+   919→    const sc = amSaleScenarios[i]
+   920→    const saleDate = new Date()
+   921→    saleDate.setDate(saleDate.getDate() - sc.daysAgo)
+   922→    saleDate.setHours(sc.hour, randInt(0, 59), 0, 0)
+   923→
+   924→    const lineItems: Array<{ productId: string; name: string; qty: number; unitPrice: number; taxRate: number; lineTotal: number; barcode: string | null }> = []
+   925→    let subtotal = 0
+   926→    for (const it of sc.items) {
+   927→      const p = anadoluProducts[it.idx]
+   928→      const qty = it.qty
+   929→      const lineTotal = p.price * qty
+   930→      subtotal += lineTotal
+   931→      lineItems.push({
+   932→        productId: p.id,
+   933→        name: p.name,
+   934→        qty,
+   935→        unitPrice: p.price,
+   936→        taxRate: p.taxRate,
+   937→        lineTotal,
+   938→        barcode: p.barcode,
+   939→      })
+   940→    }
+   941→    const taxTotal = lineItems.reduce((s, x) => s + x.lineTotal - x.lineTotal / (1 + x.taxRate / 100), 0)
+   942→    const total = subtotal
+   943→    const cashAmt = sc.payment === 'cash' ? total : sc.payment === 'mixed' ? Math.floor(total / 2) : 0
+   944→    const cardAmt = sc.payment === 'card' ? total : sc.payment === 'mixed' ? total - Math.floor(total / 2) : 0
+   945→
+   946→    const sale = await db.marketSale.create({
+   947→      data: {
+   948→        marketId: anadoluMarket.id,
+   949→        posShiftId: sc.shiftId,
+   950→        number: `AM-FIS-${String(i + 1).padStart(4, '0')}`,
+   951→        type: 'satis',
+   952→        status: 'tamamlandi',
+   953→        subtotal,
+   954→        taxTotal,
+   955→        discount: 0,
+   956→        total,
+   957→        paymentMethod: sc.payment,
+   958→        cashAmount: cashAmt,
+   959→        cardAmount: cardAmt,
+   960→        userId: marketKasiyer.id,
+   961→        createdAt: saleDate,
+   962→      },
+   963→    })
+   964→    for (const it of lineItems) {
+   965→      await db.marketSaleItem.create({
+   966→        data: {
+   967→          saleId: sale.id,
+   968→          productId: it.productId,
+   969→          barcode: it.barcode,
+   970→          name: it.name,
+   971→          qty: it.qty,
+   972→          unitPrice: it.unitPrice,
+   973→          taxRate: it.taxRate,
+   974→          discount: 0,
+   975→          lineTotal: it.lineTotal,
+   976→        },
+   977→      })
+   978→      // Stok düş
+   979→      await db.product.update({
+   980→        where: { id: it.productId },
+   981→        data: { stock: { decrement: it.qty } },
+   982→      })
+   983→      await db.stockMovement.create({
+   984→        data: {
+   985→          productId: it.productId,
+   986→          quantity: -it.qty,
+   987→          type: 'cikis',
+   988→          reason: 'POS Satış',
+   989→          refType: 'market_sale',
+   990→          refId: sale.id,
+   991→        },
+   992→      })
+   993→    }
+   994→  }
+   995→  void marketAdmin
+   996→
+   997→  // === TAGS ===
+   998→  for (const tenant of [tenant1, tenant2]) {
+   999→    for (const tag of TAG_POOL) {
+  1000→      await db.tag.create({
+  1001→        data: {
+  1002→          tenantId: tenant.id,
+  1003→          name: tag,
+  1004→          color: ['amber', 'emerald', 'red', 'sky', 'violet', 'rose', 'orange', 'teal'][randInt(0, 7)],
+  1005→        },
+  1006→      })
+  1007→    }
+  1008→  }
+  1009→
+  1010→  // === CUSTOMERS (30) ===
+  1011→  const allRepsT1 = [t1Admin, t1Manager1, t1Manager2, ...t1Reps]
+  1012→  const allRepsT2 = [t2Admin, t2Manager, ...t2Reps]
+  1013→
+  1014→  const customers = []
+  1015→  for (let i = 0; i < 20; i++) {
+  1016→    const owner = rand(allRepsT1)
+  1017→    const lastActivityDays = randInt(0, 60)
+  1018→    const c = await db.customer.create({
+  1019→      data: {
+  1020→        tenantId: tenant1.id,
+  1021→        name: randomCompanyName(),
+  1022→        sector: rand(SECTORS),
+  1023→        segment: rand(['vip', 'kurumsal', 'standart', 'potansiyel']),
+  1024→        ownerId: owner.id,
+  1025→        source: rand(['manuel', 'google_maps', 'referral', 'website', 'event']),
+  1026→        address: `${rand(STREETS)} No:${randInt(1, 200)}`,
+  1027→        city: rand(CITIES),
+  1028→        country: 'TR',
+  1029→        phone: randomPhone(),
+  1030→        email: `info@${rand(COMPANY_PREFIXES).toLowerCase()}.com.tr`,
+  1031→        web: `www.${rand(COMPANY_PREFIXES).toLowerCase()}.com.tr`,
+  1032→        taxNumber: String(randInt(1000000000, 9999999999)),
+  1033→        status: rand(['aktif', 'aktif', 'aktif', 'pasif', 'potansiyel']),
+  1034→        tags: JSON.stringify(randInt(0, 3) === 0 ? [] : Array.from({ length: randInt(1, 3) }, () => rand(TAG_POOL))),
+  1035→        kvkkConsent: Math.random() > 0.3,
+  1036→        kvkkConsentAt: Math.random() > 0.3 ? daysAgo(randInt(1, 300)) : null,
+  1037→        annualRevenue: randInt(1, 50) * 100000,
+  1038→        employeeCount: randInt(5, 500),
+  1039→        lastActivityAt: daysAgo(lastActivityDays),
+  1040→        createdAt: daysAgo(randInt(30, 365)),
+  1041→      },
+  1042→    })
+  1043→    customers.push(c)
+  1044→
+  1045→    // Her müşteriye 1-3 contact
+  1046→    const contactCount = randInt(1, 3)
+  1047→    for (let j = 0; j < contactCount; j++) {
+  1048→      await db.contact.create({
+  1049→        data: {
+  1050→          customerId: c.id,
+  1051→          name: randomName(),
+  1052→          position: rand(['Genel Müdür', 'Satış Müdürü', 'Muhasebe Müdürü', 'Satın Alma Uzmanı', 'İK Müdürü', 'Pazarlama Müdürü']),
+  1053→          email: randomEmail(randomName()),
+  1054→          phone: randomPhone(),
+  1055→          isPrimary: j === 0,
+  1056→        },
+  1057→      })
+  1058→    }
+  1059→  }
+  1060→
+  1061→  for (let i = 0; i < 10; i++) {
+  1062→    const owner = rand(allRepsT2)
+  1063→    const lastActivityDays = randInt(0, 60)
+  1064→    const c = await db.customer.create({
+  1065→      data: {
+  1066→        tenantId: tenant2.id,
+  1067→        name: randomCompanyName(),
+  1068→        sector: rand(SECTORS),
+  1069→        segment: rand(['vip', 'kurumsal', 'standart', 'potansiyel']),
+  1070→        ownerId: owner.id,
+  1071→        source: rand(['manuel', 'google_maps', 'referral', 'website']),
+  1072→        address: `${rand(STREETS)} No:${randInt(1, 200)}`,
+  1073→        city: rand(CITIES),
+  1074→        country: 'TR',
+  1075→        phone: randomPhone(),
+  1076→        email: `info@${rand(COMPANY_PREFIXES).toLowerCase()}.com.tr`,
+  1077→        web: `www.${rand(COMPANY_PREFIXES).toLowerCase()}.com.tr`,
+  1078→        taxNumber: String(randInt(1000000000, 9999999999)),
+  1079→        status: rand(['aktif', 'aktif', 'potansiyel']),
+  1080→        tags: JSON.stringify(randInt(0, 3) === 0 ? [] : Array.from({ length: randInt(1, 2) }, () => rand(TAG_POOL))),
+  1081→        kvkkConsent: Math.random() > 0.3,
+  1082→        kvkkConsentAt: Math.random() > 0.3 ? daysAgo(randInt(1, 300)) : null,
+  1083→        annualRevenue: randInt(1, 30) * 100000,
+  1084→        employeeCount: randInt(5, 200),
+  1085→        lastActivityAt: daysAgo(lastActivityDays),
+  1086→        createdAt: daysAgo(randInt(30, 365)),
+  1087→      },
+  1088→    })
+  1089→    customers.push(c)
+  1090→
+  1091→    const contactCount = randInt(1, 2)
+  1092→    for (let j = 0; j < contactCount; j++) {
+  1093→      await db.contact.create({
+  1094→        data: {
+  1095→          customerId: c.id,
+  1096→          name: randomName(),
+  1097→          position: rand(['Genel Müdür', 'Satış Müdürü', 'Muhasebe Müdürü']),
+  1098→          email: randomEmail(randomName()),
+  1099→          phone: randomPhone(),
+  1100→          isPrimary: j === 0,
+  1101→        },
+  1102→      })
+  1103→    }
+  1104→  }
+  1105→
+  1106→  // === ACTIVITIES (100) ===
+  1107→  const t1Customers = customers.filter((c) => c.tenantId === tenant1.id)
+  1108→  const activityTypes = ['arama', 'toplanti', 'email', 'whatsapp', 'not', 'ziyaret']
+  1109→  const outcomes = ['basarili', 'basarisiz', 'ertelendi', 'callback']
+  1110→  const activitySubjects = {
+  1111→    arama: ['Giriş araması', 'Teklif takip araması', 'Randevu onay araması', 'Ödeme hatırlatma', 'İhtiyaç analizi'],
+  1112→    toplanti: ['Tanışma toplantısı', 'Teklif sunumu', 'Sözleşme görüşmesi', 'Çeyrek değerlendirme', 'Ürün demo'],
+  1113→    email: ['Teklif gönderildi', 'Bilgi talebi', 'Sözleşme taslağı', 'Fatura gönderildi', 'Teşekkür maili'],
+  1114→    whatsapp: ['Randevu hatırlatma', 'Fiyat listesi', 'Belge paylaşımı', 'Onay mesajı'],
+  1115→    not: ['Müşteri geri bildirimi', 'Karar verici değişti', 'Bütçe onayı bekleniyor', 'Rakip teklif karşılaştırması'],
+  1116→    ziyaret: ['Saha ziyareti', 'İmza ziyareti', 'Teslimat ziyareti', 'İlişki geliştirme ziyareti'],
+  1117→  }
+  1118→
+  1119→  for (let i = 0; i < 100; i++) {
+  1120→    const type = rand(activityTypes)
+  1121→    const customer = rand(t1Customers)
+  1122→    const owner = allRepsT1.find((u) => u.id === customer.ownerId) ?? t1Admin
+  1123→    await db.activity.create({
+  1124→      data: {
+  1125→        tenantId: tenant1.id,
+  1126→        customerId: customer.id,
+  1127→        type,
+  1128→        subject: rand(activitySubjects[type as keyof typeof activitySubjects]),
+  1129→        detail: Math.random() > 0.5 ? 'Görüşme detayları burada...' : null,
+  1130→        date: daysAgo(randInt(0, 90)),
+  1131→        durationMin: type === 'toplanti' ? randInt(30, 120) : type === 'ziyaret' ? randInt(60, 180) : randInt(5, 30),
+  1132→        outcome: type === 'not' ? null : rand(outcomes),
+  1133→        userId: owner.id,
+  1134→      },
+  1135→    })
+  1136→  }
+  1137→
+  1138→  // === DEALS (25) ===
+  1139→  const stages = ['yeni', 'iletisim', 'teklif', 'muzakere', 'kazanıldı', 'kaybedildi']
+  1140→  for (let i = 0; i < 25; i++) {
+  1141→    const customer = rand(t1Customers)
+  1142→    const stage = rand(stages)
+  1143→    const owner = allRepsT1.find((u) => u.id === customer.ownerId) ?? t1Admin
+  1144→    const value = randInt(5, 500) * 1000
+  1145→    await db.deal.create({
+  1146→      data: {
+  1147→        tenantId: tenant1.id,
+  1148→        title: `${customer.name} - ${rand(['Yıllık Sözleşme', 'Proje Satışı', 'Ürün Tedariği', 'Hizmet Paketi', 'Danışmanlık'])}`,
+  1149→        customerId: customer.id,
+  1150→        value,
+  1151→        currency: 'TRY',
+  1152→        stage,
+  1153→        probability: stage === 'kazanıldı' ? 100 : stage === 'kaybedildi' ? 0 : randInt(10, 80),
+  1154→        expectedCloseDate: daysFromNow(randInt(-30, 90)),
+  1155→        ownerId: owner.id,
+  1156→        lossReason: stage === 'kaybedildi' ? rand(['Fiyat çok yüksek', 'Rakibi tercih etti', 'Bütçe yok', 'Zamanlama uygun değil']) : null,
+  1157→        lossNote: stage === 'kaybedildi' ? 'Müşteri rakip firmayı tercih etti.' : null,
+  1158→        createdAt: daysAgo(randInt(1, 60)),
+  1159→      },
+  1160→    })
+  1161→  }
+  1162→
+  1163→  // === TASKS (20) ===
+  1164→  const priorities = ['dusuk', 'orta', 'yuksek', 'acil']
+  1165→  const taskTitles = [
+  1166→    'Müşteriyi ara', 'Teklif hazırla', 'Toplantı planla', 'Fatura gönder',
+  1167→    'Sözleşme gönder', 'Demo planla', 'Geri arama yap', 'Bilgi gönder',
+  1168→    'Fiyat güncelle', 'İlişki geliştirme ziyareti',
+  1169→  ]
+  1170→  for (let i = 0; i < 20; i++) {
+  1171→    const customer = rand(t1Customers)
+  1172→    const assignee = allRepsT1.find((u) => u.id === customer.ownerId) ?? t1Admin
+  1173→    const isOverdue = Math.random() > 0.5
+  1174→    await db.task.create({
+  1175→      data: {
+  1176→        tenantId: tenant1.id,
+  1177→        title: rand(taskTitles),
+  1178→        description: Math.random() > 0.5 ? 'Detaylı açıklama...' : null,
+  1179→        dueDate: isOverdue ? daysAgo(randInt(1, 15)) : daysFromNow(randInt(0, 30)),
+  1180→        assigneeId: assignee.id,
+  1181→        customerId: customer.id,
+  1182→        priority: rand(priorities),
+  1183→        reminderTime: '09:00',
+  1184→        status: isOverdue && Math.random() > 0.7 ? 'tamamlandi' : 'acik',
+  1185→        autoGenerated: Math.random() > 0.7,
+  1186→        completedAt: isOverdue && Math.random() > 0.7 ? daysAgo(randInt(0, 5)) : null,
+  1187→      },
+  1188→    })
+  1189→  }
+  1190→
+  1191→  // === NOTES (30) ===
+  1192→  const noteContents = [
+  1193→    'Müşteri çok ilgili, teklifi inceliyor.',
+  1194→    'Bütçe sorunumuz var, taksitlendirme istiyor.',
+  1195→    'Karar verici önümüzdeki hafta dönüyor.',
+  1196→    'Rakip firmadan da teklif almış.',
+  1197→    'Yıllık sözleşme yenileme zamanı yaklaştı.',
+  1198→    'Ürün demosunu beğendi, satın alma sürecini başlatacak.',
+  1199→    'Fiyat pazarlığı yapıyor, %10 indirim istiyor.',
+  1200→    'Mevcut tedarikçi ile sözleşmesi var, 3 ay sonra bitiyor.',
+  1201→  ]
+  1202→  for (let i = 0; i < 30; i++) {
+  1203→    const customer = rand(t1Customers)
+  1204→    const owner = allRepsT1.find((u) => u.id === customer.ownerId) ?? t1Admin
+  1205→    await db.note.create({
+  1206→      data: {
+  1207→        customerId: customer.id,
+  1208→        userId: owner.id,
+  1209→        content: rand(noteContents),
+  1210→        isPinned: Math.random() > 0.8,
+  1211→        createdAt: daysAgo(randInt(0, 60)),
+  1212→      },
+  1213→    })
+  1214→  }
+  1215→
+  1216→  // === MAPS SEARCHES + LEADS ===
+  1217→  const searches = [
+  1218→    { query: 'diş kliniği', city: 'İstanbul', tenantId: tenant1.id, userId: t1Reps[0].id },
+  1219→    { query: 'kuaför', city: 'İzmir', tenantId: tenant1.id, userId: t1Reps[1].id },
+  1220→    { query: 'restoran', city: 'Ankara', tenantId: tenant1.id, userId: t1Reps[2].id },
+  1221→  ]
+  1222→
+  1223→  for (const s of searches) {
+  1224→    const results = mockMapsSearch({ query: s.query, city: s.city })
+  1225→    const ms = await db.mapsSearch.create({
+  1226→      data: {
+  1227→        tenantId: s.tenantId,
+  1228→        userId: s.userId,
+  1229→        query: s.query,
+  1230→        city: s.city,
+  1231→        country: 'TR',
+  1232→        radius: 10,
+  1233→        resultCount: results.length,
+  1234→        importedCount: randInt(3, 8),
+  1235→      },
+  1236→    })
+  1237→    // Bazı sonuçları lead olarak aktar
+  1238→    const toImport = results.slice(0, randInt(3, 8))
+  1239→    for (const r of toImport) {
+  1240→      await db.lead.create({
+  1241→        data: {
+  1242→          tenantId: s.tenantId,
+  1243→          name: r.name,
+  1244→          placeId: r.placeId,
+  1245→          category: r.category,
+  1246→          address: r.address,
+  1247→          city: r.city,
+  1248→          country: 'TR',
+  1249→          lat: r.lat,
+  1250→          lng: r.lng,
+  1251→          phone: r.phone,
+  1252→          web: r.web,
+  1253→          rating: r.rating,
+  1254→          reviewCount: r.reviewCount,
+  1255→          ownerId: s.userId,
+  1256→          source: 'google_maps',
+  1257→          status: rand(['yeni', 'yeni', 'iletisim', 'nitelikli', 'kaybedildi']),
+  1258→          notes: JSON.stringify([]),
+  1259→          mapsSearchId: ms.id,
+  1260→          createdAt: daysAgo(randInt(0, 20)),
+  1261→        },
+  1262→      })
+  1263→    }
+  1264→  }
+  1265→
+  1266→  // === AUDIT LOGS ===
+  1267→  for (let i = 0; i < 10; i++) {
+  1268→    await db.auditLog.create({
+  1269→      data: {
+  1270→        tenantId: tenant1.id,
+  1271→        actorId: rand(allRepsT1).id,
+  1272→        action: rand(['create', 'update', 'login', 'export']),
+  1273→        entity: rand(['customer', 'deal', 'activity', 'session']),
+  1274→        entityId: rand(customers).id,
+  1275→        before: JSON.stringify({ status: 'eski' }),
+  1276→        after: JSON.stringify({ status: 'yeni' }),
+  1277→        createdAt: daysAgo(randInt(0, 30)),
+  1278→      },
+  1279→    })
+  1280→  }
+  1281→
+  1282→  // === FAZ 2 ÖRNEK ÜRÜNLER ===
+  1283→  const products = [
+  1284→    { name: 'CRM Standart Paket', sku: 'CRM-STD', price: 15000, stock: 100 },
+  1285→    { name: 'CRM Pro Paket', sku: 'CRM-PRO', price: 35000, stock: 50 },
+  1286→    { name: 'ERP Modülü', sku: 'ERP-01', price: 50000, stock: 30 },
+  1287→    { name: 'Danışmanlık (Saat)', sku: 'CONS-1H', price: 1500, stock: 999 },
+  1288→  ]
+  1289→  for (const p of products) {
+  1290→    await db.product.create({
+  1291→      data: {
+  1292→        tenantId: tenant1.id,
+  1293→        name: p.name,
+  1294→        sku: p.sku,
+  1295→        price: p.price,
+  1296→        currency: 'TRY',
+  1297→        taxRate: 20,
+  1298→        stock: p.stock,
+  1299→        minStock: 10,
+  1300→        unit: 'adet',
+  1301→        category: 'Yazılım',
+  1302→      },
+  1303→    })
+  1304→  }
+  1305→
+  1306→  // ============================================================
+  1307→  // CAFE-ERP — Demo kafe verisi
+  1308→  // ============================================================
+  1309→  // Kafe 1
+  1310→  const cafe1 = await db.cafe.create({
+  1311→    data: {
+  1312→      tenantId: tenant1.id,
+  1313→      name: 'Boğaziçi Kafe',
+  1314→      address: 'Beşiktaş, İstanbul',
+  1315→      phone: '+90 212 555 10 20',
+  1316→      tableCount: 0,
+  1317→    },
+  1318→  })
+  1319→
+  1320→  // Kafe 2 — farklı lokasyon (multi-cafe test)
+  1321→  const cafe2 = await db.cafe.create({
+  1322→    data: {
+  1323→      tenantId: tenant1.id,
+  1324→      name: 'Kadıköy Teras Kafe',
+  1325→      address: 'Kadıköy, İstanbul',
+  1326→      phone: '+90 216 555 30 40',
+  1327→      tableCount: 0,
+  1328→    },
+  1329→  })
+  1330→
+  1331→  // Masa düzeni (kuş bakışı) — cafe1 için 8 masa
+  1332→  const tableShapes = ['square', 'round', 'rectangle', 'square', 'round', 'square', 'rectangle', 'round']
+  1333→  const tablePositions = [
+  1334→    { x: 20, y: 25 }, { x: 50, y: 25 }, { x: 80, y: 25 },
+  1335→    { x: 20, y: 50 }, { x: 50, y: 50 }, { x: 80, y: 50 },
+  1336→    { x: 30, y: 80 }, { x: 70, y: 80 },
+  1337→  ]
+  1338→  for (let i = 0; i < 8; i++) {
+  1339→    await db.cafeTable.create({
+  1340→      data: {
+  1341→        cafeId: cafe1.id,
+  1342→        number: `M${i + 1}`,
+  1343→        shape: tableShapes[i],
+  1344→        x: tablePositions[i].x,
+  1345→        y: tablePositions[i].y,
+  1346→        width: tableShapes[i] === 'rectangle' ? 14 : 10,
+  1347→        height: 10,
+  1348→        capacity: tableShapes[i] === 'rectangle' ? 6 : 4,
+  1349→        status: i === 0 ? 'siparis' : i === 1 ? 'dolu' : 'bos',
+  1350→      },
+  1351→    })
+  1352→  }
+  1353→  await db.cafe.update({ where: { id: cafe1.id }, data: { tableCount: 8 } })
+  1354→
+  1355→  // cafe2 için 5 masa
+  1356→  for (let i = 0; i < 5; i++) {
+  1357→    await db.cafeTable.create({
+  1358→      data: {
+  1359→        cafeId: cafe2.id,
+  1360→        number: `T${i + 1}`,
+  1361→        shape: i % 2 === 0 ? 'round' : 'square',
+  1362→        x: 25 + (i % 3) * 25,
+  1363→        y: 30 + Math.floor(i / 3) * 30,
+  1364→        width: 10, height: 10,
+  1365→        capacity: 4, status: 'bos',
+  1366→      },
+  1367→    })
+  1368→  }
+  1369→  await db.cafe.update({ where: { id: cafe2.id }, data: { tableCount: 5 } })
+  1370→
+  1371→  // Menü — kafe 1 için kategoriler ve ürünler
+  1372→  const catBar = await db.menuCategory.create({
+  1373→    data: { cafeId: cafe1.id, name: 'Sıcak İçecekler', icon: '☕', sortOrder: 0 },
+  1374→  })
+  1375→  const catCold = await db.menuCategory.create({
+  1376→    data: { cafeId: cafe1.id, name: 'Soğuk İçecekler', icon: '🥤', sortOrder: 1 },
+  1377→  })
+  1378→  const catFood = await db.menuCategory.create({
+  1379→    data: { cafeId: cafe1.id, name: 'Ana Yemekler', icon: '🍽️', sortOrder: 2 },
+  1380→  })
+  1381→  const catDessert = await db.menuCategory.create({
+  1382→    data: { cafeId: cafe1.id, name: 'Tatlılar', icon: '🍰', sortOrder: 3 },
+  1383→  })
+  1384→
+  1385→  const menuItems = [
+  1386→    // Bar
+  1387→    { cat: catBar, name: 'Espresso', price: 45, station: 'bar', prepTime: 5, recipe: '1 shot espresso çek. Küçük fincanda servis et.' },
+  1388→    { cat: catBar, name: 'Cappuccino', price: 60, station: 'bar', prepTime: 7, recipe: '1 shot espresso + 150ml süt köpüğü. Kakao tozu serpin.' },
+  1389→    { cat: catBar, name: 'Latte', price: 65, station: 'bar', prepTime: 7, recipe: '1 shot espresso + 200ml süt + ince köpük. Latte art opsiyonel.' },
+  1390→    { cat: catBar, name: 'Türk Kahvesi', price: 50, station: 'bar', prepTime: 8, recipe: 'Cezvede 2 fincan su + 2 tatlı kaşığı kahve. Kaynat, köpük ile servis et.' },
+  1391→    { cat: catBar, name: 'Sıcak Çikolata', price: 70, station: 'bar', prepTime: 6, recipe: '200ml süt + 2 yemek kaşığı kakao + şeker. Karıştırarak ısıt.' },
+  1392→    // Cold drinks (bar)
+  1393→    { cat: catCold, name: 'Ice Latte', price: 75, station: 'bar', prepTime: 7, recipe: '1 shot espresso + buz + 200ml soğuk süt. Vanilya şurubu ekle.' },
+  1394→    { cat: catCold, name: 'Limonata', price: 55, station: 'bar', prepTime: 5, recipe: 'Taze limon suyu + su + şeker + nane yaprağı. Buz ile servis et.' },
+  1395→    { cat: catCold, name: 'Ayran', price: 25, station: 'bar', prepTime: 2, recipe: 'Yoğurt + su + tuz. Köpürt.' },
+  1396→    // Food (kitchen)
+  1397→    { cat: catFood, name: 'Tost', price: 80, station: 'kitchen', prepTime: 10, recipe: '2 dilim ekmek arası kaşar, sucuk, domates. Tost makinesinde 3 dk.' },
+  1398→    { cat: catFood, name: 'Hamburger', price: 180, station: 'kitchen', prepTime: 15, recipe: 'Köfte ızgara, hamburger ekmeği, marul, domates, soğan, sos.' },
+  1399→    { cat: catFood, name: 'Pasta', price: 120, station: 'kitchen', prepTime: 12, recipe: 'Spaghetti domates sosu ile. Üzerine parmesan serp.' },
+  1400→    { cat: catFood, name: 'Çorba', price: 65, station: 'kitchen', prepTime: 8, recipe: 'Mercimek çorbası — limon ile servis et.' },
+  1401→    // Dessert
+  1402→    { cat: catDessert, name: 'Cheesecake', price: 95, station: 'dessert', prepTime: 3, recipe: 'Hazır dilim — buz gibi servis et.' },
+  1403→    { cat: catDessert, name: 'Tiramisu', price: 110, station: 'dessert', prepTime: 3, recipe: 'Hazır dilim — kakao tozu ile süsle.' },
+  1404→    { cat: catDessert, name: 'Sufle', price: 130, station: 'dessert', prepTime: 12, recipe: '180°C fırında 10 dk. Dış kabuk, iç akışkan. Vanilya dondurması ile.' },
+  1405→  ]
+  1406→  for (const it of menuItems) {
+  1407→    await db.menuItem.create({
+  1408→      data: {
+  1409→        categoryId: it.cat.id,
+  1410→        name: it.name,
+  1411→        price: it.price,
+  1412→        currency: 'TRY',
+  1413→        prepTime: it.prepTime,
+  1414→        station: it.station,
+  1415→        recipe: it.recipe,
+  1416→        sortOrder: 0,
+  1417→        isAvailable: true,
+  1418→      },
+  1419→    })
+  1420→  }
+  1421→
+  1422→  // Demo sipariş — M1 masasına (bar + mutfak + tatlı kapsamlı)
+  1423→  const order1 = await db.cafeOrder.create({
+  1424→    data: {
+  1425→      cafeId: cafe1.id,
+  1426→      tableId: (await db.cafeTable.findFirst({ where: { cafeId: cafe1.id, number: 'M1' } }))?.id ?? null,
+  1427→      number: 'S-0001',
+  1428→      status: 'hazirlaniyor',
+  1429→      type: 'dine_in',
+  1430→      subtotal: 360, taxTotal: 0, total: 360,
+  1431→      createdById: t1Komi.id,
+  1432→    },
+  1433→  })
+  1434→  const itemsForOrder1 = [
+  1435→    { name: 'Cappuccino', unitPrice: 60, qty: 2, station: 'bar', status: 'hazir' },
+  1436→    { name: 'Ice Latte', unitPrice: 75, qty: 1, station: 'bar', status: 'hazirlaniyor' },
+  1437→    { name: 'Tost', unitPrice: 80, qty: 1, station: 'kitchen', status: 'bekliyor' },
+  1438→    { name: 'Cheesecake', unitPrice: 85, qty: 1, station: 'dessert', status: 'bekliyor' },
+  1439→  ]
+  1440→  for (const it of itemsForOrder1) {
+  1441→    const mi = await db.menuItem.findFirst({ where: { name: it.name } })
+  1442→    await db.cafeOrderItem.create({
+  1443→      data: {
+  1444→        orderId: order1.id,
+  1445→        menuItemId: mi?.id ?? null,
+  1446→        name: it.name,
+  1447→        qty: it.qty,
+  1448→        unitPrice: it.unitPrice,
+  1449→        status: it.status,
+  1450→        station: it.station,
+  1451→      },
+  1452→    })
+  1453→  }
+  1454→
+  1455→  // Ödenmiş bir sipariş (bugün) — M2 masasına (kasa raporu için)
+  1456→  const order2 = await db.cafeOrder.create({
+  1457→    data: {
+  1458→      cafeId: cafe1.id,
+  1459→      tableId: (await db.cafeTable.findFirst({ where: { cafeId: cafe1.id, number: 'M2' } }))?.id ?? null,
+  1460→      number: 'S-0002',
+  1461→      status: 'odendi',
+  1462→      type: 'dine_in',
+  1463→      subtotal: 245, taxTotal: 0, total: 245,
+  1464→      createdById: t1Komi.id,
+  1465→      createdAt: new Date(Date.now() - 3600 * 1000 * 2),
+  1466→    },
+  1467→  })
+  1468→  const itemsForOrder2 = [
+  1469→    { name: 'Türk Kahvesi', unitPrice: 50, qty: 2, station: 'bar', status: 'servis_edildi' },
+  1470→    { name: 'Çorba', unitPrice: 65, qty: 1, station: 'kitchen', status: 'servis_edildi' },
+  1471→    { name: 'Sufle', unitPrice: 130, qty: 1, station: 'dessert', status: 'servis_edildi' },
+  1472→  ]
+  1473→  for (const it of itemsForOrder2) {
+  1474→    const mi = await db.menuItem.findFirst({ where: { name: it.name } })
+  1475→    await db.cafeOrderItem.create({
+  1476→      data: {
+  1477→        orderId: order2.id,
+  1478→        menuItemId: mi?.id ?? null,
+  1479→        name: it.name,
+  1480→        qty: it.qty,
+  1481→        unitPrice: it.unitPrice,
+  1482→        status: it.status,
+  1483→        station: it.station,
+  1484→      },
+  1485→    })
+  1486→  }
+  1487→  await db.cafePayment.create({
+  1488→    data: {
+  1489→      orderId: order2.id,
+  1490→      amount: 150,
+  1491→      method: 'cash',
+  1492→      status: 'tamamlandi',
+  1493→    },
+  1494→  })
+  1495→  await db.cafePayment.create({
+  1496→    data: {
+  1497→      orderId: order2.id,
+  1498→      amount: 95,
+  1499→      method: 'card',
+  1500→      status: 'tamamlandi',
+  1501→    },
+  1502→  })
+  1503→
+  1504→  // ============================================================
+  1505→  // MARKET-ERP — Demo market verisi
+  1506→  // ============================================================
+  1507→  // Market ürünleri (FMCG) — gerçekçi barkod kodları ile
+  1508→  const marketProducts = [
+  1509→    { name: 'Ekmek (Tam Buğday)', sku: 'MK-EK-01', barcode: '8690000000017', price: 7.5, stock: 80, minStock: 20, category: 'Unlu Mamul', unit: 'adet', taxRate: 1 },
+  1510→    { name: 'Süt 1L', sku: 'MK-SUT-1L', barcode: '8690000000024', price: 22.5, stock: 50, minStock: 15, category: 'Süt Ürünleri', unit: 'lt', taxRate: 1 },
+  1511→    { name: 'Yoğurt 1kg', sku: 'MK-YOG-1K', barcode: '8690000000031', price: 45, stock: 30, minStock: 10, category: 'Süt Ürünleri', unit: 'kg', taxRate: 1 },
+  1512→    { name: 'Beyaz Peynir 500g', sku: 'MK-PEY-500', barcode: '8690000000048', price: 120, stock: 25, minStock: 8, category: 'Süt Ürünleri', unit: 'pk', taxRate: 1 },
+  1513→    { name: 'Çikolata (Sütlü)', sku: 'MK-CIK-01', barcode: '8690000000055', price: 18.5, stock: 100, minStock: 30, category: 'Atıştırmalık', unit: 'adet', taxRate: 20 },
+  1514→    { name: 'Bisküvi (Kakaolu)', sku: 'MK-BIS-01', barcode: '8690000000062', price: 12.75, stock: 75, minStock: 25, category: 'Atıştırmalık', unit: 'pk', taxRate: 20 },
+  1515→    { name: 'Coca Cola 1L', sku: 'MK-CC-1L', barcode: '8690000000079', price: 25, stock: 60, minStock: 20, category: 'İçecek', unit: 'lt', taxRate: 20 },
+  1516→    { name: 'Su 0.5L', sku: 'MK-SU-05', barcode: '8690000000086', price: 5, stock: 200, minStock: 50, category: 'İçecek', unit: 'adet', taxRate: 8 },
+  1517→    { name: 'Çay 1kg', sku: 'MK-CAY-1K', barcode: '8690000000093', price: 145, stock: 40, minStock: 10, category: 'İçecek', unit: 'kg', taxRate: 8 },
+  1518→    { name: 'Şeker 1kg', sku: 'MK-SEK-1K', barcode: '8690000000109', price: 28, stock: 90, minStock: 30, category: 'Gıda', unit: 'kg', taxRate: 1 },
+  1519→    { name: 'Un 1kg', sku: 'MK-UN-1K', barcode: '8690000000116', price: 19.5, stock: 70, minStock: 20, category: 'Gıda', unit: 'kg', taxRate: 1 },
+  1520→    { name: 'Ayçiçek Yağı 1L', sku: 'MK-YAG-1L', barcode: '8690000000123', price: 65, stock: 35, minStock: 10, category: 'Gıda', unit: 'lt', taxRate: 8 },
+  1521→    { name: 'Makarna 500g', sku: 'MK-MAK-500', barcode: '8690000000130', price: 14.25, stock: 110, minStock: 40, category: 'Gıda', unit: 'pk', taxRate: 1 },
+  1522→    { name: 'Pirinç 1kg', sku: 'MK-PRC-1K', barcode: '8690000000147', price: 52, stock: 45, minStock: 15, category: 'Gıda', unit: 'kg', taxRate: 1 },
+  1523→    { name: 'Tuvalet Kağıdı 8li', sku: 'MK-TK-8', barcode: '8690000000154', price: 89.9, stock: 25, minStock: 8, category: 'Temizlik', unit: 'pk', taxRate: 20 },
+  1524→  ]
+  1525→
+  1526→  const createdMarketProducts: Array<{ id: string; name: string; price: number; stock: number; taxRate: number; category: string | null }> = []
+  1527→  for (const p of marketProducts) {
+  1528→    const prod = await db.product.create({
+  1529→      data: {
+  1530→        tenantId: tenant1.id,
+  1531→        name: p.name,
+  1532→        sku: p.sku,
+  1533→        price: p.price,
+  1534→        currency: 'TRY',
+  1535→        taxRate: p.taxRate,
+  1536→        stock: p.stock,
+  1537→        minStock: p.minStock,
+  1538→        unit: p.unit,
+  1539→        category: p.category,
+  1540→      },
+  1541→    })
+  1542→    createdMarketProducts.push({ id: prod.id, name: prod.name, price: prod.price, stock: prod.stock, taxRate: prod.taxRate, category: prod.category })
+  1543→  }
+  1544→
+  1545→  // Market oluştur
+  1546→  const market1 = await db.market.create({
+  1547→    data: {
+  1548→      tenantId: tenant1.id,
+  1549→      name: 'Anadolu Market — Merkez',
+  1550→      address: 'Atatürk Cad. No:42, İstanbul',
+  1551→      phone: '+90 212 555 11 22',
+  1552→      isActive: true,
+  1553→    },
+  1554→  })
+  1555→
+  1556→  // Raflar
+  1557→  const shelves = [
+  1558→    { code: 'A1', name: 'Ekmek Bölümü', aisle: '1' },
+  1559→    { code: 'A2', name: 'Süt Ürünleri', aisle: '1' },
+  1560→    { code: 'B1', name: 'Atıştırmalık', aisle: '2' },
+  1561→    { code: 'B2', name: 'İçecekler', aisle: '2' },
+  1562→    { code: 'C1', name: 'Temel Gıda', aisle: '3' },
+  1563→    { code: 'D1', name: 'Temizlik', aisle: '4' },
+  1564→  ]
+  1565→  const createdShelves: Array<{ id: string; code: string }> = []
+  1566→  for (const s of shelves) {
+  1567→    const sh = await db.shelf.create({
+  1568→      data: { marketId: market1.id, code: s.code, name: s.name, aisle: s.aisle },
+  1569→    })
+  1570→    createdShelves.push({ id: sh.id, code: sh.code })
+  1571→  }
+  1572→
+  1573→  // Barkodları ve raf yerleşimlerini oluştur
+  1574→  const shelfMapping: Record<string, number> = {
+  1575→    '8690000000017': 0, // Ekmek → A1
+  1576→    '8690000000024': 1, // Süt → A2
+  1577→    '8690000000031': 1, // Yoğurt → A2
+  1578→    '8690000000048': 1, // Peynir → A2
+  1579→    '8690000000055': 2, // Çikolata → B1
+  1580→    '8690000000062': 2, // Bisküvi → B1
+  1581→    '8690000000079': 3, // Coca Cola → B2
+  1582→    '8690000000086': 3, // Su → B2
+  1583→    '8690000000093': 3, // Çay → B2
+  1584→    '8690000000109': 4, // Şeker → C1
+  1585→    '8690000000116': 4, // Un → C1
+  1586→    '8690000000123': 4, // Yağ → C1
+  1587→    '8690000000130': 4, // Makarna → C1
+  1588→    '8690000000147': 4, // Pirinç → C1
+  1589→    '8690000000154': 5, // Tuvalet Kağıdı → D1
+  1590→  }
+  1591→
+  1592→  for (let i = 0; i < createdMarketProducts.length; i++) {
+  1593→    const p = createdMarketProducts[i]
+  1594→    const barcode = marketProducts[i].barcode
+  1595→    await db.barcode.create({
+  1596→      data: {
+  1597→        marketId: market1.id,
+  1598→        productId: p.id,
+  1599→        code: barcode,
+  1600→        type: 'ean13',
+  1601→      },
+  1602→    })
+  1603→    // Raf yerleşimi
+  1604→    const shelfIdx = shelfMapping[barcode]
+  1605→    if (shelfIdx !== undefined) {
+  1606→      const shelf = createdShelves[shelfIdx]
+  1607→      await db.shelfItem.create({
+  1608→        data: {
+  1609→          shelfId: shelf.id,
+  1610→          productId: p.id,
+  1611→          qty: Math.max(2, Math.floor(p.stock * 0.3)),
+  1612→          minDisplayQty: 3,
+  1613→        },
+  1614→      })
+  1615→    }
+  1616→  }
+  1617→
+  1618→  // Açık vardiya
+  1619→  const openShift = await db.posShift.create({
+  1620→    data: {
+  1621→      marketId: market1.id,
+  1622→      userId: t1Admin.id,
+  1623→      number: 'V-001',
+  1624→      status: 'acik',
+  1625→      openingCash: 500,
+  1626→      openingTime: new Date(),
+  1627→    },
+  1628→  })
+  1629→
+  1630→  // Bugünün satışları (3 örnek fiş)
+  1631→  const saleScenarios = [
+  1632→    { items: [0, 4, 6], qtys: [2, 1, 1], payment: 'cash' as const }, // Ekmek 2 + Çikolata 1 + Coca 1
+  1633→    { items: [1, 2, 9], qtys: [1, 1, 2], payment: 'card' as const }, // Süt + Yoğurt + Şeker
+  1634→    { items: [7, 12], qtys: [3, 2], payment: 'mixed' as const }, // Su 3 + Makarna 2
+  1635→  ]
+  1636→
+  1637→  for (let i = 0; i < saleScenarios.length; i++) {
+  1638→    const sc = saleScenarios[i]
+  1639→    const items: Array<{ productId: string; name: string; qty: number; unitPrice: number; taxRate: number; lineTotal: number; barcode: string | null }> = []
+  1640→    let subtotal = 0
+  1641→    for (let j = 0; j < sc.items.length; j++) {
+  1642→      const p = createdMarketProducts[sc.items[j]]
+  1643→      const qty = sc.qtys[j]
+  1644→      const lineTotal = p.price * qty
+  1645→      subtotal += lineTotal
+  1646→      items.push({
+  1647→        productId: p.id,
+  1648→        name: p.name,
+  1649→        qty,
+  1650→        unitPrice: p.price,
+  1651→        taxRate: p.taxRate,
+  1652→        lineTotal,
+  1653→        barcode: marketProducts[sc.items[j]].barcode,
+  1654→      })
+  1655→    }
+  1656→    const taxTotal = items.reduce((s, x) => s + x.lineTotal - x.lineTotal / (1 + x.taxRate / 100), 0)
+  1657→    const total = subtotal
+  1658→
+  1659→    const sale = await db.marketSale.create({
+  1660→      data: {
+  1661→        marketId: market1.id,
+  1662→        posShiftId: openShift.id,
+  1663→        number: `FIS-${String(i + 1).padStart(3, '0')}`,
+  1664→        type: 'satis',
+  1665→        status: 'tamamlandi',
+  1666→        subtotal,
+  1667→        taxTotal,
+  1668→        discount: 0,
+  1669→        total,
+  1670→        paymentMethod: sc.payment,
+  1671→        cashAmount: sc.payment === 'cash' ? total : sc.payment === 'mixed' ? Math.floor(total / 2) : 0,
+  1672→        cardAmount: sc.payment === 'card' ? total : sc.payment === 'mixed' ? total - Math.floor(total / 2) : 0,
+  1673→        userId: t1Admin.id,
+  1674→        createdAt: daysAgo(0),
+  1675→      },
+  1676→    })
+  1677→    for (const it of items) {
+  1678→      await db.marketSaleItem.create({
+  1679→        data: {
+  1680→          saleId: sale.id,
+  1681→          productId: it.productId,
+  1682→          barcode: it.barcode,
+  1683→          name: it.name,
+  1684→          qty: it.qty,
+  1685→          unitPrice: it.unitPrice,
+  1686→          taxRate: it.taxRate,
+  1687→          discount: 0,
+  1688→          lineTotal: it.lineTotal,
+  1689→        },
+  1690→      })
+  1691→      // Stok düş
+  1692→      await db.product.update({
+  1693→        where: { id: it.productId },
+  1694→        data: { stock: { decrement: it.qty } },
+  1695→      })
+  1696→      await db.stockMovement.create({
+  1697→        data: {
+  1698→          productId: it.productId,
+  1699→          quantity: -it.qty,
+  1700→          type: 'cikis',
+  1701→          reason: 'POS Satış',
+  1702→          refType: 'market_sale',
+  1703→          refId: sale.id,
+  1704→        },
+  1705→      })
+  1706→    }
+  1707→  }
+  1708→
+  1709→  // Mal kabul örneği (bekliyor)
+  1710→  const purchase = await db.purchase.create({
+  1711→    data: {
+  1712→      marketId: market1.id,
+  1713→      number: 'MK-001',
+  1714→      supplier: 'Anadolu Gıda Dağıtım',
+  1715→      invoiceNo: 'IRS-2025-0142',
+  1716→      status: 'bekliyor',
+  1717→      totalAmount: 850,
+  1718→      createdById: t1Admin.id,
+  1719→      items: {
+  1720→        create: [
+  1721→          { productId: createdMarketProducts[0].id, barcode: marketProducts[0].barcode, name: createdMarketProducts[0].name, qty: 20, unitPrice: 5, lineTotal: 100 },
+  1722→          { productId: createdMarketProducts[1].id, barcode: marketProducts[1].barcode, name: createdMarketProducts[1].name, qty: 15, unitPrice: 18, lineTotal: 270 },
+  1723→          { productId: createdMarketProducts[4].id, barcode: marketProducts[4].barcode, name: createdMarketProducts[4].name, qty: 30, unitPrice: 16, lineTotal: 480 },
+  1724→        ],
+  1725→      },
+  1726→    },
+  1727→  })
+  1728→  void purchase
+  1729→
+  1730→  // Kasiyer ve depo sorumlusu kullanıcılar
+  1731→  const kasiyer = await db.user.create({
+  1732→    data: {
+  1733→      tenantId: tenant1.id,
+  1734→      email: 'kasiyer@anadolu.com',
+  1735→      name: 'Elif Kasiyer',
+  1736→      role: 'kasiyer',
+  1737→      permissions: JSON.stringify(getRolePermissions('kasiyer')),
+  1738→      status: 'active',
+  1739→      title: 'Kasiyer',
+  1740→      phone: '+90 532 444 55 66',
+  1741→    },
+  1742→  })
+  1743→  const depo = await db.user.create({
+  1744→    data: {
+  1745→      tenantId: tenant1.id,
+  1746→      email: 'depo@anadolu.com',
+  1747→      name: 'Mustafa Depo',
+  1748→      role: 'depo_sorumlusu',
+  1749→      permissions: JSON.stringify(getRolePermissions('depo_sorumlusu')),
+  1750→      status: 'active',
+  1751→      title: 'Depo Sorumlusu',
+  1752→      phone: '+90 532 777 88 99',
+  1753→    },
+  1754→  })
+  1755→  void kasiyer
+  1756→  void depo
+  1757→
+  1758→  // ============================================================
+  1759→  // RANDEVU SİSTEMİ — Berber/Kuaför/Dişçi/Güzellik
+  1760→  // ============================================================
+  1761→  // 1 ServiceProvider, 3 Staff, 6 Services, 8 örnek randevu
+  1762→  const workingHours = JSON.stringify({
+  1763→    mon: { start: '09:00', end: '19:00' },
+  1764→    tue: { start: '09:00', end: '19:00' },
+  1765→    wed: { start: '09:00', end: '19:00' },
+  1766→    thu: { start: '09:00', end: '19:00' },
+  1767→    fri: { start: '09:00', end: '19:00' },
+  1768→    sat: { start: '10:00', end: '18:00' },
+  1769→    sun: { closed: true },
+  1770→  })
+  1771→
+  1772→  const provider1 = await db.serviceProvider.create({
+  1773→    data: {
+  1774→      tenantId: tenant1.id,
+  1775→      name: 'Şık Kuaför & Berber Salonu',
+  1776→      type: 'kuafor',
+  1777→      address: 'Bağdat Caddesi No:142 Kadıköy',
+  1778→      city: 'İstanbul',
+  1779→      district: 'Kadıköy',
+  1780→      phone: '+90 216 555 12 34',
+  1781→      email: 'randevu@sikkuaför.com',
+  1782→      workingHours,
+  1783→      isActive: true,
+  1784→    },
+  1785→  })
+  1786→
+  1787→  // Personeller
+  1788→  const staffAhmet = await db.staff.create({
+  1789→    data: {
+  1790→      providerId: provider1.id,
+  1791→      name: 'Ahmet Usta',
+  1792→      title: 'Usta Berber',
+  1793→      phone: '+90 532 111 22 33',
+  1794→      bio: '20 yıllık deneyim. Klasik erkek kesimi ve sakal tasarlama uzmanı.',
+  1795→      sortOrder: 0,
+  1796→      isActive: true,
+  1797→    },
+  1798→  })
+  1799→  const staffAyse = await db.staff.create({
+  1800→    data: {
+  1801→      providerId: provider1.id,
+  1802→      name: 'Ayşe Hanım',
+  1803→      title: 'Kuaför',
+  1804→      phone: '+90 532 222 33 44',
+  1805→      bio: 'Kadın saç kesimi, boyama ve fön uzmanı.',
+  1806→      sortOrder: 1,
+  1807→      isActive: true,
+  1808→    },
+  1809→  })
+  1810→  const staffMehmet = await db.staff.create({
+  1811→    data: {
+  1812→      providerId: provider1.id,
+  1813→      name: 'Mehmet Bey',
+  1814→      title: 'Berber & Stilist',
+  1815→      phone: '+90 532 333 44 55',
+  1816→      bio: 'Modern erkek kesimi, sakal bakımı ve cilt temizleme.',
+  1817→      sortOrder: 2,
+  1818→      isActive: true,
+  1819→    },
+  1820→  })
+  1821→
+  1822→  // Hizmetler
+  1823→  const svcSacKesim = await db.service.create({
+  1824→    data: {
+  1825→      providerId: provider1.id,
+  1826→      name: 'Saç Kesimi',
+  1827→      description: 'Yıkama dahil profesyonel saç kesimi.',
+  1828→      duration: 30,
+  1829→      price: 150,
+  1830→      currency: 'TRY',
+  1831→      category: 'Saç',
+  1832→      sortOrder: 0,
+  1833→      isActive: true,
+  1834→    },
+  1835→  })
+  1836→  const svcSakal = await db.service.create({
+  1837→    data: {
+  1838→      providerId: provider1.id,
+  1839→      name: 'Sakal Traşı',
+  1840→      description: 'Sıcak havlu ile klasik sakal traşı.',
+  1841→      duration: 20,
+  1842→      price: 80,
+  1843→      currency: 'TRY',
+  1844→      category: 'Sakal',
+  1845→      sortOrder: 1,
+  1846→      isActive: true,
+  1847→    },
+  1848→  })
+  1849→  const svcBoyama = await db.service.create({
+  1850→    data: {
+  1851→      providerId: provider1.id,
+  1852→      name: 'Saç Boyama',
+  1853→      description: 'Tek renk veya balyaj. Kaliteli boya ile.',
+  1854→      duration: 90,
+  1855→      price: 500,
+  1856→      currency: 'TRY',
+  1857→      category: 'Saç',
+  1858→      sortOrder: 2,
+  1859→      isActive: true,
+  1860→    },
+  1861→  })
+  1862→  const svcCilt = await db.service.create({
+  1863→    data: {
+  1864→      providerId: provider1.id,
+  1865→      name: 'Cilt Bakımı',
+  1866→      description: 'Buhar banyosu + maske + nem bakımı.',
+  1867→      duration: 60,
+  1868→      price: 400,
+  1869→      currency: 'TRY',
+  1870→      category: 'Cilt',
+  1871→      sortOrder: 3,
+  1872→      isActive: true,
+  1873→    },
+  1874→  })
+  1875→  const svcManikur = await db.service.create({
+  1876→    data: {
+  1877→      providerId: provider1.id,
+  1878→      name: 'Manikür',
+  1879→      description: 'Tırnak bakımı ve cila.',
+  1880→      duration: 45,
+  1881→      price: 200,
+  1882→      currency: 'TRY',
+  1883→      category: 'Bakım',
+  1884→      sortOrder: 4,
+  1885→      isActive: true,
+  1886→    },
+  1887→  })
+  1888→  const svcPedikur = await db.service.create({
+  1889→    data: {
+  1890→      providerId: provider1.id,
+  1891→      name: 'Pedikür',
+  1892→      description: 'Ayak bakımı ve cila.',
+  1893→      duration: 45,
+  1894→      price: 200,
+  1895→      currency: 'TRY',
+  1896→      category: 'Bakım',
+  1897→      sortOrder: 5,
+  1898→      isActive: true,
+  1899→    },
+  1900→  })
+  1901→
+  1902→  // Personel-hizmet bağlantıları
+  1903→  // Ahmet: Saç Kesimi, Sakal (erkek berberi)
+  1904→  await db.staffService.create({ data: { staffId: staffAhmet.id, serviceId: svcSacKesim.id } })
+  1905→  await db.staffService.create({ data: { staffId: staffAhmet.id, serviceId: svcSakal.id } })
+  1906→  // Ayşe: Saç Kesimi, Saç Boyama, Cilt Bakımı, Manikür, Pedikür
+  1907→  await db.staffService.create({ data: { staffId: staffAyse.id, serviceId: svcSacKesim.id } })
+  1908→  await db.staffService.create({ data: { staffId: staffAyse.id, serviceId: svcBoyama.id } })
+  1909→  await db.staffService.create({ data: { staffId: staffAyse.id, serviceId: svcCilt.id } })
+  1910→  await db.staffService.create({ data: { staffId: staffAyse.id, serviceId: svcManikur.id } })
+  1911→  await db.staffService.create({ data: { staffId: staffAyse.id, serviceId: svcPedikur.id } })
+  1912→  // Mehmet: Saç Kesimi, Sakal, Cilt Bakımı
+  1913→  await db.staffService.create({ data: { staffId: staffMehmet.id, serviceId: svcSacKesim.id } })
+  1914→  await db.staffService.create({ data: { staffId: staffMehmet.id, serviceId: svcSakal.id } })
+  1915→  await db.staffService.create({ data: { staffId: staffMehmet.id, serviceId: svcCilt.id } })
+  1916→
+  1917→  // Örnek randevular — bugün ve yarın için
+  1918→  const today = new Date()
+  1919→  today.setHours(0, 0, 0, 0)
+  1920→
+  1921→  function makeAppt(
+  1922→    staffId: string,
+  1923→    serviceId: string,
+  1924→    dayOffset: number,
+  1925→    hour: number,
+  1926→    minute: number,
+  1927→    customerName: string,
+  1928→    customerPhone: string,
+  1929→    status: 'beklemede' | 'onaylandi' | 'tamamlandi' | 'iptal' | 'gelmedi' = 'onaylandi',
+  1930→  ) {
+  1931→    const start = new Date(today.getTime() + dayOffset * 24 * 60 * 60_000)
+  1932→    start.setHours(hour, minute, 0, 0)
+  1933→    return { staffId, serviceId, customerName, customerPhone, start, status }
+  1934→  }
+  1935→
+  1936→  const sampleAppts = [
+  1937→    // Bugün
+  1938→    makeAppt(staffAhmet.id, svcSacKesim.id, 0, 10, 0, 'Murat Yılmaz', '+90 532 123 45 67', 'tamamlandi'),
+  1939→    makeAppt(staffAhmet.id, svcSakal.id, 0, 11, 0, 'Kemal Aslan', '+90 532 234 56 78', 'onaylandi'),
+  1940→    makeAppt(staffAyse.id, svcBoyama.id, 0, 9, 30, 'Selin Demir', '+90 532 345 67 89', 'onaylandi'),
+  1941→    makeAppt(staffAyse.id, svcManikur.id, 0, 14, 0, 'Ece Kaya', '+90 532 456 78 90', 'beklemede'),
+  1942→    makeAppt(staffMehmet.id, svcSacKesim.id, 0, 13, 30, 'Burak Şahin', '+90 532 567 89 01', 'onaylandi'),
+  1943→    // Yarın
+  1944→    makeAppt(staffAhmet.id, svcSacKesim.id, 1, 10, 30, 'Okan Çelik', '+90 532 678 90 12', 'onaylandi'),
+  1945→    makeAppt(staffAyse.id, svcCilt.id, 1, 11, 0, 'Deniz Yıldız', '+90 532 789 01 23', 'onaylandi'),
+  1946→    makeAppt(staffMehmet.id, svcSakal.id, 1, 15, 0, 'Tolga Aydın', '+90 532 890 12 34', 'iptal'),
+  1947→  ]
+  1948→
+  1949→  for (const a of sampleAppts) {
+  1950→    const svc = [svcSacKesim, svcSakal, svcBoyama, svcCilt, svcManikur, svcPedikur].find((s) => s.id === a.serviceId)!
+  1951→    const end = new Date(a.start.getTime() + svc.duration * 60_000)
+  1952→    await db.appointment.create({
+  1953→      data: {
+  1954→        providerId: provider1.id,
+  1955→        staffId: a.staffId,
+  1956→        serviceId: a.serviceId,
+  1957→        customerName: a.customerName,
+  1958→        customerPhone: a.customerPhone,
+  1959→        date: a.start,
+  1960→        endTime: end,
+  1961→        status: a.status,
+  1962→        price: svc.price,
+  1963→        source: 'web',
+  1964→      },
+  1965→    })
+  1966→  }
+  1967→
+  1968→  // === EMPLOYEE CODE — Her kullanıcıya eşsiz kod ===
+  1969→  const allUsers = await db.user.findMany({ include: { tenant: { select: { name: true } } } })
+  1970→  let seq = 0
+  1971→  for (const u of allUsers) {
+  1972→    seq++
+  1973→    const code = generateEmployeeCode(u.tenantId, seq)
+  1974→    await db.user.update({ where: { id: u.id }, data: { employeeCode: code } })
+  1975→  }
+  1976→
+  1977→  const counts = {
+  1978→    tenants: 6,
+  1979→    users: 18,
+  1980→    customers: 30,
+  1981→    contacts: 50,
+  1982→    activities: 100,
+  1983→    deals: 25,
+  1984→    tasks: 20,
+  1985→    notes: 30,
+  1986→    leads: 15,
+  1987→    mapsSearches: 3,
+  1988→    auditLogs: 10,
+  1989→    products: 4 + marketProducts.length + anadoluProductsData.length,
+  1990→    cafes: 2 + 1, // 2 (tenant1) + 1 Şık Kafe (tenantCafe)
+  1991→    cafeTables: 13 + kafeTables.length,
+  1992→    menuItems: menuItems.length + kafeMenuItems.length,
+  1993→    cafeOrdersPaid: kafeOrderScenarios.length,
+  1994→    markets: 1 + 1, // 1 (tenant1) + 1 Anadolu Market (tenantMarket)
+  1995→    marketShelves: shelves.length + anadoluShelfDefs.length,
+  1996→    marketBarcodes: marketProducts.length + 3,
+  1997→    marketSales: saleScenarios.length + amSaleScenarios.length,
+  1998→    serviceProviders: 1,
+  1999→    staff: 3,
+  2000→    services: 6,
+
+[showing lines 1-2000 of 2006; use offset=2001 with limit to continue reading]

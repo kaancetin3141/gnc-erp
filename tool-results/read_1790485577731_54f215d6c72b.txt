@@ -1,0 +1,572 @@
+     1→'use client'
+     2→
+     3→// ============================================================
+     4→// MÜŞTERİ KAYIT DEFTERİ
+     5→// · Müşteriler sekmesi — arama, istatistik kartları, müşteri kartları
+     6→// · CustomerDetailDialog — profil + geçmiş randevu özeti + düzenle
+     7→// · CustomerCreateDialog — yeni müşteri kaydı
+     8→// ============================================================
+     9→
+    10→import { useMemo, useState } from 'react'
+    11→import { useQuery, useQueryClient } from '@tanstack/react-query'
+    12→import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-client'
+    13→import { Card, CardContent } from '@/components/ui/card'
+    14→import { Button } from '@/components/ui/button'
+    15→import { Input } from '@/components/ui/input'
+    16→import { Label } from '@/components/ui/label'
+    17→import { Textarea } from '@/components/ui/textarea'
+    18→import { Badge } from '@/components/ui/badge'
+    19→import { Skeleton } from '@/components/ui/skeleton'
+    20→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+    21→import { Switch } from '@/components/ui/switch'
+    22→import { toast } from 'sonner'
+    23→import { cn } from '@/lib/utils'
+    24→import { formatCurrency, formatDate, formatDateTime, formatPhone, whatsappLink } from '@/lib/format'
+    25→import { getStatusMeta } from '@/lib/appointment-utils'
+    26→import { avatarColor } from './customer-autocomplete'
+    27→import {
+    28→  Users, UserPlus, Search, Phone, MessageCircle, Wallet, CalendarCheck,
+    29→  CheckCircle2, XCircle, CalendarClock, History, Pencil, Ban, Star, Cake,
+    30→  MapPin, Mail, StickyNote, CalendarPlus, TrendingUp, Loader2,
+    31→} from 'lucide-react'
+    32→
+    33→// ---------- Tipler ----------
+    34→
+    35→export interface RegistryStats {
+    36→  total: number; completed: number; cancelled: number; spent: number
+    37→  lastVisit: string | null; nextVisit: string | null
+    38→}
+    39→
+    40→export interface RegistryCustomer {
+    41→  id: string; name: string; phone: string; email: string | null; address: string | null
+    42→  notes: string | null; tags: string | null; birthday: string | null; isBlocked: boolean
+    43→  createdAt: string; updatedAt: string
+    44→  stats?: RegistryStats
+    45→}
+    46→
+    47→interface HistoryAppt {
+    48→  id: string; date: string; status: string; price: number; notes: string | null
+    49→  staff: { id: string; name: string } | null
+    50→  service: { id: string; name: string; duration: number; price: number } | null
+    51→}
+    52→
+    53→function parseTags(t: string | null): string[] {
+    54→  if (!t) return []
+    55→  try { const a = JSON.parse(t); return Array.isArray(a) ? a.filter((x) => typeof x === 'string') : [] } catch { return [] }
+    56→}
+    57→
+    58→function loyaltyMeta(c: RegistryCustomer) {
+    59→  const s = c.stats
+    60→  if (!s || s.total === 0) return null
+    61→  if (s.total >= 10) return { label: 'VIP Müşteri', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-900', icon: Star }
+    62→  if (s.total >= 5) return { label: 'Sabit Müşteri', cls: 'bg-violet-100 text-violet-800 dark:bg-violet-950/40 dark:text-violet-300 border-violet-200 dark:border-violet-900', icon: TrendingUp }
+    63→  return null
+    64→}
+    65→
+    66→// ============================================================
+    67→// Müşteriler sekmesi
+    68→// ============================================================
+    69→
+    70→export function CustomerManager({
+    71→  providerId,
+    72→  onNewAppointment,
+    73→}: {
+    74→  providerId: string
+    75→  onNewAppointment?: (c: RegistryCustomer) => void
+    76→}) {
+    77→  const qc = useQueryClient()
+    78→  const [q, setQ] = useState('')
+    79→  const [sortBy, setSortBy] = useState<'recent' | 'visits' | 'spent' | 'name'>('recent')
+    80→  const [detailId, setDetailId] = useState<string | null>(null)
+    81→  const [createOpen, setCreateOpen] = useState(false)
+    82→
+    83→  const { data, isLoading } = useQuery({
+    84→    queryKey: ['appointment-customers', providerId, q],
+    85→    queryFn: () => apiGet<{ items: RegistryCustomer[]; summary: { total: number; withVisits: number; newThisMonth: number; blocked: number } }>(
+    86→      `/api/appointments/providers/${providerId}/customers?q=${encodeURIComponent(q)}`,
+    87→    ),
+    88→    enabled: !!providerId,
+    89→    staleTime: 10_000,
+    90→  })
+    91→
+    92→  const items = useMemo(() => {
+    93→    const arr = [...(data?.items ?? [])]
+    94→    switch (sortBy) {
+    95→      case 'visits': arr.sort((a, b) => (b.stats?.total ?? 0) - (a.stats?.total ?? 0)); break
+    96→      case 'spent': arr.sort((a, b) => (b.stats?.spent ?? 0) - (a.stats?.spent ?? 0)); break
+    97→      case 'name': arr.sort((a, b) => a.name.localeCompare(b.name, 'tr')); break
+    98→      default: arr.sort((a, b) => (b.stats?.lastVisit ?? b.updatedAt).localeCompare(a.stats?.lastVisit ?? a.updatedAt))
+    99→    }
+   100→    return arr
+   101→  }, [data, sortBy])
+   102→
+   103→  const summary = data?.summary
+   104→  const invalidate = () => {
+   105→    qc.invalidateQueries({ queryKey: ['appointment-customers'] })
+   106→    qc.invalidateQueries({ queryKey: ['customer-lookup'] })
+   107→  }
+   108→
+   109→  return (
+   110→    <div className="space-y-3">
+   111→      {/* Özet kartları */}
+   112→      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+   113→        <Card className="shadow-soft"><CardContent className="p-3">
+   114→          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Users className="w-3.5 h-3.5" /> Toplam Müşteri</div>
+   115→          <div className="text-xl font-bold mt-0.5 tabular-nums">{summary?.total ?? '—'}</div>
+   116→          <div className="text-[10px] text-muted-foreground">kayıt defterinde</div>
+   117→        </CardContent></Card>
+   118→        <Card className="shadow-soft"><CardContent className="p-3">
+   119→          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><CalendarCheck className="w-3.5 h-3.5 text-emerald-500" /> Randevu Yapan</div>
+   120→          <div className="text-xl font-bold mt-0.5 tabular-nums text-emerald-600">{summary?.withVisits ?? '—'}</div>
+   121→          <div className="text-[10px] text-muted-foreground">en az 1 randevu</div>
+   122→        </CardContent></Card>
+   123→        <Card className="shadow-soft"><CardContent className="p-3">
+   124→          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><UserPlus className="w-3.5 h-3.5 text-teal-500" /> Bu Ay Yeni</div>
+   125→          <div className="text-xl font-bold mt-0.5 tabular-nums text-teal-600">{summary?.newThisMonth ?? '—'}</div>
+   126→          <div className="text-[10px] text-muted-foreground">bu ay katıldı</div>
+   127→        </CardContent></Card>
+   128→        <Card className="shadow-soft"><CardContent className="p-3">
+   129→          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Ban className="w-3.5 h-3.5 text-rose-500" /> Engelli</div>
+   130→          <div className="text-xl font-bold mt-0.5 tabular-nums text-rose-600">{summary?.blocked ?? '—'}</div>
+   131→          <div className="text-[10px] text-muted-foreground">randevu alamaz</div>
+   132→        </CardContent></Card>
+   133→      </div>
+   134→
+   135→      {/* Arama + sıralama + yeni */}
+   136→      <div className="flex items-center gap-2 flex-wrap">
+   137→        <div className="relative flex-1 min-w-48">
+   138→          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+   139→          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="İsim, telefon veya e-posta ile ara..." className="h-9 pl-8" />
+   140→        </div>
+   141→        <select
+   142→          value={sortBy}
+   143→          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+   144→          className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+   145→          aria-label="Sıralama"
+   146→        >
+   147→          <option value="recent">Son ziyaret</option>
+   148→          <option value="visits">Çok randevulu</option>
+   149→          <option value="spent">En çok harcayan</option>
+   150→          <option value="name">İsim (A-Z)</option>
+   151→        </select>
+   152→        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 h-9" onClick={() => setCreateOpen(true)}>
+   153→          <UserPlus className="w-4 h-4 mr-1.5" /> Yeni Müşteri
+   154→        </Button>
+   155→      </div>
+   156→
+   157→      {/* Liste */}
+   158→      {isLoading ? (
+   159→        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+   160→          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-24" />)}
+   161→        </div>
+   162→      ) : items.length === 0 ? (
+   163→        <Card><CardContent className="py-12 text-center">
+   164→          <Users className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+   165→          <p className="text-sm text-muted-foreground">
+   166→            {q ? 'Aramaya uyan müşteri yok' : 'Henüz müşteri kaydı yok — randevular otomatik kayıt oluşturur'}
+   167→          </p>
+   168→        </CardContent></Card>
+   169→      ) : (
+   170→        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-[62vh] overflow-y-auto pr-1 custom-scroll">
+   171→          {items.map((c) => {
+   172→            const loyal = loyaltyMeta(c)
+   173→            const s = c.stats
+   174→            return (
+   175→              <Card key={c.id} className={cn('shadow-soft cursor-pointer transition-shadow hover:shadow-md', c.isBlocked && 'opacity-70 border-rose-200 dark:border-rose-900/60')}
+   176→                onClick={() => setDetailId(c.id)}>
+   177→                <CardContent className="p-3 space-y-2">
+   178→                  <div className="flex items-start gap-2.5">
+   179→                    <div className={cn('w-10 h-10 rounded-full flex items-center justify-center font-semibold shrink-0', avatarColor(c.name))}>
+   180→                      {c.name.charAt(0).toLocaleUpperCase('tr-TR')}
+   181→                    </div>
+   182→                    <div className="flex-1 min-w-0">
+   183→                      <div className="flex items-center gap-1.5 flex-wrap">
+   184→                        <span className="font-medium text-sm truncate">{c.name}</span>
+   185→                        {c.isBlocked && (
+   186→                          <Badge variant="outline" className="text-[9px] px-1 py-0 text-rose-700 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900">
+   187→                            <Ban className="w-2.5 h-2.5 mr-0.5" /> Engelli
+   188→                          </Badge>
+   189→                        )}
+   190→                        {loyal && <Badge variant="outline" className={cn('text-[9px] px-1 py-0 gap-0.5', loyal.cls)}><loyal.icon className="w-2.5 h-2.5" /> {loyal.label}</Badge>}
+   191→                      </div>
+   192→                      <div className="text-[11px] text-muted-foreground tabular-nums mt-0.5">{formatPhone(c.phone)}</div>
+   193→                    </div>
+   194→                    <button
+   195→                      onClick={(e) => { e.stopPropagation(); onNewAppointment?.(c) }}
+   196→                      className="shrink-0 h-7 px-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-medium inline-flex items-center gap-1"
+   197→                      title="Bu müşteriye randevu ver"
+   198→                    >
+   199→                      <CalendarPlus className="w-3 h-3" /> Randevu
+   200→                    </button>
+   201→                  </div>
+   202→                  <div className="grid grid-cols-3 gap-1.5 text-center">
+   203→                    <div className="rounded-md bg-muted/50 py-1">
+   204→                      <div className="text-sm font-bold tabular-nums">{s?.total ?? 0}</div>
+   205→                      <div className="text-[9px] text-muted-foreground">randevu</div>
+   206→                    </div>
+   207→                    <div className="rounded-md bg-muted/50 py-1">
+   208→                      <div className="text-sm font-bold tabular-nums text-teal-600">{s?.completed ?? 0}</div>
+   209→                      <div className="text-[9px] text-muted-foreground">tamamlanan</div>
+   210→                    </div>
+   211→                    <div className="rounded-md bg-muted/50 py-1">
+   212→                      <div className="text-sm font-bold tabular-nums text-emerald-600">{formatCurrency(s?.spent ?? 0)}</div>
+   213→                      <div className="text-[9px] text-muted-foreground">harcama</div>
+   214→                    </div>
+   215→                  </div>
+   216→                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+   217→                    <span>{s?.lastVisit ? <>Son: <strong>{formatDate(s.lastVisit)}</strong></> : 'Henüz randevu yok'}</span>
+   218→                    {s?.nextVisit && (
+   219→                      <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+   220→                        Sıradaki: {formatDate(s.nextVisit)}
+   221→                      </span>
+   222→                    )}
+   223→                  </div>
+   224→                </CardContent>
+   225→              </Card>
+   226→            )
+   227→          })}
+   228→        </div>
+   229→      )}
+   230→
+   231→      {/* Detay diyaloğu */}
+   232→      {detailId && <CustomerDetailDialog providerId={providerId} customerId={detailId} onOpenChange={(o) => !o && setDetailId(null)} onUpdated={invalidate} />}
+   233→
+   234→      {/* Yeni müşteri diyaloğu */}
+   235→      <CustomerCreateDialog
+   236→        providerId={providerId}
+   237→        open={createOpen}
+   238→        onOpenChange={setCreateOpen}
+   239→        onCreated={() => { invalidate(); toast.success('Müşteri kaydı oluşturuldu') }}
+   240→      />
+   241→    </div>
+   242→  )
+   243→}
+   244→
+   245→// ============================================================
+   246→// Müşteri Detay — profil + geçmiş randevu özeti
+   247→// ============================================================
+   248→
+   249→export function CustomerDetailDialog({
+   250→  providerId,
+   251→  customerId,
+   252→  onOpenChange,
+   253→  onUpdated,
+   254→}: {
+   255→  providerId: string
+   256→  customerId: string
+   257→  onOpenChange: (open: boolean) => void
+   258→  onUpdated?: () => void
+   259→}) {
+   260→  const [editOpen, setEditOpen] = useState(false)
+   261→  const { data, isLoading } = useQuery({
+   262→    queryKey: ['appointment-customer', providerId, customerId],
+   263→    queryFn: () => apiGet<{ customer: RegistryCustomer; history: HistoryAppt[] }>(
+   264→      `/api/appointments/providers/${providerId}/customers/${customerId}`,
+   265→    ),
+   266→    staleTime: 0,
+   267→  })
+   268→
+   269→  const customer = data?.customer
+   270→  const history = useMemo(() => data?.history ?? [], [data])
+   271→  const stats = useMemo<RegistryStats>(() => {
+   272→    const now = new Date()
+   273→    const s: RegistryStats = { total: history.length, completed: 0, cancelled: 0, spent: 0, lastVisit: null, nextVisit: null }
+   274→    for (const a of history) {
+   275→      if (a.status === 'tamamlandi') { s.completed++; s.spent += a.price || 0 }
+   276→      if (a.status === 'iptal' || a.status === 'gelmedi') s.cancelled++
+   277→      const d = new Date(a.date)
+   278→      if (d < now) { if (!s.lastVisit || d > new Date(s.lastVisit)) s.lastVisit = d.toISOString() }
+   279→      else if (['beklemede', 'onaylandi'].includes(a.status)) { if (!s.nextVisit || d < new Date(s.nextVisit)) s.nextVisit = d.toISOString() }
+   280→    }
+   281→    return s
+   282→  }, [history])
+   283→
+   284→  const tags = customer ? parseTags(customer.tags) : []
+   285→
+   286→  return (
+   287→    <Dialog open onOpenChange={onOpenChange}>
+   288→      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto custom-scroll">
+   289→        {isLoading || !customer ? (
+   290→          <div className="space-y-3 py-4">
+   291→            <DialogHeader>
+   292→              <DialogTitle className="sr-only">Müşteri kartı</DialogTitle>
+   293→              <DialogDescription className="sr-only">Yükleniyor</DialogDescription>
+   294→            </DialogHeader>
+   295→            <Skeleton className="h-14" />
+   296→            <div className="grid grid-cols-3 gap-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-14" />)}</div>
+   297→            <Skeleton className="h-40" />
+   298→          </div>
+   299→        ) : (
+   300→          <>
+   301→            <DialogHeader>
+   302→              <DialogTitle className="flex items-center gap-2.5">
+   303→                <div className={cn('w-9 h-9 rounded-full flex items-center justify-center font-semibold', avatarColor(customer.name))}>
+   304→                  {customer.name.charAt(0).toLocaleUpperCase('tr-TR')}
+   305→                </div>
+   306→                <span className="truncate">{customer.name}</span>
+   307→                {customer.isBlocked && (
+   308→                  <Badge variant="outline" className="text-[10px] text-rose-700 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900">
+   309→                    <Ban className="w-3 h-3 mr-0.5" /> Engelli
+   310→                  </Badge>
+   311→                )}
+   312→              </DialogTitle>
+   313→              <DialogDescription className="sr-only">Müşteri profili ve randevu geçmişi</DialogDescription>
+   314→            </DialogHeader>
+   315→
+   316→            <div className="space-y-3 -mt-1">
+   317→              {/* İletişim satırı */}
+   318→              <div className="flex items-center gap-1.5 flex-wrap">
+   319→                <a href={`tel:${customer.phone}`}>
+   320→                  <Button variant="outline" size="sm" className="h-8 text-xs"><Phone className="w-3.5 h-3.5 mr-1" /> {formatPhone(customer.phone)}</Button>
+   321→                </a>
+   322→                <a href={whatsappLink(customer.phone, `Merhaba ${customer.name},`)} target="_blank" rel="noopener noreferrer">
+   323→                  <Button variant="outline" size="sm" className="h-8 text-xs text-[#25D366] border-[#25D366]/40">
+   324→                    <MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp
+   325→                  </Button>
+   326→                </a>
+   327→                <Button variant="outline" size="sm" className="h-8 text-xs ml-auto" onClick={() => setEditOpen(true)}>
+   328→                  <Pencil className="w-3.5 h-3.5 mr-1" /> Düzenle
+   329→                </Button>
+   330→              </div>
+   331→
+   332→              {/* Profil bilgileri */}
+   333→              {(customer.email || customer.address || customer.birthday || tags.length > 0 || customer.notes) && (
+   334→                <div className="rounded-lg border p-2.5 space-y-1.5 text-xs">
+   335→                  {tags.length > 0 && (
+   336→                    <div className="flex gap-1 flex-wrap">
+   337→                      {tags.map((t) => <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>)}
+   338→                    </div>
+   339→                  )}
+   340→                  {customer.email && <div className="flex items-center gap-1.5 text-muted-foreground"><Mail className="w-3 h-3 shrink-0" /> {customer.email}</div>}
+   341→                  {customer.address && <div className="flex items-center gap-1.5 text-muted-foreground"><MapPin className="w-3 h-3 shrink-0" /> {customer.address}</div>}
+   342→                  {customer.birthday && <div className="flex items-center gap-1.5 text-muted-foreground"><Cake className="w-3 h-3 shrink-0" /> Doğum günü: {customer.birthday}</div>}
+   343→                  {customer.notes && (
+   344→                    <div className="flex items-start gap-1.5 text-muted-foreground">
+   345→                      <StickyNote className="w-3 h-3 shrink-0 mt-0.5" />
+   346→                      <span className="whitespace-pre-wrap">{customer.notes}</span>
+   347→                    </div>
+   348→                  )}
+   349→                </div>
+   350→              )}
+   351→
+   352→              {/* Geçmiş randevu özeti — 6 kart */}
+   353→              <div className="grid grid-cols-3 gap-1.5">
+   354→                <div className="rounded-lg border p-2 text-center">
+   355→                  <CalendarCheck className="w-3.5 h-3.5 mx-auto text-muted-foreground" />
+   356→                  <div className="text-lg font-bold tabular-nums">{stats.total}</div>
+   357→                  <div className="text-[9px] text-muted-foreground">Toplam</div>
+   358→                </div>
+   359→                <div className="rounded-lg border p-2 text-center">
+   360→                  <CheckCircle2 className="w-3.5 h-3.5 mx-auto text-teal-600" />
+   361→                  <div className="text-lg font-bold tabular-nums text-teal-600">{stats.completed}</div>
+   362→                  <div className="text-[9px] text-muted-foreground">Tamamlanan</div>
+   363→                </div>
+   364→                <div className="rounded-lg border p-2 text-center">
+   365→                  <XCircle className="w-3.5 h-3.5 mx-auto text-rose-600" />
+   366→                  <div className="text-lg font-bold tabular-nums text-rose-600">{stats.cancelled}</div>
+   367→                  <div className="text-[9px] text-muted-foreground">İptal/Gelmedi</div>
+   368→                </div>
+   369→                <div className="rounded-lg border p-2 text-center">
+   370→                  <Wallet className="w-3.5 h-3.5 mx-auto text-emerald-600" />
+   371→                  <div className="text-sm font-bold tabular-nums text-emerald-600 mt-1">{formatCurrency(stats.spent)}</div>
+   372→                  <div className="text-[9px] text-muted-foreground">Toplam Harcama</div>
+   373→                </div>
+   374→                <div className="rounded-lg border p-2 text-center">
+   375→                  <History className="w-3.5 h-3.5 mx-auto text-muted-foreground mt-0.5" />
+   376→                  <div className="text-[11px] font-semibold mt-0.5">{stats.lastVisit ? formatDate(stats.lastVisit) : '—'}</div>
+   377→                  <div className="text-[9px] text-muted-foreground">Son Ziyaret</div>
+   378→                </div>
+   379→                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/60 p-2 text-center">
+   380→                  <CalendarClock className="w-3.5 h-3.5 mx-auto text-emerald-600 mt-0.5" />
+   381→                  <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 mt-0.5">{stats.nextVisit ? formatDate(stats.nextVisit) : '—'}</div>
+   382→                  <div className="text-[9px] text-muted-foreground">Sıradaki Randevu</div>
+   383→                </div>
+   384→              </div>
+   385→
+   386→              {/* Geçmiş listesi */}
+   387→              <div>
+   388→                <div className="text-xs font-medium text-muted-foreground mb-1.5">Randevu Geçmişi ({history.length})</div>
+   389→                {history.length === 0 ? (
+   390→                  <div className="text-center py-6 text-sm text-muted-foreground border rounded-lg">Bu müşterinin randevu kaydı yok</div>
+   391→                ) : (
+   392→                  <div className="max-h-64 overflow-y-auto rounded-lg border divide-y custom-scroll">
+   393→                    {history.map((a) => {
+   394→                      const meta = getStatusMeta(a.status)
+   395→                      const past = new Date(a.date) < new Date()
+   396→                      return (
+   397→                        <div key={a.id} className={cn('flex items-center gap-2 p-2.5', !past && 'bg-emerald-50/40 dark:bg-emerald-950/10')}>
+   398→                          <div className="text-[11px] tabular-nums shrink-0 w-28">
+   399→                            <div className="font-medium">{formatDateTime(a.date)}</div>
+   400→                          </div>
+   401→                          <div className="flex-1 min-w-0">
+   402→                            <div className="text-xs font-medium truncate">{a.service?.name ?? '—'}</div>
+   403→                            <div className="text-[10px] text-muted-foreground truncate">{a.staff?.name ?? 'Herhangi biri'}</div>
+   404→                          </div>
+   405→                          <div className="text-xs tabular-nums shrink-0">{formatCurrency(a.price)}</div>
+   406→                          <Badge variant="outline" className={cn('text-[9px] shrink-0', meta.color, meta.bg, 'border-0')}>{meta.label}</Badge>
+   407→                        </div>
+   408→                      )
+   409→                    })}
+   410→                  </div>
+   411→                )}
+   412→              </div>
+   413→            </div>
+   414→          </>
+   415→        )}
+   416→      </DialogContent>
+   417→
+   418→      {customer && (
+   419→        <CustomerEditDialog
+   420→          providerId={providerId}
+   421→          customer={customer}
+   422→          open={editOpen}
+   423→          onOpenChange={setEditOpen}
+   424→          onSaved={() => { onUpdated?.(); toast.success('Müşteri bilgileri güncellendi') }}
+   425→        />
+   426→      )}
+   427→    </Dialog>
+   428→  )
+   429→}
+   430→
+   431→// ============================================================
+   432→// Müşteri oluştur / düzenle formları
+   433→// ============================================================
+   434→
+   435→interface CustomerFormState {
+   436→  name: string; phone: string; email: string; address: string
+   437→  notes: string; tags: string; birthday: string; isBlocked: boolean
+   438→}
+   439→
+   440→const EMPTY_FORM: CustomerFormState = { name: '', phone: '', email: '', address: '', notes: '', tags: '', birthday: '', isBlocked: false }
+   441→
+   442→function CustomerFields({ form, setForm }: { form: CustomerFormState; setForm: (f: CustomerFormState) => void }) {
+   443→  return (
+   444→    <div className="space-y-2.5">
+   445→      <div className="grid grid-cols-2 gap-2">
+   446→        <div><Label className="text-xs">Ad Soyad *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Müşteri adı" /></div>
+   447→        <div><Label className="text-xs">Telefon *</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+90 5xx xxx xx xx" /></div>
+   448→      </div>
+   449→      <div className="grid grid-cols-2 gap-2">
+   450→        <div><Label className="text-xs">E-posta</Label><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@ornek.com" /></div>
+   451→        <div><Label className="text-xs">Doğum günü (MM-DD)</Label><Input value={form.birthday} onChange={(e) => setForm({ ...form, birthday: e.target.value })} placeholder="05-23" /></div>
+   452→      </div>
+   453→      <div><Label className="text-xs">Adres</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Mahalle, sokak, ilçe" /></div>
+   454→      <div><Label className="text-xs">Etiketler (virgülle ayır)</Label><Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="VIP, Sabit müşteri, Saç boyası" /></div>
+   455→      <div><Label className="text-xs">Kalıcı Not</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Tercihler, alerji, özel istekler..." className="h-16" /></div>
+   456→      <div className="flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 dark:border-rose-900/60 px-3 py-2">
+   457→        <div>
+   458→          <div className="text-xs font-medium flex items-center gap-1"><Ban className="w-3 h-3 text-rose-600" /> Engelli Müşteri</div>
+   459→          <div className="text-[10px] text-muted-foreground">Engelliyken randevu oluşturulamaz</div>
+   460→        </div>
+   461→        <Switch checked={form.isBlocked} onCheckedChange={(v) => setForm({ ...form, isBlocked: v })} aria-label="Müşteriyi engelle" />
+   462→      </div>
+   463→    </div>
+   464→  )
+   465→}
+   466→
+   467→function formFromCustomer(c: RegistryCustomer): CustomerFormState {
+   468→  return {
+   469→    name: c.name, phone: c.phone, email: c.email ?? '', address: c.address ?? '',
+   470→    notes: c.notes ?? '', tags: parseTags(c.tags).join(', '), birthday: c.birthday ?? '', isBlocked: c.isBlocked,
+   471→  }
+   472→}
+   473→
+   474→export function CustomerCreateDialog({
+   475→  providerId, open, onOpenChange, onCreated,
+   476→}: {
+   477→  providerId: string; open: boolean; onOpenChange: (v: boolean) => void; onCreated: () => void
+   478→}) {
+   479→  const [form, setForm] = useState<CustomerFormState>(EMPTY_FORM)
+   480→  const [saving, setSaving] = useState(false)
+   481→
+   482→  const handleSave = async () => {
+   483→    setSaving(true)
+   484→    try {
+   485→      await apiPost(`/api/appointments/providers/${providerId}/customers`, {
+   486→        ...form,
+   487→        tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
+   488→      })
+   489→      onCreated()
+   490→      onOpenChange(false)
+   491→      setForm(EMPTY_FORM)
+   492→    } catch (e) {
+   493→      toast.error('Müşteri kaydedilemedi', { description: e instanceof Error ? e.message : '' })
+   494→    } finally { setSaving(false) }
+   495→  }
+   496→
+   497→  return (
+   498→    <Dialog open={open} onOpenChange={onOpenChange}>
+   499→      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+   500→        <DialogHeader>
+   501→          <DialogTitle>Yeni Müşteri Kaydı</DialogTitle>
+   502→          <DialogDescription>Müşteri kayıt defterine ekle</DialogDescription>
+   503→        </DialogHeader>
+   504→        <CustomerFields form={form} setForm={setForm} />
+   505→        <DialogFooter>
+   506→          <Button variant="outline" onClick={() => onOpenChange(false)}>İptal</Button>
+   507→          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSave} disabled={saving || !form.name.trim() || !form.phone.trim()}>
+   508→            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Kaydet'}
+   509→          </Button>
+   510→        </DialogFooter>
+   511→      </DialogContent>
+   512→    </Dialog>
+   513→  )
+   514→}
+   515→
+   516→export function CustomerEditDialog({
+   517→  providerId, customer, open, onOpenChange, onSaved,
+   518→}: {
+   519→  providerId: string; customer: RegistryCustomer; open: boolean; onOpenChange: (v: boolean) => void; onSaved: () => void
+   520→}) {
+   521→  const [form, setForm] = useState<CustomerFormState>(formFromCustomer(customer))
+   522→  const [saving, setSaving] = useState(false)
+   523→
+   524→  const handleSave = async () => {
+   525→    setSaving(true)
+   526→    try {
+   527→      await apiPatch(`/api/appointments/providers/${providerId}/customers/${customer.id}`, {
+   528→        ...form,
+   529→        tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
+   530→      })
+   531→      onSaved()
+   532→      onOpenChange(false)
+   533→    } catch (e) {
+   534→      toast.error('Güncellenemedi', { description: e instanceof Error ? e.message : '' })
+   535→    } finally { setSaving(false) }
+   536→  }
+   537→
+   538→  const handleDelete = async () => {
+   539→    if (!confirm(`${customer.name} kaydı silinecek. Randevuları kalır ama müşteri profili kaldırılır. Onaylıyor musunuz?`)) return
+   540→    setSaving(true)
+   541→    try {
+   542→      await apiDelete(`/api/appointments/providers/${providerId}/customers/${customer.id}`)
+   543→      onSaved()
+   544→      onOpenChange(false)
+   545→      toast.success('Müşteri kaydı silindi')
+   546→    } catch (e) {
+   547→      toast.error('Silinemedi', { description: e instanceof Error ? e.message : '' })
+   548→    } finally { setSaving(false) }
+   549→  }
+   550→
+   551→  return (
+   552→    <Dialog open={open} onOpenChange={onOpenChange}>
+   553→      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+   554→        <DialogHeader>
+   555→          <DialogTitle>Müşteriyi Düzenle</DialogTitle>
+   556→          <DialogDescription>{customer.name} — profil bilgileri</DialogDescription>
+   557→        </DialogHeader>
+   558→        <CustomerFields form={form} setForm={setForm} />
+   559→        <DialogFooter className="flex gap-2 justify-between">
+   560→          <Button variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={handleDelete} disabled={saving}>Kaydı Sil</Button>
+   561→          <div className="flex gap-2">
+   562→            <Button variant="outline" onClick={() => onOpenChange(false)}>Vazgeç</Button>
+   563→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSave} disabled={saving || !form.name.trim() || !form.phone.trim()}>
+   564→              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Kaydet'}
+   565→            </Button>
+   566→          </div>
+   567→        </DialogFooter>
+   568→      </DialogContent>
+   569→    </Dialog>
+   570→  )
+   571→}
+   572→

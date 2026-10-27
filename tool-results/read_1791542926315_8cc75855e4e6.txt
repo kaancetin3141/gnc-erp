@@ -1,0 +1,1344 @@
+     1→/**
+     2→ * GNC Randevu — Müşteri Sitesi görünümleri (server-rendered HTML + gömülü CSS/JS)
+     3→ * Port 3002 mini-servisi için saf bun; build adımı yok, CDN yok, her şey offline.
+     4→ */
+     5→
+     6→export type Json = Record<string, any>;
+     7→
+     8→// ---------------------------------------------------------------- yardımcılar
+     9→
+    10→/** HTML kaçış — tüm kullanıcı verilerinde kullanılır. */
+    11→export function esc(s: unknown): string {
+    12→  return String(s ?? '')
+    13→    .replace(/&/g, '&amp;')
+    14→    .replace(/</g, '&lt;')
+    15→    .replace(/>/g, '&gt;')
+    16→    .replace(/"/g, '&quot;')
+    17→    .replace(/'/g, '&#39;');
+    18→}
+    19→
+    20→/** <script> veri adası için JSON — </script> patlamasına karşı < karakteri kodlanır. */
+    21→function jsonIsland(data: unknown): string {
+    22→  return JSON.stringify(data).replace(/</g, '\\u003c');
+    23→}
+    24→
+    25→const TYPE_META: Record<string, { label: string; emoji: string }> = {
+    26→  berber: { label: 'Berber', emoji: '💈' },
+    27→  kuafor: { label: 'Kuaför', emoji: '✂️' },
+    28→  disci: { label: 'Dişçi', emoji: '🦷' },
+    29→  guzellik: { label: 'Güzellik', emoji: '💄' },
+    30→  spa: { label: 'Spa', emoji: '🧖' },
+    31→  dovme: { label: 'Dövme', emoji: '🎨' },
+    32→};
+    33→
+    34→function typeMeta(type: string) {
+    35→  return TYPE_META[type] || { label: 'İşletme', emoji: '🏪' };
+    36→}
+    37→
+    38→const FAVICON =
+    39→  "data:image/svg+xml," +
+    40→  encodeURIComponent(
+    41→    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍉</text></svg>'
+    42→  );
+    43→
+    44→// ---------------------------------------------------------------- Ortak CSS
+    45→
+    46→export const STYLE_CSS = `
+    47→:root{
+    48→  --bg:#fdf7f1;--surface:#ffffff;--ink:#2b211b;--muted:#93796a;--line:#f0e2d6;
+    49→  --brand:#c2334d;--brand-soft:#fdeef1;--amber:#b45309;--amber-soft:#fef3e2;
+    50→  --green:#0d8a63;--green-soft:#e7f6ef;--pink:#be185d;--pink-soft:#fdeaf3;
+    51→  --teal:#0f766e;--teal-soft:#e6f7f5;
+    52→  --shadow:0 8px 24px rgba(160,84,60,.10);--shadow-lg:0 16px 40px rgba(160,84,60,.18);
+    53→  --radius:18px;
+    54→}
+    55→*{box-sizing:border-box;margin:0;padding:0}
+    56→html{scroll-behavior:smooth}
+    57→body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;background:var(--bg);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased}
+    58→img{max-width:100%}
+    59→a{color:var(--brand)}
+    60→:focus-visible{outline:3px solid rgba(194,51,77,.35);outline-offset:2px;border-radius:6px}
+    61→.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+    62→
+    63→/* ---- sayfa iskeleti: sticky footer ---- */
+    64→.page{min-height:100vh;min-height:100svh;display:flex;flex-direction:column}
+    65→main{flex:1 0 auto;width:100%;max-width:1200px;margin:0 auto;padding:0 16px 56px}
+    66→.wrap-wide{max-width:1200px;margin:0 auto;padding:0 16px}
+    67→
+    68→/* ---- sticky header ---- */
+    69→header.top{position:sticky;top:0;z-index:50;background:rgba(253,247,241,.9);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+    70→.top-in{max-width:1200px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+    71→.logo{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:1.12rem;color:var(--ink);text-decoration:none;letter-spacing:-.01em;white-space:nowrap}
+    72→.logo .lg{font-size:1.45rem;transform:translateY(1px)}
+    73→.search{flex:1 1 200px;max-width:430px;min-width:170px;position:relative;margin-left:auto}
+    74→.search input{width:100%;padding:10px 14px 10px 38px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);font:inherit;font-size:.93rem;transition:border-color .2s,box-shadow .2s;color:var(--ink)}
+    75→.search input::placeholder{color:#bda492}
+    76→.search input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 4px var(--brand-soft)}
+    77→.search .s-ic{position:absolute;left:13px;top:50%;transform:translateY(-50%);opacity:.55;font-size:.95rem;pointer-events:none}
+    78→
+    79→/* ---- hero ---- */
+    80→.hero{margin:22px 0 10px;padding:34px 26px;border-radius:26px;background:linear-gradient(120deg,#fdeef1 0%,#fef3e2 55%,#e7f6ef 100%);box-shadow:var(--shadow);position:relative;overflow:hidden}
+    81→.hero::after{content:"📍";position:absolute;right:18px;bottom:-14px;font-size:6rem;opacity:.08;transform:rotate(-12deg)}
+    82→.hero h1{font-size:clamp(1.5rem,4.2vw,2.35rem);font-weight:800;letter-spacing:-.02em;line-height:1.18}
+    83→.hero h1 em{font-style:normal;color:var(--brand)}
+    84→.hero p{margin-top:10px;color:#6d5647;max-width:58ch;font-size:.98rem}
+    85→.hero .btn-geo{margin-top:18px}
+    86→.loc-status{margin-top:10px;font-size:.88rem;color:#7a6353;font-weight:600;min-height:1.3em}
+    87→
+    88→/* ---- butonlar ---- */
+    89→.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;font:inherit;font-weight:700;border-radius:999px;padding:12px 22px;transition:transform .15s ease,box-shadow .2s ease,background .2s ease,text-decoration:none;color:var(--ink)}
+    90→.btn:active{transform:scale(.97)}
+    91→.btn-geo{background:linear-gradient(120deg,var(--brand),#e8804f);color:#fff;box-shadow:0 8px 20px rgba(194,51,77,.32);font-size:1rem}
+    92→.btn-geo:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(194,51,77,.42)}
+    93→.btn-geo:disabled{opacity:.6;cursor:wait;transform:none}
+    94→.btn-wa{background:var(--green);color:#fff;box-shadow:0 8px 20px rgba(13,138,99,.3)}
+    95→.btn-wa:hover{transform:translateY(-2px)}
+    96→.btn-ghost{background:var(--surface);border:1.5px solid var(--line)}
+    97→.btn-ghost:hover{border-color:var(--brand);color:var(--brand)}
+    98→
+    99→/* ---- filtre çipleri ---- */
+   100→.filters-row{display:flex;gap:12px;align-items:center;margin:14px 0 4px}
+   101→.chips{display:flex;gap:8px;overflow-x:auto;padding:6px 2px;flex:1;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+   102→.chip{flex:0 0 auto;padding:8px 16px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);font:inherit;font-weight:600;font-size:.88rem;cursor:pointer;transition:all .15s ease;color:#5d4a3d}
+   103→.chip:hover{border-color:var(--brand);color:var(--brand);transform:translateY(-1px)}
+   104→.chip.on{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 6px 14px rgba(194,51,77,.28)}
+   105→.city-wrap select{padding:9px 34px 9px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);font:inherit;font-size:.88rem;font-weight:600;color:#5d4a3d;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2393796a' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
+   106→.city-wrap select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 4px var(--brand-soft)}
+   107→.count{margin:10px 2px 14px;font-size:.86rem;color:var(--muted);font-weight:600}
+   108→
+   109→/* ---- kart grid ---- */
+   110→.grid{display:grid;gap:1.25rem;grid-template-columns:1fr}
+   111→@media(min-width:600px){.grid{grid-template-columns:repeat(2,1fr)}}
+   112→@media(min-width:960px){.grid{grid-template-columns:repeat(3,1fr)}}
+   113→@media(min-width:1280px){.grid{grid-template-columns:repeat(4,1fr)}}
+   114→.card{position:relative;display:flex;flex-direction:column;background:var(--surface);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);transition:transform .2s ease,box-shadow .25s ease;animation:rise .4s ease both}
+   115→@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+   116→.card:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg)}
+   117→.cover{position:relative;height:150px;flex:none}
+   118→.phb{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:3.2rem}
+   119→.cphoto{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+   120→.ph-berber{background:linear-gradient(135deg,#5b3a21,#a06a33)}
+   121→.ph-kuafor{background:linear-gradient(135deg,#c2334d,#e8804f)}
+   122→.ph-disci{background:linear-gradient(135deg,#0d8a63,#3ccf9a)}
+   123→.ph-guzellik{background:linear-gradient(135deg,#b0326e,#e8804f)}
+   124→.ph-spa{background:linear-gradient(135deg,#0f766e,#2dd4bf)}
+   125→.ph-dovme{background:linear-gradient(135deg,#33281f,#6b4f3a)}
+   126→.ph-def{background:linear-gradient(135deg,#b45309,#e8804f)}
+   127→.card .body{padding:16px;display:flex;flex-direction:column;gap:7px;flex:1}
+   128→.row-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+   129→.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;font-size:.73rem;font-weight:700;letter-spacing:.01em}
+   130→.b-berber{background:var(--amber-soft);color:#92400e}
+   131→.b-kuafor{background:var(--brand-soft);color:var(--brand)}
+   132→.b-disci{background:var(--green-soft);color:#065f46}
+   133→.b-guzellik{background:var(--pink-soft);color:var(--pink)}
+   134→.b-spa{background:var(--teal-soft);color:var(--teal)}
+   135→.b-dovme{background:#efe9e4;color:#44403c}
+   136→.b-def{background:#f3ece5;color:#6d5647}
+   137→.dist{margin-left:auto;font-size:.73rem;font-weight:800;color:var(--green);background:var(--green-soft);padding:3px 9px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap}
+   138→.c-name{font-size:1.04rem;font-weight:800;letter-spacing:-.01em;line-height:1.3}
+   139→.card-link{color:inherit;text-decoration:none}
+   140→.card-link::after{content:"";position:absolute;inset:0;z-index:1}
+   141→.c-loc{font-size:.83rem;color:var(--muted);font-weight:600}
+   142→.c-addr{font-size:.83rem;color:#8a7466}
+   143→.c-meta{font-size:.84rem;color:#5d4a3d;font-weight:600;display:flex;gap:6px;align-items:center;font-variant-numeric:tabular-nums}
+   144→.c-meta .minp{color:var(--brand);font-weight:800}
+   145→.c-foot{margin-top:auto;padding-top:9px;border-top:1px dashed var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px}
+   146→.tel-link{position:relative;z-index:2;font-size:.83rem;font-weight:700;color:#5d4a3d;text-decoration:none;font-variant-numeric:tabular-nums}
+   147→.tel-link:hover{color:var(--brand)}
+   148→.go{font-size:.83rem;font-weight:800;color:var(--brand);white-space:nowrap;transition:transform .2s}
+   149→.card:hover .go{transform:translateX(3px)}
+   150→
+   151→/* ---- skeleton / boş / hata ---- */
+   152→.sk{border-radius:var(--radius);background:var(--surface);overflow:hidden;box-shadow:var(--shadow)}
+   153→.sk .sc{height:150px;background:linear-gradient(90deg,#f3e7dc 25%,#faf1e8 50%,#f3e7dc 75%);background-size:200% 100%;animation:sh 1.2s infinite}
+   154→.sk .sb{padding:16px;display:grid;gap:10px}
+   155→.sk-line{height:12px;border-radius:6px;background:linear-gradient(90deg,#f3e7dc 25%,#faf1e8 50%,#f3e7dc 75%);background-size:200% 100%;animation:sh 1.2s infinite}
+   156→.sk-line.w60{width:60%}.sk-line.w80{width:80%}
+   157→@keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+   158→.state-box{grid-column:1/-1;text-align:center;background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:40px 20px}
+   159→.state-box .big{font-size:2.6rem;display:block;margin-bottom:10px}
+   160→.state-box p{color:#6d5647;margin-bottom:16px}
+   161→
+   162→/* ---- sticky footer ---- */
+   163→footer.ft{margin-top:auto;background:#2b211b;color:#e9d9c9;padding:22px 16px calc(22px + env(safe-area-inset-bottom,0px))}
+   164→.ft-in{max-width:1200px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between;font-size:.88rem}
+   165→.ft-in .fl{font-weight:700}
+   166→.ft-in .fr{opacity:.75}
+   167→
+   168→/* ---- toast ---- */
+   169→#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(18px);background:#2b211b;color:#fff;padding:11px 18px;border-radius:12px;font-size:.9rem;font-weight:600;opacity:0;pointer-events:none;transition:all .25s ease;z-index:100;max-width:92vw;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.28)}
+   170→#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+   171→#toast.ok{background:var(--green)}
+   172→#toast.warn{background:var(--amber)}
+   173→#toast.err{background:var(--brand)}
+   174→
+   175→/* ---- spinner ---- */
+   176→.spin{width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,.45);border-top-color:#fff;animation:rot .7s linear infinite;display:inline-block;flex:none;vertical-align:-3px}
+   177→.spin.dark{border-color:rgba(194,51,77,.25);border-top-color:var(--brand)}
+   178→@keyframes rot{to{transform:rotate(360deg)}}
+   179→
+   180→/* ============================================================ DETAY SAYFA */
+   181→.crumb{display:inline-flex;align-items:center;gap:6px;margin:20px 0 4px;font-size:.88rem;font-weight:700;color:#7a6353;text-decoration:none;transition:color .15s}
+   182→.crumb:hover{color:var(--brand)}
+   183→.dwrap{display:grid;gap:1.5rem;margin-top:10px}
+   184→@media(min-width:900px){.dhead{grid-template-columns:1.25fr 1fr}}
+   185→.dhead{display:grid;gap:1.5rem;align-items:start}
+   186→.dcard{background:var(--surface);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
+   187→.dcover{position:relative;height:230px}
+   188→.dbody{padding:24px;display:grid;gap:10px}
+   189→.dtitle{font-size:clamp(1.35rem,3vw,1.85rem);font-weight:800;letter-spacing:-.015em;line-height:1.22}
+   190→.dloc{font-size:.92rem;color:#6d5647;font-weight:600}
+   191→.daddr{font-size:.9rem;color:#8a7466}
+   192→.dcontact{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+   193→.tel-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:var(--green-soft);color:#065f46;font-weight:800;text-decoration:none;font-size:.9rem;transition:all .15s}
+   194→.tel-btn:hover{background:var(--green);color:#fff;transform:translateY(-1px)}
+   195→.open-chip{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:999px;font-weight:800;font-size:.9rem;background:#f3ece5;color:#6d5647}
+   196→.open-chip.on{background:var(--green-soft);color:#065f46}
+   197→.open-chip.off{background:var(--amber-soft);color:#92400e}
+   198→.mini-note{font-size:.82rem;color:var(--muted)}
+   199→.hours{width:100%;border-collapse:collapse}
+   200→.hours td{padding:9px 14px;border-bottom:1px dashed var(--line);font-size:.9rem}
+   201→.hours tr:last-child td{border-bottom:none}
+   202→.hours td:first-child{font-weight:600;color:#5d4a3d}
+   203→.hours td.t-time{text-align:right;font-variant-numeric:tabular-nums;color:#5d4a3d}
+   204→.hours tr.today td{background:var(--brand-soft);color:var(--brand);font-weight:800}
+   205→.hours tr.today td.t-time{color:var(--brand)}
+   206→.today-pill{display:inline-block;margin-left:8px;background:var(--brand);color:#fff;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:999px;vertical-align:1px}
+   207→.closed{color:#b3a294;font-style:italic;font-weight:500!important}
+   208→
+   209→.section-title{font-size:1.2rem;font-weight:800;margin:6px 0 14px;display:flex;align-items:center;gap:8px}
+   210→.svc-list{display:grid;gap:10px;max-height:430px;overflow-y:auto;padding:2px 8px 2px 2px}
+   211→.svc{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);border-radius:14px;background:var(--surface);transition:all .15s}
+   212→.svc:hover{border-color:var(--brand);background:#fffafb;box-shadow:var(--shadow)}
+   213→.svc .si{flex:none;width:38px;height:38px;border-radius:12px;background:var(--brand-soft);display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+   214→.svc .sn{font-weight:700;font-size:.94rem}
+   215→.svc .sc-cat{font-size:.74rem;color:var(--muted);font-weight:600}
+   216→.svc-meta{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums;flex:none}
+   217→.svc-dur{font-size:.76rem;color:var(--muted);font-weight:600;white-space:nowrap}
+   218→.svc-price{font-weight:800;color:var(--brand);font-size:.95rem;white-space:nowrap}
+   219→.svc-pick{flex:none;border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 13px;font:inherit;font-size:.78rem;font-weight:800;color:var(--brand);cursor:pointer;transition:all .15s}
+   220→.svc-pick:hover{background:var(--brand);color:#fff;border-color:var(--brand)}
+   221→
+   222→/* ---- randevu formu ---- */
+   223→.book-card{background:var(--surface);border-radius:20px;box-shadow:var(--shadow);padding:24px;display:grid;gap:18px;scroll-margin-top:80px}
+   224→.f-label{font-size:.85rem;font-weight:800;color:#5d4a3d;display:block;margin-bottom:7px}
+   225→.field input,.field select,.field textarea{padding:11px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);font:inherit;font-size:.94rem;width:100%;transition:border-color .2s,box-shadow .2s;color:var(--ink)}
+   226→.field textarea{resize:vertical;min-height:70px}
+   227→.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 4px var(--brand-soft)}
+   228→.hp{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;overflow:hidden!important}
+   229→.dates{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+   230→@media(min-width:640px){.dates{grid-template-columns:repeat(7,1fr)}}
+   231→.date-btn{padding:8px 4px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);cursor:pointer;text-align:center;font:inherit;transition:all .15s}
+   232→.date-btn:hover{border-color:var(--brand);transform:translateY(-1px)}
+   233→.date-btn.on{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 6px 14px rgba(194,51,77,.3)}
+   234→.date-btn .dw{display:block;font-size:.7rem;opacity:.75;font-weight:600}
+   235→.date-btn .dn{display:block;font-weight:800;font-size:.84rem;white-space:nowrap}
+   236→.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;max-height:250px;overflow-y:auto;padding:2px}
+   237→.slot{padding:10px 0;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);font:inherit;font-weight:700;font-size:.9rem;cursor:pointer;font-variant-numeric:tabular-nums;transition:all .15s;color:var(--ink)}
+   238→.slot:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+   239→.slot.on{background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 5px 12px rgba(194,51,77,.3)}
+   240→.slot:disabled{opacity:.38;cursor:not-allowed;text-decoration:line-through;background:#faf5ef}
+   241→.hint{font-size:.88rem;color:var(--muted);padding:10px 2px}
+   242→.err-txt{color:var(--brand);font-weight:700}
+   243→.slotload{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:.88rem;font-weight:600;padding:8px 2px}
+   244→.sumline{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;background:var(--amber-soft);color:#92400e;padding:11px 15px;border-radius:12px;font-size:.88rem;font-weight:700}
+   245→.sumline[hidden]{display:none}
+   246→.form-err{background:var(--brand-soft);color:var(--brand);font-weight:700;font-size:.88rem;padding:11px 14px;border-radius:12px}
+   247→.form-err[hidden]{display:none}
+   248→.btn-submit{width:100%;background:linear-gradient(120deg,var(--brand),#d97706);color:#fff;font-size:1rem;padding:14px;box-shadow:0 8px 20px rgba(194,51,77,.3)}
+   249→.btn-submit:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 26px rgba(194,51,77,.38)}
+   250→.btn-submit:disabled{opacity:.65;cursor:wait;transform:none}
+   251→
+   252→/* ---- başarı ekranı ---- */
+   253→.success{display:grid;gap:16px;text-align:center;padding:14px 6px}
+   254→.success[hidden]{display:none}
+   255→.okmark{width:66px;height:66px;border-radius:50%;background:var(--green-soft);color:var(--green);font-size:2.1rem;display:flex;align-items:center;justify-content:center;margin:0 auto;animation:pop .45s ease}
+   256→@keyframes pop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+   257→.success h2{font-size:1.4rem;font-weight:800}
+   258→.success .sub{color:#6d5647;font-size:.92rem}
+   259→.sumcard{display:grid;text-align:left;background:var(--bg);border-radius:16px;padding:4px 18px;border:1px solid var(--line)}
+   260→.sumrow{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px dashed var(--line);font-size:.9rem;align-items:baseline}
+   261→.sumrow:last-child{border-bottom:none}
+   262→.sumrow .k{color:var(--muted);font-weight:600;flex:none}
+   263→.sumrow .v{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;word-break:break-word}
+   264→.s-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+   265→
+   266→/* ---- sayfa düzeyi hata / 404 ---- */
+   267→.center-page{min-height:70vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px 16px}
+   268→.center-card{background:var(--surface);border-radius:22px;box-shadow:var(--shadow);padding:44px 30px;max-width:480px}
+   269→.center-card .big{font-size:3rem;display:block;margin-bottom:12px}
+   270→.center-card h1{font-size:1.4rem;margin-bottom:10px}
+   271→.center-card p{color:#6d5647;margin-bottom:20px}
+   272→
+   273→/* ---- scrollbars ---- */
+   274→.svc-list::-webkit-scrollbar,.slots::-webkit-scrollbar,.chips::-webkit-scrollbar{width:8px;height:8px}
+   275→.svc-list::-webkit-scrollbar-thumb,.slots::-webkit-scrollbar-thumb,.chips::-webkit-scrollbar-thumb{background:#e4cbb8;border-radius:8px}
+   276→.svc-list::-webkit-scrollbar-thumb:hover,.slots::-webkit-scrollbar-thumb:hover,.chips::-webkit-scrollbar-thumb:hover{background:#d3ae93}
+   277→.svc-list,.slots,.chips{scrollbar-width:thin;scrollbar-color:#e4cbb8 transparent}
+   278→
+   279→/* ---- telefon dar ekran ---- */
+   280→@media(max-width:520px){
+   281→  .hero{padding:26px 18px}
+   282→  .top-in{gap:8px}
+   283→  .search{order:3;flex:1 1 100%;max-width:none}
+   284→  .dbody,.book-card{padding:18px}
+   285→  .dates{grid-template-columns:repeat(4,1fr)}
+   286→  .biz-map{height:300px}
+   287→}
+   288→
+   289→/* ---- harita (Leaflet + OSM) ---- */
+   290→.map-card{background:#fff;border:1px solid #ecdcd0;border-radius:16px;padding:14px 14px 12px;margin:18px 0;box-shadow:0 4px 18px rgba(63,36,22,.06)}
+   291→.map-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 10px}
+   292→.map-head h2{font-size:1.02rem;color:#3f2416;margin:0}
+   293→.map-toggle{border:1px solid #e4cbb8;background:#fff;color:#8a5a3b;border-radius:999px;padding:5px 12px;font-size:.78rem;font-weight:600;cursor:pointer;transition:all .15s}
+   294→.map-toggle:hover{background:#fdf3ec;border-color:#d3ae93}
+   295→.biz-map{height:380px;border-radius:12px;border:1px solid #eadbcd;z-index:0;background:#e8e0d4}
+   296→.map-hint{font-size:.78rem;color:#8a7160;margin:8px 2px 0}
+   297→.biz-pin{width:32px;height:32px;border-radius:50%;background:#fff;border:2.5px solid var(--brand);display:grid;place-items:center;font-size:16px;line-height:1;box-shadow:0 3px 8px rgba(0,0,0,.28);cursor:pointer;transition:transform .15s}
+   298→.biz-pin:hover{transform:scale(1.12)}
+   299→.biz-pin.pin-nearest{width:46px;height:46px;font-size:23px;border-color:#118a4e;background:#eafff2;box-shadow:0 0 0 7px rgba(17,138,78,.18),0 4px 10px rgba(0,0,0,.32)}
+   300→.biz-pin .pin-star{position:absolute;top:-14px;right:-12px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4))}
+   301→.user-dot{width:18px;height:18px;border-radius:50%;background:#1e88e5;border:3px solid #fff;box-shadow:0 0 0 9px rgba(30,136,229,.22),0 2px 6px rgba(0,0,0,.3)}
+   302→.biz-pop{font-family:inherit}
+   303→.biz-pop .pop-t{font-weight:800;color:#3f2416;font-size:.92rem}
+   304→.biz-pop .pop-s{font-size:.78rem;color:#8a7160;margin:2px 0 4px}
+   305→.biz-pop .pop-d{font-size:.8rem;font-weight:700;color:#118a4e}
+   306→.biz-pop .pop-link{display:inline-block;margin-top:7px;font-size:.82rem;font-weight:700;color:var(--brand);text-decoration:none;border-bottom:2px solid rgba(194,51,77,.25)}
+   307→.biz-pop .pop-link:hover{color:#a02145}
+   308→.detail-map{height:260px;border-radius:12px;border:1px solid #eadbcd;z-index:0;margin-top:12px}
+   309→.dir-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+   310→.dir-links a{display:inline-flex;align-items:center;gap:5px;font-size:.8rem;font-weight:700;color:#8a5a3b;background:#fdf3ec;border:1px solid #e4cbb8;border-radius:999px;padding:6px 13px;text-decoration:none;transition:all .15s}
+   311→.dir-links a:hover{background:#f7e4d7;transform:translateY(-1px)}
+   312→/* leaflet kontrolleri tema uyumu */
+   313→.leaflet-bar a,.leaflet-control-attribution{font-family:inherit}
+   314→.leaflet-control-attribution{font-size:10px;background:rgba(255,255,255,.82)!important}
+   315→`;
+   316→
+   317→// ---------------------------------------------------------------- Ortak sayfa parçaları
+   318→
+   319→function pageShell(o: { title: string; desc: string; body: string; scripts?: string[]; extraCss?: string[]; gwPort?: string | null }): string {
+   320→  // Gateway (XTransformPort) ile açıldıysa göreli varlık URL'lerine param ekle —
+   321→  // aksi hâlde /assets/* istekleri gateway'den CRM'e düşer ve 404 olur.
+   322→  const gw = (p: string) =>
+   323→    o.gwPort ? p + (p.includes('?') ? '&' : '?') + 'XTransformPort=' + encodeURIComponent(o.gwPort) : p;
+   324→  const scripts = (o.scripts || []).map((s) => `<script src="${gw(s)}" defer></script>`).join('\n  ');
+   325→  const extraCss = (o.extraCss || []).map((s) => `<link rel="stylesheet" href="${gw(s)}">`).join('\n  ');
+   326→  return `<!DOCTYPE html>
+   327→<html lang="tr">
+   328→<head>
+   329→<meta charset="UTF-8">
+   330→<meta name="viewport" content="width=device-width, initial-scale=1">
+   331→<title>${esc(o.title)}</title>
+   332→<meta name="description" content="${esc(o.desc)}">
+   333→<link rel="icon" href="${gw(FAVICON)}">
+   334→<link rel="stylesheet" href="${gw('/assets/style.css')}">
+   335→  ${extraCss}
+   336→</head>
+   337→<body>
+   338→<div class="page">
+   339→${o.body}
+   340→</div>
+   341→<div id="toast" role="status" aria-live="polite"></div>
+   342→  ${scripts}
+   343→</body>
+   344→</html>`;
+   345→}
+   346→
+   347→function siteFooter(): string {
+   348→  return `<footer class="ft">
+   349→  <div class="ft-in">
+   350→    <span class="fl">🍉 GNC Randevu — tüm işletmeler tek yerde</span>
+   351→    <span class="fr">Randevun bir dokunuş uzağında · Türkçe · Mobil uyumlu</span>
+   352→  </div>
+   353→</footer>`;
+   354→}
+   355→
+   356→// ---------------------------------------------------------------- ANA SAYFA
+   357→
+   358→export function homePage(baseDomain: string, gwPort?: string | null): string {
+   359→  const cfg = jsonIsland({ baseDomain });
+   360→  const chips: Array<[string, string]> = [
+   361→    ['', 'Tümü'],
+   362→    ['berber', '💈 Berber'],
+   363→    ['kuafor', '✂️ Kuaför'],
+   364→    ['disci', '🦷 Dişçi'],
+   365→    ['guzellik', '💄 Güzellik'],
+   366→    ['spa', '🧖 Spa'],
+   367→    ['dovme', '🎨 Dövme'],
+   368→  ];
+   369→  const chipHtml = chips
+   370→    .map(([v, l], i) => `<button type="button" class="chip${i === 0 ? ' on' : ''}" data-type="${v}" ${v ? '' : 'aria-pressed="true"'}>${l}</button>`)
+   371→    .join('');
+   372→
+   373→  const body = `<header class="top">
+   374→  <div class="top-in">
+   375→    <a class="logo" href="/"><span class="lg">🍉</span>GNC Randevu</a>
+   376→    <div class="search">
+   377→      <span class="s-ic" aria-hidden="true">🔍</span>
+   378→      <input type="search" id="q" placeholder="İşletme, hizmet veya şehir ara…" aria-label="İşletme ara" autocomplete="off">
+   379→    </div>
+   380→  </div>
+   381→</header>
+   382→<main>
+   383→  <section class="hero" aria-label="Tanıtım">
+   384→    <h1>Berberden dişçiye, kuaförden spaya — <em>yakınındaki tüm işletmeler</em> burada</h1>
+   385→    <p>Konumunu paylaş, en yakın işletmeyi bul; hizmeti seç, uygun saati yakala, randevunu saniyeler içinde oluştur. Üye olmana bile gerek yok.</p>
+   386→    <button type="button" class="btn btn-geo" id="geo-btn">📍 Konumuma göre en yakını bul</button>
+   387→    <p class="loc-status" id="loc-status" role="status" aria-live="polite"></p>
+   388→  </section>
+   389→
+   390→  <div class="filters-row">
+   391→    <div class="chips" id="chips" aria-label="İşletme türü filtresi">${chipHtml}</div>
+   392→    <label class="city-wrap"><span class="sr-only">Şehir filtresi</span><select id="city" aria-label="Şehir seç"><option value="">Tüm şehirler</option></select></label>
+   393→  </div>
+   394→
+   395→  <section class="map-card" aria-label="İşletme haritası">
+   396→    <div class="map-head">
+   397→      <h2>🗺️ Haritada işletmeler</h2>
+   398→      <button type="button" class="map-toggle" id="map-toggle" aria-expanded="true" aria-controls="biz-map">Haritayı gizle</button>
+   399→    </div>
+   400→    <div id="biz-map" class="biz-map" role="application" aria-label="İşletmelerin harita üzerinde konumları"></div>
+   401→    <p class="map-hint" id="map-hint">💡 Konum izni verirsen 📍 senin konumun da haritada görünür, en yakın işletme ⭐ ile vurgulanır.</p>
+   402→  </section>
+   403→
+   404→  <p class="count" id="count" role="status">İşletmeler yükleniyor…</p>
+   405→  <section class="grid" id="grid" aria-label="İşletme listesi" aria-live="polite">
+   406→    ${Array.from({ length: 8 })
+   407→      .map(
+   408→        () => `<div class="sk" aria-hidden="true"><div class="sc"></div><div class="sb"><div class="sk-line w60"></div><div class="sk-line w80"></div><div class="sk-line"></div></div></div>`
+   409→      )
+   410→      .join('')}
+   411→  </section>
+   412→  <noscript><p class="state-box">🙏 Bu site randevuları canlı göstermek için JavaScript kullanır — tarayıcında JavaScript'i etkinleştirip yenile.</p></noscript>
+   413→</main>
+   414→${siteFooter()}`;
+   415→
+   416→  const shell = pageShell({
+   417→    title: 'GNC Randevu — Yakınındaki Berber, Kuaför, Dişçi ve Spa İşletmeleri',
+   418→    desc: 'Konumuna göre en yakın berber, kuaför, dişçi, güzellik salonu, spa ve dövme stüdyolarını bul; online randevunu saniyeler içinde oluştur.',
+   419→    body,
+   420→    extraCss: ['/assets/leaflet/leaflet.css'],
+   421→    scripts: ['/assets/leaflet/leaflet.js', '/assets/home.js'],
+   422→    gwPort,
+   423→  });
+   424→
+   425→  // cfg adasını <main> başına değil body başına koy: defer script'ten Önce tanımlı olsun
+   426→  return shell.replace('</main>', `<script id="page-cfg" type="application/json">${cfg}</script>\n</main>`);
+   427→}
+   428→
+   429→// ---------------------------------------------------------------- DETAY SAYFASI
+   430→
+   431→const DAY_TR: Array<[string, string]> = [
+   432→  ['mon', 'Pazartesi'],
+   433→  ['tue', 'Salı'],
+   434→  ['wed', 'Çarşamba'],
+   435→  ['thu', 'Perşembe'],
+   436→  ['fri', 'Cuma'],
+   437→  ['sat', 'Cumartesi'],
+   438→  ['sun', 'Pazar'],
+   439→];
+   440→
+   441→export function detailPage(a: { provider: Json; services: Json[]; homeUrl: string; gwPort?: string | null }): string {
+   442→  const p = a.provider;
+   443→  const meta = typeMeta(p.type);
+   444→  const wh = (p.workingHours && typeof p.workingHours === 'object') ? p.workingHours : {};
+   445→
+   446→  const hoursRows = DAY_TR.map(([k, label]) => {
+   447→    const d = wh[k];
+   448→    const open = d && !d.closed && d.start && d.end;
+   449→    const val = open ? `${d.start} – ${d.end}` : '';
+   450→    return `<tr data-day="${k}"><td>${label}</td><td class="t-time${open ? '' : ' closed'}">${open ? val : 'Kapalı'}</td></tr>`;
+   451→  }).join('');
+   452→
+   453→  const nSvc = a.services.length;
+   454→  const prices = a.services.map((s) => s.price).filter((x: unknown) => typeof x === 'number');
+   455→  const minP = prices.length ? Math.min(...prices) : null;
+   456→
+   457→  const data = jsonIsland({
+   458→    provider: {
+   459→      slug: p.slug,
+   460→      name: p.name,
+   461→      type: p.type,
+   462→      address: p.address,
+   463→      city: p.city,
+   464→      district: p.district,
+   465→      phone: p.phone,
+   466→      workingHours: wh,
+   467→      lat: p.lat,
+   468→      lng: p.lng,
+   469→    },
+   470→    services: a.services.map((s) => ({
+   471→      id: s.id,
+   472→      name: s.name,
+   473→      duration: s.duration,
+   474→      price: s.price,
+   475→      currency: s.currency,
+   476→      category: s.category,
+   477→    })),
+   478→    cfg: { homeUrl: a.homeUrl },
+   479→  });
+   480→
+   481→  const hasGeo = typeof p.lat === 'number' && typeof p.lng === 'number' && !isNaN(p.lat as number) && !isNaN(p.lng as number);
+   482→  const latStr = hasGeo ? String(p.lat) : '';
+   483→  const lngStr = hasGeo ? String(p.lng) : '';
+   484→  const mapCard = hasGeo
+   485→    ? `<article class="dcard">
+   486→        <div class="dbody">
+   487→          <h2 class="section-title" style="margin:0">🗺️ Konum</h2>
+   488→          <div id="detail-map" class="detail-map" role="application" aria-label="${esc(p.name)} konum haritası"></div>
+   489→          <div class="dir-links">
+   490→            <a href="https://www.google.com/maps/dir/?api=1&destination=${latStr},${lngStr}" target="_blank" rel="noopener">🧭 Google Yol Tarifi</a>
+   491→            <a href="https://www.openstreetmap.org/?mlat=${latStr}&mlon=${lngStr}#map=17/${latStr}/${lngStr}" target="_blank" rel="noopener">🗺️ Haritada Aç</a>
+   492→          </div>
+   493→        </div>
+   494→      </article>`
+   495→    : '';
+   496→
+   497→  const body = `<header class="top">
+   498→  <div class="top-in">
+   499→    <a class="logo" href="${esc(a.homeUrl)}"><span class="lg">🍉</span>GNC Randevu</a>
+   500→    <a class="btn btn-ghost" style="padding:8px 16px;font-size:.85rem;margin-left:auto" href="${esc(a.homeUrl)}">← Tüm işletmeler</a>
+   501→  </div>
+   502→</header>
+   503→<main>
+   504→  <a class="crumb" href="${esc(a.homeUrl)}"><span aria-hidden="true">←</span> Tüm işletmeler</a>
+   505→  <div class="dwrap">
+   506→    <div class="dhead">
+   507→      <article class="dcard">
+   508→        <div class="dcover">
+   509→          <span class="phb ph-${esc(p.type)}" aria-hidden="true">${meta.emoji}</span>
+   510→          ${p.photo ? `<img class="cphoto" src="${esc(p.photo)}" alt="${esc(p.name)}" onerror="this.remove()">` : ''}
+   511→        </div>
+   512→        <div class="dbody">
+   513→          <div class="row-top">
+   514→            <span class="badge b-${esc(p.type)}">${meta.emoji} ${esc(meta.label)}</span>
+   515→            ${nSvc ? `<span class="badge b-def">🧾 ${nSvc} hizmet</span>` : ''}
+   516→            ${minP !== null ? `<span class="badge b-def">min. ${(minP as number).toLocaleString('tr-TR')} ₺</span>` : ''}
+   517→          </div>
+   518→          <h1 class="dtitle">${esc(p.name)}</h1>
+   519→          <p class="dloc">📍 ${esc(p.city)}${p.district ? ' · ' + esc(p.district) : ''}</p>
+   520→          ${p.address ? `<p class="daddr">${esc(p.address)}</p>` : ''}
+   521→          <div class="dcontact">
+   522→            ${p.phone ? `<a class="tel-btn" href="tel:${esc(String(p.phone).replace(/\s+/g, ''))}">📞 ${esc(p.phone)}</a>` : ''}
+   523→            <span class="open-chip" id="open-now">⏰ Çalışma saatleri aşağıda</span>
+   524→          </div>
+   525→        </div>
+   526→      </article>
+   527→      <article class="dcard">
+   528→        <div class="dbody">
+   529→          <h2 class="section-title" style="margin:0">🕒 Çalışma Saatleri</h2>
+   530→          <table class="hours" aria-label="Çalışma saatleri">${hoursRows}</table>
+   531→        </div>
+   532→      </article>
+   533→      ${mapCard}
+   534→    </div>
+   535→
+   536→    <section aria-labelledby="svc-h">
+   537→      <h2 class="section-title" id="svc-h">💇 Hizmetler${nSvc ? ` <span class="badge b-kuafor">${nSvc}</span>` : ''}</h2>
+   538→      ${
+   539→        nSvc
+   540→          ? `<div class="svc-list">${a.services
+   541→              .map(
+   542→                (s) => `<div class="svc">
+   543→          <span class="si" aria-hidden="true">${meta.emoji}</span>
+   544→          <div><div class="sn">${esc(s.name)}</div><div class="sc-cat">${esc(s.category || 'Hizmet')}</div></div>
+   545→          <div class="svc-meta"><div class="svc-dur">⏱ ${esc(s.duration)} dk</div><div class="svc-price">${(s.price ?? 0).toLocaleString('tr-TR')} ₺</div></div>
+   546→          <button type="button" class="svc-pick" data-svc="${esc(s.id)}">Randevu Al</button>
+   547→        </div>`
+   548→              )
+   549→              .join('')}</div>`
+   550→          : `<p class="hint">Bu işletme henüz hizmet eklememiş — yine de telefonla ulaşabilirsin.</p>`
+   551→      }
+   552→    </section>
+   553→
+   554→    ${
+   555→      nSvc
+   556→        ? `<section class="book-card" id="randevu" aria-labelledby="book-h">
+   557→      <h2 class="section-title" id="book-h" style="margin:0">📅 Randevu Al</h2>
+   558→
+   559→      <div class="field">
+   560→        <label class="f-label" for="f-service">Hizmet seç</label>
+   561→        <select id="f-service"></select>
+   562→      </div>
+   563→
+   564→      <div>
+   565→        <span class="f-label" id="dates-l">Tarih seç <span class="mini-note" style="font-weight:600">· önümüzdeki 14 gün</span></span>
+   566→        <div class="dates" id="dates" role="group" aria-labelledby="dates-l"></div>
+   567→      </div>
+   568→
+   569→      <div>
+   570→        <span class="f-label" id="slots-l">Saat seç</span>
+   571→        <div class="slots" id="slots" aria-live="polite" aria-labelledby="slots-l"></div>
+   572→      </div>
+   573→
+   574→      <p class="sumline" id="sumline" hidden></p>
+   575→
+   576→      <form id="book-form" novalidate>
+   577→        <div style="display:grid;gap:14px">
+   578→          <div class="field">
+   579→            <label class="f-label" for="f-name">Ad Soyad *</label>
+   580→            <input id="f-name" name="customerName" type="text" required minlength="2" placeholder="Örn. Ayşe Yılmaz" autocomplete="name">
+   581→          </div>
+   582→          <div class="field">
+   583→            <label class="f-label" for="f-phone">Telefon *</label>
+   584→            <input id="f-phone" name="customerPhone" type="tel" required placeholder="0555 111 22 33" autocomplete="tel" inputmode="tel">
+   585→          </div>
+   586→          <div class="field">
+   587→            <label class="f-label" for="f-note">Not (opsiyonel)</label>
+   588→            <textarea id="f-note" name="customerNote" placeholder="Eklemek istediğin bir şey var mı?"></textarea>
+   589→          </div>
+   590→          <input class="hp" id="f-web" name="website" type="text" tabindex="-1" autocomplete="off" aria-hidden="true">
+   591→          <p class="form-err" id="form-err" hidden></p>
+   592→          <button type="submit" class="btn btn-submit" id="submit-btn">✅ Randevuyu Onayla</button>
+   593→          <p class="mini-note" style="text-align:center">Üyeliksiz · Onay sonrası WhatsApp'tan iletebilirsin</p>
+   594→        </div>
+   595→      </form>
+   596→
+   597→      <div class="success" id="success" hidden>
+   598→        <span class="okmark" aria-hidden="true">✅</span>
+   599→        <h2>Randevun oluşturuldu!</h2>
+   600→        <p class="sub">İşletme randevunu aldı — <b id="s-status">Onaylandı</b>. Aşağıdaki özeti WhatsApp'tan da iletebilirsin.</p>
+   601→        <div class="sumcard">
+   602→          <div class="sumrow"><span class="k">İşletme</span><span class="v" id="s-biz"></span></div>
+   603→          <div class="sumrow"><span class="k">Hizmet</span><span class="v" id="s-service"></span></div>
+   604→          <div class="sumrow"><span class="k">Tarih &amp; Saat</span><span class="v" id="s-when"></span></div>
+   605→          <div class="sumrow"><span class="k">Ad</span><span class="v" id="s-name"></span></div>
+   606→          <div class="sumrow"><span class="k">Telefon</span><span class="v" id="s-phone"></span></div>
+   607→          <div class="sumrow" id="s-price-row" hidden><span class="k">Fiyat</span><span class="v" id="s-price"></span></div>
+   608→          <div class="sumrow" id="s-code-row" hidden><span class="k">Randevu No</span><span class="v" id="s-code"></span></div>
+   609→        </div>
+   610→        <div class="s-actions">
+   611→          <a class="btn btn-wa" id="wa-link" target="_blank" rel="noopener" href="#">💬 WhatsApp'tan Onay Gönder</a>
+   612→          <button type="button" class="btn btn-ghost" id="again-btn">➕ Yeni randevu al</button>
+   613→          <a class="btn btn-ghost" href="${esc(a.homeUrl)}">🏠 Ana sayfaya dön</a>
+   614→        </div>
+   615→      </div>
+   616→    </section>`
+   617→        : ''
+   618→    }
+   619→  </div>
+   620→</main>
+   621→${siteFooter()}`;
+   622→
+   623→  return pageShell({
+   624→    title: `${p.name} — Online Randevu | GNC Randevu`,
+   625→    desc: `${p.name} (${p.city}) online randevu: hizmetler, çalışma saatleri ve uygun saatler. Saniyeler içinde üyeliksiz randevu.`,
+   626→    body,
+   627→    extraCss: hasGeo ? ['/assets/leaflet/leaflet.css'] : undefined,
+   628→    scripts: hasGeo ? ['/assets/leaflet/leaflet.js', '/assets/detail.js'] : ['/assets/detail.js'],
+   629→    gwPort: a.gwPort,
+   630→  }).replace(
+   631→    '</main>',
+   632→    `<script id="page-data" type="application/json">${data}</script>\n</main>`
+   633→  );
+   634→}
+   635→
+   636→// ---------------------------------------------------------------- HATA SAYFALARI
+   637→
+   638→export function notFoundPage(slug?: string, gwPort?: string | null, homeUrl?: string | null): string {
+   639→  const backHref = homeUrl || '/';
+   640→  const backLabel = homeUrl ? '🔍 Tüm işletmelere göz at' : '← Tüm işletmelere dön';
+   641→  return pageShell({
+   642→    title: 'İşletme bulunamadı | GNC Randevu',
+   643→    desc: 'Aradığın işletme bulunamadı.',
+   644→    gwPort,
+   645→    body: `<header class="top"><div class="top-in"><a class="logo" href="${esc(backHref)}"><span class="lg">🍉</span>GNC Randevu</a></div></header>
+   646→<main><div class="center-page"><div class="center-card">
+   647→  <span class="big" aria-hidden="true">🔍</span>
+   648→  <h1>Böyle bir işletme yok</h1>
+   649→  <p>${slug ? `"<b>${esc(slug)}</b>" adında kayıtlı bir işletme bulamadık — henüz eklenmemiş ya da kaldırılmış olabilir.` : 'Aradığın sayfa mevcut değil.'}</p>
+   650→  <p style="font-size:12.5px;color:#7b869c;margin-top:8px">Not: <b>işletme-adi</b> biçimindeki alt alan adları GNC Randevu sistemine ayrılmıştır; henüz işletme atanmamış adreslerde bu sayfa görünür.</p>
+   651→  <a class="btn btn-geo" href="${esc(backHref)}">${backLabel}</a>
+   652→</div></div></main>
+   653→${siteFooter()}`,
+   654→  });
+   655→}
+   656→
+   657→export function serverErrorPage(msg: string, gwPort?: string | null): string {
+   658→  return pageShell({
+   659→    title: 'Bir sorun oluştu | GNC Randevu',
+   660→    desc: 'Beklenmeyen bir hata oluştu.',
+   661→    gwPort,
+   662→    body: `<header class="top"><div class="top-in"><a class="logo" href="/"><span class="lg">🍉</span>GNC Randevu</a></div></header>
+   663→<main><div class="center-page"><div class="center-card">
+   664→  <span class="big" aria-hidden="true">🛠️</span>
+   665→  <h1>Bir şeyler ters gitti</h1>
+   666→  <p>${esc(msg)}</p>
+   667→  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+   668→    <a class="btn btn-geo" href="/">🏠 Ana sayfaya dön</a>
+   669→    <a class="btn btn-ghost" href="javascript:location.reload()">🔄 Sayfayı yenile</a>
+   670→  </div>
+   671→</div></div></main>
+   672→${siteFooter()}`,
+   673→  });
+   674→}
+   675→
+   676→// ---------------------------------------------------------------- İSTEMCİ JS: ANA SAYFA
+   677→
+   678→export const HOME_JS = `
+   679→(function () {
+   680→  'use strict';
+   681→  var cfgEl = document.getElementById('page-cfg');
+   682→  var CFG = cfgEl ? JSON.parse(cfgEl.textContent) : { baseDomain: '' };
+   683→  // Gateway (XTransformPort) uyumu: göreli API/link çağrılarına param ekle
+   684→  var GWPORT = new URLSearchParams(location.search).get('XTransformPort');
+   685→  function gwq(p) {
+   686→    if (!GWPORT) return p;
+   687→    return p + (p.indexOf('?') === -1 ? '?' : '&') + 'XTransformPort=' + encodeURIComponent(GWPORT);
+   688→  }
+   689→  var TYPE = {
+   690→    berber: { label: 'Berber', emoji: '💈' },
+   691→    kuafor: { label: 'Kuaför', emoji: '✂️' },
+   692→    disci: { label: 'Dişçi', emoji: '🦷' },
+   693→    guzellik: { label: 'Güzellik', emoji: '💄' },
+   694→    spa: { label: 'Spa', emoji: '🧖' },
+   695→    dovme: { label: 'Dövme', emoji: '🎨' }
+   696→  };
+   697→  var state = { q: '', type: '', city: '' };
+   698→  var lastItems = [];
+   699→  var grid = document.getElementById('grid');
+   700→  var countEl = document.getElementById('count');
+   701→  var citySel = document.getElementById('city');
+   702→  var qInput = document.getElementById('q');
+   703→  var locStatus = document.getElementById('loc-status');
+   704→
+   705→  function esc(s) {
+   706→    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+   707→  }
+   708→  function fmtPrice(price, cur) {
+   709→    if (typeof price !== 'number') return '';
+   710→    var n = new Intl.NumberFormat('tr-TR').format(price);
+   711→    return cur && cur !== 'TRY' ? n + ' ' + cur : n + ' \\u20BA';
+   712→  }
+   713→  function fmtKm(km) {
+   714→    if (km < 1) return Math.round(km * 1000) + ' m';
+   715→    return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(km) + ' km';
+   716→  }
+   717→  function haversine(lat1, lng1, lat2, lng2) {
+   718→    var R = 6371, toR = Math.PI / 180;
+   719→    var dLat = (lat2 - lat1) * toR, dLng = (lng2 - lng1) * toR;
+   720→    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * toR) * Math.cos(lat2 * toR) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+   721→    return 2 * R * Math.asin(Math.sqrt(a));
+   722→  }
+   723→
+   724→  // ---- toast
+   725→  var toastTimer = null;
+   726→  function toast(msg, kind) {
+   727→    var t = document.getElementById('toast');
+   728→    t.textContent = msg;
+   729→    t.className = 'show' + (kind ? ' ' + kind : '');
+   730→    clearTimeout(toastTimer);
+   731→    toastTimer = setTimeout(function () { t.className = ''; }, 4200);
+   732→  }
+   733→
+   734→  // ---- harita (Leaflet + OpenStreetMap)
+   735→  var map = null, markerLayer = null, userMarker = null, nearestM = null, mapReady = false;
+   736→  var mapEl = document.getElementById('biz-map');
+   737→
+   738→  function pinIcon(emoji, nearest) {
+   739→    var size = nearest ? [46, 46] : [32, 32];
+   740→    var html = '<div class="biz-pin' + (nearest ? ' pin-nearest' : '') + '">' + emoji + (nearest ? '<span class="pin-star" aria-hidden="true">⭐</span>' : '') + '</div>';
+   741→    return L.divIcon({ className: '', html: html, iconSize: size, iconAnchor: [size[0] / 2, size[1]], popupAnchor: [0, -(size[1] + 6)] });
+   742→  }
+   743→
+   744→  function popHtml(it) {
+   745→    var t = TYPE[it.type] || { label: 'İşletme' };
+   746→    var sub = esc(t.label) + (it.district ? ' · ' + esc(it.district) : '') + (it.city ? ' · ' + esc(it.city) : '');
+   747→    var dist = (typeof it._d === 'number') ? '<div class="pop-d">📍 Sana ' + esc(fmtKm(it._d)) + '</div>' : '';
+   748→    return '<div class="biz-pop"><div class="pop-t">' + esc(it.name) + '</div><div class="pop-s">' + sub + '</div>' + dist +
+   749→      '<a class="pop-link" href="' + bizHref(it.slug) + '">Randevu Al →</a></div>';
+   750→  }
+   751→
+   752→  function initMap() {
+   753→    if (mapReady || !mapEl) return;
+   754→    if (typeof L === 'undefined') {
+   755→      // Leaflet yüklenemedi — harita bölümünü nazikçe gizle
+   756→      var mc = mapEl.closest('.map-card');
+   757→      if (mc) mc.style.display = 'none';
+   758→      return;
+   759→    }
+   760→    var hasGeoPts = lastItems.some(function (it) { return typeof it.lat === 'number' && typeof it.lng === 'number'; });
+   761→    map = L.map('biz-map', { scrollWheelZoom: true });
+   762→    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+   763→      maxZoom: 19,
+   764→      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> katkıcıları'
+   765→    }).addTo(map);
+   766→    markerLayer = L.layerGroup().addTo(map);
+   767→    mapReady = true;
+   768→    if (hasGeoPts) {
+   769→      map.fitBounds(L.latLngBounds(lastItems.filter(function (it) { return typeof it.lat === 'number'; }).map(function (it) { return [it.lat, it.lng]; })).pad(0.2));
+   770→    } else {
+   771→      map.setView([39.2, 35.2], 5.4);
+   772→    }
+   773→  }
+   774→
+   775→  function updateMap(items) {
+   776→    if (!mapReady) { initMap(); if (!mapReady) return; }
+   777→    markerLayer.clearLayers();
+   778→    nearestM = null;
+   779→    var pts = [];
+   780→    var minD = null;
+   781→    for (var i = 0; i < items.length; i++) {
+   782→      var d = items[i]._d;
+   783→      if (typeof d === 'number' && (minD === null || d < minD)) minD = d;
+   784→    }
+   785→    items.forEach(function (it) {
+   786→      if (typeof it.lat !== 'number' || typeof it.lng !== 'number' || isNaN(it.lat) || isNaN(it.lng)) return;
+   787→      var t = TYPE[it.type] || { label: 'İşletme', emoji: '🏪' };
+   788→      var isNearest = (minD !== null && it._d === minD);
+   789→      var m = L.marker([it.lat, it.lng], { icon: pinIcon(t.emoji, isNearest), title: it.name, alt: it.name });
+   790→      m.bindPopup(popHtml(it), { maxWidth: 260 });
+   791→      m.addTo(markerLayer);
+   792→      if (isNearest) nearestM = m;
+   793→      pts.push([it.lat, it.lng]);
+   794→    });
+   795→    if (!pts.length) {
+   796→      map.setView([39.2, 35.2], 5.4);
+   797→    } else if (pts.length === 1) {
+   798→      map.setView(pts[0], 14);
+   799→    } else {
+   800→      map.fitBounds(L.latLngBounds(pts).pad(0.2));
+   801→    }
+   802→  }
+   803→
+   804→  function setUserDot(la, ln) {
+   805→    if (!mapReady) return;
+   806→    if (userMarker) map.removeLayer(userMarker);
+   807→    userMarker = L.marker([la, ln], {
+   808→      icon: L.divIcon({ className: '', html: '<div class="user-dot" role="img" aria-label="Konumun"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+   809→      interactive: false, keyboard: false
+   810→    }).addTo(map);
+   811→  }
+   812→
+   813→  function zoomToNearest() {
+   814→    if (!mapReady || !nearestM) return;
+   815→    var target = nearestM.getLatLng();
+   816→    var pts = [];
+   817→    if (userMarker) pts.push([userMarker.getLatLng().lat, userMarker.getLatLng().lng]);
+   818→    pts.push([target.lat, target.lng]);
+   819→    map.fitBounds(L.latLngBounds(pts).pad(0.35), { animate: true });
+   820→    setTimeout(function () { nearestM.openPopup(); }, 450);
+   821→  }
+   822→
+   823→  var mapToggle = document.getElementById('map-toggle');
+   824→  if (mapToggle) {
+   825→    mapToggle.addEventListener('click', function () {
+   826→      var collapsed = mapEl.style.display === 'none';
+   827→      mapEl.style.display = collapsed ? '' : 'none';
+   828→      mapToggle.textContent = collapsed ? 'Haritayı gizle' : 'Haritayı göster';
+   829→      mapToggle.setAttribute('aria-expanded', String(collapsed));
+   830→      if (collapsed && mapReady) setTimeout(function () { map.invalidateSize(); }, 80);
+   831→    });
+   832→  }
+   833→
+   834→  function bizHref(slug) {
+   835→    if (CFG.baseDomain) return 'https://' + slug + '.' + CFG.baseDomain;
+   836→    return gwq('/isletme/' + encodeURIComponent(slug));
+   837→  }
+   838→
+   839→  function cardHtml(it, i) {
+   840→    var t = TYPE[it.type] || { label: 'İşletme', emoji: '🏪' };
+   841→    var tKey = TYPE[it.type] ? it.type : 'def';
+   842→    var svcs = it.services || [];
+   843→    var minP = null;
+   844→    for (var j = 0; j < svcs.length; j++) {
+   845→      if (typeof svcs[j].price === 'number' && (minP === null || svcs[j].price < minP)) minP = svcs[j].price;
+   846→    }
+   847→    var cover = it.photo
+   848→      ? '<span class="phb ph-' + tKey + '" aria-hidden="true">' + t.emoji + '</span><img class="cphoto" src="' + esc(it.photo) + '" alt="' + esc(it.name) + '" loading="lazy" onerror="this.remove()">'
+   849→      : '<span class="phb ph-' + tKey + '" aria-hidden="true">' + t.emoji + '</span>';
+   850→    var dist = (typeof it._d === 'number') ? '<span class="dist">📍 ' + esc(fmtKm(it._d)) + '</span>' : '';
+   851→    var tel = it.phone ? '<a class="tel-link" href="tel:' + esc(String(it.phone).replace(/\\s+/g, '')) + '" title="Ara">📞 ' + esc(it.phone) + '</a>' : '<span></span>';
+   852→    return '<article class="card" style="animation-delay:' + Math.min(i * 45, 400) + 'ms">' +
+   853→      '<div class="cover">' + cover + '</div>' +
+   854→      '<div class="body">' +
+   855→      '<div class="row-top"><span class="badge b-' + tKey + '">' + t.emoji + ' ' + esc(t.label) + '</span>' + dist + '</div>' +
+   856→      '<h3 class="c-name"><a class="card-link" href="' + bizHref(it.slug) + '">' + esc(it.name) + '</a></h3>' +
+   857→      '<p class="c-loc">📍 ' + esc(it.city || '') + (it.district ? ' · ' + esc(it.district) : '') + '</p>' +
+   858→      (it.address ? '<p class="c-addr">' + esc(it.address) + '</p>' : '') +
+   859→      '<div class="c-meta"><span>' + svcs.length + ' hizmet</span>' + (minP !== null ? '<span aria-hidden="true">·</span><span class="minp">min. ' + esc(fmtPrice(minP)) + '</span>' : '') + '</div>' +
+   860→      '<div class="c-foot">' + tel + '<span class="go" aria-hidden="true">İncele →</span></div>' +
+   861→      '</div></article>';
+   862→  }
+   863→
+   864→  function skeleton(n) {
+   865→    var h = '';
+   866→    for (var i = 0; i < n; i++) h += '<div class="sk" aria-hidden="true"><div class="sc"></div><div class="sb"><div class="sk-line w60"></div><div class="sk-line w80"></div><div class="sk-line"></div></div></div>';
+   867→    return h;
+   868→  }
+   869→
+   870→  function render(items) {
+   871→    if (!items.length) {
+   872→      grid.innerHTML = '<div class="state-box"><span class="big" aria-hidden="true">🤷</span><p>Aramanla eşleşen işletme bulamadık.<br>Filtreleri temizleyip tekrar dene.</p><button type="button" class="btn btn-ghost" id="clear-filters">✨ Filtreleri temizle</button></div>';
+   873→      var cb = document.getElementById('clear-filters');
+   874→      if (cb) cb.addEventListener('click', function () {
+   875→        state = { q: '', type: '', city: '' };
+   876→        qInput.value = ''; citySel.value = '';
+   877→        setChip('');
+   878→        load();
+   879→      });
+   880→      return;
+   881→    }
+   882→    grid.innerHTML = items.map(cardHtml).join('');
+   883→  }
+   884→
+   885→  function setChip(type) {
+   886→    var chips = document.querySelectorAll('.chip');
+   887→    for (var i = 0; i < chips.length; i++) {
+   888→      var on = chips[i].getAttribute('data-type') === type;
+   889→      chips[i].classList.toggle('on', on);
+   890→      if (on) chips[i].setAttribute('aria-pressed', 'true'); else chips[i].removeAttribute('aria-pressed');
+   891→    }
+   892→  }
+   893→
+   894→  function fillCities(cities) {
+   895→    var cur = state.city;
+   896→    citySel.innerHTML = '<option value="">Tüm şehirler</option>';
+   897→    for (var i = 0; i < cities.length; i++) {
+   898→      var o = document.createElement('option');
+   899→      o.value = cities[i]; o.textContent = cities[i];
+   900→      citySel.appendChild(o);
+   901→    }
+   902→    citySel.value = cur || '';
+   903→    if (citySel.value !== cur) { state.city = ''; }
+   904→  }
+   905→
+   906→  function load() {
+   907→    countEl.textContent = 'İşletmeler yükleniyor…';
+   908→    grid.innerHTML = skeleton(8);
+   909→    var params = new URLSearchParams();
+   910→    if (state.q) params.set('q', state.q);
+   911→    if (state.type) params.set('type', state.type);
+   912→    if (state.city) params.set('city', state.city);
+   913→    var qs = params.toString();
+   914→    fetch(gwq('/api/businesses' + (qs ? '?' + qs : '')), { headers: { accept: 'application/json' } })
+   915→      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+   916→      .then(function (x) {
+   917→        if (!x.ok) {
+   918→          countEl.textContent = '';
+   919→          grid.innerHTML = '<div class="state-box"><span class="big" aria-hidden="true">📡</span><p>' + esc(x.j && x.j.error ? x.j.error : 'İşletmeler yüklenemedi.') + '</p><button type="button" class="btn btn-geo" id="retry-btn">🔄 Tekrar dene</button></div>';
+   920→          var rb = document.getElementById('retry-btn');
+   921→          if (rb) rb.addEventListener('click', load);
+   922→          return;
+   923→        }
+   924→        lastItems = x.j.items || [];
+   925→        fillCities(x.j.cities || []);
+   926→        countEl.textContent = lastItems.length + ' işletme listeleniyor' + (state.q || state.type || state.city ? ' (filtreli)' : '');
+   927→        render(lastItems);
+   928→        initMap();
+   929→        updateMap(lastItems);
+   930→      })
+   931→      .catch(function () {
+   932→        countEl.textContent = '';
+   933→        grid.innerHTML = '<div class="state-box"><span class="big" aria-hidden="true">📡</span><p>Bağlantı hatası — internetini kontrol edip tekrar dene.</p><button type="button" class="btn btn-geo" id="retry-btn">🔄 Tekrar dene</button></div>';
+   934→        var rb2 = document.getElementById('retry-btn');
+   935→        if (rb2) rb2.addEventListener('click', load);
+   936→      });
+   937→  }
+   938→
+   939→  // ---- arama (debounce)
+   940→  var qTimer = null;
+   941→  qInput.addEventListener('input', function () {
+   942→    clearTimeout(qTimer);
+   943→    qTimer = setTimeout(function () { state.q = qInput.value.trim(); load(); }, 350);
+   944→  });
+   945→  qInput.addEventListener('keydown', function (e) {
+   946→    if (e.key === 'Enter') { clearTimeout(qTimer); state.q = qInput.value.trim(); load(); }
+   947→  });
+   948→
+   949→  // ---- tür çipleri
+   950→  document.getElementById('chips').addEventListener('click', function (e) {
+   951→    var btn = e.target.closest('.chip');
+   952→    if (!btn) return;
+   953→    state.type = btn.getAttribute('data-type') || '';
+   954→    setChip(state.type);
+   955→    load();
+   956→  });
+   957→
+   958→  // ---- şehir
+   959→  citySel.addEventListener('change', function () { state.city = citySel.value; load(); });
+   960→
+   961→  // ---- konum: en yakını bul
+   962→  document.getElementById('geo-btn').addEventListener('click', function () {
+   963→    if (!navigator.geolocation) {
+   964→      locStatus.textContent = '😕 Tarayıcın konum desteği vermiyor — listeyi serbestçe inceleyebilirsin.';
+   965→      toast('Konum desteklenmiyor.', 'warn');
+   966→      return;
+   967→    }
+   968→    locStatus.innerHTML = '<span class="spin dark"></span> Konumun alınıyor…';
+   969→    navigator.geolocation.getCurrentPosition(onPos, onErr, { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 });
+   970→  });
+   971→
+   972→  function onPos(pos) {
+   973→    var la = pos.coords.latitude, ln = pos.coords.longitude;
+   974→    var withD = 0;
+   975→    lastItems.forEach(function (it) {
+   976→      if (typeof it.lat === 'number' && typeof it.lng === 'number' && !isNaN(it.lat) && !isNaN(it.lng)) {
+   977→        it._d = haversine(la, ln, it.lat, it.lng);
+   978→        withD++;
+   979→      } else {
+   980→        it._d = null;
+   981→      }
+   982→    });
+   983→    if (!withD) {
+   984→      locStatus.textContent = 'İşletmelerin harita konumu henüz eklenmemiş — mesafe sıralaması yapılamadı.';
+   985→      toast('İşletme konum bilgisi henüz yok.', 'warn');
+   986→      return;
+   987→    }
+   988→    var sorted = lastItems.slice().sort(function (a, b) {
+   989→      return (a._d === null ? 1e12 : a._d) - (b._d === null ? 1e12 : b._d);
+   990→    });
+   991→    render(sorted);
+   992→    initMap();
+   993→    updateMap(sorted);
+   994→    setUserDot(la, ln);
+   995→    var nearest = sorted[0];
+   996→    locStatus.innerHTML = '✅ En yakın işletme: <b>' + esc(nearest.name) + '</b> (' + esc(fmtKm(nearest._d)) + ') — haritada ⭐ ile işaretlendi.';
+   997→    toast('En yakın işletme: ' + nearest.name, 'ok');
+   998→    zoomToNearest();
+   999→  }
+  1000→
+  1001→  function onErr() {
+  1002→    locStatus.textContent = '⚠ Konum izni alınamadı — listeyi serbestçe inceleyebilirsin.';
+  1003→    toast('Konum izni olmadan mesafe hesaplanamıyor.', 'warn');
+  1004→  }
+  1005→
+  1006→  load();
+  1007→})();
+  1008→`;
+  1009→
+  1010→// ---------------------------------------------------------------- İSTEMCİ JS: DETAY
+  1011→
+  1012→export const DETAIL_JS = `
+  1013→(function () {
+  1014→  'use strict';
+  1015→  var dataEl = document.getElementById('page-data');
+  1016→  if (!dataEl) return;
+  1017→  var D = JSON.parse(dataEl.textContent);
+  1018→  var P = D.provider, SVCS = D.services, CFG = D.cfg;
+  1019→  // Gateway (XTransformPort) uyumu: göreli API çağrılarına param ekle
+  1020→  var GWPORT = new URLSearchParams(location.search).get('XTransformPort');
+  1021→  function gwq(p) {
+  1022→    if (!GWPORT) return p;
+  1023→    return p + (p.indexOf('?') === -1 ? '?' : '&') + 'XTransformPort=' + encodeURIComponent(GWPORT);
+  1024→  }
+  1025→  var $ = function (s) { return document.querySelector(s); };
+  1026→  var state = { serviceId: SVCS.length ? SVCS[0].id : null, date: null, time: null };
+  1027→
+  1028→  var DAYS_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+  1029→  var MON_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+  1030→
+  1031→  function esc(s) {
+  1032→    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  1033→  }
+  1034→  function fmtPrice(price, cur) {
+  1035→    if (typeof price !== 'number') return '';
+  1036→    var n = new Intl.NumberFormat('tr-TR').format(price);
+  1037→    return cur && cur !== 'TRY' ? n + ' ' + cur : n + ' \\u20BA';
+  1038→  }
+  1039→  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  1040→  function isoOf(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  1041→
+  1042→  var toastTimer = null;
+  1043→  function toast(msg, kind) {
+  1044→    var t = document.getElementById('toast');
+  1045→    t.textContent = msg;
+  1046→    t.className = 'show' + (kind ? ' ' + kind : '');
+  1047→    clearTimeout(toastTimer);
+  1048→    toastTimer = setTimeout(function () { t.className = ''; }, 4200);
+  1049→  }
+  1050→
+  1051→  // ---- bugünü vurgula + "şu anda açık/kapalı"
+  1052→  (function () {
+  1053→    var map = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  1054→    var now = new Date();
+  1055→    var key = map[now.getDay()];
+  1056→    var row = document.querySelector('.hours tr[data-day="' + key + '"]');
+  1057→    if (row) {
+  1058→      row.classList.add('today');
+  1059→      var td = row.querySelector('td.t-time');
+  1060→      if (td && !td.querySelector('.today-pill')) {
+  1061→        var pill = document.createElement('span');
+  1062→        pill.className = 'today-pill';
+  1063→        pill.textContent = 'Bugün';
+  1064→        td.appendChild(pill);
+  1065→      }
+  1066→    }
+  1067→    var el = document.getElementById('open-now');
+  1068→    if (el && P.workingHours) {
+  1069→      var wh = P.workingHours[key];
+  1070→      if (wh && wh.start && wh.end && !wh.closed) {
+  1071→        var p2 = function (s) { var a = String(s).split(':'); return (+a[0]) * 60 + (+a[1]); };
+  1072→        var cur = now.getHours() * 60 + now.getMinutes();
+  1073→        var open = cur >= p2(wh.start) && cur < p2(wh.end);
+  1074→        el.textContent = open ? '🟢 Şu anda açık' : '🔴 Şu anda kapalı';
+  1075→        el.className = 'open-chip ' + (open ? 'on' : 'off');
+  1076→      }
+  1077→    }
+  1078→  })();
+  1079→
+  1080→  // ---- hizmet select
+  1081→  var selSvc = $('#f-service');
+  1082→  var datesEl = $('#dates'), slotsEl = $('#slots'), sumEl = $('#sumline');
+  1083→  var form = $('#book-form'), successEl = $('#success'), errEl = $('#form-err');
+  1084→
+  1085→  function svcById(id) {
+  1086→    for (var i = 0; i < SVCS.length; i++) if (SVCS[i].id === id) return SVCS[i];
+  1087→    return null;
+  1088→  }
+  1089→
+  1090→  // hizmet yoksa randevu bölümü hiç basılmaz — sadece bugün vurgusu yapılmış olabilir
+  1091→  if (!SVCS.length || !selSvc || !form || !datesEl || !slotsEl) {
+  1092→    if (slotsEl) slotsEl.innerHTML = '<p class="hint">Bu işletme henüz hizmet eklememiş — randevu için telefonda ulaşabilirsin.</p>';
+  1093→    return;
+  1094→  }
+  1095→  if (!errEl || !successEl || !sumEl) return;
+  1096→
+  1097→  if (SVCS.length) {
+  1098→    selSvc.innerHTML = SVCS.map(function (s) {
+  1099→      var lbl = s.name + ' · ' + s.duration + ' dk · ' + fmtPrice(s.price, s.currency);
+  1100→      return '<option value="' + esc(s.id) + '">' + esc(lbl) + '</option>';
+  1101→    }).join('');
+  1102→    selSvc.value = state.serviceId;
+  1103→  }
+  1104→
+  1105→  // ---- 14 günlük tarih gridı
+  1106→  function buildDates() {
+  1107→    var today = new Date();
+  1108→    var firstIso = '';
+  1109→    var html = '';
+  1110→    for (var i = 0; i < 14; i++) {
+  1111→      var d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+  1112→      var iso = isoOf(d);
+  1113→      if (i === 0) firstIso = iso;
+  1114→      html += '<button type="button" class="date-btn' + (i === 0 ? ' on' : '') + '" data-date="' + iso + '" aria-pressed="' + (i === 0 ? 'true' : 'false') + '">' +
+  1115→        '<span class="dw">' + DAYS_TR[d.getDay()] + '</span><span class="dn">' + d.getDate() + ' ' + MON_TR[d.getMonth()] + '</span></button>';
+  1116→    }
+  1117→    datesEl.innerHTML = html;
+  1118→    state.date = firstIso;
+  1119→    datesEl.addEventListener('click', function (e) {
+  1120→      var b = e.target.closest('.date-btn');
+  1121→      if (!b) return;
+  1122→      var bs = datesEl.querySelectorAll('.date-btn');
+  1123→      for (var i = 0; i < bs.length; i++) { bs[i].classList.remove('on'); bs[i].setAttribute('aria-pressed', 'false'); }
+  1124→      b.classList.add('on'); b.setAttribute('aria-pressed', 'true');
+  1125→      state.date = b.getAttribute('data-date');
+  1126→      state.time = null;
+  1127→      loadSlots();
+  1128→    });
+  1129→  }
+  1130→
+  1131→  // ---- slotlar
+  1132→  function loadSlots() {
+  1133→    hideErr();
+  1134→    if (!state.serviceId || !state.date) return;
+  1135→    slotsEl.innerHTML = '<div class="slotload"><span class="spin dark"></span> Uygun saatler yükleniyor…</div>';
+  1136→    fetch(gwq('/api/businesses/' + encodeURIComponent(P.slug) + '/slots?date=' + state.date + '&serviceId=' + encodeURIComponent(state.serviceId)), { headers: { accept: 'application/json' } })
+  1137→      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+  1138→      .then(function (x) {
+  1139→        if (!x.ok) {
+  1140→          slotsEl.innerHTML = '<p class="hint err-txt">' + esc(x.j && x.j.error ? x.j.error : 'Saatler yüklenemedi.') + '</p>';
+  1141→          return;
+  1142→        }
+  1143→        renderSlots(x.j.slots || []);
+  1144→      })
+  1145→      .catch(function () {
+  1146→        slotsEl.innerHTML = '<p class="hint err-txt">Bağlantı hatası — <a href="#" id="slot-retry">tekrar dene</a>.</p>';
+  1147→        var rt = document.getElementById('slot-retry');
+  1148→        if (rt) rt.addEventListener('click', function (e) { e.preventDefault(); loadSlots(); });
+  1149→      });
+  1150→  }
+  1151→
+  1152→  function renderSlots(slots) {
+  1153→    if (!slots.length) {
+  1154→      slotsEl.innerHTML = '<p class="hint">😴 Bu tarihte saat aralığı bulunamadı — işletme kapalı olabilir, başka bir gün dene.</p>';
+  1155→      updateSummary();
+  1156→      return;
+  1157→    }
+  1158→    slotsEl.innerHTML = '';
+  1159→    var anyFree = false;
+  1160→    slots.forEach(function (s) {
+  1161→      var b = document.createElement('button');
+  1162→      b.type = 'button';
+  1163→      b.className = 'slot';
+  1164→      b.textContent = s.time;
+  1165→      if (s.available) {
+  1166→        anyFree = true;
+  1167→        b.addEventListener('click', function () {
+  1168→          var olds = slotsEl.querySelectorAll('.slot.on');
+  1169→          for (var i = 0; i < olds.length; i++) olds[i].classList.remove('on');
+  1170→          b.classList.add('on');
+  1171→          state.time = s.time;
+  1172→          hideErr();
+  1173→          updateSummary();
+  1174→        });
+  1175→      } else {
+  1176→        b.disabled = true;
+  1177→        b.title = 'Dolu';
+  1178→      }
+  1179→      slotsEl.appendChild(b);
+  1180→    });
+  1181→    if (!anyFree) {
+  1182→      var p = document.createElement('p');
+  1183→      p.className = 'hint';
+  1184→      p.textContent = '🙏 Bu günün tüm saatleri dolu — lütfen başka bir tarih seç.';
+  1185→      slotsEl.appendChild(p);
+  1186→    }
+  1187→    updateSummary();
+  1188→  }
+  1189→
+  1190→  function updateSummary() {
+  1191→    var s = svcById(state.serviceId);
+  1192→    if (!s || !state.date || !state.time) { sumEl.hidden = true; return; }
+  1193→    var dp = state.date.split('-');
+  1194→    sumEl.innerHTML = '🧾 <b>' + esc(s.name) + '</b> · ' + esc(dp[2] + '.' + dp[1] + '.' + dp[0]) + ' <b>' + esc(state.time) + '</b>' + (typeof s.price === 'number' ? ' · ' + esc(fmtPrice(s.price, s.currency)) : '');
+  1195→    sumEl.hidden = false;
+  1196→  }
+  1197→
+  1198→  function showErr(msg) {
+  1199→    errEl.textContent = msg;
+  1200→    errEl.hidden = false;
+  1201→    errEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  1202→    toast(msg, 'err');
+  1203→  }
+  1204→  function hideErr() { errEl.hidden = true; }
+  1205→
+  1206→  // ---- hizmet seçilince
+  1207→  selSvc.addEventListener('change', function () {
+  1208→    state.serviceId = selSvc.value;
+  1209→    state.time = null;
+  1210→    loadSlots();
+  1211→  });
+  1212→
+  1213→  // ---- listedeki "Randevu Al" butonları
+  1214→  document.querySelectorAll('.svc-pick').forEach(function (b) {
+  1215→    b.addEventListener('click', function () {
+  1216→      selSvc.value = b.getAttribute('data-svc');
+  1217→      selSvc.dispatchEvent(new Event('change'));
+  1218→      document.getElementById('randevu').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  1219→      toast('Hizmet seçildi — tarih ve saat seç.', 'ok');
+  1220→    });
+  1221→  });
+  1222→
+  1223→  // ---- gönderim
+  1224→  form.addEventListener('submit', function (ev) {
+  1225→    ev.preventDefault();
+  1226→    hideErr();
+  1227→    var name = $('#f-name').value.trim();
+  1228→    var phone = $('#f-phone').value.trim();
+  1229→    var note = $('#f-note').value.trim();
+  1230→    var hp = $('#f-web').value; // honeypot — boş kalmalı
+  1231→
+  1232→    if (!SVCS.length) return showErr('Bu işletmede seçilebilir hizmet yok.');
+  1233→    if (!state.time) return showErr('Lütfen bir saat seç.');
+  1234→    if (name.length < 2) return showErr('Lütfen adını yaz (en az 2 harf).');
+  1235→    if (phone.replace(/\\D/g, '').length < 10) return showErr('Geçerli bir telefon numarası gir (örn. 0555 111 22 33).');
+  1236→
+  1237→    var btn = $('#submit-btn');
+  1238→    btn.disabled = true;
+  1239→    btn.innerHTML = '<span class="spin"></span> Gönderiliyor…';
+  1240→
+  1241→    fetch(gwq('/api/book'), {
+  1242→      method: 'POST',
+  1243→      headers: { 'content-type': 'application/json' },
+  1244→      body: JSON.stringify({
+  1245→        providerSlug: P.slug,
+  1246→        serviceId: state.serviceId,
+  1247→        staffId: null,
+  1248→        date: state.date,
+  1249→        time: state.time,
+  1250→        customerName: name,
+  1251→        customerPhone: phone,
+  1252→        customerEmail: '',
+  1253→        customerNote: note,
+  1254→        website: hp
+  1255→      })
+  1256→    })
+  1257→      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+  1258→      .then(function (x) {
+  1259→        btn.disabled = false;
+  1260→        btn.textContent = '✅ Randevuyu Onayla';
+  1261→        if (x.ok && x.j && x.j.success && x.j.data) {
+  1262→          showSuccess(x.j.data);
+  1263→        } else {
+  1264→          showErr((x.j && x.j.error) || 'Randevu oluşturulamadı — lütfen tekrar dene.');
+  1265→        }
+  1266→      })
+  1267→      .catch(function () {
+  1268→        btn.disabled = false;
+  1269→        btn.textContent = '✅ Randevuyu Onayla';
+  1270→        showErr('Bağlantı hatası — lütfen tekrar dene.');
+  1271→      });
+  1272→  });
+  1273→
+  1274→  function showSuccess(d) {
+  1275→    $('#s-biz').textContent = d.providerName || P.name;
+  1276→    $('#s-service').textContent = d.serviceName || '';
+  1277→    $('#s-when').textContent = (d.date || '') + ' ' + (d.time || '');
+  1278→    $('#s-name').textContent = d.customerName || '';
+  1279→    $('#s-phone').textContent = d.customerPhone || '';
+  1280→    if (typeof d.price === 'number') {
+  1281→      $('#s-price').textContent = fmtPrice(d.price, d.currency);
+  1282→      $('#s-price-row').hidden = false;
+  1283→    }
+  1284→    if (d.appointmentCode) {
+  1285→      $('#s-code').textContent = d.appointmentCode;
+  1286→      $('#s-code-row').hidden = false;
+  1287→    }
+  1288→    if (d.status) {
+  1289→      $('#s-status').textContent = d.status === 'onaylandi' ? 'Onaylandı' : d.status;
+  1290→    }
+  1291→    var wa = $('#wa-link');
+  1292→    if (d.whatsappLink) {
+  1293→      wa.href = d.whatsappLink;
+  1294→      wa.style.display = '';
+  1295→    } else {
+  1296→      wa.style.display = 'none';
+  1297→    }
+  1298→    form.hidden = true;
+  1299→    sumEl.hidden = true;
+  1300→    successEl.hidden = false;
+  1301→    successEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  1302→    toast('Randevun oluşturuldu! 🎉', 'ok');
+  1303→  }
+  1304→
+  1305→  // ---- yeni randevu
+  1306→  var again = document.getElementById('again-btn');
+  1307→  if (again) again.addEventListener('click', function () {
+  1308→    successEl.hidden = true;
+  1309→    form.hidden = false;
+  1310→    $('#f-name').value = '';
+  1311→    $('#f-phone').value = '';
+  1312→    $('#f-note').value = '';
+  1313→    state.time = null;
+  1314→    loadSlots();
+  1315→    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  1316→  });
+  1317→
+  1318→  if (SVCS.length) {
+  1319→    buildDates();
+  1320→    loadSlots();
+  1321→  } else {
+  1322→    slotsEl.innerHTML = '<p class="hint">Bu işletme henüz hizmet eklememiş.</p>';
+  1323→  }
+  1324→
+  1325→  // ---- konum haritası
+  1326→  var dMapEl = document.getElementById('detail-map');
+  1327→  if (dMapEl && typeof L !== 'undefined' && typeof P.lat === 'number' && typeof P.lng === 'number') {
+  1328→    var EMO = { berber: '💈', kuafor: '✂️', disci: '🦷', guzellik: '💄', spa: '🧖', dovme: '🎨' };
+  1329→    var dMap = L.map('detail-map', { scrollWheelZoom: false });
+  1330→    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  1331→      maxZoom: 19,
+  1332→      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> katkıcıları'
+  1333→    }).addTo(dMap);
+  1334→    var dSize = [36, 36];
+  1335→    var dIcon = L.divIcon({ className: '', html: '<div class="biz-pin" style="width:36px;height:36px;font-size:18px">' + (EMO[P.type] || '🏪') + '</div>', iconSize: dSize, iconAnchor: [18, 36], popupAnchor: [0, -42] });
+  1336→    var dM = L.marker([P.lat, P.lng], { icon: dIcon }).addTo(dMap);
+  1337→    dM.bindPopup('<div class="biz-pop"><div class="pop-t">' + esc(P.name) + '</div><div class="pop-s">' + esc(P.city || '') + (P.district ? ' · ' + esc(P.district) : '') + '</div></div>', { maxWidth: 240 });
+  1338→    dMap.setView([P.lat, P.lng], 15);
+  1339→    dM.openPopup();
+  1340→    setTimeout(function () { dMap.invalidateSize(); }, 120);
+  1341→  }
+  1342→})();
+  1343→`;
+  1344→

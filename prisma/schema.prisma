@@ -1124,7 +1124,8 @@ model ServiceProvider {
   district     String?
   phone        String?
   email        String?
-  photo        String?
+  photo        String? // kapak fotoğrafı (data URL — vitrin hero görseli)
+  about        String? // işletme tanıtım metni — vitrin "Hakkımızda" bölümü
   workingHours String    @default("{}") // JSON: { "mon": {"start":"09:00","end":"18:00"}, ... }
   autoApprove  Boolean   @default(true) // randevular otomatik onaylansın mı? (kapalıysa müşteri onay bekler)
   isActive     Boolean   @default(true)
@@ -1144,6 +1145,27 @@ model ServiceProvider {
   waitlistEntries WaitlistEntry[]
   stampCardSetting StampCardSetting? @relation("StampCardSettings")
   stampCards  StampCard[]
+  photos      ProviderPhoto[]
+}
+
+// İşletme vitrin portföy fotoğrafı — berber/kuaförün "web sitesi" galerisi.
+// url: data URL (base64) — iki servis (3000/3002) arasında dosya sistemi olmadan taşınır,
+// DB yedeğine dahil olur. İstemci tarafında canvas ile 1280px WebP'ye küçültülür.
+model ProviderPhoto {
+  id         String          @id @default(cuid())
+  providerId String
+  provider   ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  url        String // data:image/webp;base64,...
+  title      String? // "Klasik kesim", "Sakal tasarımı"
+  caption    String? // kısa açıklama
+  category   String? // kesim | sac-boyama | sakal | stil | salon | ekip
+  width      Int? // px — grid oranı için
+  height     Int? // px
+  sortOrder  Int             @default(0)
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+
+  @@index([providerId, sortOrder])
 }
 
 // Personel (berber, kuaför, diş hekimi, vs.)

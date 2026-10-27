@@ -1,0 +1,702 @@
+  1300→                    <Tooltip
+  1301→                      contentStyle={chartTooltipStyle}
+  1302→                      formatter={(value: number) => [value, 'Aktivite']}
+  1303→                      cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
+  1304→                    />
+  1305→                    <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={50}>
+  1306→                      {typeData.map((d, i) => (
+  1307→                        <Cell key={i} fill={d.fill} />
+  1308→                      ))}
+  1309→                    </Bar>
+  1310→                  </BarChart>
+  1311→                </ResponsiveContainer>
+  1312→                {/* Type breakdown */}
+  1313→                <div className="space-y-2 max-h-[280px] overflow-y-auto custom-scroll pr-1">
+  1314→                  {typeData.filter((d) => d.count > 0).map((d) => {
+  1315→                    const pct = totalActivities > 0 ? (d.count / totalActivities) * 100 : 0
+  1316→                    const Icon = ACTIVITY_ICONS[d.type] ?? ActivityIcon
+  1317→                    return (
+  1318→                      <div key={d.type} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/40 transition-colors">
+  1319→                        <div
+  1320→                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+  1321→                          style={{ backgroundColor: `${d.fill}22`, color: d.fill }}
+  1322→                        >
+  1323→                          <Icon className="w-4 h-4" />
+  1324→                        </div>
+  1325→                        <div className="flex-1 min-w-0">
+  1326→                          <div className="flex items-center justify-between">
+  1327→                            <span className="text-sm font-medium">{d.label}</span>
+  1328→                            <span className="text-sm font-semibold">{d.count}</span>
+  1329→                          </div>
+  1330→                          <div className="flex items-center gap-2 mt-1">
+  1331→                            <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+  1332→                              <div
+  1333→                                className="h-full rounded-full"
+  1334→                                style={{ width: `${pct}%`, backgroundColor: d.fill }}
+  1335→                              />
+  1336→                            </div>
+  1337→                            <span className="text-[10px] text-muted-foreground w-9 text-right">
+  1338→                              %{Math.round(pct)}
+  1339→                            </span>
+  1340→                          </div>
+  1341→                        </div>
+  1342→                      </div>
+  1343→                    )
+  1344→                  })}
+  1345→                </div>
+  1346→              </div>
+  1347→            )}
+  1348→          </TabsContent>
+  1349→
+  1350→          <TabsContent value="time">
+  1351→            <div className="flex items-center justify-end mb-2">
+  1352→              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onExportTimeCsv}>
+  1353→                <Download className="w-3 h-3 mr-1" /> CSV
+  1354→              </Button>
+  1355→            </div>
+  1356→            {isEmpty ? (
+  1357→              <EmptyState
+  1358→                icon={Calendar}
+  1359→                title="Aktivite yok"
+  1360→                description="Son 30 günde aktivite kaydedilmemiş."
+  1361→              />
+  1362→            ) : (
+  1363→              <ResponsiveContainer width="100%" height={300}>
+  1364→                <LineChart data={timeData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+  1365→                  <defs>
+  1366→                    <linearGradient id="actGrad" x1="0" y1="0" x2="0" y2="1">
+  1367→                      <stop offset="0%" stopColor={PALETTE.violet} stopOpacity={0.3} />
+  1368→                      <stop offset="100%" stopColor={PALETTE.violet} stopOpacity={0} />
+  1369→                    </linearGradient>
+  1370→                  </defs>
+  1371→                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} vertical={false} />
+  1372→                  <XAxis
+  1373→                    dataKey="label"
+  1374→                    tick={{ fontSize: 10 }}
+  1375→                    axisLine={false}
+  1376→                    tickLine={false}
+  1377→                    interval={3}
+  1378→                  />
+  1379→                  <YAxis
+  1380→                    tick={{ fontSize: 11 }}
+  1381→                    axisLine={false}
+  1382→                    tickLine={false}
+  1383→                    width={30}
+  1384→                    allowDecimals={false}
+  1385→                  />
+  1386→                  <Tooltip
+  1387→                    contentStyle={chartTooltipStyle}
+  1388→                    formatter={(value: number) => [value, 'Aktivite']}
+  1389→                    labelFormatter={(label) => `Tarih: ${label}`}
+  1390→                  />
+  1391→                  <Area
+  1392→                    type="monotone"
+  1393→                    dataKey="count"
+  1394→                    stroke={PALETTE.violet}
+  1395→                    strokeWidth={2.5}
+  1396→                    fill="url(#actGrad)"
+  1397→                    dot={false}
+  1398→                    activeDot={{ r: 5, fill: PALETTE.violet }}
+  1399→                  />
+  1400→                </LineChart>
+  1401→              </ResponsiveContainer>
+  1402→            )}
+  1403→          </TabsContent>
+  1404→        </Tabs>
+  1405→      </CardContent>
+  1406→    </Card>
+  1407→  )
+  1408→}
+  1409→
+  1410→// ============================================================
+  1411→// Bölüm 7 — Temsilci Performansı
+  1412→// ============================================================
+  1413→type SortKey = 'name' | 'activityCount' | 'dealsWon' | 'totalWonValue' | 'winRate'
+  1414→type SortDir = 'asc' | 'desc'
+  1415→
+  1416→function SortHeader({
+  1417→  k, label, align = 'left', sortKey, sortDir, onToggle,
+  1418→}: {
+  1419→  k: SortKey
+  1420→  label: string
+  1421→  align?: 'left' | 'right'
+  1422→  sortKey: SortKey
+  1423→  sortDir: SortDir
+  1424→  onToggle: (k: SortKey) => void
+  1425→}) {
+  1426→  return (
+  1427→    <TableHead className={align === 'right' ? 'text-right' : ''}>
+  1428→      <button
+  1429→        onClick={() => onToggle(k)}
+  1430→        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+  1431→      >
+  1432→        {label}
+  1433→        {sortKey === k ? (
+  1434→          sortDir === 'asc'
+  1435→            ? <ChevronUp className="w-3 h-3" />
+  1436→            : <ChevronDown className="w-3 h-3" />
+  1437→        ) : (
+  1438→          <ChevronDown className="w-3 h-3 opacity-30" />
+  1439→        )}
+  1440→      </button>
+  1441→    </TableHead>
+  1442→  )
+  1443→}
+  1444→
+  1445→const ROLE_LABELS = [
+  1446→  { value: 'rep', label: 'Satış Temsilcisi' },
+  1447→  { value: 'manager', label: 'Müdür' },
+  1448→  { value: 'admin', label: 'Yönetici' },
+  1449→  { value: 'superadmin', label: 'Süper Yönetici' },
+  1450→  { value: 'readonly', label: 'Salt Okunur' },
+  1451→] as const
+  1452→
+  1453→function RepPerformanceCard({
+  1454→  reps, onExportCsv, onExportXlsx,
+  1455→}: {
+  1456→  reps: ReportsData['repPerformance']
+  1457→  onExportCsv: () => void
+  1458→  onExportXlsx: () => void
+  1459→}) {
+  1460→  const [sortKey, setSortKey] = useState<SortKey>('totalWonValue')
+  1461→  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  1462→  const [detailRep, setDetailRep] = useState<{ id: string; name: string } | null>(null)
+  1463→
+  1464→  const sortedReps = useMemo(() => {
+  1465→    const sorted = [...reps].sort((a, b) => {
+  1466→      const av = a[sortKey]
+  1467→      const bv = b[sortKey]
+  1468→      if (typeof av === 'string' && typeof bv === 'string') {
+  1469→        return av.localeCompare(bv, 'tr')
+  1470→      }
+  1471→      return (av as number) - (bv as number)
+  1472→    })
+  1473→    return sortDir === 'asc' ? sorted : sorted.reverse()
+  1474→  }, [reps, sortKey, sortDir])
+  1475→
+  1476→  const toggleSort = (key: SortKey) => {
+  1477→    if (sortKey === key) {
+  1478→      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+  1479→    } else {
+  1480→      setSortKey(key)
+  1481→      setSortDir('desc')
+  1482→    }
+  1483→  }
+  1484→
+  1485→  const topPerformer = reps[0]
+  1486→  const totalWonValue = reps.reduce((s, r) => s + r.totalWonValue, 0)
+  1487→  const totalActivities = reps.reduce((s, r) => s + r.activityCount, 0)
+  1488→
+  1489→  return (
+  1490→    <Card>
+  1491→      <CardHeader>
+  1492→        <div className="flex items-start justify-between gap-3 flex-wrap">
+  1493→          <div className="space-y-1">
+  1494→            <div className="flex items-center gap-2">
+  1495→              <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center">
+  1496→                <UserCog className="w-4 h-4 text-amber-600" />
+  1497→              </div>
+  1498→              <CardTitle>Temsilci Performansı</CardTitle>
+  1499→            </div>
+  1500→            <CardDescription>
+  1501→              {reps.length} temsilci · Toplam {formatCurrency(totalWonValue)} kazanç · {totalActivities} aktivite
+  1502→            </CardDescription>
+  1503→          </div>
+  1504→          <ExportButtons onCsv={onExportCsv} onXlsx={onExportXlsx} />
+  1505→        </div>
+  1506→      </CardHeader>
+  1507→      <CardContent>
+  1508→        {reps.length === 0 ? (
+  1509→          <EmptyState
+  1510→            icon={UserCog}
+  1511→            title="Temsilci yok"
+  1512→            description="Görünür temsilci bulunamadı."
+  1513→          />
+  1514→        ) : (
+  1515→          <>
+  1516→            {/* Top performer highlight */}
+  1517→            {topPerformer && topPerformer.totalWonValue > 0 && (
+  1518→              <div className="mb-4 p-4 rounded-xl bg-gradient-to-r from-amber-50 to-emerald-50 dark:from-amber-950/30 dark:to-emerald-950/30 border border-amber-200 dark:border-amber-900/40 flex items-center gap-3">
+  1519→                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-md">
+  1520→                  <Crown className="w-6 h-6 text-white" />
+  1521→                </div>
+  1522→                <div className="flex-1 min-w-0">
+  1523→                  <div className="text-xs text-amber-700 dark:text-amber-400 font-medium uppercase tracking-wide">
+  1524→                    En İyi Performans
+  1525→                  </div>
+  1526→                  <div className="text-base font-semibold truncate">{topPerformer.name}</div>
+  1527→                  <div className="text-xs text-muted-foreground">
+  1528→                    {topPerformer.title ?? 'Satış Temsilcisi'} · {topPerformer.dealsWon} fırsat kazandı
+  1529→                  </div>
+  1530→                </div>
+  1531→                <div className="text-right">
+  1532→                  <div className="text-lg font-bold text-emerald-600">{formatCurrency(topPerformer.totalWonValue)}</div>
+  1533→                  <div className="text-xs text-muted-foreground">%{topPerformer.winRate} kazanma</div>
+  1534→                </div>
+  1535→              </div>
+  1536→            )}
+  1537→
+  1538→            <div className="rounded-lg border overflow-hidden">
+  1539→              <Table>
+  1540→                <TableHeader>
+  1541→                  <TableRow className="bg-muted/40">
+  1542→                    <TableHead className="w-10">#</TableHead>
+  1543→                    <SortHeader k="name" label="Temsilci" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+  1544→                    <SortHeader k="activityCount" label="Aktivite" align="right" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+  1545→                    <SortHeader k="dealsWon" label="Kazanılan" align="right" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+  1546→                    <SortHeader k="totalWonValue" label="Kazanç" align="right" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+  1547→                    <SortHeader k="winRate" label="Kazanma %" align="right" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+  1548→                    <TableHead className="text-right">Log</TableHead>
+  1549→                  </TableRow>
+  1550→                </TableHeader>
+  1551→                <TableBody>
+  1552→                  {sortedReps.map((r, i) => (
+  1553→                    <TableRow
+  1554→                      key={r.id}
+  1555→                      className={cn(
+  1556→                        i === 0 && r.totalWonValue > 0 && 'bg-amber-50/40 dark:bg-amber-950/20',
+  1557→                      )}
+  1558→                    >
+  1559→                      <TableCell>
+  1560→                        <span className={cn(
+  1561→                          'inline-flex w-6 h-6 items-center justify-center rounded-full text-xs font-semibold',
+  1562→                          i === 0 && r.totalWonValue > 0
+  1563→                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+  1564→                            : 'bg-muted text-muted-foreground',
+  1565→                        )}>
+  1566→                          {i + 1}
+  1567→                        </span>
+  1568→                      </TableCell>
+  1569→                      <TableCell>
+  1570→                        <div className="flex flex-col">
+  1571→                          <span className="font-medium">{r.name}</span>
+  1572→                          <span className="text-xs text-muted-foreground">
+  1573→                            {r.title ?? getLabel(ROLE_LABELS, r.role)}
+  1574→                          </span>
+  1575→                        </div>
+  1576→                      </TableCell>
+  1577→                      <TableCell className="text-right font-mono text-sm">{r.activityCount}</TableCell>
+  1578→                      <TableCell className="text-right font-mono text-sm">{r.dealsWon}</TableCell>
+  1579→                      <TableCell className="text-right font-semibold text-emerald-600">
+  1580→                        {formatCurrency(r.totalWonValue)}
+  1581→                      </TableCell>
+  1582→                      <TableCell className="text-right">
+  1583→                        <div className="inline-flex items-center gap-2">
+  1584→                          <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+  1585→                            <div
+  1586→                              className={cn(
+  1587→                                'h-full rounded-full',
+  1588→                                r.winRate >= 60 ? 'bg-emerald-500' :
+  1589→                                r.winRate >= 30 ? 'bg-amber-500' : 'bg-rose-500',
+  1590→                              )}
+  1591→                              style={{ width: `${r.winRate}%` }}
+  1592→                            />
+  1593→                          </div>
+  1594→                          <span className="text-xs font-medium tabular-nums w-8 text-right">%{r.winRate}</span>
+  1595→                        </div>
+  1596→                      </TableCell>
+  1597→                      <TableCell className="text-right">
+  1598→                        <Button
+  1599→                          variant="ghost"
+  1600→                          size="sm"
+  1601→                          className="h-7 text-xs"
+  1602→                          onClick={() => setDetailRep({ id: r.id, name: r.name })}
+  1603→                        >
+  1604→                          <ListChecks className="w-3.5 h-3.5 mr-1" />
+  1605→                          Detay
+  1606→                        </Button>
+  1607→                      </TableCell>
+  1608→                    </TableRow>
+  1609→                  ))}
+  1610→                </TableBody>
+  1611→              </Table>
+  1612→            </div>
+  1613→          </>
+  1614→        )}
+  1615→      </CardContent>
+  1616→      {detailRep && (
+  1617→        <UserActivityLogDialog
+  1618→          userId={detailRep.id}
+  1619→          userName={detailRep.name}
+  1620→          open={!!detailRep}
+  1621→          onOpenChange={(v) => { if (!v) setDetailRep(null) }}
+  1622→        />
+  1623→      )}
+  1624→    </Card>
+  1625→  )
+  1626→}
+  1627→
+  1628→// ============================================================
+  1629→// User Activity Log Dialog — Detaylı aktivite log görünümü
+  1630→// ============================================================
+  1631→function UserActivityLogDialog({
+  1632→  userId, userName, open, onOpenChange,
+  1633→}: {
+  1634→  userId: string
+  1635→  userName: string
+  1636→  open: boolean
+  1637→  onOpenChange: (v: boolean) => void
+  1638→}) {
+  1639→  const [typeFilter, setTypeFilter] = useState('')
+  1640→  const [exporting, setExporting] = useState(false)
+  1641→
+  1642→  const { data, isLoading } = useQuery({
+  1643→    queryKey: ['user-activities', userId, typeFilter],
+  1644→    queryFn: () => apiGet<{
+  1645→      user: { id: string; name: string; role: string }
+  1646→      activities: {
+  1647→        id: string; type: string; subject: string; detail: string | null
+  1648→        date: string; durationMin: number; outcome: string | null
+  1649→        customer: { id: string; name: string } | null
+  1650→      }[]
+  1651→      total: number
+  1652→      summary: {
+  1653→        typeStats: Record<string, number>
+  1654→        outcomeStats: Record<string, number>
+  1655→        totalDuration: number
+  1656→        totalActivities: number
+  1657→      }
+  1658→    }>(`/api/users/${userId}/activities${typeFilter ? `?type=${typeFilter}` : ''}${typeFilter ? '&' : '?'}limit=500`),
+  1659→    enabled: open,
+  1660→  })
+  1661→
+  1662→  const activities = data?.activities ?? []
+  1663→  const summary = data?.summary
+  1664→
+  1665→  const handleExport = () => {
+  1666→    setExporting(true)
+  1667→    const rows = activities.map((a) => ({
+  1668→      'Tarih': new Date(a.date).toLocaleString('tr-TR'),
+  1669→      'Tip': a.type,
+  1670→      'Konu': a.subject,
+  1671→      'Müşteri': a.customer?.name ?? '',
+  1672→      'Süre (dk)': a.durationMin,
+  1673→      'Sonuç': a.outcome ?? '',
+  1674→      'Detay': a.detail ?? '',
+  1675→    }))
+  1676→    exportCSV(rows, `aktivite-log-${userName}.csv`, 'Aktivite Log')
+  1677→    setExporting(false)
+  1678→    toast.success('Log dışa aktarıldı')
+  1679→  }
+  1680→
+  1681→  return (
+  1682→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1683→      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+  1684→        <DialogHeader>
+  1685→          <DialogTitle className="flex items-center gap-2">
+  1686→            <UserCog className="w-5 h-5 text-amber-600" />
+  1687→            {userName} — Aktivite Logları
+  1688→          </DialogTitle>
+  1689→          <DialogDescription>
+  1690→            {data ? `${data.total} aktivite kaydı` : 'Yükleniyor...'}
+  1691→          </DialogDescription>
+  1692→        </DialogHeader>
+  1693→
+  1694→        {/* Summary stats */}
+  1695→        {summary && (
+  1696→          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pb-3 border-b">
+  1697→            <div className="p-2.5 rounded-lg bg-muted/30">
+  1698→              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Toplam Aktivite</div>
+  1699→              <div className="text-xl font-bold tabular-nums">{summary.totalActivities}</div>
+  1700→            </div>
+  1701→            <div className="p-2.5 rounded-lg bg-muted/30">
+  1702→              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Toplam Süre</div>
+  1703→              <div className="text-xl font-bold tabular-nums">{summary.totalDuration}dk</div>
+  1704→            </div>
+  1705→            <div className="p-2.5 rounded-lg bg-muted/30">
+  1706→              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Arama</div>
+  1707→              <div className="text-xl font-bold tabular-nums text-emerald-600">{summary.typeStats['arama'] ?? 0}</div>
+  1708→            </div>
+  1709→            <div className="p-2.5 rounded-lg bg-muted/30">
+  1710→              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">E-posta</div>
+  1711→              <div className="text-xl font-bold tabular-nums text-sky-600">{summary.typeStats['email'] ?? 0}</div>
+  1712→            </div>
+  1713→          </div>
+  1714→        )}
+  1715→
+  1716→        {/* Type breakdown */}
+  1717→        {summary && Object.keys(summary.typeStats).length > 0 && (
+  1718→          <div className="flex flex-wrap gap-1.5 py-2">
+  1719→            <button
+  1720→              onClick={() => setTypeFilter('')}
+  1721→              className={cn(
+  1722→                'px-2 py-0.5 text-[10px] font-medium rounded-full border transition-colors',
+  1723→                !typeFilter ? 'bg-foreground text-background border-foreground' : 'border-border text-muted-foreground hover:text-foreground',
+  1724→              )}
+  1725→            >
+  1726→              Tümü ({summary.totalActivities})
+  1727→            </button>
+  1728→            {Object.entries(summary.typeStats).map(([type, count]) => (
+  1729→              <button
+  1730→                key={type}
+  1731→                onClick={() => setTypeFilter(type === typeFilter ? '' : type)}
+  1732→                className={cn(
+  1733→                  'px-2 py-0.5 text-[10px] font-medium rounded-full border transition-colors',
+  1734→                  type === typeFilter ? 'bg-foreground text-background border-foreground' : 'border-border text-muted-foreground hover:text-foreground',
+  1735→                )}
+  1736→              >
+  1737→                {type} ({count})
+  1738→              </button>
+  1739→            ))}
+  1740→          </div>
+  1741→        )}
+  1742→
+  1743→        {/* Activities table */}
+  1744→        <div className="flex-1 overflow-auto custom-scroll">
+  1745→          {isLoading ? (
+  1746→            <div className="space-y-2 p-2">
+  1747→              {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-12" />)}
+  1748→            </div>
+  1749→          ) : activities.length === 0 ? (
+  1750→            <div className="py-12 text-center">
+  1751→              <ListChecks className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+  1752→              <p className="text-sm text-muted-foreground">Aktivite kaydı bulunamadı</p>
+  1753→            </div>
+  1754→          ) : (
+  1755→            <Table>
+  1756→              <TableHeader className="sticky top-0 bg-background z-10">
+  1757→                <TableRow>
+  1758→                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Tarih</TableHead>
+  1759→                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Tip</TableHead>
+  1760→                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Konu</TableHead>
+  1761→                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Müşteri</TableHead>
+  1762→                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground text-right">Süre</TableHead>
+  1763→                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Sonuç</TableHead>
+  1764→                </TableRow>
+  1765→              </TableHeader>
+  1766→              <TableBody>
+  1767→                {activities.map((a) => (
+  1768→                  <TableRow key={a.id} className="text-sm">
+  1769→                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+  1770→                      {new Date(a.date).toLocaleDateString('tr-TR')}
+  1771→                      <div className="text-[10px]">{new Date(a.date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</div>
+  1772→                    </TableCell>
+  1773→                    <TableCell>
+  1774→                      <Badge variant="outline" className="text-[10px]">
+  1775→                        {a.type}
+  1776→                      </Badge>
+  1777→                    </TableCell>
+  1778→                    <TableCell className="max-w-[200px] truncate" title={a.subject}>{a.subject}</TableCell>
+  1779→                    <TableCell className="max-w-[150px] truncate text-muted-foreground">{a.customer?.name ?? '—'}</TableCell>
+  1780→                    <TableCell className="text-right tabular-nums text-xs">{a.durationMin > 0 ? `${a.durationMin}dk` : '—'}</TableCell>
+  1781→                    <TableCell>
+  1782→                      {a.outcome ? (
+  1783→                        <span className={cn(
+  1784→                          'text-[10px] font-medium',
+  1785→                          a.outcome === 'basarili' ? 'text-emerald-600' :
+  1786→                          a.outcome === 'basarisiz' ? 'text-red-600' :
+  1787→                          a.outcome === 'ertelendi' ? 'text-amber-600' : 'text-sky-600',
+  1788→                        )}>
+  1789→                          {a.outcome}
+  1790→                        </span>
+  1791→                      ) : '—'}
+  1792→                    </TableCell>
+  1793→                  </TableRow>
+  1794→                ))}
+  1795→              </TableBody>
+  1796→            </Table>
+  1797→          )}
+  1798→        </div>
+  1799→
+  1800→        {/* Footer */}
+  1801→        <div className="flex justify-end pt-3 border-t">
+  1802→          <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting || activities.length === 0}>
+  1803→            <Download className="w-3.5 h-3.5 mr-1.5" />
+  1804→            CSV Dışa Aktar
+  1805→          </Button>
+  1806→        </div>
+  1807→      </DialogContent>
+  1808→    </Dialog>
+  1809→  )
+  1810→}
+  1811→
+  1812→// ============================================================
+  1813→// Bölüm 8 — En İyi Müşteriler
+  1814→// ============================================================
+  1815→function TopCustomersCard({
+  1816→  customers, onOpenCustomer, onExportCsv, onExportXlsx,
+  1817→}: {
+  1818→  customers: ReportsData['topCustomers']
+  1819→  onOpenCustomer: (id: string) => void
+  1820→  onExportCsv: () => void
+  1821→  onExportXlsx: () => void
+  1822→}) {
+  1823→  const maxValue = Math.max(...customers.map((c) => c.total), 1)
+  1824→
+  1825→  return (
+  1826→    <Card>
+  1827→      <CardHeader>
+  1828→        <div className="flex items-start justify-between gap-3 flex-wrap">
+  1829→          <div className="space-y-1">
+  1830→            <div className="flex items-center gap-2">
+  1831→              <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center">
+  1832→                <Trophy className="w-4 h-4 text-emerald-600" />
+  1833→              </div>
+  1834→              <CardTitle>En İyi Müşteriler</CardTitle>
+  1835→            </div>
+  1836→            <CardDescription>Kazanılan fırsat değerine göre ilk 10 müşteri</CardDescription>
+  1837→          </div>
+  1838→          <ExportButtons onCsv={onExportCsv} onXlsx={onExportXlsx} />
+  1839→        </div>
+  1840→      </CardHeader>
+  1841→      <CardContent>
+  1842→        {customers.length === 0 ? (
+  1843→          <EmptyState
+  1844→            icon={Trophy}
+  1845→            title="Müşteri yok"
+  1846→            description="Henüz kazanılan fırsat bulunmuyor."
+  1847→          />
+  1848→        ) : (
+  1849→          <div className="rounded-lg border overflow-hidden">
+  1850→            <Table>
+  1851→              <TableHeader>
+  1852→                <TableRow className="bg-muted/40">
+  1853→                  <TableHead className="w-10">#</TableHead>
+  1854→                  <TableHead>Müşteri</TableHead>
+  1855→                  <TableHead className="text-right">Değer</TableHead>
+  1856→                  <TableHead className="text-right hidden sm:table-cell">Fırsat</TableHead>
+  1857→                  <TableHead className="hidden md:table-cell">Son Aktivite</TableHead>
+  1858→                  <TableHead className="w-32 hidden lg:table-cell">Dağılım</TableHead>
+  1859→                </TableRow>
+  1860→              </TableHeader>
+  1861→              <TableBody>
+  1862→                {customers.map((c, i) => {
+  1863→                  const ds = daysSince(c.lastActivityAt)
+  1864→                  return (
+  1865→                    <TableRow key={c.id} className="group">
+  1866→                      <TableCell>
+  1867→                        <span className={cn(
+  1868→                          'inline-flex w-6 h-6 items-center justify-center rounded-full text-xs font-semibold',
+  1869→                          i === 0
+  1870→                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+  1871→                            : i === 1
+  1872→                            ? 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300'
+  1873→                            : i === 2
+  1874→                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300'
+  1875→                            : 'bg-muted text-muted-foreground',
+  1876→                        )}>
+  1877→                          {i + 1}
+  1878→                        </span>
+  1879→                      </TableCell>
+  1880→                      <TableCell>
+  1881→                        <button
+  1882→                          onClick={() => onOpenCustomer(c.id)}
+  1883→                          className="font-medium text-left hover:text-emerald-600 transition-colors group-hover:underline"
+  1884→                        >
+  1885→                          {c.name}
+  1886→                        </button>
+  1887→                        <div className="text-xs text-muted-foreground sm:hidden">
+  1888→                          {c.count} fırsat · {formatCurrency(c.total)}
+  1889→                        </div>
+  1890→                      </TableCell>
+  1891→                      <TableCell className="text-right font-semibold text-emerald-600">
+  1892→                        {formatCurrency(c.total)}
+  1893→                      </TableCell>
+  1894→                      <TableCell className="text-right hidden sm:table-cell font-mono text-sm">
+  1895→                        {c.count}
+  1896→                      </TableCell>
+  1897→                      <TableCell className="hidden md:table-cell">
+  1898→                        <div className="flex items-center gap-1.5">
+  1899→                          <Calendar className="w-3 h-3 text-muted-foreground" />
+  1900→                          <span className="text-xs">{formatDate(c.lastActivityAt)}</span>
+  1901→                          {ds !== null && (
+  1902→                            <span className={cn(
+  1903→                              'text-[10px]',
+  1904→                              ds > 30 ? 'text-rose-600' : ds > 14 ? 'text-amber-600' : 'text-emerald-600',
+  1905→                            )}>
+  1906→                              · {ds}g
+  1907→                            </span>
+  1908→                          )}
+  1909→                        </div>
+  1910→                      </TableCell>
+  1911→                      <TableCell className="hidden lg:table-cell">
+  1912→                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+  1913→                          <div
+  1914→                            className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full"
+  1915→                            style={{ width: `${(c.total / maxValue) * 100}%` }}
+  1916→                          />
+  1917→                        </div>
+  1918→                      </TableCell>
+  1919→                    </TableRow>
+  1920→                  )
+  1921→                })}
+  1922→              </TableBody>
+  1923→            </Table>
+  1924→          </div>
+  1925→        )}
+  1926→      </CardContent>
+  1927→    </Card>
+  1928→  )
+  1929→}
+  1930→
+  1931→// ============================================================
+  1932→// Bölüm 9 — İletişimsiz Müşteriler
+  1933→// ============================================================
+  1934→function StaleCustomersCard({
+  1935→  stale, staleCount, onOpenCustomer, onExportCsv, onExportXlsx,
+  1936→}: {
+  1937→  stale: ReportsData['staleCustomers']
+  1938→  staleCount: number
+  1939→  onOpenCustomer: (id: string) => void
+  1940→  onExportCsv: () => void
+  1941→  onExportXlsx: () => void
+  1942→}) {
+  1943→  const handleCreateTask = (name: string) => {
+  1944→    toast.success('Görev oluşturma tetiklendi', {
+  1945→      description: `${name} için görev oluşturma formu açılacak (görev modülü M5'te geliştirilecek).`,
+  1946→    })
+  1947→  }
+  1948→
+  1949→  return (
+  1950→    <Card className="border-rose-200 dark:border-rose-900/40">
+  1951→      <CardHeader>
+  1952→        <div className="flex items-start justify-between gap-3 flex-wrap">
+  1953→          <div className="space-y-1">
+  1954→            <div className="flex items-center gap-2">
+  1955→              <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/30 flex items-center justify-center">
+  1956→                <AlertTriangle className="w-4 h-4 text-rose-600" />
+  1957→              </div>
+  1958→              <CardTitle>İletişimsiz Müşteriler</CardTitle>
+  1959→              <Badge variant="outline" className="text-rose-600 border-rose-200">
+  1960→                {staleCount} kayıt
+  1961→              </Badge>
+  1962→            </div>
+  1963→            <CardDescription>30+ gündür iletişim kurulmamış veya hiç iletişim kurulmamış müşteriler</CardDescription>
+  1964→          </div>
+  1965→          <ExportButtons onCsv={onExportCsv} onXlsx={onExportXlsx} />
+  1966→        </div>
+  1967→      </CardHeader>
+  1968→      <CardContent>
+  1969→        {stale.length === 0 ? (
+  1970→          <EmptyState
+  1971→            icon={CheckSquare}
+  1972→            title="İletişimsiz müşteri yok"
+  1973→            description="Tüm müşterilerle son 30 gün içinde iletişim kurulmuş. Harika!"
+  1974→          />
+  1975→        ) : (
+  1976→          <div className="space-y-2 max-h-[460px] overflow-y-auto custom-scroll pr-1">
+  1977→            {stale.map((c) => {
+  1978→              const ds = daysSince(c.lastActivityAt)
+  1979→              const isCritical = ds === null || ds > 60
+  1980→              const isWarning = ds !== null && ds > 30 && ds <= 60
+  1981→              return (
+  1982→                <div
+  1983→                  key={c.id}
+  1984→                  className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors group"
+  1985→                >
+  1986→                  <div className={cn(
+  1987→                    'w-2 h-12 rounded-full shrink-0',
+  1988→                    isCritical ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-slate-400',
+  1989→                  )} />
+  1990→
+  1991→                  <button
+  1992→                    onClick={() => onOpenCustomer(c.id)}
+  1993→                    className="flex-1 min-w-0 text-left"
+  1994→                  >
+  1995→                    <div className="font-medium truncate group-hover:text-emerald-600 transition-colors">
+  1996→                      {c.name}
+  1997→                    </div>
+  1998→                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+  1999→                      <Building2 className="w-3 h-3" />
+
+[showing lines 1300-1999 of 2377; use offset=2000 with limit to continue reading]

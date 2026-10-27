@@ -96,6 +96,7 @@ function normBiz(it: Json): Json {
     city: it.city ?? '',
     district: it.district ?? '',
     photo: it.photo ?? null,
+    about: typeof it.about === 'string' ? it.about : null,
     phone: it.phone ?? '',
     email: it.email ?? '',
     lat: typeof it.lat === 'number' && !isNaN(it.lat) ? it.lat : it.lat != null && !isNaN(Number(it.lat)) ? Number(it.lat) : null,
@@ -215,6 +216,9 @@ async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | 
     throw new UpstreamError('İşletme bilgileri şu anda alınamıyor — ana uygulama yanıt vermiyor olabilir.');
   }
   const services: Json[] = Array.isArray(r.data.services) ? r.data.services : [];
+  // vitrin (tur4): portföy fotoğrafları + ekip — upstream hatasına dayanıklı
+  const photos: Json[] = Array.isArray(r.data.photos) ? r.data.photos : [];
+  const staff: Json[] = Array.isArray(r.data.staff) ? r.data.staff : [];
   const provider = normBiz({ ...r.data.provider, services });
   // Değerlendirmeler (server-side çekilir; hata olursa bölüm boş düşer)
   let reviews: { items: Json[]; summary: Json } | null = null;
@@ -233,7 +237,7 @@ async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | 
   // Gateway modunda ana sayfa bağlantısına param ekle (CRM'e düşmesin)
   // Düzeltme: "Tüm işletmeler" her zaman randevu LİSTESİNE gider (ana siteye değil)
   const homeUrl = subdomain && BASE_DOMAIN ? `https://${listHost()}` : gwq('/')
-  return { body: detailPage({ provider, services, reviews, homeUrl, gwPort, embed }), status: 200 };
+  return { body: detailPage({ provider, services, photos, staff, reviews, homeUrl, gwPort, embed }), status: 200 };
 
   // BASE_DOMAIN=randevu.x biçimindeyse aynen; bare domain ise randevu. öneki ekle
   function listHost(): string {

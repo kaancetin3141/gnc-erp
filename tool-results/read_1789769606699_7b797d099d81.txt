@@ -1,0 +1,590 @@
+     1→'use client'
+     2→
+     3→import { useState } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { apiGet, apiPatch, apiDelete } from '@/lib/api-client'
+     6→
+     7→import { Card, CardContent } from '@/components/ui/card'
+     8→import { Button } from '@/components/ui/button'
+     9→import { Skeleton } from '@/components/ui/skeleton'
+    10→import { Badge } from '@/components/ui/badge'
+    11→import { Separator } from '@/components/ui/separator'
+    12→import {
+    13→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    14→} from '@/components/ui/table'
+    15→import {
+    16→  Dialog, DialogContent, DialogDescription, DialogHeader,
+    17→  DialogTitle,
+    18→} from '@/components/ui/dialog'
+    19→import {
+    20→  AlertDialog, AlertDialogAction, AlertDialogCancel,
+    21→  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+    22→  AlertDialogHeader, AlertDialogTitle,
+    23→} from '@/components/ui/alert-dialog'
+    24→import {
+    25→  Tooltip, TooltipContent, TooltipTrigger,
+    26→} from '@/components/ui/tooltip'
+    27→import { toast } from 'sonner'
+    28→import {
+    29→  Receipt, Pencil, Trash2, RefreshCw, User, Calendar,
+    30→  Clock, CheckCircle2, AlertTriangle, TrendingUp, FileText,
+    31→  Printer, Plus,
+    32→} from 'lucide-react'
+    33→import { formatCurrency, formatDate } from '@/lib/format'
+    34→import { cn } from '@/lib/utils'
+    35→import { formatWeight, calculateTotalWeight } from '@/lib/weight-utils'
+    36→import type { Invoice, InvoiceLine } from './types'
+    37→import { INVOICE_STATUSES, getInvoiceStatusMeta } from './invoice-utils'
+    38→
+    39→// ============================================================
+    40→// Fatura Detay Dialog
+    41→// ============================================================
+    42→
+    43→export function InvoiceDetailDialog({
+    44→  invoice, open, onOpenChange, onEdit,
+    45→}: {
+    46→  invoice: Invoice | null
+    47→  open: boolean
+    48→  onOpenChange: (v: boolean) => void
+    49→  onEdit: (inv: Invoice) => void
+    50→}) {
+    51→  const qc = useQueryClient()
+    52→  const [deleteOpen, setDeleteOpen] = useState(false)
+    53→  const [deleting, setDeleting] = useState(false)
+    54→  const [changing, setChanging] = useState(false)
+    55→  const [pdfOpen, setPdfOpen] = useState(false)
+    56→
+    57→  // Detay sorgu
+    58→  const { data: detail, isLoading } = useQuery({
+    59→    queryKey: ['invoice', invoice?.id],
+    60→    queryFn: () => apiGet<Invoice>(`/api/invoices/${invoice!.id}`),
+    61→    enabled: !!invoice && open,
+    62→  })
+    63→
+    64→  if (!invoice) return null
+    65→
+    66→  const status = getInvoiceStatusMeta(invoice.status)
+    67→  const d = detail ?? invoice
+    68→
+    69→  const changeStatus = async (newStatus: string) => {
+    70→    setChanging(true)
+    71→    try {
+    72→      await apiPatch(`/api/invoices/${invoice.id}`, { status: newStatus })
+    73→      toast.success('Durum güncellendi')
+    74→      qc.invalidateQueries({ queryKey: ['invoice', invoice.id] })
+    75→      qc.invalidateQueries({ queryKey: ['invoices'] })
+    76→    } catch (e) {
+    77→      toast.error(e instanceof Error ? e.message : 'Güncelleme başarısız')
+    78→    } finally {
+    79→      setChanging(false)
+    80→    }
+    81→  }
+    82→
+    83→  const handleDelete = async () => {
+    84→    setDeleting(true)
+    85→    try {
+    86→      await apiDelete(`/api/invoices/${invoice.id}`)
+    87→      toast.success('Fatura silindi')
+    88→      qc.invalidateQueries({ queryKey: ['invoices'] })
+    89→      setDeleteOpen(false)
+    90→      onOpenChange(false)
+    91→    } catch (e) {
+    92→      toast.error(e instanceof Error ? e.message : 'Silme başarısız')
+    93→    } finally {
+    94→      setDeleting(false)
+    95→    }
+    96→  }
+    97→
+    98→  // Gecikmiş mi?
+    99→  const isOverdue = invoice.status === 'odeme_bekliyor' && invoice.dueDate
+   100→    ? new Date(invoice.dueDate).getTime() < Date.now()
+   101→    : false
+   102→
+   103→  const lines: InvoiceLine[] = d.lines ?? []
+   104→  // Ağırlık kontrolü (F4)
+   105→  const hasWeight = lines.some((l) => l.totalWeight != null && l.totalWeight > 0)
+   106→  const totalNetWeight = hasWeight
+   107→    ? calculateTotalWeight(lines.map((l) => ({ qty: l.qty, weightPerUnit: l.weightPerUnit ?? null })))
+   108→    : null
+   109→
+   110→  return (
+   111→    <>
+   112→      <Dialog open={open} onOpenChange={onOpenChange}>
+   113→        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto custom-scroll">
+   114→          <DialogHeader className="print:hidden">
+   115→            <div className="flex items-start justify-between gap-3">
+   116→              <div className="min-w-0">
+   117→                <DialogTitle className="flex items-center gap-2 flex-wrap">
+   118→                  <Receipt className="w-5 h-5 text-amber-600 shrink-0" />
+   119→                  <span className="font-mono">{invoice.number}</span>
+   120→                  <Badge variant="outline" className={cn('text-[10px]', status.color)}>
+   121→                    <status.icon className="w-3 h-3 mr-1" />
+   122→                    {status.label}
+   123→                  </Badge>
+   124→                  {isOverdue && (
+   125→                    <Badge variant="outline" className="text-[10px] text-red-700 bg-red-50 border-red-200">
+   126→                      <AlertTriangle className="w-3 h-3 mr-1" />
+   127→                      Vade Geçti
+   128→                    </Badge>
+   129→                  )}
+   130→                </DialogTitle>
+   131→                <DialogDescription className="mt-1 flex items-center gap-2 flex-wrap text-xs">
+   132→                  <User className="w-3 h-3" />
+   133→                  {invoice.customer?.name ?? '—'}
+   134→                </DialogDescription>
+   135→              </div>
+   136→              <div className="flex items-center gap-1 shrink-0">
+   137→                <Tooltip>
+   138→                  <TooltipTrigger asChild>
+   139→                    <Button variant="outline" size="sm" onClick={() => setPdfOpen(true)}>
+   140→                      <FileText className="w-3.5 h-3.5 mr-1" /> PDF Görüntüle
+   141→                    </Button>
+   142→                  </TooltipTrigger>
+   143→                  <TooltipContent>Fatura PDF önizleme</TooltipContent>
+   144→                </Tooltip>
+   145→                <Tooltip>
+   146→                  <TooltipTrigger asChild>
+   147→                    <Button variant="outline" size="sm" onClick={() => onEdit(invoice)}>
+   148→                      <Pencil className="w-3.5 h-3.5 mr-1" /> Düzenle
+   149→                    </Button>
+   150→                  </TooltipTrigger>
+   151→                  <TooltipContent>Faturayı düzenle</TooltipContent>
+   152→                </Tooltip>
+   153→                <Button
+   154→                  variant="outline"
+   155→                  size="sm"
+   156→                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/50"
+   157→                  onClick={() => setDeleteOpen(true)}
+   158→                >
+   159→                  <Trash2 className="w-3.5 h-3.5" />
+   160→                </Button>
+   161→              </div>
+   162→            </div>
+   163→          </DialogHeader>
+   164→
+   165→          {isLoading ? (
+   166→            <div className="space-y-3">
+   167→              <Skeleton className="h-20 w-full" />
+   168→              <Skeleton className="h-20 w-full" />
+   169→            </div>
+   170→          ) : (
+   171→            <>
+   172→              {/* Bilgi kartları */}
+   173→              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-1">
+   174→                <Card className="bg-muted/30">
+   175→                  <CardContent className="p-3">
+   176→                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+   177→                      <Calendar className="w-3 h-3" /> Düzenleme
+   178→                    </div>
+   179→                    <div className="text-sm font-bold mt-0.5">{formatDate(d.issueDate)}</div>
+   180→                  </CardContent>
+   181→                </Card>
+   182→                <Card className="bg-muted/30">
+   183→                  <CardContent className="p-3">
+   184→                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+   185→                      <Clock className="w-3 h-3" /> Vade
+   186→                    </div>
+   187→                    <div className="text-sm font-bold mt-0.5">{formatDate(d.dueDate)}</div>
+   188→                  </CardContent>
+   189→                </Card>
+   190→                <Card className="bg-muted/30">
+   191→                  <CardContent className="p-3">
+   192→                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+   193→                      <CheckCircle2 className="w-3 h-3" /> Ödeme Tarihi
+   194→                    </div>
+   195→                    <div className="text-sm font-bold mt-0.5">{formatDate(d.paidDate)}</div>
+   196→                  </CardContent>
+   197→                </Card>
+   198→                <Card className="bg-muted/30">
+   199→                  <CardContent className="p-3">
+   200→                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Para Birimi</div>
+   201→                    <div className="text-sm font-bold mt-0.5">{d.currency}</div>
+   202→                  </CardContent>
+   203→                </Card>
+   204→              </div>
+   205→
+   206→              {/* Toplamlar */}
+   207→              <div className="grid grid-cols-3 gap-3">
+   208→                <Card className="bg-muted/20">
+   209→                  <CardContent className="p-3">
+   210→                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Ara Toplam</div>
+   211→                    <div className="text-base font-bold mt-0.5 tabular-nums">{formatCurrency(d.subtotal, d.currency)}</div>
+   212→                  </CardContent>
+   213→                </Card>
+   214→                <Card className="bg-muted/20">
+   215→                  <CardContent className="p-3">
+   216→                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">KDV</div>
+   217→                    <div className="text-base font-bold mt-0.5 tabular-nums">{formatCurrency(d.taxTotal, d.currency)}</div>
+   218→                  </CardContent>
+   219→                </Card>
+   220→                <Card className="bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50">
+   221→                  <CardContent className="p-3">
+   222→                    <div className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400">Genel Toplam</div>
+   223→                    <div className="text-base font-bold mt-0.5 tabular-nums text-amber-700 dark:text-amber-400">{formatCurrency(d.total, d.currency)}</div>
+   224→                  </CardContent>
+   225→                </Card>
+   226→              </div>
+   227→
+   228→              <Separator />
+   229→
+   230→              {/* Satır detayları (lines) */}
+   231→              {lines.length > 0 && (
+   232→                <div className="space-y-2">
+   233→                  <div className="flex items-center gap-2">
+   234→                    <FileText className="w-4 h-4 text-muted-foreground" />
+   235→                    <h4 className="text-sm font-semibold">Kalemler ({lines.length})</h4>
+   236→                  </div>
+   237→                  <div className="rounded-lg border border-border overflow-hidden">
+   238→                    <Table>
+   239→                      <TableHeader>
+   240→                        <TableRow className="bg-muted/50">
+   241→                          <TableHead className="text-xs uppercase tracking-wider text-muted-foreground py-2">Açıklama</TableHead>
+   242→                          <TableHead className="text-xs uppercase tracking-wider text-muted-foreground py-2 text-right">Miktar</TableHead>
+   243→                          <TableHead className="text-xs uppercase tracking-wider text-muted-foreground py-2 text-right">Birim</TableHead>
+   244→                          <TableHead className="text-xs uppercase tracking-wider text-muted-foreground py-2 text-right">KDV</TableHead>
+   245→                          {hasWeight && (
+   246→                            <TableHead className="text-xs uppercase tracking-wider text-muted-foreground py-2 text-right">Ağırlık</TableHead>
+   247→                          )}
+   248→                          <TableHead className="text-xs uppercase tracking-wider text-muted-foreground py-2 text-right">Tutar</TableHead>
+   249→                        </TableRow>
+   250→                      </TableHeader>
+   251→                      <TableBody>
+   252→                        {lines.map((line) => (
+   253→                          <TableRow key={line.id} className="text-sm">
+   254→                            <TableCell className="py-2">
+   255→                              {line.description}
+   256→                              {line.product && (
+   257→                                <span className="text-[10px] text-muted-foreground ml-1">({line.product.sku || line.product.name})</span>
+   258→                              )}
+   259→                            </TableCell>
+   260→                            <TableCell className="text-right py-2 tabular-nums">{line.qty}</TableCell>
+   261→                            <TableCell className="text-right py-2 tabular-nums">{formatCurrency(line.unitPrice, d.currency)}</TableCell>
+   262→                            <TableCell className="text-right py-2 tabular-nums">%{line.taxRate}</TableCell>
+   263→                            {hasWeight && (
+   264→                              <TableCell className="text-right py-2 tabular-nums">
+   265→                                {line.totalWeight != null && line.totalWeight > 0
+   266→                                  ? formatWeight(line.totalWeight, line.weightUnit || 'kg')
+   267→                                  : '—'}
+   268→                              </TableCell>
+   269→                            )}
+   270→                            <TableCell className="text-right py-2 tabular-nums font-medium">{formatCurrency(line.lineTotal, d.currency)}</TableCell>
+   271→                          </TableRow>
+   272→                        ))}
+   273→                      </TableBody>
+   274→                    </Table>
+   275→                  </div>
+   276→                  {totalNetWeight != null && (
+   277→                    <div className="flex justify-end">
+   278→                      <div className="text-xs text-muted-foreground">
+   279→                        Toplam Net Ağırlık: <span className="font-medium text-foreground tabular-nums">{formatWeight(totalNetWeight, 'kg')}</span>
+   280→                      </div>
+   281→                    </div>
+   282→                  )}
+   283→                </div>
+   284→              )}
+   285→
+   286→              {/* Durum aksiyonları */}
+   287→              <div className="space-y-2">
+   288→                <div className="flex items-center gap-2">
+   289→                  <TrendingUp className="w-4 h-4 text-amber-600" />
+   290→                  <h4 className="text-sm font-semibold">Durum Yönetimi</h4>
+   291→                </div>
+   292→                <div className="flex flex-wrap gap-1.5">
+   293→                  {INVOICE_STATUSES.map((s) => (
+   294→                    <Button
+   295→                      key={s.value}
+   296→                      variant={invoice.status === s.value ? 'default' : 'outline'}
+   297→                      size="sm"
+   298→                      disabled={changing || invoice.status === s.value}
+   299→                      onClick={() => changeStatus(s.value)}
+   300→                      className={cn(
+   301→                        invoice.status === s.value && 'bg-amber-600 hover:bg-amber-700',
+   302→                      )}
+   303→                    >
+   304→                      <s.icon className="w-3.5 h-3.5 mr-1" />
+   305→                      {s.label}
+   306→                    </Button>
+   307→                  ))}
+   308→                </div>
+   309→
+   310→                {invoice.status === 'odendi' && d.paidDate && (
+   311→                  <div className="p-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+   312→                    <CheckCircle2 className="w-4 h-4" />
+   313→                    Ödendi — {formatDate(d.paidDate)}
+   314→                  </div>
+   315→                )}
+   316→                {isOverdue && (
+   317→                  <div className="p-2 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+   318→                    <AlertTriangle className="w-4 h-4" />
+   319→                    Vade tarihi geçti. &quot;Gecikti&quot; olarak işaretleyebilirsiniz.
+   320→                  </div>
+   321→                )}
+   322→              </div>
+   323→
+   324→              {/* Çeki Listesi (Packing List) & İrsaliye & Sipariş */}
+   325→              <Separator />
+   326→              <div className="space-y-3">
+   327→                <div className="flex items-center gap-2">
+   328→                  <FileText className="w-4 h-4 text-violet-600" />
+   329→                  <h4 className="text-sm font-semibold">Belge Yönetimi</h4>
+   330→                </div>
+   331→
+   332→                {/* Sipariş bağlantısı */}
+   333→                <div className="p-3 rounded-lg border border-border bg-muted/20">
+   334→                  <div className="flex items-center justify-between mb-2">
+   335→                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sipariş</span>
+   336→                    {d.order ? (
+   337→                      <Badge variant="outline" className="text-[10px] bg-violet-50 text-violet-700 border-violet-200">
+   338→                        {d.order.number}
+   339→                      </Badge>
+   340→                    ) : (
+   341→                      <span className="text-[10px] text-muted-foreground">Siparişe bağlı değil</span>
+   342→                    )}
+   343→                  </div>
+   344→                  {d.order && (
+   345→                    <div className="text-xs text-muted-foreground">
+   346→                      Sipariş No: <span className="font-mono font-medium text-foreground">{d.order.number}</span>
+   347→                      <span className="ml-2">Durum: {d.order.status}</span>
+   348→                    </div>
+   349→                  )}
+   350→                </div>
+   351→
+   352→                {/* Çeki Listesi */}
+   353→                <div className="p-3 rounded-lg border border-border bg-muted/20">
+   354→                  <div className="flex items-center justify-between mb-2">
+   355→                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Çeki Listesi (Packing List)</span>
+   356→                    {d.packingListNo ? (
+   357→                      <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
+   358→                        Düzenlendi
+   359→                      </Badge>
+   360→                    ) : (
+   361→                      <Button
+   362→                        variant="outline"
+   363→                        size="sm"
+   364→                        className="h-6 text-[10px]"
+   365→                        onClick={async () => {
+   366→                          const packingNo = `CL-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 999) + 1).padStart(3, '0')}`
+   367→                          try {
+   368→                            await apiPatch(`/api/invoices/${invoice.id}`, {
+   369→                              packingListNo: packingNo,
+   370→                              packingListDate: new Date().toISOString(),
+   371→                            })
+   372→                            toast.success('Çeki listesi oluşturuldu', { description: packingNo })
+   373→                            qc.invalidateQueries({ queryKey: ['invoice', invoice.id] })
+   374→                            qc.invalidateQueries({ queryKey: ['invoices'] })
+   375→                          } catch (e) {
+   376→                            toast.error('Çeki listesi oluşturulamadı')
+   377→                          }
+   378→                        }}
+   379→                      >
+   380→                        <Plus className="w-3 h-3 mr-1" /> Çeki Listesi Oluştur
+   381→                      </Button>
+   382→                    )}
+   383→                  </div>
+   384→                  {d.packingListNo ? (
+   385→                    <div className="text-xs space-y-1">
+   386→                      <div>No: <span className="font-mono font-medium">{d.packingListNo}</span></div>
+   387→                      {d.packingListDate && <div>Tarih: {formatDate(d.packingListDate)}</div>}
+   388→                      <Button
+   389→                        variant="ghost"
+   390→                        size="sm"
+   391→                        className="h-6 text-[10px] mt-1"
+   392→                        onClick={() => window.print()}
+   393→                      >
+   394→                        <Printer className="w-3 h-3 mr-1" /> Çeki Listesi Yazdır
+   395→                      </Button>
+   396→                    </div>
+   397→                  ) : (
+   398→                    <div className="text-xs text-muted-foreground">Henüz çeki listesi oluşturulmadı.</div>
+   399→                  )}
+   400→                </div>
+   401→
+   402→                {/* İrsaliye */}
+   403→                <div className="p-3 rounded-lg border border-border bg-muted/20">
+   404→                  <div className="flex items-center justify-between mb-2">
+   405→                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">İrsaliye (Dispatch Note)</span>
+   406→                    {d.dispatchNo ? (
+   407→                      <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-200">
+   408→                        Düzenlendi
+   409→                      </Badge>
+   410→                    ) : (
+   411→                      <span className="text-[10px] text-muted-foreground">Yok</span>
+   412→                    )}
+   413→                  </div>
+   414→                  {d.dispatchNo ? (
+   415→                    <div className="text-xs space-y-1">
+   416→                      <div>No: <span className="font-mono font-medium">{d.dispatchNo}</span></div>
+   417→                      {d.dispatchDate && <div>Tarih: {formatDate(d.dispatchDate)}</div>}
+   418→                    </div>
+   419→                  ) : (
+   420→                    <div className="text-xs text-muted-foreground">Henüz irsaliye düzenlenmedi.</div>
+   421→                  )}
+   422→                </div>
+   423→              </div>
+   424→            </>
+   425→          )}
+   426→        </DialogContent>
+   427→      </Dialog>
+   428→
+   429→      {/* PDF Önizleme */}
+   430→      {pdfOpen && (
+   431→        <InvoicePdfDialog invoice={invoice} detail={detail} onClose={() => setPdfOpen(false)} />
+   432→      )}
+   433→
+   434→      {/* Silme onayı */}
+   435→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+   436→        <AlertDialogContent>
+   437→          <AlertDialogHeader>
+   438→            <AlertDialogTitle>Faturayı sil?</AlertDialogTitle>
+   439→            <AlertDialogDescription>
+   440→              <strong>{invoice.number}</strong> numaralı faturayı silmek üzeresiniz.
+   441→              Bu işlem geri alınamaz.
+   442→            </AlertDialogDescription>
+   443→          </AlertDialogHeader>
+   444→          <AlertDialogFooter>
+   445→            <AlertDialogCancel disabled={deleting}>İptal</AlertDialogCancel>
+   446→            <AlertDialogAction
+   447→              onClick={(e) => {
+   448→                e.preventDefault()
+   449→                handleDelete()
+   450→              }}
+   451→              disabled={deleting}
+   452→              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+   453→            >
+   454→              {deleting && <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />}
+   455→              Evet, Sil
+   456→            </AlertDialogAction>
+   457→          </AlertDialogFooter>
+   458→        </AlertDialogContent>
+   459→      </AlertDialog>
+   460→    </>
+   461→  )
+   462→}
+   463→
+   464→// ============================================================
+   465→// Invoice PDF Preview Dialog
+   466→// ============================================================
+   467→function InvoicePdfDialog({ invoice, detail, onClose }: {
+   468→  invoice: Invoice
+   469→  detail: Invoice | null
+   470→  onClose: () => void
+   471→}) {
+   472→  const d = detail ?? invoice
+   473→  const lines = (d as Invoice & { lines?: { id: string; description: string; qty: number; unitPrice: number; taxRate: number; lineTotal: number; weightPerUnit?: number | null; weightUnit?: string | null; totalWeight?: number | null; product?: { name: string; sku: string | null } | null }[] }).lines ?? []
+   474→  // Ağırlık kontrolü (F4)
+   475→  const hasWeight = lines.some((l) => l.totalWeight != null && l.totalWeight > 0)
+   476→  const totalNetWeight = hasWeight
+   477→    ? calculateTotalWeight(lines.map((l) => ({ qty: l.qty, weightPerUnit: l.weightPerUnit ?? null })))
+   478→    : null
+   479→
+   480→  return (
+   481→    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+   482→      <DialogContent className="max-w-3xl max-h-[85vh] print:max-w-none print:max-h-none print:p-0 print:shadow-none">
+   483→        <DialogHeader className="print:hidden">
+   484→          <div className="flex items-center justify-between">
+   485→            <DialogTitle>Fatura PDF Önizleme</DialogTitle>
+   486→            <Button variant="outline" size="sm" onClick={() => window.print()}>
+   487→              <Printer className="w-4 h-4 mr-1.5" /> Yazdır / PDF
+   488→            </Button>
+   489→          </div>
+   490→        </DialogHeader>
+   491→        <div className="overflow-y-auto max-h-[60vh] print:overflow-visible print:max-h-none">
+   492→          <div className="a4-page print-content">
+   493→            {/* Header */}
+   494→            <div className="flex items-start justify-between mb-6 pb-4 border-b">
+   495→              <div>
+   496→                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center font-bold text-white text-lg mb-2">G</div>
+   497→                <div className="font-bold text-lg">GNC CRM</div>
+   498→                <div className="text-xs text-gray-500">KOBİ Çözümleri</div>
+   499→              </div>
+   500→              <div className="text-right">
+   501→                <div className="text-2xl font-bold text-emerald-700">FATURA</div>
+   502→                <div className="text-sm font-mono mt-1">{d.number}</div>
+   503→                <div className="text-xs text-gray-500 mt-1">Tarih: {formatDate(d.issueDate)}</div>
+   504→                {d.dueDate && <div className="text-xs text-gray-500">Vade: {formatDate(d.dueDate)}</div>}
+   505→              </div>
+   506→            </div>
+   507→
+   508→            {/* Customer */}
+   509→            <div className="mb-6">
+   510→              <div className="text-xs text-gray-500 mb-1">Sayın</div>
+   511→              <div className="font-semibold">{d.customer?.name ?? '—'}</div>
+   512→            </div>
+   513→
+   514→            {/* Status */}
+   515→            <div className="mb-6 flex items-center gap-2">
+   516→              <span className="text-xs text-gray-500">Durum:</span>
+   517→              <span className="text-sm font-medium">
+   518→                {d.status === 'odeme_bekliyor' ? 'Ödeme Bekliyor' : d.status === 'odendi' ? 'Ödendi' : d.status === 'gecikti' ? 'Gecikti' : 'İptal'}
+   519→              </span>
+   520→            </div>
+   521→
+   522→            {/* Lines */}
+   523→            {lines.length > 0 && (
+   524→              <table className="w-full text-sm mb-6">
+   525→                <thead>
+   526→                  <tr className="border-b-2 border-gray-300">
+   527→                    <th className="text-left py-2 text-xs uppercase tracking-wider text-gray-500">Açıklama</th>
+   528→                    <th className="text-right py-2 text-xs uppercase tracking-wider text-gray-500">Miktar</th>
+   529→                    <th className="text-right py-2 text-xs uppercase tracking-wider text-gray-500">Birim Fiyat</th>
+   530→                    <th className="text-right py-2 text-xs uppercase tracking-wider text-gray-500">KDV</th>
+   531→                    {hasWeight && (
+   532→                      <th className="text-right py-2 text-xs uppercase tracking-wider text-gray-500">Ağırlık</th>
+   533→                    )}
+   534→                    <th className="text-right py-2 text-xs uppercase tracking-wider text-gray-500">Tutar</th>
+   535→                  </tr>
+   536→                </thead>
+   537→                <tbody>
+   538→                  {lines.map((line) => (
+   539→                    <tr key={line.id} className="border-b border-gray-100">
+   540→                      <td className="py-2">{line.description}</td>
+   541→                      <td className="text-right py-2 tabular-nums">{line.qty}</td>
+   542→                      <td className="text-right py-2 tabular-nums">{formatCurrency(line.unitPrice, d.currency)}</td>
+   543→                      <td className="text-right py-2 tabular-nums">%{line.taxRate}</td>
+   544→                      {hasWeight && (
+   545→                        <td className="text-right py-2 tabular-nums">
+   546→                          {line.totalWeight != null && line.totalWeight > 0
+   547→                            ? formatWeight(line.totalWeight, line.weightUnit || 'kg')
+   548→                            : '—'}
+   549→                        </td>
+   550→                      )}
+   551→                      <td className="text-right py-2 tabular-nums font-medium">{formatCurrency(line.lineTotal, d.currency)}</td>
+   552→                    </tr>
+   553→                  ))}
+   554→                </tbody>
+   555→              </table>
+   556→            )}
+   557→
+   558→            {/* Totals */}
+   559→            <div className="ml-auto w-full max-w-xs space-y-1">
+   560→              <div className="flex justify-between text-sm">
+   561→                <span className="text-gray-600">Ara Toplam:</span>
+   562→                <span className="tabular-nums">{formatCurrency(d.subtotal, d.currency)}</span>
+   563→              </div>
+   564→              <div className="flex justify-between text-sm">
+   565→                <span className="text-gray-600">KDV Toplam:</span>
+   566→                <span className="tabular-nums">{formatCurrency(d.taxTotal, d.currency)}</span>
+   567→              </div>
+   568→              {totalNetWeight != null && (
+   569→                <div className="flex justify-between text-sm border-t border-gray-200 pt-1 mt-1">
+   570→                  <span className="text-gray-600">Toplam Net Ağırlık:</span>
+   571→                  <span className="tabular-nums font-medium">{formatWeight(totalNetWeight, 'kg')}</span>
+   572→                </div>
+   573→              )}
+   574→              <div className="flex justify-between text-base font-bold pt-2 border-t-2 border-gray-300">
+   575→                <span>Genel Toplam:</span>
+   576→                <span className="tabular-nums text-emerald-700">{formatCurrency(d.total, d.currency)}</span>
+   577→              </div>
+   578→            </div>
+   579→
+   580→            {/* Footer */}
+   581→            <div className="mt-8 pt-4 border-t text-xs text-gray-400 text-center">
+   582→              <p>Bu belge GNC CRM tarafından oluşturulmuştur · {formatDate(new Date())}</p>
+   583→            </div>
+   584→          </div>
+   585→        </div>
+   586→      </DialogContent>
+   587→    </Dialog>
+   588→  )
+   589→}
+   590→

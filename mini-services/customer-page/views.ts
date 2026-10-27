@@ -570,7 +570,108 @@ body.embed footer.ft,
 body.embed .embed-hide{display:none !important}
 body.embed .dwrap{padding:10px 10px 22px;margin:0;max-width:100%}
 body.embed .dcard{box-shadow:0 2px 10px rgba(70,26,36,.06)}
-body.embed main{padding-top:10px}`;
+body.embed main{padding-top:10px}
+
+/* ═══ Vitrin (tur4): işletmenin kendi web sitesi hissi ═══
+   hero + hakkımızda + portföy galerisi/lightbox + ekip + sticky mobil CTA.
+   Mevcut kurallara DOKUNULMAZ — yalnız ekleme. Renk dili var(--brand)/
+   amber/green tonlarıyla uyumlu; mavi/indigo kullanılmaz. */
+
+/* ---- vitrin hero: .wrap dışına negatif margin ile taşar (tam genişlik) ---- */
+.bhero{position:relative;overflow:hidden;min-height:300px;display:flex;align-items:flex-end;margin:10px -16px 0;color:#fff;background:linear-gradient(130deg,#2f101a 0%,#4b1523 45%,#123a33 100%)}
+@media(min-width:640px){.bhero{min-height:400px}}
+.bhero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.bhero-ov{position:absolute;inset:0;background:linear-gradient(180deg,rgba(22,9,13,.16) 0%,rgba(22,9,13,.44) 46%,rgba(16,7,10,.80) 100%)}
+.bhero-emoji{position:absolute;right:-14px;bottom:-30px;font-size:9rem;opacity:.15;transform:rotate(-10deg);line-height:1;user-select:none}
+.bhero-in{position:relative;z-index:2;display:grid;gap:9px;padding:26px 18px 22px;width:100%}
+@media(min-width:640px){.bhero-in{padding:34px 30px 30px}}
+.bhero-badges{display:flex;flex-wrap:wrap;gap:6px}
+.badge.hlt{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.30);color:#fff;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.bhero-title{font-size:clamp(1.65rem,5vw,2.6rem);font-weight:800;letter-spacing:-.025em;line-height:1.12;color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.35);text-wrap:balance;margin:0}
+.bhero-loc{font-size:.95rem;font-weight:700;color:rgba(255,255,255,.94);text-shadow:0 1px 8px rgba(0,0,0,.45);margin:0}
+.bhero-addr{font-size:.85rem;color:rgba(255,255,255,.74);text-shadow:0 1px 6px rgba(0,0,0,.4);margin:0}
+.bhero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:6px}
+.bhero .btn{min-height:48px}
+.bhero-call{background:rgba(255,255,255,.14);border:1.5px solid rgba(255,255,255,.38);color:#fff;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.bhero-call:hover{background:rgba(255,255,255,.26);color:#fff}
+.rate-badge.hlt{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.34);color:#fff;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.rate-badge.hlt .rate-badge-c{color:rgba(255,255,255,.78)}
+.rate-badge.rate-new.hlt{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3);color:#fff}
+/* open-now çipi hero içindeyken JS tüm className'i yeniden yazar →
+   alt (descendant) seçici kullanılır: kendi sınıfları değişse bile tema korunur */
+.bhero .open-chip{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.3);color:#fff}
+.bhero .open-chip.on{background:rgba(16,185,129,.26);border-color:rgba(110,231,183,.42);color:#d1fae5}
+.bhero .open-chip.off{background:rgba(245,158,11,.24);border-color:rgba(251,191,36,.4);color:#fef3c7}
+
+/* dhead artık 2 kart (saatler + harita) — eşit kolonlar */
+@media(min-width:900px){.dhead{grid-template-columns:1fr 1fr}}
+
+/* ---- hakkımızda ---- */
+.about-card .about-text{white-space:pre-line;color:#4a382e;font-size:.95rem;line-height:1.65;margin:0}
+
+/* ---- portföy galerisi ---- */
+.pf-chips{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.pf-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(min-width:640px){.pf-grid{grid-template-columns:repeat(3,1fr);gap:12px}}
+@media(min-width:1024px){.pf-grid{grid-template-columns:repeat(4,1fr)}}
+.pf-item{position:relative;display:block;padding:0;border:none;aspect-ratio:4/3;border-radius:14px;overflow:hidden;cursor:zoom-in;background:rgba(255,255,255,.4);box-shadow:0 6px 18px rgba(70,26,36,.10);transition:transform .18s ease,box-shadow .2s ease}
+.pf-item:hover,.pf-item:focus-visible{transform:translateY(-3px);box-shadow:0 14px 30px rgba(70,26,36,.22)}
+.pf-item img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.pf-item[hidden]{display:none}
+.pf-ov{position:absolute;inset:0;background:linear-gradient(180deg,transparent 46%,rgba(15,7,10,.72) 100%)}
+.pf-cap{position:absolute;left:10px;right:10px;bottom:8px;z-index:2;color:#fff;font-size:.8rem;font-weight:800;text-shadow:0 1px 6px rgba(0,0,0,.55);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-cat{position:absolute;top:8px;right:8px;z-index:2;font-size:.64rem;font-weight:800;color:#fff;background:rgba(0,0,0,.38);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:2px 8px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+
+/* ---- lightbox ---- */
+.lbx{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:rgba(12,6,8,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:16px}
+.lbx[hidden]{display:none}
+.lbx-fig{margin:0;max-width:92vw;display:grid;gap:10px;justify-items:center}
+.lbx-fig img{max-width:92vw;max-height:78vh;object-fit:contain;border-radius:10px;box-shadow:0 24px 70px rgba(0,0,0,.6)}
+.lbx-cap{display:grid;gap:3px;text-align:center;color:#fff;max-width:80vw;justify-items:center}
+.lbx-cap b{font-size:.98rem}
+.lbx-cap span{font-size:.84rem;color:rgba(255,255,255,.75)}
+.lbx-close{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:12px;z-index:3;width:48px;height:48px;border-radius:50%;border:1.5px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;font-size:1.5rem;line-height:1;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:background .15s}
+.lbx-close:hover{background:rgba(255,255,255,.26)}
+.lbx-nav{position:fixed;top:50%;transform:translateY(-50%);z-index:3;width:52px;height:64px;border-radius:16px;border:1.5px solid rgba(255,255,255,.32);background:rgba(255,255,255,.10);color:#fff;font-size:2rem;line-height:1;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:background .15s}
+.lbx-nav:hover:not(:disabled){background:rgba(255,255,255,.22)}
+.lbx-nav:disabled{opacity:.3;cursor:default}
+.lbx-prev{left:10px}
+.lbx-next{right:10px}
+.lbx-count{position:fixed;top:calc(16px + env(safe-area-inset-top,0px));left:16px;z-index:3;color:rgba(255,255,255,.88);font-size:.82rem;font-weight:700;font-variant-numeric:tabular-nums;background:rgba(0,0,0,.35);border-radius:999px;padding:5px 12px}
+@media(max-width:640px){.lbx-nav{width:44px;height:68px;font-size:1.7rem}.lbx-prev{left:6px}.lbx-next{right:6px}.lbx{padding:10px}}
+
+/* ---- ekip ---- */
+.team-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(min-width:640px){.team-grid{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:1024px){.team-grid{grid-template-columns:repeat(4,1fr)}}
+.team-card{display:grid;justify-items:center;text-align:center;gap:6px;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-border);border-radius:16px;box-shadow:var(--shadow);padding:18px 12px}
+.team-photo{width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.85);box-shadow:0 6px 16px rgba(70,26,36,.18)}
+.team-initial{display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:800;color:#fff}
+.team-name{font-size:.95rem;font-weight:800;margin:0;letter-spacing:-.01em}
+.team-title{font-size:.76rem;font-weight:700;color:var(--brand);margin:0}
+.team-bio{font-size:.78rem;color:var(--muted);margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* ---- sticky mobil CTA bar (≤760px; embed'de gizli) ---- */
+.mcta{display:none;position:fixed;left:0;right:0;bottom:0;z-index:80;gap:10px;background:rgba(255,255,255,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);box-shadow:0 -8px 30px rgba(70,26,36,.14);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px))}
+.mcta-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;border-radius:999px;font:inherit;font-weight:800;font-size:.92rem;text-decoration:none;transition:transform .15s ease}
+.mcta-btn:active{transform:scale(.97)}
+.mcta-call{background:rgba(13,138,99,.13);border:1.5px solid rgba(13,138,99,.25);color:#065f46}
+.mcta-book{background:linear-gradient(120deg,var(--brand),#e8804f);color:#fff;box-shadow:0 8px 20px rgba(194,51,77,.32)}
+@media(max-width:760px){
+  body:not(.embed){padding-bottom:calc(72px + env(safe-area-inset-bottom,0px))}
+  body:not(.embed) .mcta{display:flex}
+}
+
+/* ---- vitrin: embed (widget) uyumu ---- */
+body.embed .bhero{margin:0;border-radius:16px;min-height:240px}
+body.embed .mcta{display:none !important}
+
+/* ---- vitrin: backdrop-filter desteği yoksa düz yüzey ---- */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))){
+  .team-card,.pf-item{background:#ffffff}
+  .mcta{background:#ffffff}
+  .badge.hlt,.bhero-call,.rate-badge.hlt{background:rgba(255,255,255,.2)}
+}`;
 
 // ---------------------------------------------------------------- Ortak sayfa parçaları
 
@@ -713,9 +814,13 @@ const DAY_TR: Array<[string, string]> = [
 ];
 
 export function detailPage(a: {
-  provider: Json; services: Json[]; reviews?: { items: Json[]; summary: Json } | null;
+  provider: Json; services: Json[]; photos: Json[]; staff: Json[];
+  reviews?: { items: Json[]; summary: Json } | null;
   homeUrl: string; gwPort?: string | null; embed?: boolean;
 }): string {
+  // vitrin (tur4): portföy + ekip — güvenli varsayılanlarla al (upstream uyumu)
+  const photos: Json[] = Array.isArray(a.photos) ? a.photos : [];
+  const staff: Json[] = Array.isArray(a.staff) ? a.staff : [];
   const p = a.provider;
   const meta = typeMeta(p.type);
   const wh = (p.workingHours && typeof p.workingHours === 'object') ? p.workingHours : {};
@@ -740,12 +845,14 @@ export function detailPage(a: {
     ? (revSum.distribution as Record<string, number>) : {};
   const fmtAvg = revCount > 0 ? revAvg.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '';
   // başlık yakınında puan rozeti
-  const ratingBadge = revCount > 0
-    ? `<a class="rate-badge" href="#degerlendirmeler" aria-label="Ortalama puan ${fmtAvg} — ${revCount} değerlendirme">
+  // hero (koyu zemin) için açık renk varyant — aynı veri, farklı görünüm
+  // (klasik amber rozet dhead kapak kartıyla birlikte kaldırıldı; hero'da hlt varyantı kullanılır)
+  const ratingBadgeHero = revCount > 0
+    ? `<a class="rate-badge hlt" href="#degerlendirmeler" aria-label="Ortalama puan ${fmtAvg} — ${revCount} değerlendirme">
         <span class="rate-badge-s" aria-hidden="true">★</span> <b>${fmtAvg}</b>
         <span class="rate-badge-c">${revCount} değerlendirme</span>
       </a>`
-    : `<a class="rate-badge rate-new" href="#degerlendirmeler">Yeni — ilk değerlendiren sen ol</a>`;
+    : `<a class="rate-badge rate-new hlt" href="#degerlendirmeler">Yeni — ilk değerlendiren sen ol</a>`;
   const starsOf = (r: number) => '★'.repeat(Math.max(0, Math.min(5, r))) + '☆'.repeat(Math.max(0, 5 - r));
   const fmtRevDate = (iso: unknown): string => {
     const d = new Date(String(iso || ''));
@@ -779,6 +886,119 @@ export function detailPage(a: {
       ${reply}
     </article>`;
   }).join('');
+
+  // ---- vitrin (tur4): hero + hakkımızda + portföy + ekip + mobil CTA ----
+  // tip bazlı kapak gradyanı anahtarı (bilinmeyen tip → ph-def)
+  const tKey = TYPE_META[p.type] ? p.type : 'def';
+  const phoneHref = p.phone ? 'tel:' + String(p.phone).replace(/\s+/g, '') : '';
+
+  // HERO — "işletmenin kendi web sitesi" hissi: tam genişlik kapak (CSS'te
+  // .wrap dışına negatif margin ile taşar), kapak foto yoksa tip gradyanı + emoji
+  const heroSection = `
+    <section class="bhero${p.photo ? '' : ' ph-' + esc(tKey)}" aria-label="${esc(p.name)} tanıtımı">
+      ${p.photo ? `<img class="bhero-img" src="${esc(p.photo)}" alt="${esc(p.name)} — kapak fotoğrafı" onerror="this.remove()">` : `<span class="bhero-emoji" aria-hidden="true">${meta.emoji}</span>`}
+      <span class="bhero-ov" aria-hidden="true"></span>
+      <div class="bhero-in">
+        <div class="bhero-badges">
+          <span class="badge hlt">${meta.emoji} ${esc(meta.label)}</span>
+          ${nSvc ? `<span class="badge hlt">🧾 ${nSvc} hizmet</span>` : ''}
+          ${minP !== null ? `<span class="badge hlt">min. ${(minP as number).toLocaleString('tr-TR')} ₺</span>` : ''}
+        </div>
+        <h1 class="bhero-title">${esc(p.name)}</h1>
+        ${ratingBadgeHero}
+        <p class="bhero-loc">📍 ${esc(p.city)}${p.district ? ' · ' + esc(p.district) : ''}</p>
+        ${p.address ? `<p class="bhero-addr">${esc(p.address)}</p>` : ''}
+        <div class="bhero-actions">
+          ${nSvc ? `<a class="btn btn-geo bhero-cta" href="#randevu">📅 Randevu Al</a>` : ''}
+          ${p.phone ? `<a class="btn bhero-call" href="${esc(phoneHref)}">📞 Ara</a>` : ''}
+          <span class="open-chip" id="open-now">⏰ Çalışma saatleri aşağıda</span>
+        </div>
+      </div>
+    </section>`;
+
+  // HAKKIMIZDA — p.about doluysa
+  const aboutText = String(p.about ?? '').trim();
+  const aboutSection = aboutText
+    ? `<section class="dcard about-card" aria-labelledby="about-h">
+        <div class="dbody">
+          <h2 class="section-title" style="margin:0" id="about-h">🏛️ Hakkımızda</h2>
+          <p class="about-text">${esc(aboutText)}</p>
+        </div>
+      </section>`
+    : '';
+
+  // PORTFÖY — fotoğraf galerisi + lightbox (foto verisi YALNIZ DOM'da;
+  // JS'e JSON gömülmez — sayfa boyutunu ikiye katlamamak için)
+  const PF_CATS: Record<string, string> = {
+    kesim: 'Kesim', 'sac-boyama': 'Saç Boyama', sakal: 'Sakal', stil: 'Stil',
+    salon: 'Salon', ekip: 'Ekip', diger: 'Diğer',
+  };
+  const pfCatOf = (ph: Json) => String(ph.category ?? '').trim();
+  const pfItems = photos
+    .map((ph, i) => {
+      const cat = pfCatOf(ph);
+      const catLabel = PF_CATS[cat] || null;
+      const title = String(ph.title ?? '').trim();
+      const cap = String(ph.caption ?? '').trim();
+      const alt = title || 'Portföy fotoğrafı ' + (i + 1);
+      return `<button type="button" class="pf-item" data-idx="${i}" data-cat="${esc(cat)}" data-title="${esc(title)}" data-cap="${esc(cap)}" aria-label="${esc(alt)}${catLabel ? ' — ' + esc(catLabel) : ''} — büyütmek için tıkla">
+        <img src="${esc(ph.url)}" alt="${esc(alt)}" loading="lazy">
+        <span class="pf-ov" aria-hidden="true"></span>
+        ${title ? `<span class="pf-cap">${esc(title)}</span>` : ''}
+        ${catLabel ? `<span class="pf-cat">${esc(catLabel)}</span>` : ''}
+      </button>`;
+    })
+    .join('');
+  const pfCats = [...new Set(photos.map(pfCatOf).filter(Boolean))];
+  const pfChips = ['<button type="button" class="chip pf-chip on" data-cat="" aria-pressed="true">Tümü</button>']
+    .concat(pfCats.map((c) => `<button type="button" class="chip pf-chip" data-cat="${esc(c)}">${esc(PF_CATS[c] || c)}</button>`))
+    .join('');
+  const portfoySection = photos.length
+    ? `<section id="portfoy" aria-labelledby="pf-h">
+        <h2 class="section-title" id="pf-h">📸 Portföyümüz <span class="badge b-kuafor">${photos.length}</span></h2>
+        <div class="pf-chips" role="group" aria-label="Portföy kategori filtresi">${pfChips}</div>
+        <div class="pf-grid" id="pf-grid">${pfItems}</div>
+        <p class="sr-only" role="status" aria-live="polite" id="pf-status"></p>
+      </section>
+      <div class="lbx" id="pf-lightbox" hidden role="dialog" aria-modal="true" aria-label="Portföy fotoğrafı görüntüleyici">
+        <span class="lbx-count" id="lbx-count"></span>
+        <button type="button" class="lbx-close" id="lbx-close" aria-label="Kapat">×</button>
+        <button type="button" class="lbx-nav lbx-prev" id="lbx-prev" aria-label="Önceki fotoğraf">‹</button>
+        <figure class="lbx-fig">
+          <img id="lbx-img" alt="">
+          <figcaption class="lbx-cap"><b id="lbx-title"></b><span id="lbx-cap-t"></span></figcaption>
+        </figure>
+        <button type="button" class="lbx-nav lbx-next" id="lbx-next" aria-label="Sonraki fotoğraf">›</button>
+      </div>`
+    : '';
+
+  // EKİP — personel kartları (foto yoksa baş harf avatarı)
+  const teamCards = staff
+    .map((m) => {
+      const name = String(m.name ?? '').trim();
+      const initial = (name.charAt(0) || '?').toLocaleUpperCase('tr');
+      return `<article class="team-card">
+        ${m.photo ? `<img class="team-photo" src="${esc(m.photo)}" alt="${esc(name)}" loading="lazy" onerror="this.remove()">` : `<span class="team-photo team-initial ph-${esc(tKey)}" aria-hidden="true">${esc(initial)}</span>`}
+        <h3 class="team-name">${esc(name)}</h3>
+        ${m.title ? `<p class="team-title">${esc(m.title)}</p>` : ''}
+        ${m.bio ? `<p class="team-bio">${esc(m.bio)}</p>` : ''}
+      </article>`;
+    })
+    .join('');
+  const teamSection = staff.length
+    ? `<section id="ekip" aria-labelledby="team-h">
+        <h2 class="section-title" id="team-h">👤 Ekibimiz <span class="badge b-kuafor">${staff.length}</span></h2>
+        <div class="team-grid">${teamCards}</div>
+      </section>`
+    : '';
+
+  // STICKY MOBİL CTA — yalnız mobilde görünür; embed modunda hiç basılmaz
+  const mobileCta = !a.embed && (nSvc || p.phone)
+    ? `<div class="mcta" id="mobile-cta" aria-label="Hızlı işlemler">
+        ${p.phone ? `<a class="mcta-btn mcta-call" href="${esc(phoneHref)}">📞 Ara</a>` : ''}
+        ${nSvc ? `<a class="mcta-btn mcta-book" href="#randevu">📅 Randevu Al</a>` : ''}
+      </div>`
+    : '';
 
   const data = jsonIsland({
     provider: {
@@ -830,28 +1050,8 @@ export function detailPage(a: {
 <main>
   <a class="crumb" href="${esc(a.homeUrl)}"><span aria-hidden="true">←</span> Tüm işletmeler</a>
   <div class="dwrap">
+    ${heroSection}
     <div class="dhead">
-      <article class="dcard">
-        <div class="dcover">
-          <span class="phb ph-${esc(p.type)}" aria-hidden="true">${meta.emoji}</span>
-          ${p.photo ? `<img class="cphoto" src="${esc(p.photo)}" alt="${esc(p.name)}" onerror="this.remove()">` : ''}
-        </div>
-        <div class="dbody">
-          <div class="row-top">
-            <span class="badge b-${esc(p.type)}">${meta.emoji} ${esc(meta.label)}</span>
-            ${nSvc ? `<span class="badge b-def">🧾 ${nSvc} hizmet</span>` : ''}
-            ${minP !== null ? `<span class="badge b-def">min. ${(minP as number).toLocaleString('tr-TR')} ₺</span>` : ''}
-          </div>
-          <h1 class="dtitle">${esc(p.name)}</h1>
-          ${ratingBadge}
-          <p class="dloc">📍 ${esc(p.city)}${p.district ? ' · ' + esc(p.district) : ''}</p>
-          ${p.address ? `<p class="daddr">${esc(p.address)}</p>` : ''}
-          <div class="dcontact">
-            ${p.phone ? `<a class="tel-btn" href="tel:${esc(String(p.phone).replace(/\s+/g, ''))}">📞 ${esc(p.phone)}</a>` : ''}
-            <span class="open-chip" id="open-now">⏰ Çalışma saatleri aşağıda</span>
-          </div>
-        </div>
-      </article>
       <article class="dcard">
         <div class="dbody">
           <h2 class="section-title" style="margin:0">🕒 Çalışma Saatleri</h2>
@@ -860,6 +1060,10 @@ export function detailPage(a: {
       </article>
       ${mapCard}
     </div>
+
+    ${aboutSection}
+    ${portfoySection}
+    ${teamSection}
 
     <section aria-labelledby="svc-h">
       <h2 class="section-title" id="svc-h">💇 Hizmetler${nSvc ? ` <span class="badge b-kuafor">${nSvc}</span>` : ''}</h2>
@@ -1046,6 +1250,7 @@ export function detailPage(a: {
     }
   </div>
 </main>
+${mobileCta}
 ${siteFooter()}`;
 
   return pageShell({
@@ -2359,6 +2564,109 @@ export const DETAIL_JS = `
       })
       .catch(function () {});
   })();
+})();
+
+/* ═══ Vitrin (tur4): portföy kategori filtresi + lightbox ═══
+   Ayrı IIFE — üstteki akışın erken return'lerinden (hizmeti olmayan işletme)
+   bağımsız çalışır. Foto verisi JS'e GÖMİLMEZ: pf-item img'lerinin src'si
+   ve data-* öznitelikleri DOM'dan okunur (sayfa boyutu ikiye katlanmaz). */
+(function () {
+  'use strict';
+  var pfGrid = document.getElementById('pf-grid');
+  var lbxEl = document.getElementById('pf-lightbox');
+  if (!pfGrid || !lbxEl) return;
+  var lbxImg = document.getElementById('lbx-img');
+  var lbxTitle = document.getElementById('lbx-title');
+  var lbxCapT = document.getElementById('lbx-cap-t');
+  var lbxCount = document.getElementById('lbx-count');
+  var lbxClose = document.getElementById('lbx-close');
+  var lbxPrev = document.getElementById('lbx-prev');
+  var lbxNext = document.getElementById('lbx-next');
+  var pfStatus = document.getElementById('pf-status');
+
+  // ---- kategori filtre çipleri (Tümü / Kesim / Saç Boyama / …)
+  var pfChips = document.querySelectorAll('.pf-chip');
+  for (var ci = 0; ci < pfChips.length; ci++) {
+    (function (chip) {
+      chip.addEventListener('click', function () {
+        var cat = chip.getAttribute('data-cat') || '';
+        for (var k = 0; k < pfChips.length; k++) {
+          var on = pfChips[k] === chip;
+          pfChips[k].classList.toggle('on', on);
+          if (on) pfChips[k].setAttribute('aria-pressed', 'true');
+          else pfChips[k].removeAttribute('aria-pressed');
+        }
+        var items = pfGrid.querySelectorAll('.pf-item');
+        var vis = 0;
+        for (var i = 0; i < items.length; i++) {
+          var show = cat === '' || items[i].getAttribute('data-cat') === cat;
+          items[i].hidden = !show;
+          if (show) vis++;
+        }
+        if (pfStatus) pfStatus.textContent = vis + ' fotoğraf gösteriliyor';
+      });
+    })(pfChips[ci]);
+  }
+
+  // ---- lightbox (yalnız görünür (filtrelenmiş) fotoğrafları gez)
+  function pf__visible() {
+    var items = pfGrid.querySelectorAll('.pf-item');
+    var out = [];
+    for (var i = 0; i < items.length; i++) if (!items[i].hidden) out.push(items[i]);
+    return out;
+  }
+  var lbx__cur = -1;
+  var lbx__lastFocus = null;
+  function lbx__show(idx) {
+    var items = pf__visible();
+    if (!items.length) return;
+    lbx__cur = ((idx % items.length) + items.length) % items.length;
+    var it = items[lbx__cur];
+    var img = it.querySelector('img');
+    lbxImg.setAttribute('src', img ? img.getAttribute('src') : '');
+    lbxImg.setAttribute('alt', img ? (img.getAttribute('alt') || '') : '');
+    var t = it.getAttribute('data-title') || '';
+    var c = it.getAttribute('data-cap') || '';
+    lbxTitle.textContent = t;
+    lbxTitle.style.display = t ? '' : 'none';
+    lbxCapT.textContent = c;
+    lbxCapT.style.display = c ? '' : 'none';
+    lbxCount.textContent = (lbx__cur + 1) + ' / ' + items.length;
+    var many = items.length > 1;
+    lbxPrev.disabled = !many;
+    lbxNext.disabled = !many;
+  }
+  function lbx__open(item) {
+    lbx__lastFocus = item;
+    lbx__show(pf__visible().indexOf(item));
+    lbxEl.hidden = false;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    try { lbxClose.focus(); } catch (_) {}
+  }
+  function lbx__close() {
+    lbxEl.hidden = true;
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+    lbxImg.setAttribute('src', '');
+    if (lbx__lastFocus && document.contains(lbx__lastFocus)) {
+      try { lbx__lastFocus.focus(); } catch (_) {}
+    }
+  }
+  pfGrid.addEventListener('click', function (e) {
+    var it = e.target && e.target.closest ? e.target.closest('.pf-item') : null;
+    if (it) lbx__open(it);
+  });
+  if (lbxClose) lbxClose.addEventListener('click', lbx__close);
+  if (lbxPrev) lbxPrev.addEventListener('click', function () { lbx__show(lbx__cur - 1); });
+  if (lbxNext) lbxNext.addEventListener('click', function () { lbx__show(lbx__cur + 1); });
+  lbxEl.addEventListener('click', function (e) { if (e.target === lbxEl) lbx__close(); });
+  document.addEventListener('keydown', function (e) {
+    if (lbxEl.hidden) return;
+    if (e.key === 'Escape') { e.preventDefault(); lbx__close(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); lbx__show(lbx__cur - 1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); lbx__show(lbx__cur + 1); }
+  });
 })();
 `;
 

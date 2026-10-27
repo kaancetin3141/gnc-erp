@@ -34,7 +34,9 @@ import {
 import {
   Building2, Search, RefreshCw, Users, Store, CalendarClock,
   Receipt, ListTree, ShoppingCart, Save, ShieldCheck, Globe, Clock, Loader2, Plus,
+  ImagePlus,
 } from 'lucide-react'
+import { StorefrontDialog, type StorefrontProviderRef } from '@/components/admin/storefront-dialog'
 
 interface TenantListItem {
   id: string
@@ -164,6 +166,9 @@ export function TenantsTab() {
   const [createOpen, setCreateOpen] = useState(false)
   const [createForm, setCreateForm] = useState(EMPTY_CREATE)
   const [createError, setCreateError] = useState('')
+
+  // --- Vitrin yönetimi diyaloğu (kapak/portföy/ekip fotoğrafları) ---
+  const [storefrontProvider, setStorefrontProvider] = useState<StorefrontProviderRef | null>(null)
 
   const createTenant = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
@@ -533,6 +538,18 @@ export function TenantsTab() {
                               {p.city ?? '—'}{p.district ? ` / ${p.district}` : ''} · {p._count.services} hizmet · {p._count.appointments} randevu
                             </div>
                           </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 shrink-0 p-0 text-emerald-700 hover:text-emerald-800 dark:text-emerald-400"
+                            aria-label={`${p.name} vitrin yönetimi`}
+                            title="Vitrin yönetimi (kapak, portföy, ekip fotoğrafları)"
+                            onClick={() => setStorefrontProvider({
+                              id: p.id, name: p.name, slug: p.slug ?? null, type: p.type,
+                            })}
+                          >
+                            <ImagePlus className="h-4 w-4" />
+                          </Button>
                           <Badge variant={p.isActive ? 'secondary' : 'outline'} className="text-[10px] shrink-0">
                             {p.isActive ? 'aktif' : 'kapalı'}
                           </Badge>
@@ -728,6 +745,13 @@ export function TenantsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* --- Vitrin yönetimi (kapak + portföy + ekip fotoğrafları) --- */}
+      <StorefrontDialog
+        provider={storefrontProvider}
+        onClose={() => setStorefrontProvider(null)}
+        onSaved={() => { void detailQ.refetch() }}
+      />
     </div>
   )
 }

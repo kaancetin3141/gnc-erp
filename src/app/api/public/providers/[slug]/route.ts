@@ -15,6 +15,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
   let provider = await db.serviceProvider.findFirst({
     where: { slug },
     include: {
+      photos: {
+        where: { isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, url: true, title: true, caption: true, category: true, width: true, height: true },
+      },
       services: {
         where: { isActive: true },
         orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
@@ -55,6 +60,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
     provider = await db.serviceProvider.findFirst({
       where: { id: match.id },
       include: {
+        photos: {
+          where: { isActive: true },
+          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          select: { id: true, url: true, title: true, caption: true, category: true, width: true, height: true },
+        },
         services: {
           where: { isActive: true },
           orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
@@ -98,10 +108,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
       phone: provider.phone,
       email: provider.email,
       photo: provider.photo,
+      about: provider.about,
       lat: provider.lat,
       lng: provider.lng,
       workingHours: safeJsonParse<WorkingHours>(provider.workingHours, {}),
     },
+    photos: provider.photos.map((ph) => ({
+      id: ph.id,
+      url: ph.url,
+      title: ph.title,
+      caption: ph.caption,
+      category: ph.category,
+      width: ph.width,
+      height: ph.height,
+    })),
     services: provider.services.map((s) => ({
       id: s.id,
       name: s.name,
