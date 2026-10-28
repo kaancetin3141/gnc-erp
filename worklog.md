@@ -9777,3 +9777,26 @@ Stage Summary:
 - SUNUCUYA ÇIKARMAK İÇİN: sudo guncelle-gnc.sh — her iki değişiklik de (yeni site görünümü f72e6ba + sekme kaldırma 33f84e5) artık GitHub'da; deploy sonrası tarayıcıda hard-refresh (Ctrl+Shift+R) önerilir
 - "Sunucu almıyor" belirtisi tekrarlarsa: sunucuda git pull çıktısına bakılmalı (sunucuda elle dosya değiştirilmişse pull reddedebilir) — cd /opt/gnc && git status
 - AÇIK KARARLAR: K-01 OOM önlemi, O-01 1234 şifre uyarısı, O-02 çıkışta localStorage temizliği
+
+---
+Task ID: tur15
+Agent: Z.ai Code (ana ajan)
+Task: Kullanıcı talebi — "crm deki bütün fonksiyonları kontrol et ve mantık hatası olan kısımları bul, bozuk olan yerleri düzelt" (tam fonksiyon denetimi + mantık hatası düzeltmeleri)
+
+Work Log:
+- ACİL KURTARMA: Sandbox 14:44'te sıfırlanmış — db/ tamamen boş şemayla geri gelmiş (tüm tablolar 0 satır; 08:07'deki son dolu yedek 2.953.216 bayt, 10:31'den itibaren 1.253.376 = boş). Git geçmişinden kurtarıldı: `git show 2fbabe5:db/backups/latest.db > db/custom.db` → 26 kullanıcı, 33 müşteri, 18 randevu, 5 fatura, 7 tenant geri geldi (admin@sikkuaför.com dahil). Boş kalıntı: db/backups/custom-20261028-empty-before-restore.db
+- DENETİM YÖNTEMİ: (1) dev.log hata madenciliği → 401 poll döngüsü bulgusu, (2) agent-browser ile 12 modül uçtan uca tarama (Genel Bakış, Randevular, Raporlar, Giderler, Personel İK, Mesajlar, WhatsApp, Destek, Sosyal, Kullanıcılar, Ayarlar — hepsi 0 sayfa hatası), (3) kritik API rotalarında kod incelemesi (auth, book, availability, appointments CRUD, automation)
+- 🔴 HATA 1 — Zombi oturum / sonsuz 401 döngüsü: Zustand user+sessionId localStorage'a kalıcı, oturumlar sunucu BELLEĞİNDE → sunucu resetlenince sayfa yenilendiğinde kullanıcı girişli görünüyor, tüm sorgular sonsuza dek 401 dönüyor (dev.log kanıtı). DÜZELTME: (a) yeni GET /api/auth/session endpoint'i (oturum doğrular + güncel kullanıcı döner), (b) api-client'ta global 401 yakalama → otomatik logout (tüm 5 metoda eklendi), (c) AuthenticatedApp mount'ta oturum doğrulama + rol/yetki senkronizasyonu (refreshUser)
+- 🔴 HATA 2 — Saat dilimi karışımı: toISOString().slice(0,10) UTC tarihi verir, now.getHours() yerel saattir → TR'de 21:00 sonrası "bugün" bir gün kayıyor, geçmiş slotlara rezervasyon açılabiliyor; istemcide gece 00:00-03:00 arası "bugün" dünkü gösteriliyor. DÜZELTME: lib/format.ts'ye dateToLocalISO/todayLocalISO eklendi; 2 müsaitlik rotası (id+slug), appointments-view (3 nokta), market-reports (2), customer-360 görev tarihi (2), lead-mining CSV düzeltildi
+- 🔴 HATA 3 — Geçmiş rezervasyon: public book rotasında geçmiş tarih kontrolü yalnız 'herhangi personel' dalındaydı; belirli personel seçilince geçmiş saate randevu AÇILABİLİYORDU. DÜZELTME: kontrol ortak yola taşındı (her iki dalda da geçerli) — curl ile doğrulandı: iki dal da "Geçmiş tarih için randevu oluşturulamaz" döndürüyor
+- 🔴 HATA 4 — Ölü 1234 uyarısı (O-01 kapandı): mustChangePassword banner'ı LoginScreen içinde render ediliyordu ama başarılı girişte ekran anında AuthenticatedApp'e geçtiği için ASLA görünmüyordu. DÜZELTME: store'a transient mustChangePassword bayrağı; AuthenticatedApp'te kalıcı amber uyarı şeridi (role=alert) + Şifre Değiştir butonu + otomatik açılan PasswordChangeDialog; dialog'a onSuccess prop'u eklendi (yalnızca şifre GERÇEKTEN değişince şerit kalkar — iptal edilince şerit kalır, tarayıcıda doğrulandı)
+- TEMİZ KALANLAR (denetimden geçti, dokunulmadı): çift rezervasyon koruması (çakışma+izin+tatil, force=yalnız admin), tenant izolasyonu (appointments alt rotaları), expire-appointments otomasyonu (yarış koruması), telefon normalize matching, honeypot bot koruması, rate limit, ay günü istatistikleri
+- GIT OPERASYONU: Platform otomasyonu 16:33'te 8ac2ab2 commit'ini yapmış (git add -A → refactor'ta çıkarılan ana-site/deploy/customer-page + sqlite şema geri eklenmiş, push'lanmamış) → düşürüldü (mixed reset), YALNIZCA 14 düzeltilen dosya + yeni session rotası + 4 kanıt ekran görüntüsü commit'lendi → 216f217 push'landı (origin'deki refactor yapısı KORUNDU)
+- YENİ CRON: 15 dk'lık webDevReview görevi oluşturuldu (ID 481283) — mesajına git güvenlik kuralları eklendi (asla git add -A, asla kaldırılan klasörleri geri ekleme, schema.prisma provider'a dokunmama)
+- QA: lint 7 temel hata / 0 yeni; tüm modüller 0 sayfa+konsol hatası; zombi oturum testi (sahte ölü token → otomatik çıkış ✓), 1234 akışı (diyalog açılır → iptal → şerit kalır ✓), müsaitlik (bugünün geçmiş slotları filtreli ✓), geçmiş book reddi (2 dal ✓)
+- Kanıtlar: tool-results/tur15-*.png (4 ekran görüntüsü)
+
+Stage Summary:
+- CRM tam fonksiyon denetimi tamamlandı: 4 gerçek mantık hatası bulundu ve düzeltildi (zombi oturum, TZ kayması, geçmiş rezervasyon, ölü şifre uyarısı) + kayıp veritabanı git geçmişinden kurtarıldı
+- ⚠️ DEPLOY UYARISI: origin/main'deki refactor (7c63d61) PostgreSQL + port 3001 diyor; kullanıcı sunucusu SQLite + port 3000 kurulu. `sudo guncelle-gnc.sh` bu haliyle `prisma db push` adımında PATLAYABİLİR — deploy öncesi kullanıcı kararı gerekli: (a) refactor'u sunucuya uyarlarsın (postgres kurulumu) ya da (b) şema/port tarafını sqlite/3000'e döneriz. Tur13'te sorulan 2 soru hâlâ açık
+- AÇIK KARARLAR: K-01 OOM önlemi (refactor kısmen ele aldı), refactor uyarlaması (yeni), O-02 localStorage temizliği (queryClient.clear mevcut, yeterli)
