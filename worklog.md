@@ -9719,3 +9719,25 @@ Stage Summary:
 - Cubiq çakışma denetimi tamamlandı: 1 gerçek çakışma (nginx çift server_name — kurulum.sh yeniden çalıştırma senaryosu) düzeltildi, 1 sandbox yetim süreci temizlendi, 6 nokta çakışmasız doğrulandı
 - Sunucuda tek yapılması gereken: sudo guncelle-gnc.sh (bu düzeltmeyle kurulum yeniden çalıştırılsa bile cubiq bloğu artık tekil kalır)
 - AÇIK KARARLAR (önceki turlardan): K-01 OOM önlemi, O-01 1234 uyarısı, O-02 localStorage temizliği
+
+---
+Task ID: tur12
+Agent: Z.ai Code (ana ajan)
+Task: Kullanıcı talebi — "ana siteyi de https://www.meta.com/en-gb/about/ bu site gibi yap görünüşünü" (ana-site tam Meta estetiğinde yeniden tasarım)
+
+Work Log:
+- YENİDEN TASARIM (ana-site/index.html — tek dosya, sıfır bağımlılık korundu): Meta about sayfası tasarım dili — beyaz zemin (#fff + #f5f6f7 bantlar), Inter fontu, dev tipografi (clamp 42-84px, -0.035em tracking, 800 ağırlık), mavi vurgu (#0064e0 / açık #0081fb — Meta mavisi, kullanıcı talebiyle), hap (pill) butonlar, 24-32px yuvarlak köşeler, sticky blur navigasyon (scroll'da ince çizgi), checkmark'lı özellik listeleri, rozetler renkli hap chip'ler
+- YENİ BÖLÜMLER: (1) saf CSS/HTML CRM mockup paneli (tarayıcı çerçevesi + sidebar + istatistik kartları + haftalık takvim ızgarası — "Günaydın, Şık Kuaför" içeriğiyle), (2) MANİFESTO bandı ("İyi yazılım, kullananını yormayan yazılımdır." — gri zemin büyük beyan), (3) kutusuz minimal istatistik satırı (5+ / %100 / 7/24), (4) çok kolonlu footer (Marka + Projeler + Menü kolonları, alt bar telif)
+- MOBİL: hamburger menü (dropdown panel: linkler + CRM'e Giriş butonu dropdown İÇİNDE, aria-expanded), <560px'de mockup istatistikleri 2 kolona düşer, nav-cta mobilde dropdown'a taşındı
+- KORUNAN FONKSİYONLAR: dinamik portfolyo çekimi (aynı JS — /api/portfolio → fallback crm.gncinc.online), tema değiştirici (artık VARSAYILAN AYDINLIK — Meta stili; koyu tema korunur, kayıtlı tercih saygılanır), reveal scroll animasyonları, yıl otomatiği; kart sınıf adları (p-card/p-badge/p-cta...) aynen korundu — CRM API'siyle uyum sürüyor
+- KOYU TEMA GELİŞTİRMESİ: kartlara gradient (#212831→#1d232b) + inset üst parlama (VLM "kartlar düz" önerisi üzerine)
+- QA (agent-browser + VLM): masaüstü hero — VLM "Meta estetiği çok başarılı, hiyerarşi mükemmel, mockup gerçekçi, kusur yok"; projeler bölümü — "Meta kart DNA'sı"; mobil — taşma yok, menü düzgün; tema toggle localStorage'a yazıyor; DİNAMİK LİSTE GERÇEK ÜRETİM CRM'İNDEN geldi ("Canlı liste · 5 proje" — crm.gncinc.online/api/portfolio canlı yanıt verdi, kartlar API verisiyle yeniden çizildi); konsol/sayfa hatası 0
+- OPS: ensure-services.sh 3007'yi yeniden başlattı (tur11'de öldürülen yetim sunucunun yerine — bu sefer betiğin kendi mekanizmasıyla, kalıcı); süreç komutlar arası yaşıyor
+- Kanıtlar: tool-results/meta-1..8-*.png (8 ekran görüntüsü)
+- GitHub push: yeni ana-site + worklog → main
+
+Stage Summary:
+- ANA SİTE (gncinc.online) META ESTETİĞİNDE CANLI KOD HAZIR: tek dosya, sıfır bağımlılık, tüm işlevler korunmuş, VLM + agent-browser ile uçtan uca doğrulanmış (0 hata)
+- Canlıya almak için sunucuda: sudo guncelle-gnc.sh (6/8 adımı ana-site'i /var/www/gncinc-ana'ya kopyalar)
+- Koyu tema kullanıcı tercihinde artık ikincil; ilk ziyaret Meta gibi aydınlık
+- AÇIK KARARLAR (önceki turlardan): K-01 OOM önlemi, O-01 1234 uyarısı, O-02 localStorage temizliği
