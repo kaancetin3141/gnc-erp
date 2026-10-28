@@ -49,16 +49,30 @@ function calcTotals(lines: LineInput[]) {
 
 // Proforma numarası üret: PRO-2025-001
 async function generateProformaNumber(tenantId: string): Promise<string> {
+  // CRM-1: count+1 kullanılmaz — proforma teklife dönüştüğünde isProforma=false
+  // olur, sayaç düşer ve AYNI numara ikinci kez üretilirdi. Bunun yerine mevcut
+  // en büyük sıra bulunur ve +1 verilir.
   const year = new Date().getFullYear()
-  const count = await db.quote.count({ where: { tenantId, isProforma: true } })
-  return `PRO-${year}-${String(count + 1).padStart(3, '0')}`
+  const last = await db.quote.findFirst({
+    where: { tenantId, isProforma: true, number: { startsWith: `PRO-${year}-` } },
+    orderBy: { number: 'desc' },
+    select: { number: true },
+  })
+  const lastSeq = last?.number ? parseInt(last.number.split('-')[2] ?? '0', 10) : 0
+  return `PRO-${year}-${String((isNaN(lastSeq) ? 0 : lastSeq) + 1).padStart(3, '0')}`
 }
 
 // Teklif numarası üret: TKL-2025-001
 async function generateQuoteNumber(tenantId: string): Promise<string> {
+  // CRM-2: max-bazlı sıra — silinen kayıtlar numara tekrarına yol açmaz
   const year = new Date().getFullYear()
-  const count = await db.quote.count({ where: { tenantId, isProforma: false } })
-  return `TKL-${year}-${String(count + 1).padStart(3, '0')}`
+  const last = await db.quote.findFirst({
+    where: { tenantId, isProforma: false, number: { startsWith: `TKL-${year}-` } },
+    orderBy: { number: 'desc' },
+    select: { number: true },
+  })
+  const lastSeq = last?.number ? parseInt(last.number.split('-')[2] ?? '0', 10) : 0
+  return `TKL-${year}-${String((isNaN(lastSeq) ? 0 : lastSeq) + 1).padStart(3, '0')}`
 }
 
 // ============================================================

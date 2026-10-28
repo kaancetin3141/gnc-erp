@@ -27,7 +27,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (sp.type) where.type = sp.type
   if (sp.shiftId) where.posShiftId = sp.shiftId
 
-  const limit = Math.min(Number(sp.limit ?? 100), 500)
+  // limit=abc gibi geçersiz değerlerde NaN → Prisma 500 vermesin, varsayılana dön
+  const limitRaw = Number(sp.limit ?? 100)
+  const limit = Math.min(Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 100, 500)
 
   const sales = await db.marketSale.findMany({
     where,
@@ -84,11 +86,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Vardiya açık mı kontrol et
   let shiftId: string | null = posShiftId ?? null
-  if (!shiftId) {
+  if (shiftId) {
+    // İstemciden gelen vardiya kimliği doğrulanmalı: bu markete ait VE açık olmalı —
+    // aksi halde satış başka marketin/başka bir günün kapanmış vardiyasına bağlanır
+    // (Z raporu ve kasa mutabakatı bozulur).
+    const shift = await db.posShift.findUnique({ where: { id: shiftId } })
+    if (!shift || shift.marketId !== id || shift.status !== 'acik') {
+      return err('Belirtilen vardiya bu markete ait değil veya kapalı — satış için açık vardiya gerekli', 409)
+    }
+  } else {
     const openShift = await db.posShift.findFirst({
       where: { marketId: id, status: 'acik' },
     })
-    shiftId = openShift?.id ?? null
+    // Vardiya yoksa satışı sessizce vardiyaısız kabul etme — fiş hiçbir Z raporuna
+    // girmaz, kasa kaçaklarına yol açar. UI zaten vardiya açmadan satışa izin vermiyor.
+    if (!openShift) {
+      return err('Açık POS vardiyası yok — önce vardiya açın', 409)
+    }
+    shiftId = openShift.id
   }
 
   // Her bir item için ürün bilgisini çöz
@@ -164,12 +179,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let cardAmt = 0
   let creditCustomer: { id: string; name: string; creditLimit: number | null } | null = null
   if (payMethod === 'cash') {
-    cashAmt = Number(cashAmount ?? total)
+    // Para üstü çekmecede KALMAZ: kasaya yazılan tutar fiş tutarıyla sınırlıdır.
+    // (Müşterinin verdiği nakit POS ekranında ayrı gösterilir; Z raporu böylece doğru olur.)
+    cashAmt = Math.min(Number(cashAmount ?? total), total)
   } else if (payMethod === 'card') {
-    cardAmt = Number(cardAmount ?? total)
+    cardAmt = Math.min(Number(cardAmount ?? total), total)
   } else if (payMethod === 'mixed') {
-    cashAmt = Number(cashAmount ?? 0)
-    cardAmt = Number(cardAmount ?? 0)
+    cashAmt = Math.min(Number(cashAmount ?? 0), total)
+    // Karma ödemede kart kısmı, fişin nakit sonrası kalanıyla sınırlı
+    cardAmt = Math.min(Number(cardAmount ?? 0), Math.max(0, total - cashAmt))
     if (cashAmt + cardAmt < total) {
       return err('Ödeme tutarı yetersiz', 400)
     }
@@ -194,12 +212,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return err('Geçersiz ödeme yöntemi', 400)
   }
 
-  // Fiş numarası: FIS-001
-  const saleCount = await db.marketSale.count({ where: { marketId: id } })
-  const number = `FIS-${String(saleCount + 1).padStart(3, '0')}`
+  // Fiş numarası: mevcut numaraların SONU rakam bloğundan en büyüğü + 1.
+  // Eski yöntem (son satışın split('-')[1]'i) 'AM-FIS-0018' gibi prefixli
+  // formatlarda NaN üretip FIS-001'e dönüyor ve numara çakışmasına yol açıyordu.
+  const recentSales = await db.marketSale.findMany({
+    where: { marketId: id },
+    orderBy: { createdAt: 'desc' },
+    select: { number: true },
+    take: 200,
+  })
+  let maxSeq = 0
+  for (const s of recentSales) {
+    const m = /(\d+)\s*$/.exec(s.number ?? '')
+    if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10))
+  }
+  const number = `FIS-${String(maxSeq + 1).padStart(3, '0')}`
 
   // Transaction: satış oluştur + stok düş
-  const result = await db.$transaction(async (tx) => {
+  let result
+  try {
+    result = await db.$transaction(async (tx) => {
     const sale = await tx.marketSale.create({
       data: {
         marketId: id,
@@ -233,17 +265,41 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       include: { items: true },
     })
 
-    // Stok düşür + hareket oluştur
+    // Stok düşür + hareket oluştur (kesirli miktar destekli — kg/lt)
+    // Ürün bazında toplam istek — aynı üründen iki satır varsa kontrol
+    // toplam ihtiyaç üzerinden YAPILMALI; aksi halde ilk satır düşümünden
+    // sonra ikinci satırın kontrolü sahte 'Yetersiz stok' hatası üretir.
+    const qtyByProduct: Record<string, number> = {}
+    for (const li of lineItems) {
+      if (!li.productId) continue
+      qtyByProduct[li.productId] = (qtyByProduct[li.productId] ?? 0) + li.qty
+    }
+
+    // 1) Tüm ürünlerin stoğunu TEK SEFERDE doğrula (yetersizse satış tamamen reddedilir)
+    const productIds = Object.keys(qtyByProduct)
+    const stockRows = await tx.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, stock: true, name: true, unit: true },
+    })
+    for (const p of stockRows) {
+      if (p.stock < qtyByProduct[p.id]) {
+        throw new Error(
+          `Yetersiz stok: ${p.name} (mevcut ${p.stock} ${p.unit}, istenen ${qtyByProduct[p.id]})`,
+        )
+      }
+    }
+
+    // 2) Doğrulama geçtiyse satır bazında düşüm + izlenebilir stok hareketi
     for (const li of lineItems) {
       if (!li.productId) continue
       await tx.product.update({
         where: { id: li.productId },
-        data: { stock: { decrement: Math.round(li.qty) } },
+        data: { stock: { decrement: li.qty } },
       })
       await tx.stockMovement.create({
         data: {
           productId: li.productId,
-          quantity: -Math.round(li.qty),
+          quantity: -li.qty,
           type: 'cikis',
           reason: 'POS Satış',
           refType: 'market_sale',
@@ -253,7 +309,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     return sale
-  })
+    })
+  } catch (e: unknown) {
+    // İş kuralı hataları (stok yetersizliği vb.) 400 olarak döner
+    const msg = e instanceof Error ? e.message : 'Satış oluşturulamadı'
+    return err(msg, 400)
+  }
 
   // Veresiye satışı → cari hareket kaydı (satıştan sonra, limit kontrolleri önceden yapıldı)
   if (creditCustomer) {

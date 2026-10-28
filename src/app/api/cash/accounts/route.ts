@@ -6,7 +6,7 @@ import { writeAuditLog } from '@/lib/auth'
 // GET — kasa/banka hesapları + bakiyeleri
 export async function GET(req: NextRequest) {
   const user = await getSession(req)
-  const authErr = requireAuth(user)
+  const authErr = requirePermission(user, 'expenses.view')
   if (authErr) return authErr
 
   const accounts = await db.cashAccount.findMany({

@@ -88,6 +88,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const updateData: Record<string, unknown> = {}
 
   if (status && INVOICE_STATUSES.includes(status)) {
+    // İPTAL KORUMASI: zaten iptal edilmiş fatura tekrar iptal edilmez (stok
+    // geri alımı çift uygulanmasın)
+    if (status === 'iptal' && existing.status === 'iptal') {
+      return err('Fatura zaten iptal edilmiş', 400)
+    }
     updateData.status = status
     if (status === 'odendi' && !existing.paidDate) {
       updateData.paidDate = new Date()
@@ -130,6 +135,73 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       order: { select: { id: true, number: true, status: true } },
     },
   })
+
+  // ---- STOK GERİ ALIMI (ERP-2) ----
+  // Fatura iptal edilirse (ve stoğu bu fatura üzerinden düşülmüşse)
+  // ürünler stoğa geri eklenir. İrsaliye ile düşülmüşse dokunulmaz —
+  // irsaliye hâlâ geçerliyse mal fiilen çıkmıştır.
+  if (updateData.status === 'iptal' && existing.status !== 'iptal') {
+    const movements = await db.stockMovement.findMany({
+      where: { refType: 'invoice', refId: id, type: 'cikis' },
+    })
+    for (const m of movements) {
+      await db.$transaction([
+        db.product.update({
+          where: { id: m.productId },
+          data: { stock: { increment: m.quantity } },
+        }),
+        db.stockMovement.create({
+          data: {
+            productId: m.productId,
+            quantity: m.quantity,
+            type: 'giris',
+            reason: `Fatura iptali — stok geri alındı (${existing.number})`,
+            refType: 'invoice_cancel',
+            refId: id,
+          },
+        }),
+      ])
+    }
+  }
+
+  // ---- KASA ENTEGRASYONU (ERP-5) ----
+  // Fatura ödendi işaretlenince tahsilat varsayılan kasaya 'gelir' olarak
+  // yazılır; ödeme geri alınırsa/iptal edilirse telafi kaydı (gider) girilir.
+  // Yalnızca TRY faturalar için — dövizli tahsilatların kuru bilinmediğinden
+  // kasa bakiyesini bozmamak adına atlanır.
+  const cashSideEffects = async () => {
+    try {
+      if (existing.currency !== 'TRY') return
+      const becamePaid = updateData.status === 'odendi' && existing.status !== 'odendi'
+      const unPaid = (updateData.status === 'odeme_bekliyor' || updateData.status === 'iptal') && existing.status === 'odendi'
+      if (!becamePaid && !unPaid) return
+      let account = await db.cashAccount.findFirst({
+        where: { tenantId: existing.tenantId, type: 'kasa', archived: false },
+        orderBy: { createdAt: 'asc' },
+      })
+      if (!account) {
+        account = await db.cashAccount.create({
+          data: { tenantId: existing.tenantId, name: 'Ana Kasa', type: 'kasa' },
+        })
+      }
+      await db.cashTransaction.create({
+        data: {
+          tenantId: existing.tenantId,
+          accountId: account.id,
+          type: becamePaid ? 'gelir' : 'gider',
+          category: becamePaid ? 'Fatura Tahsilatı' : 'Fatura Tahsilat İadesi',
+          amount: existing.total,
+          description: `${existing.number} nolu fatura ${becamePaid ? 'tahsil edildi' : '— ödeme geri alındı'}`,
+          refType: 'invoice',
+          refId: id,
+          userId: user!.id,
+        },
+      })
+    } catch {
+      // Kasa entegrasyonu fatura akışını bloklamaz
+    }
+  }
+  await cashSideEffects()
 
   // ---- Müşteri 360 aktivite kayıtları (tahsilat hareketleri zaman tüneliğine düşer) ----
   const activityCreates: { type: string; subject: string; detail: string; outcome?: string }[] = []

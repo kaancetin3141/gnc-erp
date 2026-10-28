@@ -436,10 +436,11 @@ model Product {
   sku             String?
   description     String?
   price           Float    @default(0)
+  costPrice       Float    @default(0) // alış/maliyet — mal kabulde güncellenir, kar marjı hesabında kullanılır
   currency        String   @default("TRY")
   taxRate         Float    @default(20)
-  stock           Int      @default(0)
-  minStock        Int      @default(0)
+  stock           Float    @default(0) // kg/lt gibi kesirli birimleri destekler
+  minStock        Float    @default(0)
   unit            String   @default("adet")
   category        String?
   photo           String? // ürün fotoğrafı (base64 or URL)
@@ -472,7 +473,7 @@ model StockMovement {
   id        String   @id @default(cuid())
   productId String
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  quantity  Int
+  quantity  Float // kesirli miktarları da destekler (kg, lt, m)
   type      String // giris | cikis | duzeltme | transfer
   reason    String?
   refType   String? // quote | invoice | manual
@@ -974,9 +975,9 @@ model StockCountItem {
   stockCount   StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
   productId    String
   product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
-  expectedQty  Int        @default(0) // sistemdeki beklenen miktar
-  countedQty   Int? // sayılan miktar
-  difference   Int? // fark (counted - expected)
+  expectedQty  Float      @default(0) // sistemdeki beklenen miktar
+  countedQty   Float? // sayılan miktar
+  difference   Float? // fark (counted - expected)
   notes        String?
 }
 
@@ -1054,7 +1055,19 @@ model MarketReturn {
   totalAmount Float      @default(0)
   status      String     @default("tamamlandi") // tamamlandi | reddedildi
   userId      String?
+  items       MarketReturnItem[]
   createdAt   DateTime   @default(now())
+}
+
+// İade kalemi — hangi satırdan kaç adet döndü (tekrar iade koruması için)
+model MarketReturnItem {
+  id          String       @id @default(cuid())
+  returnId    String
+  return      MarketReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItemId  String
+  qty         Float        @default(0)
+  lineTotal   Float        @default(0)
+  createdAt   DateTime     @default(now())
 }
 
 // Mal Kabul — tedarikten gelen ürün kabul
@@ -1590,7 +1603,9 @@ model Complaint {
   assignedStaffId String?
   assignedStaff   SiteStaff? @relation(fields: [assignedStaffId], references: [id], onDelete: SetNull)
   estimatedCost   Float?
+  actualCost      Float? // gerçekleşen maliyet (çözüldüğünde)
   dueDate         DateTime? // planlanan çözüm tarihi (gecikme takibi)
+  resolvedAt      DateTime? // çözülme zamanı (çözüm süresi metrikleri)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -2132,6 +2147,7 @@ model CreditEntry {
   type        String // borc | odeme
   amount      Float
   method      String? // odeme için: nakit | kart | havale
+  posShiftId  String? // nakit tahsilatın yapıldığı vardiya (Z raporu beklenen nakite girer)
   refSaleId   String? // POS satışından doğduysa
   refSale     MarketSale?    @relation(fields: [refSaleId], references: [id], onDelete: SetNull)
   dueDate     DateTime? // borç için vade tarihi
@@ -2140,6 +2156,7 @@ model CreditEntry {
   createdAt   DateTime       @default(now())
 
   @@index([customerId, createdAt])
+  @@index([posShiftId])
 }
 
 model PortfolioProject {

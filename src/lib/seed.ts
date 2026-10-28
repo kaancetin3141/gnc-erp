@@ -51,6 +51,16 @@ function randomEmail(name: string): string {
   return `${slug}@${rand(['gmail.com', 'outlook.com', 'hotmail.com', 'yandex.com'])}`
 }
 
+// Türkçe karakterli şirket adları geçerli e-posta ALAN adı OLAMAZ (RFC 5321):
+// 'info@yıldız.com.tr' gerçek hayatta kullanılamaz — ASCII'leştirilmiş domain üret.
+function asciiDomain(name: string): string {
+  const map: Record<string, string> = { ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u', â: 'a', î: 'i', û: 'u' }
+  return name
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[çğıöşüâîû]/g, (c) => map[c] ?? c)
+    .replace(/[^a-z0-9-]/g, '')
+}
+
 function daysAgo(days: number): Date {
   const d = new Date()
   d.setDate(d.getDate() - days)
@@ -1060,8 +1070,8 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
         city: rand(CITIES),
         country: 'TR',
         phone: randomPhone(),
-        email: `info@${rand(COMPANY_PREFIXES).toLowerCase()}.com.tr`,
-        web: `www.${rand(COMPANY_PREFIXES).toLowerCase()}.com.tr`,
+        email: `info@${asciiDomain(rand(COMPANY_PREFIXES))}.com.tr`,
+        web: `www.${asciiDomain(rand(COMPANY_PREFIXES))}.com.tr`,
         taxNumber: String(randInt(1000000000, 9999999999)),
         status: rand(['aktif', 'aktif', 'aktif', 'pasif', 'potansiyel']),
         tags: JSON.stringify(randInt(0, 3) === 0 ? [] : Array.from({ length: randInt(1, 3) }, () => rand(TAG_POOL))),
@@ -1106,8 +1116,8 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
         city: rand(CITIES),
         country: 'TR',
         phone: randomPhone(),
-        email: `info@${rand(COMPANY_PREFIXES).toLowerCase()}.com.tr`,
-        web: `www.${rand(COMPANY_PREFIXES).toLowerCase()}.com.tr`,
+        email: `info@${asciiDomain(rand(COMPANY_PREFIXES))}.com.tr`,
+        web: `www.${asciiDomain(rand(COMPANY_PREFIXES))}.com.tr`,
         taxNumber: String(randInt(1000000000, 9999999999)),
         status: rand(['aktif', 'aktif', 'potansiyel']),
         tags: JSON.stringify(randInt(0, 3) === 0 ? [] : Array.from({ length: randInt(1, 2) }, () => rand(TAG_POOL))),
@@ -1508,7 +1518,9 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
         width: tableShapes[i] === 'rectangle' ? 14 : 10,
         height: 10,
         capacity: tableShapes[i] === 'rectangle' ? 6 : 4,
-        status: i === 0 ? 'siparis' : i === 1 ? 'dolu' : 'bos',
+        // M1'de açık adisyon (S-0001) var → 'siparis'. M2'nin adisyonu ÖDENMİŞ
+        // (S-0002) — 'dolu' set etmek hayalet dolu masa üretiyordu; 'bos' olmalı.
+        status: i === 0 ? 'siparis' : 'bos',
       },
     })
   }
@@ -1615,6 +1627,9 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
   }
 
   // Ödenmiş bir sipariş (bugün) — M2 masasına (kasa raporu için)
+  // TUTARLILIK: subtotal/total MUTLAKA kalemlerin toplamından gelmeli —
+  // sabit 245 ile kalem toplamı 295 çakışıyordu (ciro raporu 50 TL eksikti).
+  const order2Subtotal = 50 * 2 + 65 + 130 // = 295
   const order2 = await db.cafeOrder.create({
     data: {
       cafeId: cafe1.id,
@@ -1622,7 +1637,7 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
       number: 'S-0002',
       status: 'odendi',
       type: 'dine_in',
-      subtotal: 245, taxTotal: 0, total: 245,
+      subtotal: order2Subtotal, taxTotal: 0, total: order2Subtotal,
       createdById: t1Komi.id,
       createdAt: new Date(Date.now() - 3600 * 1000 * 2),
     },
@@ -1657,7 +1672,7 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
   await db.cafePayment.create({
     data: {
       orderId: order2.id,
-      amount: 95,
+      amount: order2Subtotal - 150, // kalan — ödemeler toplamı = adisyon tutarı (295)
       method: 'card',
       status: 'tamamlandi',
     },

@@ -95,25 +95,45 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (date !== undefined) {
     const startTime = new Date(date)
     if (isNaN(startTime.getTime())) return err('Geçersiz tarih', 400)
-    const duration = service?.duration || 30
-    const newEnd = new Date(startTime.getTime() + duration * 60 * 1000)
     updateData.date = startTime
+  }
+
+  // PROGRAM DEĞİŞİKLİĞİ (R3) — tarih, hizmet VEYA personel değişince:
+  //   · endTime her zaman yeni hizmetin süresine göre yeniden hesaplanır
+  //     (yalnız hizmet değişse bile — 30dk randevu 120dk hizmete çevrilirse
+  //     eski bitiş saati kalırsa sonraki çakışma kontrolleri yanlış çalışırdı)
+  //   · personel DEĞİŞİMİNDE de çakışma + izin kontrolü yapılır
+  //     (daha önce yalnız tarih değişiminde kontrol ediliyordu)
+  const startChanged = date !== undefined
+  const serviceChanged = serviceId !== undefined
+  const staffChanged = staffId !== undefined
+  if (startChanged || serviceChanged || staffChanged) {
+    const effStart = (updateData.date instanceof Date ? updateData.date : existing.date)
+    const duration = service?.duration || 30
+    const newEnd = new Date(effStart.getTime() + duration * 60 * 1000)
     updateData.endTime = newEnd
 
-    // Çakışma kontrolü — taşımada aynı personelde örtüşen randevu var mı?
-    // (force=true ile atlanır; sürükle-bırak güvenli taşima için önce reddeder)
     const effStaffId = (updateData.staffId !== undefined ? updateData.staffId : existing.staffId) as string | null
+
+    // Çakışma kontrolü — aynı personelde örtüşen randevu var mı?
+    // (force=true ile atlanır; sürükle-bırak güvenli taşıma için önce reddeder)
+    // NULL endTime kayıtları da yakalanır (R2): bitişi kendi hizmet süresinden
+    // türetilir, sorguda elenmez.
     if (effStaffId && !force) {
-      const conflicts = await db.appointment.findMany({
+      const candidates = await db.appointment.findMany({
         where: {
           providerId: id,
           staffId: effStaffId,
           id: { not: appointmentId },
           status: { in: ['beklemede', 'onaylandi'] },
           date: { lt: newEnd },
-          endTime: { gt: startTime },
+          OR: [{ endTime: { gt: effStart } }, { endTime: null }],
         },
-        select: { customerName: true, date: true },
+        select: { customerName: true, date: true, endTime: true, service: { select: { duration: true } } },
+      })
+      const conflicts = candidates.filter((c) => {
+        const cEnd = c.endTime ? new Date(c.endTime) : new Date(c.date.getTime() + (c.service?.duration || 30) * 60_000)
+        return c.date < newEnd && effStart < cEnd
       })
       if (conflicts.length > 0) {
         const c = conflicts[0]
@@ -129,12 +149,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           providerId: id,
           staffId: effStaffId,
           date: {
-            gte: new Date(startTime.getTime() - 24 * 60 * 60_000),
+            gte: new Date(effStart.getTime() - 24 * 60 * 60_000),
             lte: new Date(newEnd.getTime() + 24 * 60 * 60_000),
           },
         },
       })
-      const hit = timeOffs.find((t) => timeOffCoversRange(t, startTime.getTime(), newEnd.getTime()))
+      const hit = timeOffs.find((t) => timeOffCoversRange(t, effStart.getTime(), newEnd.getTime()))
       if (hit) {
         return err(`Personel bu saatte izinli (${timeOffLabel(hit)}) — randevu izinli personele taşınamaz`, 409)
       }
@@ -155,46 +175,56 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let packageUsed: { id: string; remaining: number; packageName: string } | null = null
   if (status === 'tamamlandi' && existing.status !== 'tamamlandi') {
     try {
-      const candidate = await db.memberPackage.findFirst({
-        where: {
-          tenantId: user!.tenantId,
-          status: 'aktif',
-          expiryDate: { gte: new Date() },
-          ...(existing.customerId ? { customerId: existing.customerId } : {}),
-          ...(existing.customerId
-            ? {}
-            : { customerName: { equals: existing.customerName } }),
-        },
-        orderBy: { expiryDate: 'asc' }, // en erken biten paketi harca
-        include: { package: { select: { name: true } } },
+      // ÇİFT DÜŞÜM KORUMASI (R4): bu randevu için daha önce seans düşülmüşse
+      // (tamamlandı → iptal → tamamlandı döngüsünde) tekrar düşülmez.
+      const alreadyUsed = await db.memberPackageUsage.findFirst({
+        where: { appointmentId: existing.id },
       })
-      if (
-        candidate &&
-        (candidate.sessionsTotal === 0 || candidate.sessionsUsed < candidate.sessionsTotal)
-      ) {
-        const [upd] = await db.$transaction([
-          db.memberPackage.update({
-            where: { id: candidate.id },
-            data: {
-              sessionsUsed: { increment: 1 },
-              ...(candidate.sessionsTotal > 0 &&
-              candidate.sessionsUsed + 1 >= candidate.sessionsTotal
-                ? { status: 'bitti' }
-                : {}),
-            },
-          }),
-          db.memberPackageUsage.create({
-            data: {
-              packageId: candidate.id,
-              appointmentId: existing.id,
-              note: `Randevu tamamlandı: ${existing.customerName}`,
-            },
-          }),
-        ])
-        packageUsed = {
-          id: upd.id,
-          remaining: upd.sessionsTotal === 0 ? -1 : upd.sessionsTotal - upd.sessionsUsed,
-          packageName: candidate.package.name,
+      if (!alreadyUsed) {
+        const candidate = await db.memberPackage.findFirst({
+          where: {
+            tenantId: user!.tenantId,
+            status: 'aktif',
+            expiryDate: { gte: new Date() },
+            // PAKET KAPSAMI (R4): paket bu işletmeye VEYA tenant geneline ait olmalı —
+            // A işletmesinde satılan paket B işletmesindeki randevudan düşülmez.
+            package: { OR: [{ providerId: id }, { providerId: null }] },
+            ...(existing.customerId ? { customerId: existing.customerId } : {}),
+            ...(existing.customerId
+              ? {}
+              : { customerName: { equals: existing.customerName } }),
+          },
+          orderBy: { expiryDate: 'asc' }, // en erken biten paketi harca
+          include: { package: { select: { name: true } } },
+        })
+        if (
+          candidate &&
+          (candidate.sessionsTotal === 0 || candidate.sessionsUsed < candidate.sessionsTotal)
+        ) {
+          const [upd] = await db.$transaction([
+            db.memberPackage.update({
+              where: { id: candidate.id },
+              data: {
+                sessionsUsed: { increment: 1 },
+                ...(candidate.sessionsTotal > 0 &&
+                candidate.sessionsUsed + 1 >= candidate.sessionsTotal
+                  ? { status: 'bitti' }
+                  : {}),
+              },
+            }),
+            db.memberPackageUsage.create({
+              data: {
+                packageId: candidate.id,
+                appointmentId: existing.id,
+                note: `Randevu tamamlandı: ${existing.customerName}`,
+              },
+            }),
+          ])
+          packageUsed = {
+            id: upd.id,
+            remaining: upd.sessionsTotal === 0 ? -1 : upd.sessionsTotal - upd.sessionsUsed,
+            packageName: candidate.package.name,
+          }
         }
       }
     } catch {

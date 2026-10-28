@@ -1,0 +1,1272 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useMemo, useRef, useState } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { apiGet, apiPost, apiPatch } from '@/lib/api-client'
+     6→import { useAppStore } from '@/store/app-store'
+     7→import { Card, CardContent } from '@/components/ui/card'
+     8→import { Button } from '@/components/ui/button'
+     9→import { Input } from '@/components/ui/input'
+    10→import { Label } from '@/components/ui/label'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import {
+    13→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    14→} from '@/components/ui/select'
+    15→import {
+    16→  Dialog, DialogContent, DialogHeader, DialogTitle,
+    17→  DialogDescription, DialogFooter,
+    18→} from '@/components/ui/dialog'
+    19→import { Skeleton } from '@/components/ui/skeleton'
+    20→import { ScrollArea } from '@/components/ui/scroll-area'
+    21→import {
+    22→  ScanLine, Search, Plus, Minus, Trash2, ShoppingCart,
+    23→  Banknote, CreditCard, Wallet, X, Receipt, Play, Square, FileText, Printer, NotebookPen, UserRound, Star,
+    24→} from 'lucide-react'
+    25→import { toast } from 'sonner'
+    26→import { formatCurrency, formatDateTime } from '@/lib/format'
+    27→import { cn } from '@/lib/utils'
+    28→
+    29→// ============================================================
+    30→// Tipler
+    31→// ============================================================
+    32→
+    33→interface Product {
+    34→  id: string
+    35→  name: string
+    36→  sku: string | null
+    37→  price: number
+    38→  stock: number
+    39→  taxRate: number
+    40→  category: string | null
+    41→  unit: string
+    42→  minStock: number
+    43→}
+    44→
+    45→interface Barcode {
+    46→  id: string
+    47→  code: string
+    48→  type: string
+    49→  product: Product
+    50→}
+    51→
+    52→interface BarcodesResponse {
+    53→  items: Barcode[]
+    54→}
+    55→
+    56→interface LookupResponse {
+    57→  found: boolean
+    58→  matchType: string
+    59→  product: Product | null
+    60→  barcode: { id: string; code: string; type: string } | null
+    61→  shelfItems: Array<{ shelf: { id: string; code: string; name: string | null; aisle: string | null } }>
+    62→  suggestions?: Product[]
+    63→}
+    64→
+    65→interface Shift {
+    66→  id: string
+    67→  number: string
+    68→  status: string
+    69→  openingCash: number
+    70→  closingCash: number | null
+    71→  expectedCash: number | null
+    72→  difference: number | null
+    73→  openingTime: string
+    74→  closingTime: string | null
+    75→  notes: string | null
+    76→  _count?: { sales: number }
+    77→}
+    78→
+    79→interface ShiftsResponse {
+    80→  items: Shift[]
+    81→}
+    82→
+    83→interface CartItem {
+    84→  productId: string
+    85→  barcode: string | null
+    86→  name: string
+    87→  price: number
+    88→  qty: number
+    89→  taxRate: number
+    90→  stock: number
+    91→}
+    92→
+    93→interface SaleResponse {
+    94→  id: string
+    95→  number: string
+    96→  total: number
+    97→  cashAmount: number
+    98→  cardAmount: number
+    99→  paymentMethod: string
+   100→  subtotal: number
+   101→  taxTotal: number
+   102→  discount: number
+   103→  createdAt: string
+   104→  customerName: string | null
+   105→  earnedPoints: number
+   106→  items: Array<{
+   107→    id: string
+   108→    name: string
+   109→    qty: number
+   110→    unitPrice: number
+   111→    lineTotal: number
+   112→    taxRate: number
+   113→  }>
+   114→}
+   115→
+   116→interface CreditCustomerOption {
+   117→  id: string
+   118→  name: string
+   119→  balance: number
+   120→  creditLimit: number | null
+   121→  isActive: boolean
+   122→}
+   123→
+   124→interface LoyaltyLookup {
+   125→  items: Array<{ id: string; name: string; phone: string | null; points: number }>
+   126→}
+   127→
+   128→// ============================================================
+   129→// POS Screen
+   130→// ============================================================
+   131→
+   132→export function MarketPosScreen({ marketId }: { marketId: string }) {
+   133→  const { user } = useAppStore()
+   134→  const userName = user?.name ?? '—'
+   135→  const qc = useQueryClient()
+   136→
+   137→  // Vardiya durumu
+   138→  const { data: shiftsData, isLoading: shiftsLoading } = useQuery({
+   139→    queryKey: ['market-shifts', marketId],
+   140→    queryFn: () => apiGet<ShiftsResponse>(`/api/market/${marketId}/pos/shifts?status=acik`),
+   141→    refetchInterval: 10_000,
+   142→  })
+   143→  const openShift = shiftsData?.items?.[0] ?? null
+   144→
+   145→  // Barkod listesi (hızlı arama için)
+   146→  const { data: barcodesData } = useQuery({
+   147→    queryKey: ['market-barcodes', marketId],
+   148→    queryFn: () => apiGet<BarcodesResponse>(`/api/market/${marketId}/barcodes`),
+   149→  })
+   150→  const allBarcodes = barcodesData?.items ?? []
+   151→
+   152→  const [cart, setCart] = useState<CartItem[]>([])
+   153→  const [barcodeInput, setBarcodeInput] = useState('')
+   154→  const [search, setSearch] = useState('')
+   155→  const [searchOpen, setSearchOpen] = useState(false)
+   156→  const [discount, setDiscount] = useState(0)
+   157→  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mixed' | 'veresiye'>('cash')
+   158→  const [cashGiven, setCashGiven] = useState(0)
+   159→  const [cardAmount, setCardAmount] = useState(0)
+   160→  const [processing, setProcessing] = useState(false)
+   161→  const [lastSale, setLastSale] = useState<SaleResponse | null>(null)
+   162→  const [receiptOpen, setReceiptOpen] = useState(false)
+   163→  const [shiftDialog, setShiftDialog] = useState<'open' | 'close' | null>(null)
+   164→  const [shiftForm, setShiftForm] = useState({ openingCash: 0, closingCash: 0, notes: '' })
+   165→  const [zReportOpen, setZReportOpen] = useState(false)
+   166→  const [lastClosedShift, setLastClosedShift] = useState<Shift | null>(null)
+   167→  const [customerName, setCustomerName] = useState('')
+   168→  const [creditCustomerId, setCreditCustomerId] = useState('')
+   169→  const [creditDueDate, setCreditDueDate] = useState('')
+   170→
+   171→  // Veresiye müşterileri (ödeme seçimi için)
+   172→  const { data: creditData } = useQuery<{ items: CreditCustomerOption[] }>({
+   173→    queryKey: ['market-credit-pos', marketId],
+   174→    queryFn: () => apiGet(`/api/market/${marketId}/credit`),
+   175→    staleTime: 30_000,
+   176→  })
+   177→
+   178→  // Sadakat puanı — müşteri adı yazıldıkça canlı arama (300ms debounce)
+   179→  const [debouncedCustomer, setDebouncedCustomer] = useState('')
+   180→  useEffect(() => {
+   181→    const t = setTimeout(() => setDebouncedCustomer(customerName.trim()), 300)
+   182→    return () => clearTimeout(t)
+   183→  }, [customerName])
+   184→  const { data: loyaltyData } = useQuery({
+   185→    queryKey: ['loyalty-lookup', debouncedCustomer],
+   186→    queryFn: () => apiGet<LoyaltyLookup>(`/api/loyalty/accounts?q=${encodeURIComponent(debouncedCustomer)}`),
+   187→    enabled: debouncedCustomer.length >= 2,
+   188→  })
+   189→  const loyaltyMatch = useMemo(() => {
+   190→    const q = debouncedCustomer.toLowerCase()
+   191→    if (!q) return null
+   192→    return (loyaltyData?.items ?? []).find((a) => a.name.toLowerCase() === q) ?? null
+   193→  }, [loyaltyData, debouncedCustomer])
+   194→  // Kesin eşleşme yoksa en yakın 2 isim önerisi göster
+   195→  const loyaltySuggestions = useMemo(() => {
+   196→    if (loyaltyMatch || debouncedCustomer.length < 2) return []
+   197→    const q = debouncedCustomer.toLowerCase()
+   198→    return (loyaltyData?.items ?? []).filter((a) => a.name.toLowerCase().includes(q)).slice(0, 2)
+   199→  }, [loyaltyData, loyaltyMatch, debouncedCustomer])
+   200→  const creditCustomers = (creditData?.items ?? []).filter((c) => c.isActive)
+   201→  const selectedCreditCustomer = creditCustomers.find((c) => c.id === creditCustomerId) ?? null
+   202→
+   203→  const barcodeRef = useRef<HTMLInputElement>(null)
+   204→
+   205→  // Autofocus on barcode input
+   206→  useEffect(() => {
+   207→    if (openShift && !receiptOpen && !shiftDialog && !zReportOpen && !searchOpen) {
+   208→      barcodeRef.current?.focus()
+   209→    }
+   210→  }, [openShift, receiptOpen, shiftDialog, zReportOpen, searchOpen])
+   211→
+   212→  // Barkod ile ürün ara ve sepete ekle
+   213→  async function handleBarcodeSubmit(e: React.FormEvent) {
+   214→    e.preventDefault()
+   215→    const code = barcodeInput.trim()
+   216→    if (!code) return
+   217→
+   218→    try {
+   219→      const res = await apiPost<LookupResponse>(`/api/market/${marketId}/barcodes/lookup`, { code })
+   220→      if (res.found && res.product) {
+   221→        addToCart(res.product, res.barcode?.code ?? null)
+   222→        setBarcodeInput('')
+   223→        toast.success(`${res.product.name} eklendi`)
+   224→      } else {
+   225→        toast.error(`Barkod bulunamadı: ${code}`)
+   226→        if (res.suggestions && res.suggestions.length > 0) {
+   227→          setSearchOpen(true)
+   228→          setSearch(code)
+   229→        }
+   230→      }
+   231→    } catch (e) {
+   232→      toast.error(e instanceof Error ? e.message : 'Arama başarısız')
+   233→    }
+   234→  }
+   235→
+   236→  function addToCart(product: Product, barcode: string | null) {
+   237→    setCart((prev) => {
+   238→      const existing = prev.find((c) => c.productId === product.id)
+   239→      if (existing) {
+   240→        if (existing.qty >= product.stock) {
+   241→          toast.error(`Yetersiz stok: ${product.name} (stok: ${product.stock})`)
+   242→          return prev
+   243→        }
+   244→        return prev.map((c) =>
+   245→          c.productId === product.id ? { ...c, qty: c.qty + 1 } : c,
+   246→        )
+   247→      }
+   248→      if (product.stock <= 0) {
+   249→        toast.error(`Stokta yok: ${product.name}`)
+   250→        return prev
+   251→      }
+   252→      return [
+   253→        ...prev,
+   254→        {
+   255→          productId: product.id,
+   256→          barcode,
+   257→          name: product.name,
+   258→          price: product.price,
+   259→          qty: 1,
+   260→          taxRate: product.taxRate,
+   261→          stock: product.stock,
+   262→        },
+   263→      ]
+   264→    })
+   265→  }
+   266→
+   267→  function updateQty(productId: string, delta: number) {
+   268→    setCart((prev) =>
+   269→      prev
+   270→        .map((c) => {
+   271→          if (c.productId !== productId) return c
+   272→          const newQty = c.qty + delta
+   273→          if (newQty <= 0) return { ...c, qty: 0 }
+   274→          if (newQty > c.stock) {
+   275→            toast.error(`Stok aşıldı (max: ${c.stock})`)
+   276→            return c
+   277→          }
+   278→          return { ...c, qty: newQty }
+   279→        })
+   280→        .filter((c) => c.qty > 0),
+   281→    )
+   282→  }
+   283→
+   284→  function removeFromCart(productId: string) {
+   285→    setCart((prev) => prev.filter((c) => c.productId !== productId))
+   286→  }
+   287→
+   288→  function clearCart() {
+   289→    setCart([])
+   290→    setDiscount(0)
+   291→    setCashGiven(0)
+   292→    setCardAmount(0)
+   293→    setCustomerName('')
+   294→  }
+   295→
+   296→  // Sepet toplamları
+   297→  const subtotal = cart.reduce((s, x) => s + x.price * x.qty, 0)
+   298→  const discountAmount = Math.min(discount, subtotal)
+   299→  const taxableBase = Math.max(0, subtotal - discountAmount)
+   300→  const taxTotal = cart.reduce((s, x) => {
+   301→    const ratio = subtotal > 0 ? (x.price * x.qty) / subtotal : 0
+   302→    const lineAfterDisc = taxableBase * ratio
+   303→    return s + lineAfterDisc - lineAfterDisc / (1 + x.taxRate / 100)
+   304→  }, 0)
+   305→  const total = taxableBase
+   306→  const willEarnPoints = Math.floor(total / 100)
+   307→  const change = paymentMethod === 'cash' ? Math.max(0, cashGiven - total) : 0
+   308→  const mixedShort = paymentMethod === 'mixed' ? Math.max(0, total - cashGiven - cardAmount) : 0
+   309→
+   310→  // Sık satılan ürünler — son barkodlar (basit demo)
+   311→  const quickProducts = allBarcodes.slice(0, 8)
+   312→
+   313→  async function completeSale() {
+   314→    if (cart.length === 0) {
+   315→      toast.error('Sepet boş')
+   316→      return
+   317→    }
+   318→    if (!openShift) {
+   319→      toast.error('Önce vardiya açın')
+   320→      setShiftDialog('open')
+   321→      return
+   322→    }
+   323→    if (paymentMethod === 'cash' && cashGiven < total) {
+   324→      toast.error('Nakit yetersiz')
+   325→      return
+   326→    }
+   327→    if (paymentMethod === 'mixed' && cashGiven + cardAmount < total) {
+   328→      toast.error('Ödeme tutarı yetersiz')
+   329→      return
+   330→    }
+   331→    if (paymentMethod === 'veresiye' && !creditCustomerId) {
+   332→      toast.error('Veresiye için müşteri seçin')
+   333→      return
+   334→    }
+   335→
+   336→    setProcessing(true)
+   337→    try {
+   338→      const sale = await apiPost<SaleResponse>(`/api/market/${marketId}/pos/sales`, {
+   339→        items: cart.map((c) => ({
+   340→          productId: c.productId,
+   341→          barcode: c.barcode,
+   342→          qty: c.qty,
+   343→        })),
+   344→        paymentMethod,
+   345→        cashAmount: paymentMethod === 'cash' ? cashGiven : paymentMethod === 'mixed' ? cashGiven : 0,
+   346→        cardAmount: paymentMethod === 'card' ? total : paymentMethod === 'mixed' ? cardAmount : 0,
+   347→        discount: discountAmount,
+   348→        customerName: customerName.trim() || undefined,
+   349→        creditCustomerId: paymentMethod === 'veresiye' ? creditCustomerId : undefined,
+   350→        creditDueDate: paymentMethod === 'veresiye' && creditDueDate ? new Date(creditDueDate + 'T23:59:59').toISOString() : undefined,
+   351→      })
+   352→
+   353→      setLastSale(sale)
+   354→      setReceiptOpen(true)
+   355→      clearCart()
+   356→      setCustomerName('')
+   357→      setCreditCustomerId('')
+   358→      setCreditDueDate('')
+   359→      qc.invalidateQueries({ queryKey: ['market-shifts', marketId] })
+   360→      qc.invalidateQueries({ queryKey: ['market-sales', marketId] })
+   361→      qc.invalidateQueries({ queryKey: ['market-barcodes', marketId] })
+   362→      qc.invalidateQueries({ queryKey: ['market-credit'] })
+   363→      qc.invalidateQueries({ queryKey: ['market-credit-pos', marketId] })
+   364→      qc.invalidateQueries({ queryKey: ['loyalty-lookup'] })
+   365→      if (sale.earnedPoints > 0) {
+   366→        toast.success(`Satış tamamlandı: ${sale.number} — ${sale.customerName} +${sale.earnedPoints} puan kazandı ⭐`)
+   367→      } else {
+   368→        toast.success(`Satış tamamlandı: ${sale.number}`)
+   369→      }
+   370→    } catch (e) {
+   371→      toast.error(e instanceof Error ? e.message : 'Satış başarısız')
+   372→    } finally {
+   373→      setProcessing(false)
+   374→    }
+   375→  }
+   376→
+   377→  async function openShiftAction() {
+   378→    try {
+   379→      await apiPost(`/api/market/${marketId}/pos/shifts`, {
+   380→        openingCash: Number(shiftForm.openingCash),
+   381→        notes: shiftForm.notes,
+   382→      })
+   383→      qc.invalidateQueries({ queryKey: ['market-shifts', marketId] })
+   384→      toast.success('Vardiya açıldı')
+   385→      setShiftDialog(null)
+   386→      setShiftForm({ openingCash: 0, closingCash: 0, notes: '' })
+   387→    } catch (e) {
+   388→      toast.error(e instanceof Error ? e.message : 'Vardiya açılamadı')
+   389→    }
+   390→  }
+   391→
+   392→  async function closeShiftAction() {
+   393→    try {
+   394→      const result = await apiPatch<Shift>(`/api/market/${marketId}/pos/shifts/${openShift?.id}`, {
+   395→        action: 'close',
+   396→        closingCash: Number(shiftForm.closingCash),
+   397→        notes: shiftForm.notes,
+   398→      })
+   399→      qc.invalidateQueries({ queryKey: ['market-shifts', marketId] })
+   400→      setLastClosedShift(result)
+   401→      setZReportOpen(true)
+   402→      setShiftDialog(null)
+   403→      setShiftForm({ openingCash: 0, closingCash: 0, notes: '' })
+   404→      toast.success('Vardiya kapatıldı')
+   405→    } catch (e) {
+   406→      toast.error(e instanceof Error ? e.message : 'Vardiya kapatılamadı')
+   407→    }
+   408→  }
+   409→
+   410→  if (shiftsLoading) {
+   411→    return <Skeleton className="h-96 w-full" />
+   412→  }
+   413→
+   414→  // Vardiya kapalıysa uyarı göster
+   415→  if (!openShift) {
+   416→    return (
+   417→      <div className="space-y-4">
+   418→        <Card className="p-8 text-center">
+   419→          <div className="w-16 h-16 mx-auto rounded-full bg-amber-50 dark:bg-amber-950/30 flex items-center justify-center mb-4">
+   420→            <Play className="w-8 h-8 text-amber-600" />
+   421→          </div>
+   422→          <h3 className="font-semibold text-lg mb-2">Vardiya Kapalı</h3>
+   423→          <p className="text-sm text-muted-foreground mb-4">
+   424→            Satış yapabilmek için kasa vardiyasını açın. Açılış nakiti girerek vardiya başlatın.
+   425→          </p>
+   426→          <Button onClick={() => setShiftDialog('open')} className="bg-emerald-600 hover:bg-emerald-700">
+   427→            <Play className="w-4 h-4 mr-2" />
+   428→            Vardiya Aç
+   429→          </Button>
+   430→        </Card>
+   431→        <ShiftDialog
+   432→          open={shiftDialog !== null}
+   433→          mode={shiftDialog}
+   434→          onOpenChange={(v) => !v && setShiftDialog(null)}
+   435→          form={shiftForm}
+   436→          setForm={setShiftForm}
+   437→          onConfirm={shiftDialog === 'open' ? openShiftAction : closeShiftAction}
+   438→          shift={openShift}
+   439→        />
+   440→      </div>
+   441→    )
+   442→  }
+   443→
+   444→  return (
+   445→    <div className="space-y-3">
+   446→      {/* Vardiya barı */}
+   447→      <Card className="border-emerald-200 dark:border-emerald-900/50">
+   448→        <CardContent className="p-3 flex items-center justify-between gap-3 flex-wrap">
+   449→          <div className="flex items-center gap-3">
+   450→            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 hover:bg-emerald-100">
+   451→              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
+   452→              VARDİYA AÇIK
+   453→            </Badge>
+   454→            <div className="text-sm">
+   455→              <span className="font-medium">{openShift.number}</span>
+   456→              <span className="text-muted-foreground ml-2">· {userName}</span>
+   457→              <span className="text-muted-foreground ml-2">· Açılış: {formatCurrency(openShift.openingCash)}</span>
+   458→              <span className="text-muted-foreground ml-2">· {formatDateTime(openShift.openingTime)}</span>
+   459→            </div>
+   460→          </div>
+   461→          <Button
+   462→            size="sm"
+   463→            variant="outline"
+   464→            onClick={() => setShiftDialog('close')}
+   465→            className="text-amber-700 border-amber-300 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-950/30"
+   466→          >
+   467→            <Square className="w-3.5 h-3.5 mr-1" />
+   468→            Vardiyayı Kapat (Z Raporu)
+   469→          </Button>
+   470→        </CardContent>
+   471→      </Card>
+   472→
+   473→      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+   474→        {/* Sol: Barkod + Ürün arama + Sepet */}
+   475→        <div className="lg:col-span-3 space-y-3">
+   476→          {/* Barkod input */}
+   477→          <Card>
+   478→            <CardContent className="p-4">
+   479→              <form onSubmit={handleBarcodeSubmit} className="flex gap-2">
+   480→                <div className="relative flex-1">
+   481→                  <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-600" />
+   482→                  <Input
+   483→                    ref={barcodeRef}
+   484→                    value={barcodeInput}
+   485→                    onChange={(e) => setBarcodeInput(e.target.value)}
+   486→                    placeholder="Barkod okutun veya ürün adı girin..."
+   487→                    className="pl-10 h-12 text-base font-medium"
+   488→                    autoComplete="off"
+   489→                  />
+   490→                </div>
+   491→                <Button type="submit" size="lg" className="bg-emerald-600 hover:bg-emerald-700 h-12 px-6">
+   492→                  Ekle
+   493→                </Button>
+   494→                <Button
+   495→                  type="button"
+   496→                  variant="outline"
+   497→                  size="lg"
+   498→                  className="h-12 px-3"
+   499→                  onClick={() => { setSearchOpen(true); setSearch('') }}
+   500→                  title="Ürün ara"
+   501→                >
+   502→                  <Search className="w-5 h-5" />
+   503→                </Button>
+   504→              </form>
+   505→            </CardContent>
+   506→          </Card>
+   507→
+   508→          {/* Hızlı ürünler */}
+   509→          {quickProducts.length > 0 && (
+   510→            <Card>
+   511→              <CardContent className="p-3">
+   512→                <div className="text-xs text-muted-foreground mb-2 px-1">Hızlı Erişim</div>
+   513→                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+   514→                  {quickProducts.map((b) => (
+   515→                    <button
+   516→                      key={b.id}
+   517→                      onClick={() => addToCart(b.product, b.code)}
+   518→                      className="text-left p-2 rounded-lg border border-border hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors"
+   519→                    >
+   520→                      <div className="text-xs font-medium truncate">{b.product.name}</div>
+   521→                      <div className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold mt-0.5">
+   522→                        {formatCurrency(b.product.price)}
+   523→                      </div>
+   524→                    </button>
+   525→                  ))}
+   526→                </div>
+   527→              </CardContent>
+   528→            </Card>
+   529→          )}
+   530→
+   531→          {/* Sepet */}
+   532→          <Card>
+   533→            <CardContent className="p-0">
+   534→              <div className="flex items-center justify-between p-3 border-b">
+   535→                <div className="flex items-center gap-2">
+   536→                  <ShoppingCart className="w-4 h-4 text-emerald-600" />
+   537→                  <span className="font-medium text-sm">Sepet</span>
+   538→                  <Badge variant="secondary">{cart.length} kalem</Badge>
+   539→                </div>
+   540→                {cart.length > 0 && (
+   541→                  <Button variant="ghost" size="sm" onClick={clearCart} className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20">
+   542→                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+   543→                    Temizle
+   544→                  </Button>
+   545→                )}
+   546→              </div>
+   547→
+   548→              {cart.length === 0 ? (
+   549→                <div className="p-12 text-center text-muted-foreground">
+   550→                  <ShoppingCart className="w-10 h-10 mx-auto mb-2 opacity-40" />
+   551→                  <p className="text-sm">Sepet boş. Barkod okutun veya ürün arayın.</p>
+   552→                </div>
+   553→              ) : (
+   554→                <ScrollArea className="h-[300px] sm:h-[400px]">
+   555→                  <div className="divide-y">
+   556→                    {cart.map((c) => (
+   557→                      <div key={c.productId} className="p-3 flex items-center gap-3">
+   558→                        <div className="flex-1 min-w-0">
+   559→                          <div className="text-sm font-medium truncate">{c.name}</div>
+   560→                          <div className="text-xs text-muted-foreground mt-0.5">
+   561→                            {formatCurrency(c.price)} × {c.qty} = <span className="font-medium text-foreground">{formatCurrency(c.price * c.qty)}</span>
+   562→                          </div>
+   563→                        </div>
+   564→                        <div className="flex items-center gap-1.5">
+   565→                          <Button
+   566→                            size="sm"
+   567→                            variant="outline"
+   568→                            className="h-8 w-8 p-0"
+   569→                            onClick={() => updateQty(c.productId, -1)}
+   570→                          >
+   571→                            <Minus className="w-3.5 h-3.5" />
+   572→                          </Button>
+   573→                          <Input
+   574→                            className="h-8 w-14 text-center px-1"
+   575→                            value={c.qty}
+   576→                            onChange={(e) => {
+   577→                              const q = parseInt(e.target.value) || 0
+   578→                              if (q <= 0) { removeFromCart(c.productId); return }
+   579→                              if (q > c.stock) { toast.error(`Stok aşıldı (max: ${c.stock})`); return }
+   580→                              setCart((prev) => prev.map((x) => x.productId === c.productId ? { ...x, qty: q } : x))
+   581→                            }}
+   582→                          />
+   583→                          <Button
+   584→                            size="sm"
+   585→                            variant="outline"
+   586→                            className="h-8 w-8 p-0"
+   587→                            onClick={() => updateQty(c.productId, 1)}
+   588→                          >
+   589→                            <Plus className="w-3.5 h-3.5" />
+   590→                          </Button>
+   591→                          <Button
+   592→                            size="sm"
+   593→                            variant="ghost"
+   594→                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+   595→                            onClick={() => removeFromCart(c.productId)}
+   596→                          >
+   597→                            <X className="w-3.5 h-3.5" />
+   598→                          </Button>
+   599→                        </div>
+   600→                      </div>
+   601→                    ))}
+   602→                  </div>
+   603→                </ScrollArea>
+   604→              )}
+   605→            </CardContent>
+   606→          </Card>
+   607→        </div>
+   608→
+   609→        {/* Sağ: Ödeme */}
+   610→        <div className="lg:col-span-2">
+   611→          <Card className="sticky top-4">
+   612→            <CardContent className="p-4 space-y-3">
+   613→              <h3 className="font-semibold flex items-center gap-2">
+   614→                <Wallet className="w-4 h-4 text-emerald-600" />
+   615→                Ödeme
+   616→              </h3>
+   617→
+   618→              {/* Toplamlar */}
+   619→              <div className="space-y-1.5 text-sm">
+   620→                <div className="flex justify-between">
+   621→                  <span className="text-muted-foreground">Ara Toplam</span>
+   622→                  <span className="font-medium">{formatCurrency(subtotal)}</span>
+   623→                </div>
+   624→                <div className="flex justify-between items-center">
+   625→                  <span className="text-muted-foreground">İndirim</span>
+   626→                  <div className="flex items-center gap-1">
+   627→                    <Input
+   628→                      type="number"
+   629→                      min="0"
+   630→                      value={discount || ''}
+   631→                      onChange={(e) => setDiscount(Number(e.target.value) || 0)}
+   632→                      className="h-7 w-24 text-right text-xs"
+   633→                      placeholder="0"
+   634→                    />
+   635→                  </div>
+   636→                </div>
+   637→                <div className="flex justify-between">
+   638→                  <span className="text-muted-foreground">KDV</span>
+   639→                  <span className="font-medium">{formatCurrency(taxTotal)}</span>
+   640→                </div>
+   641→                <div className="border-t pt-2 flex justify-between items-center">
+   642→                  <span className="font-semibold">Genel Toplam</span>
+   643→                  <span className="font-bold text-emerald-700 dark:text-emerald-400 text-xl">{formatCurrency(total)}</span>
+   644→                </div>
+   645→              </div>
+   646→
+   647→              {/* Sadakat müşterisi */}
+   648→              <div className="space-y-1.5">
+   649→                <Label className="text-xs flex items-center gap-1">
+   650→                  <Star className="w-3 h-3 text-amber-500" /> Sadakat Müşterisi (opsiyonel)
+   651→                </Label>
+   652→                <Input
+   653→                  value={customerName}
+   654→                  onChange={(e) => setCustomerName(e.target.value)}
+   655→                  placeholder="Müşteri adı yazın…"
+   656→                  className="h-9"
+   657→                />
+   658→                {customerName.trim().length >= 2 && (
+   659→                  <div className="text-[11px] rounded-md px-2 py-1.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40">
+   660→                    {loyaltyMatch ? (
+   661→                      <span className="text-amber-700 dark:text-amber-400">
+   662→                        ⭐ <b>{loyaltyMatch.name}</b> — mevcut puan: <b>{loyaltyMatch.points}</b>
+   663→                        {willEarnPoints > 0 && <span className="text-muted-foreground"> · bu satıştan +{willEarnPoints} puan</span>}
+   664→                      </span>
+   665→                    ) : (
+   666→                      <>
+   667→                        <span className="text-muted-foreground">
+   668→                          Yeni müşteri — satış sonrası sadakat hesabı otomatik açılır
+   669→                          {willEarnPoints > 0 && <> ve <b className="text-amber-700 dark:text-amber-400">+{willEarnPoints} puan</b> kazanır</>}
+   670→                        </span>
+   671→                        {loyaltySuggestions.length > 0 && (
+   672→                          <div className="mt-1 space-y-0.5">
+   673→                            {loyaltySuggestions.map((s) => (
+   674→                              <button
+   675→                                key={s.id}
+   676→                                type="button"
+   677→                                className="block text-left text-[11px] text-emerald-700 dark:text-emerald-400 hover:underline"
+   678→                                onClick={() => setCustomerName(s.name)}
+   679→                              >
+   680→                                Benzer: <b>{s.name}</b> ({s.points} puan) — seçmek için tıklayın
+   681→                              </button>
+   682→                            ))}
+   683→                          </div>
+   684→                        )}
+   685→                      </>
+   686→                    )}
+   687→                  </div>
+   688→                )}
+   689→              </div>
+   690→
+   691→              {/* Ödeme yöntemi */}
+   692→              <div className="space-y-2">
+   693→                <Label className="text-xs">Ödeme Yöntemi</Label>
+   694→                <div className="grid grid-cols-4 gap-1.5">
+   695→                  <button
+   696→                    onClick={() => setPaymentMethod('cash')}
+   697→                    className={cn(
+   698→                      'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all',
+   699→                      paymentMethod === 'cash'
+   700→                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400'
+   701→                        : 'border-border hover:border-emerald-300',
+   702→                    )}
+   703→                  >
+   704→                    <Banknote className="w-5 h-5" />
+   705→                    <span className="text-xs font-medium">Nakit</span>
+   706→                  </button>
+   707→                  <button
+   708→                    onClick={() => setPaymentMethod('card')}
+   709→                    className={cn(
+   710→                      'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all',
+   711→                      paymentMethod === 'card'
+   712→                        ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400'
+   713→                        : 'border-border hover:border-violet-300',
+   714→                    )}
+   715→                  >
+   716→                    <CreditCard className="w-5 h-5" />
+   717→                    <span className="text-xs font-medium">Kart</span>
+   718→                  </button>
+   719→                  <button
+   720→                    onClick={() => setPaymentMethod('mixed')}
+   721→                    className={cn(
+   722→                      'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all',
+   723→                      paymentMethod === 'mixed'
+   724→                        ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400'
+   725→                        : 'border-border hover:border-amber-300',
+   726→                    )}
+   727→                  >
+   728→                    <Wallet className="w-5 h-5" />
+   729→                    <span className="text-xs font-medium">Karışık</span>
+   730→                  </button>
+   731→                  <button
+   732→                    onClick={() => setPaymentMethod('veresiye')}
+   733→                    className={cn(
+   734→                      'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all',
+   735→                      paymentMethod === 'veresiye'
+   736→                        ? 'border-orange-500 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400'
+   737→                        : 'border-border hover:border-orange-300',
+   738→                    )}
+   739→                  >
+   740→                    <NotebookPen className="w-5 h-5" />
+   741→                    <span className="text-xs font-medium">Veresiye</span>
+   742→                  </button>
+   743→                </div>
+   744→                {paymentMethod === 'veresiye' && (
+   745→                  <div className="space-y-2">
+   746→                    <div>
+   747→                      <Label className="text-xs">Veresiye Müşterisi *</Label>
+   748→                      {creditCustomers.length === 0 ? (
+   749→                        <div className="mt-1 flex items-start gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+   750→                          <UserRound className="w-4 h-4 shrink-0 mt-0.5" />
+   751→                          <span>Henüz veresiye müşterisi yok. Veresiye sekmesinden müşteri ekleyin.</span>
+   752→                        </div>
+   753→                      ) : (
+   754→                        <Select value={creditCustomerId} onValueChange={setCreditCustomerId}>
+   755→                          <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Müşteri seçin" /></SelectTrigger>
+   756→                          <SelectContent>
+   757→                            {creditCustomers.map((c) => (
+   758→                              <SelectItem key={c.id} value={c.id}>
+   759→                                {c.name}{c.balance > 0 ? ` · borç ${formatCurrency(c.balance)}` : ''}
+   760→                              </SelectItem>
+   761→                            ))}
+   762→                          </SelectContent>
+   763→                        </Select>
+   764→                      )}
+   765→                    </div>
+   766→                    {selectedCreditCustomer && (
+   767→                      <div className="rounded-lg bg-orange-50 dark:bg-orange-950/30 p-2.5 text-xs space-y-0.5">
+   768→                        <div className="flex justify-between">
+   769→                          <span className="text-muted-foreground">Mevcut borç</span>
+   770→                          <span className="font-semibold tabular-nums">{formatCurrency(selectedCreditCustomer.balance)}</span>
+   771→                        </div>
+   772→                        <div className="flex justify-between">
+   773→                          <span className="text-muted-foreground">Bu satışla birlikte</span>
+   774→                          <span className="font-bold tabular-nums">{formatCurrency(selectedCreditCustomer.balance + total)}</span>
+   775→                        </div>
+   776→                        {selectedCreditCustomer.creditLimit != null && (
+   777→                          <div className="flex justify-between">
+   778→                            <span className="text-muted-foreground">Limit</span>
+   779→                            <span className={cn('font-semibold tabular-nums', selectedCreditCustomer.balance + total > selectedCreditCustomer.creditLimit ? 'text-red-600' : 'text-emerald-600')}>
+   780→                              {formatCurrency(selectedCreditCustomer.creditLimit)}
+   781→                              {selectedCreditCustomer.balance + total > selectedCreditCustomer.creditLimit && ' ⚠ aşılıyor'}
+   782→                            </span>
+   783→                          </div>
+   784→                        )}
+   785→                      </div>
+   786→                    )}
+   787→                    <div>
+   788→                      <Label className="text-xs">Vade Tarihi (opsiyonel)</Label>
+   789→                      <Input type="date" value={creditDueDate} onChange={(e) => setCreditDueDate(e.target.value)} className="mt-1 h-10" />
+   790→                    </div>
+   791→                  </div>
+   792→                )}
+   793→              </div>
+   794→
+   795→              {/* Ödeme tutarları */}
+   796→              {paymentMethod === 'cash' && (
+   797→                <div className="space-y-2">
+   798→                  <Label className="text-xs">Alınan Nakit</Label>
+   799→                  <Input
+   800→                    type="number"
+   801→                    min="0"
+   802→                    value={cashGiven || ''}
+   803→                    onChange={(e) => setCashGiven(Number(e.target.value) || 0)}
+   804→                    className="text-lg font-semibold h-12"
+   805→                    placeholder="0"
+   806→                  />
+   807→                  {cashGiven >= total && (
+   808→                    <div className="flex justify-between p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30">
+   809→                      <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Para Üstü</span>
+   810→                      <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(change)}</span>
+   811→                    </div>
+   812→                  )}
+   813→                  {/* Hızlı nakit butonları */}
+   814→                  <div className="grid grid-cols-4 gap-1.5">
+   815→                    {[50, 100, 200, 500].map((v) => (
+   816→                      <Button
+   817→                        key={v}
+   818→                        variant="outline"
+   819→                        size="sm"
+   820→                        onClick={() => setCashGiven(v)}
+   821→                        className="text-xs"
+   822→                      >
+   823→                        {v}
+   824→                      </Button>
+   825→                    ))}
+   826→                  </div>
+   827→                  <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => setCashGiven(total)}>
+   828→                    Tam Tutar
+   829→                  </Button>
+   830→                </div>
+   831→              )}
+   832→
+   833→              {paymentMethod === 'card' && (
+   834→                <div className="p-3 rounded-lg bg-violet-50 dark:bg-violet-950/30 text-center">
+   835→                  <CreditCard className="w-6 h-6 mx-auto text-violet-600 mb-1" />
+   836→                  <p className="text-sm font-medium text-violet-700 dark:text-violet-400">
+   837→                    Kart ile {formatCurrency(total)}
+   838→                  </p>
+   839→                  <p className="text-xs text-muted-foreground mt-1">Pos cihazından tahsil edin</p>
+   840→                </div>
+   841→              )}
+   842→
+   843→              {paymentMethod === 'mixed' && (
+   844→                <div className="space-y-2">
+   845→                  <div>
+   846→                    <Label className="text-xs">Nakit</Label>
+   847→                    <Input
+   848→                      type="number"
+   849→                      min="0"
+   850→                      value={cashGiven || ''}
+   851→                      onChange={(e) => setCashGiven(Number(e.target.value) || 0)}
+   852→                      className="h-10"
+   853→                      placeholder="0"
+   854→                    />
+   855→                  </div>
+   856→                  <div>
+   857→                    <Label className="text-xs">Kart</Label>
+   858→                    <Input
+   859→                      type="number"
+   860→                      min="0"
+   861→                      value={cardAmount || ''}
+   862→                      onChange={(e) => setCardAmount(Number(e.target.value) || 0)}
+   863→                      className="h-10"
+   864→                      placeholder="0"
+   865→                    />
+   866→                  </div>
+   867→                  {mixedShort > 0 && (
+   868→                    <p className="text-xs text-red-600">Eksik: {formatCurrency(mixedShort)}</p>
+   869→                  )}
+   870→                  {mixedShort === 0 && (cashGiven + cardAmount) > 0 && (
+   871→                    <p className="text-xs text-emerald-600">Toplam: {formatCurrency(cashGiven + cardAmount)}</p>
+   872→                  )}
+   873→                </div>
+   874→              )}
+   875→
+   876→              <Button
+   877→                onClick={completeSale}
+   878→                disabled={processing || cart.length === 0}
+   879→                className="w-full bg-emerald-600 hover:bg-emerald-700 h-12 text-base font-semibold"
+   880→              >
+   881→                {processing ? 'İşleniyor...' : (
+   882→                  <>
+   883→                    <Receipt className="w-5 h-5 mr-2" />
+   884→                    Fiş Kes ({formatCurrency(total)})
+   885→                  </>
+   886→                )}
+   887→              </Button>
+   888→            </CardContent>
+   889→          </Card>
+   890→        </div>
+   891→      </div>
+   892→
+   893→      {/* Dialogs */}
+   894→      <ProductSearchDialog
+   895→        open={searchOpen}
+   896→        onOpenChange={setSearchOpen}
+   897→        marketId={marketId}
+   898→        search={search}
+   899→        setSearch={setSearch}
+   900→        onPick={(p, b) => { addToCart(p, b); setSearchOpen(false); setSearch('') }}
+   901→      />
+   902→
+   903→      <ReceiptDialog
+   904→        open={receiptOpen}
+   905→        onOpenChange={setReceiptOpen}
+   906→        sale={lastSale}
+   907→        marketName={user?.tenant.name ?? 'Market'}
+   908→      />
+   909→
+   910→      <ShiftDialog
+   911→        open={shiftDialog !== null}
+   912→        mode={shiftDialog}
+   913→        onOpenChange={(v) => !v && setShiftDialog(null)}
+   914→        form={shiftForm}
+   915→        setForm={setShiftForm}
+   916→        onConfirm={shiftDialog === 'open' ? openShiftAction : closeShiftAction}
+   917→        shift={openShift}
+   918→      />
+   919→
+   920→      <ZReportDialog
+   921→        open={zReportOpen}
+   922→        onOpenChange={setZReportOpen}
+   923→        shift={lastClosedShift}
+   924→        marketName={user?.tenant.name ?? 'Market'}
+   925→      />
+   926→    </div>
+   927→  )
+   928→}
+   929→
+   930→// ============================================================
+   931→// Ürün arama dialogu
+   932→// ============================================================
+   933→
+   934→function ProductSearchDialog({
+   935→  open, onOpenChange, marketId, search, setSearch, onPick,
+   936→}: {
+   937→  open: boolean
+   938→  onOpenChange: (v: boolean) => void
+   939→  marketId: string
+   940→  search: string
+   941→  setSearch: (v: string) => void
+   942→  onPick: (p: Product, barcode: string | null) => void
+   943→}) {
+   944→  const { data, isLoading } = useQuery({
+   945→    queryKey: ['market-barcodes', marketId, search],
+   946→    queryFn: () => apiGet<BarcodesResponse>(`/api/market/${marketId}/barcodes?search=${encodeURIComponent(search)}`),
+   947→    enabled: open && search.length > 0,
+   948→  })
+   949→  const list = (data?.items ?? []).filter((b) =>
+   950→    !search || b.product.name.toLowerCase().includes(search.toLowerCase()) || b.code.includes(search),
+   951→  )
+   952→
+   953→  return (
+   954→    <Dialog open={open} onOpenChange={onOpenChange}>
+   955→      <DialogContent className="sm:max-w-2xl">
+   956→        <DialogHeader>
+   957→          <DialogTitle>Ürün Ara</DialogTitle>
+   958→          <DialogDescription>İsme veya barkoda göre arayın</DialogDescription>
+   959→        </DialogHeader>
+   960→        <div className="space-y-3">
+   961→          <div className="relative">
+   962→            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   963→            <Input
+   964→              autoFocus
+   965→              value={search}
+   966→              onChange={(e) => setSearch(e.target.value)}
+   967→              placeholder="Ürün adı veya barkod..."
+   968→              className="pl-9"
+   969→            />
+   970→          </div>
+   971→          <ScrollArea className="h-[400px]">
+   972→            {isLoading ? (
+   973→              <div className="p-4 text-center text-sm text-muted-foreground">Aranıyor...</div>
+   974→            ) : list.length === 0 ? (
+   975→              <div className="p-4 text-center text-sm text-muted-foreground">Ürün bulunamadı</div>
+   976→            ) : (
+   977→              <div className="space-y-1">
+   978→                {list.map((b) => (
+   979→                  <button
+   980→                    key={b.id}
+   981→                    onClick={() => onPick(b.product, b.code)}
+   982→                    className="w-full text-left p-3 rounded-lg border border-border hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors"
+   983→                  >
+   984→                    <div className="flex justify-between items-center">
+   985→                      <div className="min-w-0">
+   986→                        <div className="font-medium text-sm truncate">{b.product.name}</div>
+   987→                        <div className="text-xs text-muted-foreground">
+   988→                          Barkod: {b.code} · Stok: {b.product.stock} {b.product.unit}
+   989→                        </div>
+   990→                      </div>
+   991→                      <div className="text-emerald-700 dark:text-emerald-400 font-semibold text-sm">
+   992→                        {formatCurrency(b.product.price)}
+   993→                      </div>
+   994→                    </div>
+   995→                  </button>
+   996→                ))}
+   997→              </div>
+   998→            )}
+   999→          </ScrollArea>
+  1000→        </div>
+  1001→      </DialogContent>
+  1002→    </Dialog>
+  1003→  )
+  1004→}
+  1005→
+  1006→// ============================================================
+  1007→// Fiş yazdırma dialogu
+  1008→// ============================================================
+  1009→
+  1010→function ReceiptDialog({
+  1011→  open, onOpenChange, sale, marketName,
+  1012→}: {
+  1013→  open: boolean
+  1014→  onOpenChange: (v: boolean) => void
+  1015→  sale: SaleResponse | null
+  1016→  marketName: string
+  1017→}) {
+  1018→  if (!sale) return null
+  1019→
+  1020→  return (
+  1021→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1022→      <DialogContent className="sm:max-w-sm">
+  1023→        <DialogHeader>
+  1024→          <DialogTitle className="flex items-center gap-2">
+  1025→            <Receipt className="w-5 h-5 text-emerald-600" />
+  1026→            Fiş — {sale.number}
+  1027→          </DialogTitle>
+  1028→          <DialogDescription>Satış başarıyla tamamlandı</DialogDescription>
+  1029→        </DialogHeader>
+  1030→
+  1031→        <div className="print-content">
+  1032→          <div className="font-mono text-xs space-y-2 p-4 bg-white dark:bg-background border rounded-lg">
+  1033→            <div className="text-center">
+  1034→              <div className="font-bold text-sm">{marketName}</div>
+  1035→              <div className="text-[10px] text-muted-foreground">{formatDateTime(sale.createdAt)}</div>
+  1036→              <div className="text-[10px]">Fiş No: {sale.number}</div>
+  1037→            </div>
+  1038→            <div className="border-t border-dashed pt-2">
+  1039→              {sale.items.map((it) => (
+  1040→                <div key={it.id} className="flex justify-between">
+  1041→                  <span className="truncate flex-1">{it.name} × {it.qty}</span>
+  1042→                  <span className="ml-2">{formatCurrency(it.lineTotal)}</span>
+  1043→                </div>
+  1044→              ))}
+  1045→            </div>
+  1046→            <div className="border-t border-dashed pt-2 space-y-0.5">
+  1047→              <div className="flex justify-between">
+  1048→                <span>Ara Toplam</span>
+  1049→                <span>{formatCurrency(sale.subtotal)}</span>
+  1050→              </div>
+  1051→              {sale.discount > 0 && (
+  1052→                <div className="flex justify-between">
+  1053→                  <span>İndirim</span>
+  1054→                  <span>-{formatCurrency(sale.discount)}</span>
+  1055→                </div>
+  1056→              )}
+  1057→              <div className="flex justify-between">
+  1058→                <span>KDV</span>
+  1059→                <span>{formatCurrency(sale.taxTotal)}</span>
+  1060→              </div>
+  1061→              <div className="flex justify-between font-bold text-sm border-t pt-1">
+  1062→                <span>TOPLAM</span>
+  1063→                <span>{formatCurrency(sale.total)}</span>
+  1064→              </div>
+  1065→            </div>
+  1066→            <div className="border-t border-dashed pt-2 text-[10px]">
+  1067→              <div className="flex justify-between">
+  1068→                <span>Ödeme: {sale.paymentMethod === 'cash' ? 'Nakit' : sale.paymentMethod === 'card' ? 'Kart' : 'Karışık'}</span>
+  1069→              </div>
+  1070→              {sale.cashAmount > 0 && (
+  1071→                <div className="flex justify-between">
+  1072→                  <span>Nakit</span>
+  1073→                  <span>{formatCurrency(sale.cashAmount)}</span>
+  1074→                </div>
+  1075→              )}
+  1076→              {sale.cardAmount > 0 && (
+  1077→                <div className="flex justify-between">
+  1078→                  <span>Kart</span>
+  1079→                  <span>{formatCurrency(sale.cardAmount)}</span>
+  1080→                </div>
+  1081→              )}
+  1082→            </div>
+  1083→            <div className="text-center text-[10px] pt-2 border-t border-dashed">
+  1084→              <p>Teşekkür ederiz!</p>
+  1085→            </div>
+  1086→          </div>
+  1087→        </div>
+  1088→
+  1089→        <DialogFooter className="print:hidden">
+  1090→          <Button variant="outline" onClick={() => onOpenChange(false)}>Kapat</Button>
+  1091→          <Button onClick={() => window.print()} className="bg-emerald-600 hover:bg-emerald-700">
+  1092→            <Printer className="w-4 h-4 mr-2" />
+  1093→            Yazdır
+  1094→          </Button>
+  1095→        </DialogFooter>
+  1096→      </DialogContent>
+  1097→    </Dialog>
+  1098→  )
+  1099→}
+  1100→
+  1101→// ============================================================
+  1102→// Vardiya dialog
+  1103→// ============================================================
+  1104→
+  1105→function ShiftDialog({
+  1106→  open, mode, onOpenChange, form, setForm, onConfirm, shift,
+  1107→}: {
+  1108→  open: boolean
+  1109→  mode: 'open' | 'close' | null
+  1110→  onOpenChange: (v: boolean) => void
+  1111→  form: { openingCash: number; closingCash: number; notes: string }
+  1112→  setForm: (f: { openingCash: number; closingCash: number; notes: string }) => void
+  1113→  onConfirm: () => void
+  1114→  shift: Shift | null
+  1115→}) {
+  1116→  if (!mode) return null
+  1117→
+  1118→  return (
+  1119→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1120→      <DialogContent>
+  1121→        <DialogHeader>
+  1122→          <DialogTitle>{mode === 'open' ? 'Vardiya Aç' : 'Vardiya Kapat'}</DialogTitle>
+  1123→          <DialogDescription>
+  1124→            {mode === 'open'
+  1125→              ? 'Kasa açılış nakitini girin.'
+  1126→              : 'Kasa kapanış nakitini girin. Sistem beklenen tutarı otomatik hesaplar.'}
+  1127→          </DialogDescription>
+  1128→        </DialogHeader>
+  1129→
+  1130→        <div className="space-y-3">
+  1131→          {mode === 'open' ? (
+  1132→            <div>
+  1133→              <Label>Açılış Nakiti</Label>
+  1134→              <Input
+  1135→                type="number"
+  1136→                min="0"
+  1137→                value={form.openingCash || ''}
+  1138→                onChange={(e) => setForm({ ...form, openingCash: Number(e.target.value) || 0 })}
+  1139→                className="text-lg font-semibold mt-1"
+  1140→                placeholder="0"
+  1141→                autoFocus
+  1142→              />
+  1143→            </div>
+  1144→          ) : (
+  1145→            <>
+  1146→              {shift && (
+  1147→                <div className="p-3 rounded-lg bg-muted space-y-1 text-sm">
+  1148→                  <div className="flex justify-between">
+  1149→                    <span className="text-muted-foreground">Açılış Nakiti</span>
+  1150→                    <span>{formatCurrency(shift.openingCash)}</span>
+  1151→                  </div>
+  1152→                  <div className="flex justify-between">
+  1153→                    <span className="text-muted-foreground">Vardiya No</span>
+  1154→                    <span className="font-medium">{shift.number}</span>
+  1155→                  </div>
+  1156→                  <div className="flex justify-between">
+  1157→                    <span className="text-muted-foreground">Açılış</span>
+  1158→                    <span>{formatDateTime(shift.openingTime)}</span>
+  1159→                  </div>
+  1160→                </div>
+  1161→              )}
+  1162→              <div>
+  1163→                <Label>Kapanış Nakiti (Kasadaki)</Label>
+  1164→                <Input
+  1165→                  type="number"
+  1166→                  min="0"
+  1167→                  value={form.closingCash || ''}
+  1168→                  onChange={(e) => setForm({ ...form, closingCash: Number(e.target.value) || 0 })}
+  1169→                  className="text-lg font-semibold mt-1"
+  1170→                  placeholder="0"
+  1171→                  autoFocus
+  1172→                />
+  1173→              </div>
+  1174→              <p className="text-xs text-muted-foreground">
+  1175→                Beklenen nakit tutarı, satışlar ve iadeler hesaplandıktan sonra Z raporunda gösterilecektir.
+  1176→              </p>
+  1177→            </>
+  1178→          )}
+  1179→          <div>
+  1180→            <Label>Notlar</Label>
+  1181→            <Input
+  1182→              value={form.notes}
+  1183→              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+  1184→              placeholder="Opsiyonel not..."
+  1185→              className="mt-1"
+  1186→            />
+  1187→          </div>
+  1188→        </div>
+  1189→
+  1190→        <DialogFooter>
+  1191→          <Button variant="outline" onClick={() => onOpenChange(false)}>İptal</Button>
+  1192→          <Button onClick={onConfirm} className="bg-emerald-600 hover:bg-emerald-700">
+  1193→            {mode === 'open' ? 'Vardiyayı Aç' : 'Vardiyayı Kapat'}
+  1194→          </Button>
+  1195→        </DialogFooter>
+  1196→      </DialogContent>
+  1197→    </Dialog>
+  1198→  )
+  1199→}
+  1200→
+  1201→// ============================================================
+  1202→// Z Raporu dialog
+  1203→// ============================================================
+  1204→
+  1205→function ZReportDialog({
+  1206→  open, onOpenChange, shift, marketName,
+  1207→}: {
+  1208→  open: boolean
+  1209→  onOpenChange: (v: boolean) => void
+  1210→  shift: Shift | null
+  1211→  marketName: string
+  1212→}) {
+  1213→  if (!shift) return null
+  1214→
+  1215→  const diff = shift.difference ?? 0
+  1216→  const diffColor = diff === 0 ? 'text-emerald-600' : diff > 0 ? 'text-amber-600' : 'text-red-600'
+  1217→
+  1218→  return (
+  1219→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1220→      <DialogContent className="sm:max-w-sm">
+  1221→        <DialogHeader>
+  1222→          <DialogTitle className="flex items-center gap-2">
+  1223→            <FileText className="w-5 h-5 text-amber-600" />
+  1224→            Z Raporu — {shift.number}
+  1225→          </DialogTitle>
+  1226→          <DialogDescription>Vardiya kapanış raporu</DialogDescription>
+  1227→        </DialogHeader>
+  1228→
+  1229→        <div className="print-content">
+  1230→          <div className="font-mono text-xs space-y-2 p-4 bg-white dark:bg-background border rounded-lg">
+  1231→            <div className="text-center">
+  1232→              <div className="font-bold text-sm">{marketName}</div>
+  1233→              <div className="text-[10px]">Z RAPORU</div>
+  1234→              <div className="text-[10px] text-muted-foreground">{formatDateTime(shift.closingTime ?? new Date())}</div>
+  1235→              <div className="text-[10px]">Vardiya: {shift.number}</div>
+  1236→            </div>
+  1237→            <div className="border-t border-dashed pt-2 space-y-0.5">
+  1238→              <div className="flex justify-between">
+  1239→                <span>Açılış Nakiti</span>
+  1240→                <span>{formatCurrency(shift.openingCash)}</span>
+  1241→              </div>
+  1242→              <div className="flex justify-between">
+  1243→                <span>Beklenen Nakit</span>
+  1244→                <span>{formatCurrency(shift.expectedCash ?? 0)}</span>
+  1245→              </div>
+  1246→              <div className="flex justify-between">
+  1247→                <span>Fişli Kapanış</span>
+  1248→                <span>{formatCurrency(shift.closingCash ?? 0)}</span>
+  1249→              </div>
+  1250→              <div className={cn('flex justify-between font-bold border-t pt-1', diffColor)}>
+  1251→                <span>NAKİT FARK</span>
+  1252→                <span>{diff > 0 ? '+' : ''}{formatCurrency(diff)}</span>
+  1253→              </div>
+  1254→            </div>
+  1255→            <div className="text-center text-[10px] pt-2 border-t border-dashed">
+  1256→              <p>Vardiya kapatıldı</p>
+  1257→            </div>
+  1258→          </div>
+  1259→        </div>
+  1260→
+  1261→        <DialogFooter className="print:hidden">
+  1262→          <Button variant="outline" onClick={() => onOpenChange(false)}>Kapat</Button>
+  1263→          <Button onClick={() => window.print()} className="bg-amber-600 hover:bg-amber-700">
+  1264→            <Printer className="w-4 h-4 mr-2" />
+  1265→            Yazdır
+  1266→          </Button>
+  1267→        </DialogFooter>
+  1268→      </DialogContent>
+  1269→    </Dialog>
+  1270→  )
+  1271→}
+  1272→

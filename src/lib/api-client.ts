@@ -29,7 +29,10 @@ function getHeaders(): HeadersInit {
 // arka plan poll'ları sonsuz 401 döngüsüne girer ve kullanıcı bozuk bir
 // arayüzde takılır. Giriş ekranındaki yanlış şifre denemesi tetiklemez
 // (orada kullanıcı zaten null'dur).
-function handleAuthFailure(status: number): void {
+// SAKİN PORTALI istisnası: portal kendi oturumunu (x-resident-session)
+// kullanır — 401 "şifre yanlış" olabilir ve yönetici oturumunu düşürmemelidir.
+function handleAuthFailure(status: number, opts?: { skipAuthHandling?: boolean }): void {
+  if (opts?.skipAuthHandling) return
   if (status !== 401) return
   const s = useAppStore.getState()
   if (s.user) s.logout()
@@ -37,7 +40,7 @@ function handleAuthFailure(status: number): void {
 
 // Opsiyonel `init.headers` ile ek/özel başlık verilerek kullanılabilir
 // (ör. sakın portalı x-resident-session header'ı — getHeaders ile birleştirilir)
-export async function apiGet<T>(path: string, opts?: { headers?: HeadersInit }): Promise<T> {
+export async function apiGet<T>(path: string, opts?: { headers?: HeadersInit; skipAuthHandling?: boolean }): Promise<T> {
   const merged = {
     ...(getHeaders() as Record<string, string>),
     ...((opts?.headers ?? {}) as Record<string, string>),
@@ -45,21 +48,25 @@ export async function apiGet<T>(path: string, opts?: { headers?: HeadersInit }):
   const res = await fetch(path, { headers: merged })
   const data = await res.json()
   if (!res.ok) {
-    handleAuthFailure(res.status)
+    handleAuthFailure(res.status, opts)
     throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
   }
   return data as T
 }
 
-export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+export async function apiPost<T>(path: string, body?: unknown, opts?: { headers?: HeadersInit; skipAuthHandling?: boolean }): Promise<T> {
+  const merged = {
+    ...(getHeaders() as Record<string, string>),
+    ...((opts?.headers ?? {}) as Record<string, string>),
+  }
   const res = await fetch(path, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: merged,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   const data = await res.json()
   if (!res.ok) {
-    handleAuthFailure(res.status)
+    handleAuthFailure(res.status, opts)
     throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
   }
   return data as T

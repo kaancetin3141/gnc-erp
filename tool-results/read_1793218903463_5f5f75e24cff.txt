@@ -1,0 +1,642 @@
+     1→'use client'
+     2→
+     3→// ============================================================
+     4→// MARKET — VERESİYE DEFTERİ (cari hesap)
+     5→// — Müşteri listesi + bakiye + yaşlandırma (0-30/31-60/61-90/90+)
+     6→// — Cari hareket defteri (borç/ödeme) + POS entegrasyonu
+     7→// — WhatsApp hatırlatma + kredi limiti takibi
+     8→// ============================================================
+     9→
+    10→import { useMemo, useState } from 'react'
+    11→import { useQuery, useQueryClient } from '@tanstack/react-query'
+    12→import { apiGet, apiPost, apiPatch, apiDelete, downloadFile } from '@/lib/api-client'
+    13→import { Card, CardContent } from '@/components/ui/card'
+    14→import { Button } from '@/components/ui/button'
+    15→import { Input } from '@/components/ui/input'
+    16→import { Label } from '@/components/ui/label'
+    17→import { Badge } from '@/components/ui/badge'
+    18→import { Skeleton } from '@/components/ui/skeleton'
+    19→import { Textarea } from '@/components/ui/textarea'
+    20→import {
+    21→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+    22→} from '@/components/ui/dialog'
+    23→import {
+    24→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    25→} from '@/components/ui/select'
+    26→import {
+    27→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    28→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    29→} from '@/components/ui/alert-dialog'
+    30→import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+    31→import { toast } from 'sonner'
+    32→import { cn } from '@/lib/utils'
+    33→import { formatCurrency, formatDateTime, whatsappLink } from '@/lib/format'
+    34→import {
+    35→  NotebookPen, Plus, Search, HandCoins, Receipt, Trash2, Phone,
+    36→  MessageCircle, AlertTriangle, ArrowDownCircle, ArrowUpCircle, UserRound, Wallet,
+    37→  FileDown, Loader2,
+    38→} from 'lucide-react'
+    39→
+    40→// ============================================================
+    41→// Tipler
+    42→// ============================================================
+    43→
+    44→interface CreditCustomerRow {
+    45→  id: string
+    46→  name: string
+    47→  phone: string | null
+    48→  note: string | null
+    49→  creditLimit: number | null
+    50→  isActive: boolean
+    51→  createdAt: string
+    52→  entryCount: number
+    53→  balance: number
+    54→  lastEntryAt: string | null
+    55→  lastDebtAt: string | null
+    56→  overdueAmount: number
+    57→  oldestOpenDays: number | null
+    58→}
+    59→
+    60→interface CreditResponse {
+    61→  items: CreditCustomerRow[]
+    62→  summary: {
+    63→    customerCount: number
+    64→    debtorCount: number
+    65→    totalReceivable: number
+    66→    totalOverdue: number
+    67→    aging: { d0_30: number; d31_60: number; d61_90: number; d90p: number }
+    68→  }
+    69→  topDebtors: CreditCustomerRow[]
+    70→}
+    71→
+    72→interface CreditEntryRow {
+    73→  id: string
+    74→  type: 'borc' | 'odeme'
+    75→  amount: number
+    76→  method: string | null
+    77→  refSaleNumber: string | null
+    78→  dueDate: string | null
+    79→  note: string | null
+    80→  createdAt: string
+    81→}
+    82→
+    83→interface CustomerDetail extends Record<string, unknown> {
+    84→  id: string
+    85→  name: string
+    86→  phone: string | null
+    87→  note: string | null
+    88→  creditLimit: number | null
+    89→  isActive: boolean
+    90→  balance: number
+    91→  entries: CreditEntryRow[]
+    92→}
+    93→
+    94→const METHOD_LABELS: Record<string, string> = {
+    95→  nakit: 'Nakit', kart: 'Kart', havale: 'Havale/EFT',
+    96→}
+    97→
+    98→function agingLabel(days: number | null): { text: string; cls: string } {
+    99→  if (days == null) return { text: 'Yok', cls: 'text-slate-500 bg-slate-100 dark:bg-slate-900/50' }
+   100→  if (days <= 30) return { text: `${days} gün`, cls: 'text-emerald-700 bg-emerald-100 dark:bg-emerald-950/40' }
+   101→  if (days <= 60) return { text: `${days} gün`, cls: 'text-amber-700 bg-amber-100 dark:bg-amber-950/40' }
+   102→  if (days <= 90) return { text: `${days} gün`, cls: 'text-orange-700 bg-orange-100 dark:bg-orange-950/40' }
+   103→  return { text: `${days} gün`, cls: 'text-red-700 bg-red-100 dark:bg-red-950/40' }
+   104→}
+   105→
+   106→// ============================================================
+   107→// Ana bileşen
+   108→// ============================================================
+   109→
+   110→export function MarketCredit({ marketId }: { marketId: string }) {
+   111→  const qc = useQueryClient()
+   112→  const [search, setSearch] = useState('')
+   113→  const [formOpen, setFormOpen] = useState(false)
+   114→  const [detailId, setDetailId] = useState<string | null>(null)
+   115→  const [editTarget, setEditTarget] = useState<{ id: string; name: string; phone: string | null; note: string | null; creditLimit: number | null } | null>(null)
+   116→  const [deleteTarget, setDeleteTarget] = useState<CreditCustomerRow | null>(null)
+   117→
+   118→  const { data, isLoading } = useQuery<CreditResponse>({
+   119→    queryKey: ['market-credit', marketId],
+   120→    queryFn: () => apiGet(`/api/market/${marketId}/credit`),
+   121→  })
+   122→
+   123→  const customers = data?.items ?? []
+   124→  const filtered = useMemo(() => {
+   125→    if (!search.trim()) return customers
+   126→    const q = search.toLowerCase()
+   127→    return customers.filter((c) => c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q))
+   128→  }, [customers, search])
+   129→
+   130→  const summary = data?.summary
+   131→
+   132→  const confirmDelete = async () => {
+   133→    if (!deleteTarget) return
+   134→    try {
+   135→      await apiDelete(`/api/market/${marketId}/credit/${deleteTarget.id}`)
+   136→      toast.success('Veresiye müşterisi silindi')
+   137→      setDeleteTarget(null)
+   138→      void qc.invalidateQueries({ queryKey: ['market-credit'] })
+   139→    } catch (e) {
+   140→      toast.error(e instanceof Error ? e.message : 'Silinemedi')
+   141→    }
+   142→  }
+   143→
+   144→  return (
+   145→    <div className="space-y-4">
+   146→      {/* Özet kartları */}
+   147→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+   148→        <Card className="border-0 shadow-sm">
+   149→          <CardContent className="p-4">
+   150→            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+   151→              <NotebookPen className="w-3.5 h-3.5 text-violet-600" /> Veresiye Müşterisi
+   152→            </div>
+   153→            <div className="text-2xl font-bold">{summary?.customerCount ?? '—'}</div>
+   154→            <div className="text-[11px] text-muted-foreground mt-0.5">{summary?.debtorCount ?? 0} borçlu</div>
+   155→          </CardContent>
+   156→        </Card>
+   157→        <Card className="border-0 shadow-sm">
+   158→          <CardContent className="p-4">
+   159→            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+   160→              <Wallet className="w-3.5 h-3.5 text-amber-600" /> Toplam Alacak
+   161→            </div>
+   162→            <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+   163→              {summary ? formatCurrency(summary.totalReceivable) : '—'}
+   164→            </div>
+   165→          </CardContent>
+   166→        </Card>
+   167→        <Card className="border-0 shadow-sm">
+   168→          <CardContent className="p-4">
+   169→            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+   170→              <AlertTriangle className="w-3.5 h-3.5 text-red-600" /> Vadesi Geçen
+   171→            </div>
+   172→            <div className="text-2xl font-bold text-red-700 dark:text-red-400">
+   173→              {summary ? formatCurrency(summary.totalOverdue) : '—'}
+   174→            </div>
+   175→          </CardContent>
+   176→        </Card>
+   177→        <Card className="border-0 shadow-sm">
+   178→          <CardContent className="p-4">
+   179→            <div className="text-xs text-muted-foreground mb-1.5">Yaşlandırma</div>
+   180→            <div className="grid grid-cols-2 gap-1 text-[11px]">
+   181→              <span className="flex justify-between rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+   182→                <span>0-30</span><span className="font-semibold tabular-nums">{summary ? formatCurrency(summary.aging.d0_30) : '—'}</span>
+   183→              </span>
+   184→              <span className="flex justify-between rounded bg-amber-100 px-1.5 py-0.5 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+   185→                <span>31-60</span><span className="font-semibold tabular-nums">{summary ? formatCurrency(summary.aging.d31_60) : '—'}</span>
+   186→              </span>
+   187→              <span className="flex justify-between rounded bg-orange-100 px-1.5 py-0.5 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300">
+   188→                <span>61-90</span><span className="font-semibold tabular-nums">{summary ? formatCurrency(summary.aging.d61_90) : '—'}</span>
+   189→              </span>
+   190→              <span className="flex justify-between rounded bg-red-100 px-1.5 py-0.5 text-red-800 dark:bg-red-950/40 dark:text-red-300">
+   191→                <span>90+</span><span className="font-semibold tabular-nums">{summary ? formatCurrency(summary.aging.d90p) : '—'}</span>
+   192→              </span>
+   193→            </div>
+   194→          </CardContent>
+   195→        </Card>
+   196→      </div>
+   197→
+   198→      {/* Arama + yeni */}
+   199→      <div className="flex flex-wrap items-center gap-2">
+   200→        <div className="relative flex-1 min-w-[200px] max-w-sm">
+   201→          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+   202→          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="İsim veya telefon ara..." className="pl-9" aria-label="Müşteri ara" />
+   203→        </div>
+   204→        <div className="flex-1" />
+   205→        <Button size="sm" className="h-9 bg-violet-600 hover:bg-violet-700 text-white" onClick={() => setFormOpen(true)}>
+   206→          <Plus className="w-4 h-4 mr-1.5" /> Veresiye Müşterisi Ekle
+   207→        </Button>
+   208→      </div>
+   209→
+   210→      {/* Müşteri listesi */}
+   211→      {isLoading ? (
+   212→        <div className="space-y-2">
+   213→          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
+   214→        </div>
+   215→      ) : filtered.length === 0 ? (
+   216→        <Card className="border-dashed">
+   217→          <CardContent className="py-12 text-center">
+   218→            <NotebookPen className="w-12 h-12 mx-auto mb-3 text-muted-foreground/25" />
+   219→            <p className="font-medium text-sm">{search ? 'Aramaya uygun müşteri yok' : 'Veresiye müşterisi yok'}</p>
+   220→            <p className="text-xs text-muted-foreground mt-1">
+   221→              Sık gelen müşterilerinize borç defteri tutmak için müşteri ekleyin; POS&apos;ta &quot;Veresiye&quot; ödemesiyle bağlanır
+   222→            </p>
+   223→          </CardContent>
+   224→        </Card>
+   225→      ) : (
+   226→        <div className="grid gap-2 sm:grid-cols-2">
+   227→          {filtered.map((c) => {
+   228→            const age = agingLabel(c.oldestOpenDays)
+   229→            const overLimit = c.creditLimit != null && c.balance > c.creditLimit
+   230→            const nearLimit = c.creditLimit != null && c.balance > c.creditLimit * 0.8 && !overLimit
+   231→            return (
+   232→              <Card
+   233→                key={c.id}
+   234→                className={cn(
+   235→                  'border shadow-sm hover:shadow-md transition-all cursor-pointer',
+   236→                  c.balance > 0 ? 'border-amber-200/70 dark:border-amber-900/50' : c.balance < 0 ? 'border-emerald-200/70 dark:border-emerald-900/50' : '',
+   237→                  overLimit && 'border-red-400 dark:border-red-700',
+   238→                  !c.isActive && 'opacity-60',
+   239→                )}
+   240→                onClick={() => setDetailId(c.id)}
+   241→                role="button"
+   242→                tabIndex={0}
+   243→                onKeyDown={(e) => { if (e.key === 'Enter') setDetailId(c.id) }}
+   244→              >
+   245→                <CardContent className="p-4">
+   246→                  <div className="flex items-start justify-between gap-2">
+   247→                    <div className="flex items-center gap-2.5 min-w-0">
+   248→                      <div className={cn('flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold shrink-0',
+   249→                        c.balance > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300')}>
+   250→                        {c.name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()}
+   251→                      </div>
+   252→                      <div className="min-w-0">
+   253→                        <div className="flex items-center gap-1.5">
+   254→                          <span className="font-medium text-sm truncate">{c.name}</span>
+   255→                          {!c.isActive && <Badge variant="outline" className="text-[9px] px-1">Pasif</Badge>}
+   256→                        </div>
+   257→                        <div className="text-[11px] text-muted-foreground">
+   258→                          {c.entryCount} hareket{c.phone ? ` · ${c.phone}` : ''}
+   259→                        </div>
+   260→                      </div>
+   261→                    </div>
+   262→                    <div className="text-right shrink-0">
+   263→                      <div className={cn('text-lg font-bold tabular-nums leading-none',
+   264→                        c.balance > 0 ? 'text-amber-700 dark:text-amber-400' : c.balance < 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500')}>
+   265→                        {formatCurrency(c.balance)}
+   266→                      </div>
+   267→                      <div className="text-[10px] text-muted-foreground mt-0.5">{c.balance > 0 ? 'borçlu' : c.balance < 0 ? 'alacaklı' : 'bakiye sıfır'}</div>
+   268→                    </div>
+   269→                  </div>
+   270→                  {c.balance > 0 && (
+   271→                    <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+   272→                      <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', age.cls)}>en eski borç: {age.text}</span>
+   273→                      {c.overdueAmount > 0 && (
+   274→                        <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-red-100 text-red-700 dark:bg-red-950/40">
+   275→                          vadesi geçmiş: {formatCurrency(c.overdueAmount)}
+   276→                        </span>
+   277→                      )}
+   278→                      {c.creditLimit != null && (
+   279→                        <span className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', overLimit ? 'bg-red-100 text-red-700 dark:bg-red-950/40' : nearLimit ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40' : 'bg-slate-100 text-slate-600 dark:bg-slate-900/50')}>
+   280→                          limit: {formatCurrency(c.creditLimit)}
+   281→                          {overLimit && ' ⚠ aşıldı'}
+   282→                        </span>
+   283→                      )}
+   284→                    </div>
+   285→                  )}
+   286→                </CardContent>
+   287→              </Card>
+   288→            )
+   289→          })}
+   290→        </div>
+   291→      )}
+   292→
+   293→      {/* Yeni müşteri dialogu */}
+   294→      <CustomerFormDialog
+   295→        open={formOpen}
+   296→        onOpenChange={(v) => { setFormOpen(v); if (!v) setEditTarget(null) }}
+   297→        marketId={marketId}
+   298→        editCustomer={editTarget}
+   299→      />
+   300→
+   301→      {/* Cari detay sheet */}
+   302→      {detailId && (
+   303→        <CustomerDetailSheet
+   304→          marketId={marketId}
+   305→          customerId={detailId}
+   306→          onClose={() => setDetailId(null)}
+   307→          onEdit={(info) => { setDetailId(null); setEditTarget(info); setFormOpen(true) }}
+   308→        />
+   309→      )}
+   310→
+   311→      {/* Silme onayı */}
+   312→      <AlertDialog open={deleteTarget != null} onOpenChange={(v) => { if (!v) setDeleteTarget(null) }}>
+   313→        <AlertDialogContent>
+   314→          <AlertDialogHeader>
+   315→            <AlertDialogTitle>Veresiye Müşterisini Sil</AlertDialogTitle>
+   316→            <AlertDialogDescription>
+   317→              {deleteTarget && (
+   318→                <><span className="font-medium">{deleteTarget.name}</span> silinecek. Bakiye sıfır değilse silme reddedilir.</>
+   319→              )}
+   320→            </AlertDialogDescription>
+   321→          </AlertDialogHeader>
+   322→          <AlertDialogFooter>
+   323→            <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+   324→            <AlertDialogAction onClick={(e) => { e.preventDefault(); void confirmDelete() }} className="bg-red-600 hover:bg-red-700 text-white">
+   325→              <Trash2 className="w-4 h-4 mr-1.5" /> Sil
+   326→            </AlertDialogAction>
+   327→          </AlertDialogFooter>
+   328→        </AlertDialogContent>
+   329→      </AlertDialog>
+   330→    </div>
+   331→  )
+   332→}
+   333→
+   334→// ============================================================
+   335→// Müşteri ekleme formu
+   336→// ============================================================
+   337→
+   338→function CustomerFormDialog({ open, onOpenChange, marketId, editCustomer }: {
+   339→  open: boolean; onOpenChange: (v: boolean) => void; marketId: string
+   340→  editCustomer: { id: string; name: string; phone: string | null; note: string | null; creditLimit: number | null } | null
+   341→}) {
+   342→  const qc = useQueryClient()
+   343→  const [saving, setSaving] = useState(false)
+   344→  const [form, setForm] = useState({ name: '', phone: '', note: '', creditLimit: '' })
+   345→  const [initializedFor, setInitializedFor] = useState<string | null>(null)
+   346→
+   347→  // Edit moduna geçildiğinde formu doldur
+   348→  if (open && editCustomer && initializedFor !== editCustomer.id) {
+   349→    setForm({
+   350→      name: editCustomer.name,
+   351→      phone: editCustomer.phone ?? '',
+   352→      note: editCustomer.note ?? '',
+   353→      creditLimit: editCustomer.creditLimit != null ? String(editCustomer.creditLimit) : '',
+   354→    })
+   355→    setInitializedFor(editCustomer.id)
+   356→  }
+   357→  if (!open && initializedFor) setInitializedFor(null)
+   358→
+   359→  const handleSave = async () => {
+   360→    if (!form.name.trim()) { toast.error('Müşteri adı gerekli'); return }
+   361→    setSaving(true)
+   362→    try {
+   363→      if (editCustomer) {
+   364→        await apiPatch(`/api/market/${marketId}/credit/${editCustomer.id}`, {
+   365→          name: form.name,
+   366→          phone: form.phone || null,
+   367→          note: form.note || null,
+   368→          creditLimit: form.creditLimit ? Number(form.creditLimit) : null,
+   369→        })
+   370→        toast.success('Müşteri güncellendi')
+   371→      } else {
+   372→        await apiPost(`/api/market/${marketId}/credit`, {
+   373→          name: form.name,
+   374→          phone: form.phone || undefined,
+   375→          note: form.note || undefined,
+   376→          creditLimit: form.creditLimit ? Number(form.creditLimit) : undefined,
+   377→        })
+   378→        toast.success('Veresiye müşterisi eklendi')
+   379→      }
+   380→      void qc.invalidateQueries({ queryKey: ['market-credit'] })
+   381→      void qc.invalidateQueries({ queryKey: ['market-credit-detail'] })
+   382→      onOpenChange(false)
+   383→      setForm({ name: '', phone: '', note: '', creditLimit: '' })
+   384→    } catch (e) {
+   385→      toast.error(e instanceof Error ? e.message : 'Kaydedilemedi')
+   386→    } finally {
+   387→      setSaving(false)
+   388→    }
+   389→  }
+   390→
+   391→  return (
+   392→    <Dialog open={open} onOpenChange={onOpenChange}>
+   393→      <DialogContent className="sm:max-w-md">
+   394→        <DialogHeader>
+   395→          <DialogTitle>{editCustomer ? 'Müşteriyi Düzenle' : 'Veresiye Müşterisi Ekle'}</DialogTitle>
+   396→          <DialogDescription>{editCustomer ? 'Bilgileri güncelleyin' : 'Borç defterine yeni kişi kaydet — POS&apos;ta veresiye ödemesi bu kişiye bağlanır'}</DialogDescription>
+   397→        </DialogHeader>
+   398→        <div className="space-y-3">
+   399→          <div>
+   400→            <Label className="text-xs">Ad Soyad / İşletme *</Label>
+   401→            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Örn: Kahveci Mehmet" className="mt-1" />
+   402→          </div>
+   403→          <div>
+   404→            <Label className="text-xs">Telefon (hatırlatma için)</Label>
+   405→            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="0532..." className="mt-1" />
+   406→          </div>
+   407→          <div className="grid grid-cols-2 gap-3">
+   408→            <div>
+   409→              <Label className="text-xs">Kredi Limiti (₺)</Label>
+   410→              <Input type="number" min={0} value={form.creditLimit} onChange={(e) => setForm({ ...form, creditLimit: e.target.value })} placeholder="Boş = limitsiz" className="mt-1" />
+   411→            </div>
+   412→            <div>
+   413→              <Label className="text-xs">Not</Label>
+   414→              <Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="Mahalle, iş yeri..." className="mt-1" />
+   415→            </div>
+   416→          </div>
+   417→        </div>
+   418→        <DialogFooter>
+   419→          <Button variant="outline" onClick={() => onOpenChange(false)}>İptal</Button>
+   420→          <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={handleSave} disabled={saving || !form.name.trim()}>
+   421→            {saving ? 'Kaydediliyor...' : editCustomer ? 'Güncelle' : 'Ekle'}
+   422→          </Button>
+   423→        </DialogFooter>
+   424→      </DialogContent>
+   425→    </Dialog>
+   426→  )
+   427→}
+   428→
+   429→// ============================================================
+   430→// Müşteri cari detay (sheet) — hareket defteri + borç/ödeme girişi
+   431→// ============================================================
+   432→
+   433→function CustomerDetailSheet({ marketId, customerId, onClose, onEdit }: {
+   434→  marketId: string; customerId: string; onClose: () => void
+   435→  onEdit: (info: { id: string; name: string; phone: string | null; note: string | null; creditLimit: number | null }) => void
+   436→}) {
+   437→  const qc = useQueryClient()
+   438→  const [entryType, setEntryType] = useState<'odeme' | 'borc'>('odeme')
+   439→  const [amount, setAmount] = useState('')
+   440→  const [method, setMethod] = useState('nakit')
+   441→  const [dueDate, setDueDate] = useState('')
+   442→  const [note, setNote] = useState('')
+   443→  const [saving, setSaving] = useState(false)
+   444→
+   445→  const { data: detail, isLoading } = useQuery<CustomerDetail>({
+   446→    queryKey: ['market-credit-detail', marketId, customerId],
+   447→    queryFn: () => apiGet(`/api/market/${marketId}/credit/${customerId}`),
+   448→  })
+   449→
+   450→  const invalidate = () => {
+   451→    void qc.invalidateQueries({ queryKey: ['market-credit-detail'] })
+   452→    void qc.invalidateQueries({ queryKey: ['market-credit'] })
+   453→  }
+   454→
+   455→  const addEntry = async () => {
+   456→    const amt = Number(amount)
+   457→    if (!amt || amt <= 0) { toast.error('Tutar girin'); return }
+   458→    if (entryType === 'borc' && dueDate && isNaN(new Date(dueDate).getTime())) { toast.error('Geçersiz vade tarihi'); return }
+   459→    setSaving(true)
+   460→    try {
+   461→      await apiPost(`/api/market/${marketId}/credit/${customerId}`, {
+   462→        type: entryType,
+   463→        amount: amt,
+   464→        method: entryType === 'odeme' ? method : undefined,
+   465→        dueDate: entryType === 'borc' && dueDate ? new Date(dueDate).toISOString() : undefined,
+   466→        note: note || undefined,
+   467→      })
+   468→      toast.success(entryType === 'odeme' ? 'Ödeme kaydedildi' : 'Borç kaydedildi')
+   469→      setAmount(''); setNote(''); setDueDate('')
+   470→      invalidate()
+   471→    } catch (e) {
+   472→      toast.error(e instanceof Error ? e.message : 'Kaydedilemedi')
+   473→    } finally {
+   474→      setSaving(false)
+   475→    }
+   476→  }
+   477→
+   478→  const toggleActive = async () => {
+   479→    if (!detail) return
+   480→    try {
+   481→      await apiPatch(`/api/market/${marketId}/credit/${customerId}`, { isActive: !detail.isActive })
+   482→      toast.success(detail.isActive ? 'Müşteri pasifleştirildi' : 'Müşteri aktifleştirildi')
+   483→      invalidate()
+   484→    } catch (e) {
+   485→      toast.error(e instanceof Error ? e.message : 'Güncellenemedi')
+   486→    }
+   487→  }
+   488→
+   489→  // GERÇEK PDF — cari ekstresini sunucuda pdf-lib ile üretip indir
+   490→  const [pdfBusy, setPdfBusy] = useState(false)
+   491→  const downloadEkstre = async () => {
+   492→    setPdfBusy(true)
+   493→    try {
+   494→      const name = ((detail as { name?: string } | undefined)?.name ?? 'musteri').replace(/[^\w.-]+/g, '-')
+   495→      await downloadFile(`/api/market/${marketId}/credit/${customerId}/pdf`, `Veresiye-Ekstre-${name}.pdf`)
+   496→      toast.success('Cari ekstresi PDF indirildi', { description: 'Tüm borç/ödeme hareketleri + bakiye' })
+   497→    } catch (e) {
+   498→      toast.error(e instanceof Error ? e.message : 'PDF indirilemedi')
+   499→    } finally {
+   500→      setPdfBusy(false)
+   501→    }
+   502→  }
+   503→
+   504→  const detailCustomer = detail as (CustomerDetail & { name?: string; phone?: string | null; note?: string | null; creditLimit?: number | null; isActive?: boolean; balance?: number }) | undefined
+   505→
+   506→  const reminderText = detailCustomer
+   507→    ? `Merhaba ${detailCustomer.name}, defterimize göre ${formatCurrency(detailCustomer.balance ?? 0)} borcunuz bulunmaktadır. Uygun olduğunda geçirebilirseniz memnun oluruz. Teşekkürler 🙏`
+   508→    : ''
+   509→
+   510→  return (
+   511→    <Sheet open onOpenChange={(v) => { if (!v) onClose() }}>
+   512→      <SheetContent className="w-full sm:max-w-lg overflow-y-auto custom-scroll p-0">
+   513→        <SheetHeader className="p-4 pb-2">
+   514→          <SheetTitle className="flex items-center gap-2">
+   515→            <UserRound className="w-5 h-5 text-violet-600" />
+   516→            {isLoading ? 'Yükleniyor...' : detailCustomer?.name}
+   517→          </SheetTitle>
+   518→          {detailCustomer && (
+   519→            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mt-1">
+   520→              <span className="font-semibold text-base text-foreground">
+   521→                Bakiye: <span className={cn((detailCustomer.balance ?? 0) > 0 ? 'text-amber-700 dark:text-amber-400' : (detailCustomer.balance ?? 0) < 0 ? 'text-emerald-700 dark:text-emerald-400' : '')}>
+   522→                  {formatCurrency(detailCustomer.balance ?? 0)}
+   523→                </span>
+   524→              </span>
+   525→              {detailCustomer.creditLimit != null && <span>· Limit {formatCurrency(detailCustomer.creditLimit)}</span>}
+   526→              {detailCustomer.phone && (
+   527→                <>
+   528→                  <span>· <a className="underline" href={`tel:${detailCustomer.phone}`}>{detailCustomer.phone}</a></span>
+   529→                  <a href={whatsappLink(detailCustomer.phone, reminderText)} target="_blank" rel="noopener noreferrer"
+   530→                    className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 hover:underline">
+   531→                    <MessageCircle className="w-3.5 h-3.5" /> WhatsApp hatırlat
+   532→                  </a>
+   533→                </>
+   534→              )}
+   535→              <button className="inline-flex items-center gap-1 underline hover:text-foreground disabled:opacity-50" onClick={() => void downloadEkstre()} disabled={pdfBusy || isLoading}>
+   536→                {pdfBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />} Ekstre PDF
+   537→              </button>
+   538→              <button className="underline hover:text-foreground" onClick={() => onEdit({ id: customerId, name: detailCustomer.name ?? '', phone: detailCustomer.phone ?? null, note: detailCustomer.note ?? null, creditLimit: detailCustomer.creditLimit ?? null })}>düzenle</button>
+   539→              <button className={cn('underline hover:text-foreground', detailCustomer.isActive && 'text-red-600')} onClick={() => void toggleActive()}>
+   540→                {detailCustomer.isActive ? 'pasifleştir' : 'aktifleştir'}
+   541→              </button>
+   542→            </div>
+   543→          )}
+   544→        </SheetHeader>
+   545→
+   546→        <div className="px-4 space-y-4 pb-8">
+   547→          {/* Hızlı hareket girişi */}
+   548→          <Card className="border shadow-sm">
+   549→            <CardContent className="p-3 space-y-2.5">
+   550→              <div className="flex gap-1.5">
+   551→                <Button size="sm" variant={entryType === 'odeme' ? 'default' : 'outline'}
+   552→                  className={cn('flex-1 h-9', entryType === 'odeme' && 'bg-emerald-600 hover:bg-emerald-700 text-white')}
+   553→                  onClick={() => setEntryType('odeme')}>
+   554→                  <ArrowDownCircle className="w-4 h-4 mr-1.5" /> Ödeme Aldı
+   555→                </Button>
+   556→                <Button size="sm" variant={entryType === 'borc' ? 'default' : 'outline'}
+   557→                  className={cn('flex-1 h-9', entryType === 'borc' && 'bg-amber-600 hover:bg-amber-700 text-white')}
+   558→                  onClick={() => setEntryType('borc')}>
+   559→                  <ArrowUpCircle className="w-4 h-4 mr-1.5" /> Borç Yaz
+   560→                </Button>
+   561→              </div>
+   562→              <div className="grid grid-cols-2 gap-2">
+   563→                <div>
+   564→                  <Label className="text-xs">Tutar (₺) *</Label>
+   565→                  <Input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1" placeholder="0" />
+   566→                </div>
+   567→                {entryType === 'odeme' ? (
+   568→                  <div>
+   569→                    <Label className="text-xs">Yöntem</Label>
+   570→                    <Select value={method} onValueChange={setMethod}>
+   571→                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+   572→                      <SelectContent>
+   573→                        <SelectItem value="nakit">Nakit</SelectItem>
+   574→                        <SelectItem value="kart">Kart</SelectItem>
+   575→                        <SelectItem value="havale">Havale/EFT</SelectItem>
+   576→                      </SelectContent>
+   577→                    </Select>
+   578→                  </div>
+   579→                ) : (
+   580→                  <div>
+   581→                    <Label className="text-xs">Vade (opsiyonel)</Label>
+   582→                    <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1" />
+   583→                  </div>
+   584→                )}
+   585→              </div>
+   586→              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Not (opsiyonel)" className="h-9" />
+   587→              <Button className="w-full h-9 bg-violet-600 hover:bg-violet-700 text-white" onClick={() => void addEntry()} disabled={saving || !amount}>
+   588→                {saving ? 'Kaydediliyor...' : entryType === 'odeme' ? 'Ödemeyi Kaydet' : 'Borcu Kaydet'}
+   589→              </Button>
+   590→            </CardContent>
+   591→          </Card>
+   592→
+   593→          {/* Hareket defteri */}
+   594→          <div>
+   595→            <div className="text-sm font-medium mb-2 flex items-center gap-1.5">
+   596→              <Receipt className="w-4 h-4 text-violet-600" /> Hareket Defteri
+   597→            </div>
+   598→            {isLoading ? (
+   599→              <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}</div>
+   600→            ) : !detailCustomer?.entries?.length ? (
+   601→              <Card className="border-dashed"><CardContent className="py-6 text-center text-sm text-muted-foreground">Henüz hareket yok</CardContent></Card>
+   602→            ) : (
+   603→              <div className="space-y-1.5 max-h-80 overflow-y-auto custom-scroll pr-1">
+   604→                {detailCustomer.entries.map((e) => (
+   605→                  <div key={e.id} className={cn('flex items-center gap-2.5 rounded-lg border px-3 py-2',
+   606→                    e.type === 'borc' ? 'border-amber-200 bg-amber-50/50 dark:border-amber-900/60 dark:bg-amber-950/20' : 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/60 dark:bg-emerald-950/20')}>
+   607→                    {e.type === 'borc'
+   608→                      ? <ArrowUpCircle className="w-4 h-4 text-amber-600 shrink-0" />
+   609→                      : <ArrowDownCircle className="w-4 h-4 text-emerald-600 shrink-0" />}
+   610→                    <div className="flex-1 min-w-0">
+   611→                      <div className="flex items-center gap-1.5 text-xs font-medium">
+   612→                        {e.type === 'borc' ? 'Borç' : `Ödeme${e.method ? ` · ${METHOD_LABELS[e.method] ?? e.method}` : ''}`}
+   613→                        {e.refSaleNumber && (
+   614→                          <Badge variant="outline" className="text-[9px] px-1 py-0">POS {e.refSaleNumber}</Badge>
+   615→                        )}
+   616→                      </div>
+   617→                      <div className="text-[10px] text-muted-foreground">
+   618→                        {formatDateTime(e.createdAt)}
+   619→                        {e.dueDate && ` · vade ${formatDateTime(e.dueDate)}`}
+   620→                        {e.note && ` · ${e.note}`}
+   621→                      </div>
+   622→                    </div>
+   623→                    <span className={cn('text-sm font-bold tabular-nums shrink-0', e.type === 'borc' ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400')}>
+   624→                      {e.type === 'borc' ? '+' : '−'}{formatCurrency(e.amount)}
+   625→                    </span>
+   626→                  </div>
+   627→                ))}
+   628→              </div>
+   629→            )}
+   630→          </div>
+   631→
+   632→          {/* İpucu */}
+   633→          <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-[11px] text-muted-foreground">
+   634→            <HandCoins className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+   635→            POS&apos;ta ödeme adımında &quot;Veresiye&quot; seçilerek yapılan satışlar bu deftere otomatik borç olarak işlenir.
+   636→          </div>
+   637→        </div>
+   638→      </SheetContent>
+   639→    </Sheet>
+   640→  )
+   641→}
+   642→

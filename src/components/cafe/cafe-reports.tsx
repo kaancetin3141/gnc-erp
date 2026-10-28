@@ -77,9 +77,11 @@ export function CafeReports({ cafeId }: { cafeId: string }) {
       else types.delivery++
     }
 
-    // Hourly distribution
+    // Hourly distribution — yalnız ÖDENMİŞ siparişler (K14): grafik toplamı
+    // üstteki "Toplam Ciro" kartıyla tutarlı olur; iptal/açık siparişler
+    // ciroyu şişirmez.
     const hourly: Record<number, number> = {}
-    for (const o of orders) {
+    for (const o of odendi) {
       const h = new Date(o.createdAt).getHours()
       hourly[h] = (hourly[h] ?? 0) + o.total
     }
@@ -140,7 +142,7 @@ export function CafeReports({ cafeId }: { cafeId: string }) {
         />
         <StatCard
           icon={Users}
-          label="Masa / Paket / Gel-Al"
+          label="Masa / Gel-Al / Paket"
           value={`${stats.types.dine_in} / ${stats.types.takeaway} / ${stats.types.delivery}`}
           color="violet"
         />
@@ -240,7 +242,7 @@ export function CafeReports({ cafeId }: { cafeId: string }) {
                     </div>
                     <div className="text-[11px] text-muted-foreground mt-0.5">
                       {formatDateTime(o.createdAt)}
-                      {o.table ? ` · Masa ${o.table.number}` : o.type === 'takeaway' ? ' · Paket' : ' · Gel-Al'}
+                      {o.table ? ` · Masa ${o.table.number}` : o.type === 'takeaway' ? ' · Gel-Al' : ' · Paket Servis'}
                     </div>
                   </div>
                   <div className="text-sm font-semibold">{formatCurrency(o.total)}</div>

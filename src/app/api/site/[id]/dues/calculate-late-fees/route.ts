@@ -3,6 +3,12 @@ import { db } from '@/lib/db'
 import { getSession, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
 
+// TENANT İZOLASYONU: site bu tenant'a ait mi? (dues/route.ts checkSite deseni)
+function checkSite(site: { tenantId: string } | null, tenantId: string, isSuperadmin: boolean) {
+  if (!site) return false
+  return site.tenantId === tenantId || isSuperadmin
+}
+
 // POST — gecikme zammı hesapla
 //
 // Kural:
@@ -14,12 +20,14 @@ import { writeAuditLog } from '@/lib/auth'
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   if (!user) return err('Oturum açmanız gerekli', 401)
-  if (!user.permissions.includes('site.manage')) return err('Bu işlem için yetkiniz yok', 403)
+  if (!user.permissions.includes('site.manage') && user.role !== 'superadmin') {
+    return err('Bu işlem için yetkiniz yok', 403)
+  }
 
   const { id } = await params
 
   const site = await db.site.findUnique({ where: { id } })
-  if (!site) return err('Site bulunamadı', 404)
+  if (!checkSite(site, user.tenantId, user.role === 'superadmin')) return err('Site bulunamadı', 404)
 
   const now = new Date()
 

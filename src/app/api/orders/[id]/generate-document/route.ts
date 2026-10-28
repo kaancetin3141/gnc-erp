@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err, safeJsonParse } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { shippedViaIrsaliye } from '@/lib/stock-utils'
 
 // ============================================================
 // OTOMATİK BELGE ÜRETİMİ — Belge Yönetimi sayfası için
@@ -296,30 +297,38 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       })
 
       // Otomatik stok çıkışı (productId olan satırlar)
+      // ÇİFT DÜŞÜŞ KORUMASI (ERP-1): bu siparişin ürünleri zaten irsaliye ile
+      // sevk edilmişse stok irsaliyede DÜŞÜLMÜŞTÜR — faturada tekrar düşülmez.
+      const alreadyShipped = await shippedViaIrsaliye(order.quoteId, order.id)
       for (const line of lines) {
-        if (line.productId) {
+        if (line.productId && !alreadyShipped) {
+          // YETERSİZ STOK (ERP-4): sessiz atlama yok
           const product = await db.product.findUnique({
             where: { id: line.productId },
-            select: { id: true, stock: true },
+            select: { stock: true, name: true, unit: true },
           })
-          if (product && product.stock >= line.qty) {
-            await db.$transaction([
-              db.stockMovement.create({
-                data: {
-                  productId: line.productId,
-                  quantity: line.qty,
-                  type: 'cikis',
-                  reason: `Otomatik fatura: ${number}`,
-                  refType: 'invoice',
-                  refId: invoice.id,
-                },
-              }),
-              db.product.update({
-                where: { id: line.productId },
-                data: { stock: { decrement: line.qty } },
-              }),
-            ])
+          if (product && product.stock < line.qty) {
+            return err(
+              `Yetersiz stok: ${product.name} (mevcut ${product.stock} ${product.unit ?? 'adet'}, fatura kalemi ${line.qty})`,
+              400,
+            )
           }
+          await db.$transaction([
+            db.stockMovement.create({
+              data: {
+                productId: line.productId,
+                quantity: line.qty,
+                type: 'cikis',
+                reason: `Otomatik fatura: ${number}`,
+                refType: 'invoice',
+                refId: invoice.id,
+              },
+            }),
+            db.product.update({
+              where: { id: line.productId },
+              data: { stock: { decrement: line.qty } },
+            }),
+          ])
         }
       }
 

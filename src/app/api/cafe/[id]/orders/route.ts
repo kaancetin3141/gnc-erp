@@ -7,10 +7,21 @@ const VALID_ORDER_STATUSES = ['acik', 'hazirlaniyor', 'hazir', 'odendi', 'iptal'
 const VALID_ORDER_TYPES = ['dine_in', 'takeaway', 'delivery']
 
 // Sipariş numarası üret: S-001, S-002...
+// count+1 yerine mevcut numaralardaki en büyük sıra + 1 — silinen/iptal edilen
+// siparişlerde sayı değişeceği için count yöntemi numara çakışması üretir.
 async function generateOrderNumber(cafeId: string): Promise<string> {
-  const count = await db.cafeOrder.count({ where: { cafeId } })
-  const num = String(count + 1).padStart(4, '0')
-  return `S-${num}`
+  const recent = await db.cafeOrder.findMany({
+    where: { cafeId },
+    orderBy: { createdAt: 'desc' },
+    select: { number: true },
+    take: 200,
+  })
+  let maxSeq = 0
+  for (const o of recent) {
+    const m = /(\d+)\s*$/.exec(o.number ?? '')
+    if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10))
+  }
+  return `S-${String(maxSeq + 1).padStart(4, '0')}`
 }
 
 // ============================================================
@@ -96,6 +107,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (tableId) {
     const table = await db.cafeTable.findUnique({ where: { id: tableId } })
     if (!table || table.cafeId !== id) return err('Masa bulunamadı', 404)
+    // ÇİFT ADİSYON KORUMASI (K4) — aynı masada zaten açık sipariş varsa
+    // yeni adisyon açılamaz; mevcut adisyona kalem eklenmesi gerekir.
+    if (orderType === 'dine_in') {
+      const openOrder = await db.cafeOrder.findFirst({
+        where: {
+          tableId,
+          status: { in: ['acik', 'hazirlaniyor', 'hazir'] },
+        },
+        select: { number: true },
+      })
+      if (openOrder) {
+        return err(
+          `Bu masada zaten açık adisyon var (${openOrder.number}) — önce ödemeyi alın ya da mevcut adisyona kalem ekleyin`,
+          409,
+        )
+      }
+    }
   }
 
   // Menü kalemlerini topla — snapshot için fiyat ve isim gerekli

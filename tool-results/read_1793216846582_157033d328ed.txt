@@ -1,0 +1,652 @@
+     1→'use client'
+     2→
+     3→import { useRef, useState, useMemo, useCallback } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-client'
+     6→import { useAppStore } from '@/store/app-store'
+     7→import { hasPermission } from '@/lib/rbac'
+     8→import type { SessionUser } from '@/types'
+     9→import { Card, CardContent } from '@/components/ui/card'
+    10→import { Button } from '@/components/ui/button'
+    11→import { Input } from '@/components/ui/input'
+    12→import { Label } from '@/components/ui/label'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import {
+    15→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    16→} from '@/components/ui/select'
+    17→import {
+    18→  Dialog, DialogContent, DialogHeader, DialogTitle,
+    19→  DialogDescription, DialogFooter,
+    20→} from '@/components/ui/dialog'
+    21→import {
+    22→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    23→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    24→} from '@/components/ui/alert-dialog'
+    25→import { Skeleton } from '@/components/ui/skeleton'
+    26→import { toast } from 'sonner'
+    27→import { cn } from '@/lib/utils'
+    28→import {
+    29→  Plus, Trash2, Square, Circle, RectangleHorizontal, Pencil, Move,
+    30→  Users, AlertCircle, MapPin,
+    31→} from 'lucide-react'
+    32→
+    33→// ============================================================
+    34→// Tipler
+    35→// ============================================================
+    36→
+    37→export interface CafeTable {
+    38→  id: string
+    39→  cafeId: string
+    40→  number: string
+    41→  shape: string // square | round | rectangle
+    42→  x: number
+    43→  y: number
+    44→  width: number
+    45→  height: number
+    46→  capacity: number
+    47→  status: string // bos | dolu | rezerve | siparis
+    48→  orders?: { id: string; number: string; status: string; total: number; _count: { items: number } }[]
+    49→}
+    50→
+    51→interface TablesResponse { items: CafeTable[] }
+    52→
+    53→const STATUS_META: Record<string, { label: string; bg: string; ring: string; dot: string; text: string }> = {
+    54→  bos: {
+    55→    label: 'Boş',
+    56→    bg: 'bg-emerald-50 dark:bg-emerald-950/30',
+    57→    ring: 'border-emerald-400 dark:border-emerald-700',
+    58→    dot: 'bg-emerald-500',
+    59→    text: 'text-emerald-700 dark:text-emerald-300',
+    60→  },
+    61→  dolu: {
+    62→    label: 'Dolu',
+    63→    bg: 'bg-amber-50 dark:bg-amber-950/30',
+    64→    ring: 'border-amber-400 dark:border-amber-700',
+    65→    dot: 'bg-amber-500',
+    66→    text: 'text-amber-700 dark:text-amber-300',
+    67→  },
+    68→  siparis: {
+    69→    label: 'Sipariş',
+    70→    bg: 'bg-sky-50 dark:bg-sky-950/30',
+    71→    ring: 'border-sky-400 dark:border-sky-700',
+    72→    dot: 'bg-sky-500',
+    73→    text: 'text-sky-700 dark:text-sky-300',
+    74→  },
+    75→  rezerve: {
+    76→    label: 'Rezerve',
+    77→    bg: 'bg-violet-50 dark:bg-violet-950/30',
+    78→    ring: 'border-violet-400 dark:border-violet-700',
+    79→    dot: 'bg-violet-500',
+    80→    text: 'text-violet-700 dark:text-violet-300',
+    81→  },
+    82→}
+    83→
+    84→function statusMeta(s: string) {
+    85→  return STATUS_META[s] ?? STATUS_META.bos
+    86→}
+    87→
+    88→// ============================================================
+    89→// Table Layout — kuş bakışı
+    90→// ============================================================
+    91→
+    92→export function CafeTableLayout({ cafeId }: { cafeId: string }) {
+    93→  const { user } = useAppStore()
+    94→  const qc = useQueryClient()
+    95→  const canManage = hasPermission(user as SessionUser | null, 'cafe.manage')
+    96→  const canOrder = hasPermission(user as SessionUser | null, 'cafe.orders') || canManage
+    97→
+    98→  const { data, isLoading } = useQuery({
+    99→    queryKey: ['cafe-tables', cafeId],
+   100→    queryFn: () => apiGet<TablesResponse>(`/api/cafe/${cafeId}/tables`),
+   101→    refetchInterval: 15_000,
+   102→  })
+   103→
+   104→  const tables = data?.items ?? []
+   105→
+   106→  const [selected, setSelected] = useState<CafeTable | null>(null)
+   107→  const [addOpen, setAddOpen] = useState(false)
+   108→  const [editOpen, setEditOpen] = useState(false)
+   109→  const [deleteOpen, setDeleteOpen] = useState(false)
+   110→  const [dragId, setDragId] = useState<string | null>(null)
+   111→  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+   112→
+   113→  // Add form
+   114→  const [newNumber, setNewNumber] = useState('')
+   115→  const [newShape, setNewShape] = useState('square')
+   116→  const [newCapacity, setNewCapacity] = useState(4)
+   117→
+   118→  // Edit form
+   119→  const [editNumber, setEditNumber] = useState('')
+   120→  const [editShape, setEditShape] = useState('square')
+   121→  const [editCapacity, setEditCapacity] = useState(4)
+   122→  const [editStatus, setEditStatus] = useState('bos')
+   123→
+   124→  // Drag işlemleri — sayım bazlı (%)
+   125→  const containerRef = useRef<HTMLDivElement>(null)
+   126→
+   127→  const handlePointerDown = useCallback((e: React.PointerEvent, t: CafeTable) => {
+   128→    if (!canManage) return
+   129→    e.stopPropagation()
+   130→    // currentTarget her zaman masa kapsayıcı div'dir (handler'ın bağlandığı element).
+   131→    // e.target bazen iç span/svg olabilir ve pointer capture desteklemeyebilir.
+   132→    try {
+   133→      e.currentTarget.setPointerCapture?.(e.pointerId)
+   134→    } catch {
+   135→      // Bazı tarayıcılarda pointer capture desteklenmez — sessizce yoksay.
+   136→    }
+   137→    const rect = containerRef.current?.getBoundingClientRect()
+   138→    if (!rect) return
+   139→    // Tıklanan noktanın masa içindeki oransal konumu
+   140→    const px = ((e.clientX - rect.left) / rect.width) * 100
+   141→    const py = ((e.clientY - rect.top) / rect.height) * 100
+   142→    setDragOffset({ x: px - t.x, y: py - t.y })
+   143→    setDragId(t.id)
+   144→  }, [canManage])
+   145→
+   146→  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+   147→    if (!dragId || !canManage) return
+   148→    const rect = containerRef.current?.getBoundingClientRect()
+   149→    if (!rect) return
+   150→    const px = ((e.clientX - rect.left) / rect.width) * 100
+   151→    const py = ((e.clientY - rect.top) / rect.height) * 100
+   152→    // Yeni konum (clamp)
+   153→    const nx = Math.max(0, Math.min(100, px - dragOffset.x))
+   154→    const ny = Math.max(0, Math.min(100, py - dragOffset.y))
+   155→    // Optimistik: state'i güncelle (drag devam ediyor)
+   156→    // Persist sadece pointer up'ta
+   157→    // Local cache'i invalidate etmeden güncellemek için setQueryData
+   158→    qc.setQueryData<TablesResponse>(['cafe-tables', cafeId], (old) => {
+   159→      if (!old) return old
+   160→      return {
+   161→        ...old,
+   162→        items: old.items.map((it) =>
+   163→          it.id === dragId ? { ...it, x: nx, y: ny } : it,
+   164→        ),
+   165→      }
+   166→    })
+   167→  }, [dragId, dragOffset, canManage, qc, cafeId])
+   168→
+   169→  const handlePointerUp = useCallback(async () => {
+   170→    if (!dragId) return
+   171→    const table = qc.getQueryData<TablesResponse>(['cafe-tables', cafeId])?.items.find((t) => t.id === dragId)
+   172→    setDragId(null)
+   173→    if (!table) return
+   174→    // Persist
+   175→    try {
+   176→      await apiPatch(`/api/cafe/${cafeId}/tables/${dragId}`, { x: table.x, y: table.y })
+   177→    } catch (e) {
+   178→      toast.error(e instanceof Error ? e.message : 'Konum kaydedilemedi')
+   179→      qc.invalidateQueries({ queryKey: ['cafe-tables', cafeId] })
+   180→    }
+   181→  }, [dragId, qc, cafeId])
+   182→
+   183→  // Add table
+   184→  async function handleAdd() {
+   185→    if (!newNumber.trim()) {
+   186→      toast.error('Masa numarası gerekli')
+   187→      return
+   188→    }
+   189→    try {
+   190→      await apiPost(`/api/cafe/${cafeId}/tables`, {
+   191→        number: newNumber,
+   192→        shape: newShape,
+   193→        capacity: newCapacity,
+   194→      })
+   195→      qc.invalidateQueries({ queryKey: ['cafe-tables', cafeId] })
+   196→      setAddOpen(false)
+   197→      setNewNumber('')
+   198→      setNewShape('square')
+   199→      setNewCapacity(4)
+   200→      toast.success('Masa eklendi')
+   201→    } catch (e) {
+   202→      toast.error(e instanceof Error ? e.message : 'Eklenemedi')
+   203→    }
+   204→  }
+   205→
+   206→  // Edit table
+   207→  function openEdit(t: CafeTable) {
+   208→    setSelected(t)
+   209→    setEditNumber(t.number)
+   210→    setEditShape(t.shape)
+   211→    setEditCapacity(t.capacity)
+   212→    setEditStatus(t.status)
+   213→    setEditOpen(true)
+   214→  }
+   215→
+   216→  async function handleSaveEdit() {
+   217→    if (!selected) return
+   218→    if (!editNumber.trim()) {
+   219→      toast.error('Masa numarası gerekli')
+   220→      return
+   221→    }
+   222→    try {
+   223→      await apiPatch(`/api/cafe/${cafeId}/tables/${selected.id}`, {
+   224→        number: editNumber,
+   225→        shape: editShape,
+   226→        capacity: editCapacity,
+   227→        status: editStatus,
+   228→      })
+   229→      qc.invalidateQueries({ queryKey: ['cafe-tables', cafeId] })
+   230→      setEditOpen(false)
+   231→      toast.success('Masa güncellendi')
+   232→    } catch (e) {
+   233→      toast.error(e instanceof Error ? e.message : 'Güncellenemedi')
+   234→    }
+   235→  }
+   236→
+   237→  async function handleDelete() {
+   238→    if (!selected) return
+   239→    try {
+   240→      await apiDelete(`/api/cafe/${cafeId}/tables/${selected.id}`)
+   241→      qc.invalidateQueries({ queryKey: ['cafe-tables', cafeId] })
+   242→      setDeleteOpen(false)
+   243→      setEditOpen(false)
+   244→      toast.success('Masa silindi')
+   245→    } catch (e) {
+   246→      toast.error(e instanceof Error ? e.message : 'Silinemedi')
+   247→    }
+   248→  }
+   249→
+   250→  const counts = useMemo(() => ({
+   251→    total: tables.length,
+   252→    bos: tables.filter((t) => t.status === 'bos').length,
+   253→    dolu: tables.filter((t) => t.status === 'dolu').length,
+   254→    siparis: tables.filter((t) => t.status === 'siparis').length,
+   255→    rezerve: tables.filter((t) => t.status === 'rezerve').length,
+   256→  }), [tables])
+   257→
+   258→  return (
+   259→    <div className="space-y-4">
+   260→      {/* Header + actions */}
+   261→      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+   262→        <div className="flex flex-wrap gap-2">
+   263→          <CountChip label="Toplam" value={counts.total} color="slate" />
+   264→          <CountChip label="Boş" value={counts.bos} color="emerald" />
+   265→          <CountChip label="Dolu" value={counts.dolu} color="amber" />
+   266→          <CountChip label="Sipariş" value={counts.siparis} color="sky" />
+   267→          <CountChip label="Rezerve" value={counts.rezerve} color="violet" />
+   268→        </div>
+   269→        {canManage && (
+   270→          <Button onClick={() => setAddOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
+   271→            <Plus className="w-4 h-4 mr-1.5" />
+   272→            Masa Ekle
+   273→          </Button>
+   274→        )}
+   275→      </div>
+   276→
+   277→      {/* Floor plan */}
+   278→      <Card>
+   279→        <CardContent className="p-3 sm:p-4">
+   280→          {isLoading ? (
+   281→            <Skeleton className="aspect-[4/3] w-full rounded-lg" />
+   282→          ) : tables.length === 0 ? (
+   283→            <div className="aspect-[4/3] w-full rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center text-center p-6">
+   284→              <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center mb-3">
+   285→                <MapPin className="w-7 h-7 text-emerald-600/70" />
+   286→              </div>
+   287→              <h3 className="font-semibold mb-1">Henüz masa yok</h3>
+   288→              <p className="text-sm text-muted-foreground max-w-sm mb-4">
+   289→                Kafenizin kuş bakışı haritasını oluşturmak için masa ekleyin. Masaları sürükleyerek konumlandırabilirsiniz.
+   290→              </p>
+   291→              {canManage && (
+   292→                <Button onClick={() => setAddOpen(true)} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+   293→                  <Plus className="w-4 h-4 mr-1.5" />
+   294→                  İlk Masayı Ekle
+   295→                </Button>
+   296→              )}
+   297→            </div>
+   298→          ) : (
+   299→            <div
+   300→              ref={containerRef}
+   301→              onPointerMove={handlePointerMove}
+   302→              onPointerUp={handlePointerUp}
+   303→              onPointerLeave={handlePointerUp}
+   304→              className={cn(
+   305→                'relative w-full aspect-[4/3] rounded-lg overflow-hidden select-none',
+   306→                'bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950',
+   307→                'border-2 border-dashed border-border',
+   308→                canManage && 'cursor-crosshair',
+   309→              )}
+   310→              style={{
+   311→                backgroundImage: `
+   312→                  linear-gradient(rgba(100,116,139,0.08) 1px, transparent 1px),
+   313→                  linear-gradient(90deg, rgba(100,116,139,0.08) 1px, transparent 1px)
+   314→                `,
+   315→                backgroundSize: '5% 5%, 5% 5%',
+   316→              }}
+   317→            >
+   318→              {/* Title overlay */}
+   319→              <div className="absolute top-2 left-2 text-[10px] uppercase tracking-wider text-slate-400 font-semibold pointer-events-none">
+   320→                Kuş Bakışı · {tables.length} masa
+   321→              </div>
+   322→
+   323→              {tables.map((t) => {
+   324→                const meta = statusMeta(t.status)
+   325→                const isRound = t.shape === 'round'
+   326→                const isRect = t.shape === 'rectangle'
+   327→                const activeOrder = t.orders?.[0]
+   328→                return (
+   329→                  <div
+   330→                    key={t.id}
+   331→                    onPointerDown={(e) => handlePointerDown(e, t)}
+   332→                    onClick={(e) => {
+   333→                      // Sürükleme olmadıysa tıklama
+   334→                      if (!dragId) {
+   335→                        e.stopPropagation()
+   336→                        openEdit(t)
+   337→                      }
+   338→                    }}
+   339→                    className={cn(
+   340→                      'absolute flex flex-col items-center justify-center',
+   341→                      'border-2 shadow-sm transition-all',
+   342→                      meta.bg, meta.ring, meta.text,
+   343→                      isRound ? 'rounded-full' : isRect ? 'rounded-lg' : 'rounded-md',
+   344→                      canManage ? 'cursor-move hover:shadow-md hover:scale-105' : 'cursor-pointer hover:shadow-md',
+   345→                      dragId === t.id && 'shadow-lg scale-105 z-10',
+   346→                    )}
+   347→                    style={{
+   348→                      left: `${t.x}%`,
+   349→                      top: `${t.y}%`,
+   350→                      width: `${t.width}%`,
+   351→                      height: `${t.height}%`,
+   352→                      transform: 'translate(-50%, -50%)',
+   353→                      touchAction: 'none',
+   354→                    }}
+   355→                    title={`Masa ${t.number} · ${meta.label}`}
+   356→                  >
+   357→                    <span className="text-[11px] sm:text-xs font-bold leading-none">{t.number}</span>
+   358→                    <span className="hidden sm:flex items-center gap-0.5 text-[9px] mt-0.5 opacity-70">
+   359→                      <Users className="w-2.5 h-2.5" />
+   360→                      {t.capacity}
+   361→                    </span>
+   362→                    {activeOrder && (
+   363→                      <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-500 border-2 border-white dark:border-slate-900 animate-pulse" />
+   364→                    )}
+   365→                  </div>
+   366→                )
+   367→              })}
+   368→
+   369→              {/* Drag hint */}
+   370→              {canManage && tables.length > 0 && (
+   371→                <div className="absolute bottom-2 right-2 text-[10px] text-slate-400 pointer-events-none flex items-center gap-1">
+   372→                  <Move className="w-3 h-3" />
+   373→                  Sürükle & Konumlandır
+   374→                </div>
+   375→              )}
+   376→            </div>
+   377→          )}
+   378→        </CardContent>
+   379→      </Card>
+   380→
+   381→      {/* Tables list — mobile friendly */}
+   382→      <Card>
+   383→        <CardContent className="p-3">
+   384→          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+   385→            Masa Listesi
+   386→          </div>
+   387→          {tables.length === 0 ? (
+   388→            <div className="text-sm text-muted-foreground py-4 text-center">Masa yok</div>
+   389→          ) : (
+   390→            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto custom-scroll">
+   391→              {tables.map((t) => {
+   392→                const meta = statusMeta(t.status)
+   393→                return (
+   394→                  <button
+   395→                    key={t.id}
+   396→                    onClick={() => openEdit(t)}
+   397→                    className={cn(
+   398→                      'flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all hover:shadow-sm',
+   399→                      meta.bg, meta.ring, meta.text,
+   400→                    )}
+   401→                  >
+   402→                    <div className="text-sm font-bold">{t.number}</div>
+   403→                    <div className="text-[10px] flex items-center gap-1 mt-0.5">
+   404→                      <span className={cn('w-1.5 h-1.5 rounded-full', meta.dot)} />
+   405→                      {meta.label}
+   406→                    </div>
+   407→                    <div className="text-[10px] opacity-70 mt-0.5 flex items-center gap-0.5">
+   408→                      <Users className="w-2.5 h-2.5" /> {t.capacity}
+   409→                    </div>
+   410→                  </button>
+   411→                )
+   412→              })}
+   413→            </div>
+   414→          )}
+   415→        </CardContent>
+   416→      </Card>
+   417→
+   418→      {/* Add dialog */}
+   419→      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+   420→        <DialogContent>
+   421→          <DialogHeader>
+   422→            <DialogTitle>Yeni Masa</DialogTitle>
+   423→            <DialogDescription>
+   424→              Kafenizin kuş bakışı haritasına masa ekleyin. Konumu sürükleyerek değiştirebilirsiniz.
+   425→            </DialogDescription>
+   426→          </DialogHeader>
+   427→          <div className="space-y-3">
+   428→            <div>
+   429→              <Label htmlFor="t-number">Masa Numarası *</Label>
+   430→              <Input
+   431→                id="t-number"
+   432→                value={newNumber}
+   433→                onChange={(e) => setNewNumber(e.target.value)}
+   434→                placeholder="Örn: M1, Teras-1"
+   435→                className="mt-1"
+   436→                autoFocus
+   437→              />
+   438→            </div>
+   439→            <div>
+   440→              <Label>Şekil</Label>
+   441→              <div className="grid grid-cols-3 gap-2 mt-1">
+   442→                {[
+   443→                  { v: 'square', label: 'Kare', icon: Square },
+   444→                  { v: 'round', label: 'Yuvarlak', icon: Circle },
+   445→                  { v: 'rectangle', label: 'Dikdörtgen', icon: RectangleHorizontal },
+   446→                ].map((s) => (
+   447→                  <button
+   448→                    key={s.v}
+   449→                    onClick={() => setNewShape(s.v)}
+   450→                    className={cn(
+   451→                      'flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 transition-all',
+   452→                      newShape === s.v
+   453→                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
+   454→                        : 'border-border hover:border-emerald-300',
+   455→                    )}
+   456→                  >
+   457→                    <s.icon className="w-4 h-4" />
+   458→                    <span className="text-xs">{s.label}</span>
+   459→                  </button>
+   460→                ))}
+   461→              </div>
+   462→            </div>
+   463→            <div>
+   464→              <Label htmlFor="t-cap">Kapasite (kişi)</Label>
+   465→              <Input
+   466→                id="t-cap"
+   467→                type="number"
+   468→                min={1}
+   469→                max={20}
+   470→                value={newCapacity}
+   471→                onChange={(e) => setNewCapacity(Number(e.target.value) || 1)}
+   472→                className="mt-1"
+   473→              />
+   474→            </div>
+   475→          </div>
+   476→          <DialogFooter>
+   477→            <Button variant="outline" onClick={() => setAddOpen(false)}>İptal</Button>
+   478→            <Button onClick={handleAdd} className="bg-emerald-600 hover:bg-emerald-700">
+   479→              <Plus className="w-4 h-4 mr-1.5" />
+   480→              Ekle
+   481→            </Button>
+   482→          </DialogFooter>
+   483→        </DialogContent>
+   484→      </Dialog>
+   485→
+   486→      {/* Edit dialog */}
+   487→      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+   488→        <DialogContent>
+   489→          <DialogHeader>
+   490→            <DialogTitle>Masa {selected?.number}</DialogTitle>
+   491→            <DialogDescription>
+   492→              Masa bilgilerini düzenleyin veya durumu değiştirin.
+   493→            </DialogDescription>
+   494→          </DialogHeader>
+   495→          <div className="space-y-3">
+   496→            <div>
+   497→              <Label htmlFor="e-number">Masa Numarası</Label>
+   498→              <Input
+   499→                id="e-number"
+   500→                value={editNumber}
+   501→                onChange={(e) => setEditNumber(e.target.value)}
+   502→                className="mt-1"
+   503→              />
+   504→            </div>
+   505→            <div>
+   506→              <Label>Şekil</Label>
+   507→              <div className="grid grid-cols-3 gap-2 mt-1">
+   508→                {[
+   509→                  { v: 'square', label: 'Kare', icon: Square },
+   510→                  { v: 'round', label: 'Yuvarlak', icon: Circle },
+   511→                  { v: 'rectangle', label: 'Dikdörtgen', icon: RectangleHorizontal },
+   512→                ].map((s) => (
+   513→                  <button
+   514→                    key={s.v}
+   515→                    onClick={() => setEditShape(s.v)}
+   516→                    className={cn(
+   517→                      'flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 transition-all',
+   518→                      editShape === s.v
+   519→                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
+   520→                        : 'border-border hover:border-emerald-300',
+   521→                    )}
+   522→                  >
+   523→                    <s.icon className="w-4 h-4" />
+   524→                    <span className="text-xs">{s.label}</span>
+   525→                  </button>
+   526→                ))}
+   527→              </div>
+   528→            </div>
+   529→            <div className="grid grid-cols-2 gap-3">
+   530→              <div>
+   531→                <Label htmlFor="e-cap">Kapasite</Label>
+   532→                <Input
+   533→                  id="e-cap"
+   534→                  type="number"
+   535→                  min={1}
+   536→                  max={20}
+   537→                  value={editCapacity}
+   538→                  onChange={(e) => setEditCapacity(Number(e.target.value) || 1)}
+   539→                  className="mt-1"
+   540→                />
+   541→              </div>
+   542→              <div>
+   543→                <Label>Durum</Label>
+   544→                <Select value={editStatus} onValueChange={setEditStatus}>
+   545→                  <SelectTrigger className="mt-1">
+   546→                    <SelectValue />
+   547→                  </SelectTrigger>
+   548→                  <SelectContent>
+   549→                    <SelectItem value="bos">Boş</SelectItem>
+   550→                    <SelectItem value="dolu">Dolu</SelectItem>
+   551→                    <SelectItem value="siparis">Sipariş</SelectItem>
+   552→                    <SelectItem value="rezerve">Rezerve</SelectItem>
+   553→                  </SelectContent>
+   554→                </Select>
+   555→              </div>
+   556→            </div>
+   557→
+   558→            {selected?.orders && selected.orders.length > 0 && (
+   559→              <div className="p-3 rounded-lg bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/50">
+   560→                <div className="flex items-center justify-between">
+   561→                  <div>
+   562→                    <div className="text-xs font-semibold text-sky-700 dark:text-sky-300">
+   563→                      Aktif Sipariş: {selected.orders[0].number}
+   564→                    </div>
+   565→                    <div className="text-[10px] text-sky-600 dark:text-sky-400">
+   566→                      {selected.orders[0]._count.items} kalem · {selected.orders[0].status}
+   567→                    </div>
+   568→                  </div>
+   569→                  <Badge variant="outline" className="text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-700">
+   570→                    {selected.orders[0].total.toFixed(2)} ₺
+   571→                  </Badge>
+   572→                </div>
+   573→              </div>
+   574→            )}
+   575→          </div>
+   576→          <DialogFooter className="flex-col sm:flex-row gap-2 sm:justify-between">
+   577→            {canManage ? (
+   578→              <Button
+   579→                variant="outline"
+   580→                onClick={() => setDeleteOpen(true)}
+   581→                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 sm:mr-auto"
+   582→              >
+   583→                <Trash2 className="w-4 h-4 mr-1.5" />
+   584→                Sil
+   585→              </Button>
+   586→            ) : <div />}
+   587→            <div className="flex gap-2 w-full sm:w-auto">
+   588→              <Button variant="outline" onClick={() => setEditOpen(false)} className="flex-1 sm:flex-initial">
+   589→                Kapat
+   590→              </Button>
+   591→              {canManage && (
+   592→                <Button onClick={handleSaveEdit} className="bg-emerald-600 hover:bg-emerald-700 flex-1 sm:flex-initial">
+   593→                  <Pencil className="w-4 h-4 mr-1.5" />
+   594→                  Kaydet
+   595→                </Button>
+   596→              )}
+   597→            </div>
+   598→          </DialogFooter>
+   599→        </DialogContent>
+   600→      </Dialog>
+   601→
+   602→      {/* Delete confirm */}
+   603→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+   604→        <AlertDialogContent>
+   605→          <AlertDialogHeader>
+   606→            <AlertDialogTitle>Masa silinsin mi?</AlertDialogTitle>
+   607→            <AlertDialogDescription>
+   608→              {selected?.number} numaralı masa kalıcı olarak silinecek. Bu işlem geri alınamaz.
+   609→              {selected?.orders && selected.orders.length > 0 && (
+   610→                <span className="block mt-2 text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+   611→                  <AlertCircle className="w-4 h-4" />
+   612→                  Bu masada aktif sipariş var!
+   613→                </span>
+   614→              )}
+   615→            </AlertDialogDescription>
+   616→          </AlertDialogHeader>
+   617→          <AlertDialogFooter>
+   618→            <AlertDialogCancel>İptal</AlertDialogCancel>
+   619→            <AlertDialogAction
+   620→              onClick={handleDelete}
+   621→              className="bg-red-600 hover:bg-red-700 text-white"
+   622→            >
+   623→              Sil
+   624→            </AlertDialogAction>
+   625→          </AlertDialogFooter>
+   626→        </AlertDialogContent>
+   627→      </AlertDialog>
+   628→    </div>
+   629→  )
+   630→}
+   631→
+   632→// ============================================================
+   633→// Count chip
+   634→// ============================================================
+   635→
+   636→const CHIP_COLORS: Record<string, string> = {
+   637→  slate: 'text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/50',
+   638→  emerald: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30',
+   639→  amber: 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30',
+   640→  sky: 'text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/30',
+   641→  violet: 'text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/30',
+   642→}
+   643→
+   644→function CountChip({ label, value, color }: { label: string; value: number; color: string }) {
+   645→  return (
+   646→    <div className={cn('px-3 py-1.5 rounded-lg', CHIP_COLORS[color] ?? CHIP_COLORS.slate)}>
+   647→      <div className="text-[10px] uppercase tracking-wider opacity-80">{label}</div>
+   648→      <div className="text-lg font-bold leading-tight">{value}</div>
+   649→    </div>
+   650→  )
+   651→}
+   652→

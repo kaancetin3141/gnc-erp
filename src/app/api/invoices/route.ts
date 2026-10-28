@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, requirePermission, ok, err, getVisibilityFilter, safeJsonParse } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { shippedViaIrsaliye } from '@/lib/stock-utils'
 
 // ============================================================
 // Yardımcılar
@@ -49,9 +50,16 @@ function calcTotals(lines: LineInput[]) {
 
 // Fatura numarası üret: FAT-2025-001
 async function generateInvoiceNumber(tenantId: string): Promise<string> {
+  // CRM-2: max-bazlı sıra — silinen faturalar numara tekrarına yol açmaz;
+  // yıl geçişinde yeni yılın sıfırdan başlaması da doğru olur.
   const year = new Date().getFullYear()
-  const count = await db.invoice.count({ where: { tenantId } })
-  return `FAT-${year}-${String(count + 1).padStart(3, '0')}`
+  const last = await db.invoice.findFirst({
+    where: { tenantId, number: { startsWith: `FAT-${year}-` } },
+    orderBy: { number: 'desc' },
+    select: { number: true },
+  })
+  const lastSeq = last?.number ? parseInt(last.number.split('-')[2] ?? '0', 10) : 0
+  return `FAT-${year}-${String((isNaN(lastSeq) ? 0 : lastSeq) + 1).padStart(3, '0')}`
 }
 
 // ============================================================
@@ -142,6 +150,27 @@ export async function POST(req: NextRequest) {
       return err('Bu teklif zaten faturalandırılmış', 400)
     }
 
+    // ÇİFT DÜŞÜŞ KORUMASI (ERP-1) + STOK DOĞRULAMA (ERP-4):
+    // Bu teklifin ürünleri zaten irsaliye ile sevk edilmişse stok irsaliyede
+    // DÜŞÜLMÜŞTÜR — faturada tekrar düşülmez. Sevk edilmediyse yetersiz stok
+    // kontrolü FATURA OLUŞTURULMADAN yapılır (yarım işlem oluşmasın).
+    const alreadyShipped = await shippedViaIrsaliye(fromQuoteId)
+    if (!alreadyShipped) {
+      for (const line of quote.lines) {
+        if (!line.productId) continue
+        const product = await db.product.findUnique({
+          where: { id: line.productId },
+          select: { stock: true, name: true, unit: true },
+        })
+        if (product && product.stock < line.qty) {
+          return err(
+            `Yetersiz stok: ${product.name} (mevcut ${product.stock} ${product.unit ?? 'adet'}, fatura kalemi ${line.qty})`,
+            400,
+          )
+        }
+      }
+    }
+
     const number = await generateInvoiceNumber(quote.tenantId)
     const invoice = await db.invoice.create({
       data: {
@@ -181,31 +210,26 @@ export async function POST(req: NextRequest) {
       data: { status: 'faturalandi', invoiceId: invoice.id },
     })
 
-    // Otomatik stok çıkışı: productId olan teklif satırları için
+    // Otomatik stok çıkışı (doğrulama yukarıda yapıldı): productId olan
+    // teklif satırları için — irsaliyede düşülmüşse atlanır (ERP-1)
     for (const line of quote.lines) {
-      if (line.productId) {
-        const product = await db.product.findUnique({
-          where: { id: line.productId },
-          select: { id: true, stock: true },
-        })
-        if (product && product.stock >= line.qty) {
-          await db.$transaction([
-            db.stockMovement.create({
-              data: {
-                productId: line.productId,
-                quantity: line.qty,
-                type: 'cikis',
-                reason: `Fatura (tekliften): ${number}`,
-                refType: 'invoice',
-                refId: invoice.id,
-              },
-            }),
-            db.product.update({
-              where: { id: line.productId },
-              data: { stock: { decrement: line.qty } },
-            }),
-          ])
-        }
+      if (line.productId && !alreadyShipped) {
+        await db.$transaction([
+          db.stockMovement.create({
+            data: {
+              productId: line.productId,
+              quantity: line.qty,
+              type: 'cikis',
+              reason: `Fatura (tekliften): ${number}`,
+              refType: 'invoice',
+              refId: invoice.id,
+            },
+          }),
+          db.product.update({
+            where: { id: line.productId },
+            data: { stock: { decrement: line.qty } },
+          }),
+        ])
       }
     }
 
@@ -262,6 +286,22 @@ export async function POST(req: NextRequest) {
     }
   })
 
+  // YETERSİZ STOK (ERP-4): doğrulama FATURA OLUŞTURULMADAN yapılır —
+  // yarım işlem (fatura var, stok kaydı yok) oluşmasın.
+  for (const line of linesWithTotals) {
+    if (!line.productId) continue
+    const product = await db.product.findUnique({
+      where: { id: line.productId },
+      select: { stock: true, name: true, unit: true },
+    })
+    if (product && product.stock < line.qty) {
+      return err(
+        `Yetersiz stok: ${product.name} (mevcut ${product.stock} ${product.unit ?? 'adet'}, fatura kalemi ${line.qty})`,
+        400,
+      )
+    }
+  }
+
   const invoice = await db.invoice.create({
     data: {
       // SUPERADMIN çapraz-tenant yazımında fatura, müşterinin tenantına ait olmalı
@@ -291,32 +331,25 @@ export async function POST(req: NextRequest) {
     include: { customer: { select: { id: true, name: true } }, lines: true },
   })
 
-  // Otomatik stok çıkışı: productId olan satırlar için
+  // Otomatik stok çıkışı (doğrulama yukarıda yapıldı)
   for (const line of linesWithTotals) {
     if (line.productId) {
-      const product = await db.product.findUnique({
-        where: { id: line.productId },
-        select: { id: true, stock: true },
-      })
-      if (product && product.stock >= line.qty) {
-        // Stok hareketi oluştur ve ürün stokunu düş
-        await db.$transaction([
-          db.stockMovement.create({
-            data: {
-              productId: line.productId,
-              quantity: line.qty,
-              type: 'cikis',
-              reason: `Fatura: ${number}`,
-              refType: 'invoice',
-              refId: invoice.id,
-            },
-          }),
-          db.product.update({
-            where: { id: line.productId },
-            data: { stock: { decrement: line.qty } },
-          }),
-        ])
-      }
+      await db.$transaction([
+        db.stockMovement.create({
+          data: {
+            productId: line.productId,
+            quantity: line.qty,
+            type: 'cikis',
+            reason: `Fatura: ${number}`,
+            refType: 'invoice',
+            refId: invoice.id,
+          },
+        }),
+        db.product.update({
+          where: { id: line.productId },
+          data: { stock: { decrement: line.qty } },
+        }),
+      ])
     }
   }
 

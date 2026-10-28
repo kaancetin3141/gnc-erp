@@ -6,7 +6,9 @@ import { writeAuditLog } from '@/lib/auth'
 // GET — kasa hareketleri (hesap/tip/tarih filtreli)
 export async function GET(req: NextRequest) {
   const user = await getSession(req)
-  const authErr = requireAuth(user)
+  // CRM-6: kasa bakiyeleri/parasal veriler yalnız gider görme yetkisi
+  // olan rollerde erişilebilir (satış temsilcisi göremez)
+  const authErr = requirePermission(user, 'expenses.view')
   if (authErr) return authErr
 
   const url = new URL(req.url)

@@ -79,14 +79,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await db.$transaction(async (tx) => {
       for (const it of items) {
         if (it.productId) {
+          // M5: ağırlıklı ortalama maliyet — (mevcut stok × eski maliyet + gelen × alış)
+          const prod = await tx.product.findUnique({
+            where: { id: it.productId },
+            select: { stock: true, costPrice: true },
+          })
+          if (prod && it.unitPrice > 0) {
+            const totalQty = prod.stock + it.qty
+            const newCost = totalQty > 0
+              ? (prod.stock * prod.costPrice + it.qty * it.unitPrice) / totalQty
+              : it.unitPrice
+            await tx.product.update({
+              where: { id: it.productId },
+              data: { costPrice: Math.round(newCost * 100) / 100 },
+            })
+          }
           await tx.product.update({
             where: { id: it.productId },
-            data: { stock: { increment: Math.round(it.qty) } },
+            data: { stock: { increment: it.qty } },
           })
           await tx.stockMovement.create({
             data: {
               productId: it.productId,
-              quantity: Math.round(it.qty),
+              quantity: it.qty,
               type: 'giris',
               reason: `Mal Kabul (${p.number})`,
               refType: 'purchase',

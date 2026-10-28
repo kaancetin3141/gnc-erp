@@ -308,7 +308,7 @@ export function CafeKasaScreen({ cafeId }: { cafeId: string }) {
                         ) : (
                           <>
                             <User className="w-3.5 h-3.5" />
-                            {o.customerName ?? 'Gel-Al'}
+                            {o.customerName ?? 'Gel-Al / Paket'}
                           </>
                         )}
                         <span className="ml-auto">
@@ -403,7 +403,7 @@ export function CafeKasaScreen({ cafeId }: { cafeId: string }) {
                           </div>
                           <div className="text-[11px] text-muted-foreground mt-0.5">
                             {formatDateTime(o.createdAt)} ·{' '}
-                            {o.type === 'dine_in' ? `Masa ${o.table?.number ?? '—'}` : o.type === 'takeaway' ? 'Paket' : 'Gel-Al'}
+                            {o.type === 'dine_in' ? `Masa ${o.table?.number ?? '—'}` : o.type === 'takeaway' ? 'Gel-Al' : 'Paket Servis'}
                           </div>
                         </div>
                         <div className="flex gap-1">

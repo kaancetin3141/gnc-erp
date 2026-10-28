@@ -15,20 +15,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!market || market.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Market bulunamadı', 404)
 
   const { search } = Object.fromEntries(new URL(req.url).searchParams)
+  // Temel izolasyon: bu marketin barkodları VEYA tenant genelindeki barkodsuz ürünler.
+  // Arama filtresi bu koşulu EZMEMELİ — aksi halde başka şirketin barkodu sızar.
   const where: Record<string, unknown> = {
-    OR: [{ marketId: id }, { marketId: null, product: { tenantId: user!.tenantId } }],
+    AND: [
+      { OR: [{ marketId: id }, { marketId: null, product: { tenantId: user!.tenantId } }] },
+    ],
   }
   if (search) {
-    where.OR = [
-      { code: { contains: search } },
-      { product: { name: { contains: search } } },
-    ]
+    ;(where.AND as unknown[]).push({
+      OR: [{ code: { contains: search } }, { product: { name: { contains: search } } }],
+    })
   }
 
   const barcodes = await db.barcode.findMany({
     where,
     include: {
-      product: { select: { id: true, name: true, sku: true, price: true, stock: true, taxRate: true, category: true, unit: true } },
+      product: { select: { id: true, name: true, sku: true, price: true, stock: true, minStock: true, taxRate: true, category: true, unit: true } },
     },
     orderBy: { code: 'asc' },
     take: 500,

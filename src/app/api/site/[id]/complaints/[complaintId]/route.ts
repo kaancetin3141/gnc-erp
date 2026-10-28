@@ -6,6 +6,16 @@ import { writeAuditLog } from '@/lib/auth'
 const VALID_STATUSES = ['acik', 'inceleniyor', 'cozuldu', 'reddedildi']
 const VALID_PRIORITIES = ['dusuk', 'normal', 'yuksek', 'acil']
 
+// Durum geçiş matrisi: talep doğal akışı acik → inceleniyor → cozuldu/reddedildi.
+// Kapatılmış (cozuldu/reddedildi) bir talep yalnızca 'acik'a geri açılabilir;
+// reddedilen talep incelenmeye alınmaz.
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  acik: ['inceleniyor', 'cozuldu', 'reddedildi'],
+  inceleniyor: ['acik', 'cozuldu', 'reddedildi'],
+  cozuldu: ['acik'],
+  reddedildi: ['acik'],
+}
+
 // ============================================================
 // PATCH — şikayet/arıza talebi güncelle
 // (durum, öncelik, personel atama, maliyet, hedef tarih, cevap)
@@ -14,6 +24,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const user = await getSession(req)
   const authErr = requireAuth(user)
   if (authErr) return authErr
+  if (!user!.permissions.includes('site.manage') && user!.role !== 'superadmin') {
+    return err('Bu işlem için yetkiniz yok', 403)
+  }
 
   const { id, complaintId } = await params
   const site = await db.site.findUnique({ where: { id } })
@@ -33,6 +46,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (status !== undefined) {
     if (!VALID_STATUSES.includes(status)) return err('Geçersiz durum', 400)
+    const allowed = ALLOWED_TRANSITIONS[complaint.status] ?? []
+    if (status !== complaint.status && !allowed.includes(status)) {
+      return err(`Geçersiz durum geçişi: ${complaint.status} → ${status}`, 400)
+    }
     data.status = status
     if (status === 'cozuldu') data.resolvedAt = new Date()
     else data.resolvedAt = null
@@ -91,6 +108,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const user = await getSession(req)
   const authErr = requireAuth(user)
   if (authErr) return authErr
+  if (!user!.permissions.includes('site.manage') && user!.role !== 'superadmin') {
+    return err('Bu işlem için yetkiniz yok', 403)
+  }
 
   const { id, complaintId } = await params
   const site = await db.site.findUnique({ where: { id } })

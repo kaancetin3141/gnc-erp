@@ -185,7 +185,7 @@ export function CafeBarScreen({ cafeId }: { cafeId: string }) {
                     <div>
                       <div className="font-bold text-sm">#{order.number}</div>
                       <div className="text-[11px] text-muted-foreground">
-                        {order.table ? `Masa ${order.table.number}` : order.customerName ?? 'Paket'} · {formatRelative(order.createdAt)}
+                        {order.table ? `Masa ${order.table.number}` : order.customerName ?? 'Gel-Al / Paket'} · {formatRelative(order.createdAt)}
                       </div>
                     </div>
                     <Badge variant="outline" className={cn('text-[10px]', meta.color)}>
@@ -392,7 +392,7 @@ export function CafeKitchenScreen({ cafeId }: { cafeId: string }) {
                     <div>
                       <div className="font-bold text-sm">#{order.number}</div>
                       <div className="text-[11px] text-muted-foreground">
-                        {order.table ? `Masa ${order.table.number}` : order.customerName ?? 'Paket'} · {formatRelative(order.createdAt)}
+                        {order.table ? `Masa ${order.table.number}` : order.customerName ?? 'Gel-Al / Paket'} · {formatRelative(order.createdAt)}
                       </div>
                     </div>
                     <Badge variant="outline" className={cn('text-[10px]', meta.color)}>

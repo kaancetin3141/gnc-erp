@@ -3,6 +3,14 @@ import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { whatsappLink, formatCurrency, formatDate } from '@/lib/format'
 
+// TENANT İZOLASYONU (S2): site bu tenant'a ait mi?
+async function checkSite(siteId: string, tenantId: string, isSuperadmin: boolean) {
+  const site = await db.site.findUnique({ where: { id: siteId } })
+  if (!site) return null
+  if (site.tenantId !== tenantId && !isSuperadmin) return null
+  return site
+}
+
 // POST — WhatsApp aidat hatırlatma gönder
 // Geciken veya yaklaşan aidatlar için WhatsApp linkleri üretir.
 // Her hatırlatma WhatsAppMessage (aidat_hatirlatma) olarak Merkeze kaydedilir —
@@ -11,8 +19,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const user = await getSession(req)
   const authErr = requireAuth(user)
   if (authErr) return authErr
+  if (!user!.permissions.includes('site.manage') && user!.role !== 'superadmin') {
+    return err('Bu işlem için yetkiniz yok', 403)
+  }
 
   const { id } = await params
+  const site = await checkSite(id, user!.tenantId, user!.role === 'superadmin')
+  if (!site) return err('Site bulunamadı', 404)
+
   const body = await req.json()
   const { duesId, daysBefore } = body
 

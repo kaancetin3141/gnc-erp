@@ -60,20 +60,26 @@ export async function PATCH(
   })
   if (!order || order.cafeId !== id) return err('Sipariş bulunamadı', 404)
 
+  // DURUM MAKİNESİ KORUMASI: ödenmiş ya da zaten iptal edilmiş adisyon
+  // değiştirilemez/iptal edilemez — aksi halde ödemeler havada kalır ve
+  // ciro raporları ('odendi' filtreli) parayı kaybeder.
+  if (['odendi', 'iptal'].includes(order.status)) {
+    return err('Ödenmiş veya iptal edilmiş sipariş güncellenemez', 409)
+  }
+
   const body = await req.json()
   const { status, notes } = body as { status?: string; notes?: string }
 
   const updateData: Record<string, unknown> = {}
   if (status !== undefined) {
     if (!VALID_ORDER_STATUSES.includes(status)) return err('Geçersiz durum', 400)
-    updateData.status = status
-    // 'odendi' ise masayı boşalt
-    if (status === 'odendi' && order.tableId) {
-      await db.cafeTable.update({
-        where: { id: order.tableId },
-        data: { status: 'bos' },
-      })
+    // ÖDEME KAPISI (K2): 'odendi' durumu SADECE ödeme API'si üzerinden
+    // set edilebilir — buradan direkt set edilirse ödemesiz kapanan adisyon
+    // ciro ile ödeme türü toplamlarını ayrıştırır (nakit/kart yüzdeleri bozulur).
+    if (status === 'odendi') {
+      return err("'Ödendi' durumu ödeme ekranından (kasa) ayarlanmalıdır — buradan değiştirilemez", 400)
     }
+    updateData.status = status
     // 'iptal' ise masayı da bosalt (sipariş varsa)
     if (status === 'iptal' && order.tableId) {
       const table = await db.cafeTable.findUnique({ where: { id: order.tableId } })
@@ -123,6 +129,15 @@ export async function DELETE(
 
   const order = await db.cafeOrder.findUnique({ where: { id: orderId } })
   if (!order || order.cafeId !== id) return err('Sipariş bulunamadı', 404)
+
+  // Ödenmiş sipariş silinemez — önce ödeme iadesi yapılmalı (kasadan geri al).
+  // İptal edilmiş siparişin tekrar iptali de anlamsız.
+  if (order.status === 'odendi') {
+    return err('Ödenmiş sipariş iptal edilemez — ödeme iadesi yapın', 409)
+  }
+  if (order.status === 'iptal') {
+    return err('Sipariş zaten iptal edilmiş', 409)
+  }
 
   // Siparişi 'iptal' olarak işaretle (donuk kayıt)
   await db.cafeOrder.update({

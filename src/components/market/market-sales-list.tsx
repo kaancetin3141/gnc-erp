@@ -65,6 +65,7 @@ const PAYMENT_META: Record<string, { label: string; icon: typeof Banknote; color
   cash: { label: 'Nakit', icon: Banknote, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' },
   card: { label: 'Kart', icon: CreditCard, color: 'bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-400' },
   mixed: { label: 'Karışık', icon: Wallet, color: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' },
+  veresiye: { label: 'Veresiye', icon: Wallet, color: 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400' },
 }
 
 export function MarketSalesList({ marketId }: { marketId: string }) {
@@ -82,7 +83,8 @@ export function MarketSalesList({ marketId }: { marketId: string }) {
   const params = new URLSearchParams()
   if (dateFilter) params.set('date', dateFilter)
   if (paymentFilter !== 'all') params.set('paymentMethod', paymentFilter)
-  if (typeFilter !== 'all') params.set('type', typeFilter)
+  // API yalnız gerçek fiş tiplerini bilir ('satis'); 'iadesi_olan' istemci tarafı filtresidir
+  if (typeFilter !== 'all' && typeFilter !== 'iadesi_olan') params.set('type', typeFilter)
   const qs = params.toString()
 
   const { data, isLoading } = useQuery({
@@ -90,14 +92,21 @@ export function MarketSalesList({ marketId }: { marketId: string }) {
     queryFn: () => apiGet<SalesResponse>(`/api/market/${marketId}/pos/sales${qs ? `?${qs}` : ''}`),
   })
 
-  const sales = data?.items ?? []
+  // 'iadesi_olan' filtresi istemci tarafında uygulanır (API type=iade sorgusunu
+  // desteklemez — iadeler MarketReturn tablosunda yaşar)
+  const allSales = data?.items ?? []
+  const sales = typeFilter === 'iadesi_olan'
+    ? allSales.filter((s) => (s._count?.returns ?? 0) > 0)
+    : allSales
 
   const summary = useMemo(() => {
     const valid = sales.filter((s) => s.type === 'satis' && s.status === 'tamamlandi')
     const total = valid.reduce((s, x) => s + x.total, 0)
     const cash = valid.reduce((s, x) => s + x.cashAmount, 0)
     const card = valid.reduce((s, x) => s + x.cardAmount, 0)
-    const returns = sales.filter((s) => s.type === 'iade').length
+    // İade fişi (type='iade') API hiç üretmiyor — iade sayısı MarketReturn
+    // kayıtlarından (_count.returns) türetilir; aksi halde sayaç hep 0 kalırdı.
+    const returns = sales.reduce((s, x) => s + (x._count?.returns ?? 0), 0)
     return { total, cash, card, count: valid.length, returns }
   }, [sales])
 
@@ -230,7 +239,7 @@ export function MarketSalesList({ marketId }: { marketId: string }) {
               <SelectContent>
                 <SelectItem value="all">Tümü</SelectItem>
                 <SelectItem value="satis">Satış</SelectItem>
-                <SelectItem value="iade">İade</SelectItem>
+                <SelectItem value="iadesi_olan">İadesi Olan</SelectItem>
               </SelectContent>
             </Select>
           </div>

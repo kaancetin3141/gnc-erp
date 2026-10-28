@@ -40,6 +40,7 @@ interface BarcodeRow {
     sku: string | null
     price: number
     stock: number
+    minStock?: number
     taxRate: number
     category: string | null
     unit: string
@@ -78,14 +79,15 @@ export function MarketStockView({ marketId }: { marketId: string }) {
       )
     }
     if (lowOnly) {
-      list = list.filter((b) => b.product.stock <= ((b.product as BarcodeRow['product'] & { minStock?: number })?.minStock ?? 5))
+      // Düşük stok eşiği ürünün kendi minStock alanından — raporlarla tutarlı
+      list = list.filter((b) => b.product.stock <= Math.max(b.product.minStock ?? 0, 0))
     }
     return list
   }, [all, search, lowOnly])
 
   const summary = useMemo(() => {
     const stockValue = all.reduce((s, x) => s + x.product.price * x.product.stock, 0)
-    const lowCount = all.filter((b) => b.product.stock <= 5).length
+    const lowCount = all.filter((b) => b.product.stock <= Math.max(b.product.minStock ?? 0, 0)).length
     return { count: all.length, stockValue, lowCount }
   }, [all])
 
@@ -102,13 +104,11 @@ export function MarketStockView({ marketId }: { marketId: string }) {
     if (adjustQty <= 0) { toast.error('Miktar 0\'dan büyük olmalı'); return }
     setAdjusting(true)
     try {
-      // Backend'de genel stock adjustment endpoint olmadığından, satış iadesi/mal kabul benzeri
-      // bir hareket yaratmak için ürünün stock alanını güncelliyoruz.
-      // Not: gerçek projede /api/products/[id]/adjust endpoint'i olmalı.
-      // Şimdilik /api/products/[id]/stockmovement kullanıyoruz (varsa), yoksa doğrudan product güncelle.
-      const delta = adjustType === 'giris' ? adjustQty : -adjustQty
-      await apiPatch(`/api/products/${adjustProduct.product.id}/stock`, {
-        delta,
+      // Stok hareketi API'si: POST /api/products/[id]/stock
+      //   { quantity, type: 'giris' | 'cikis', reason } — atomik olarak hem hareketi
+      //   yazar hem ürün stoğunu günceller; yetersiz stokta açıkça 400 döner.
+      await apiPost(`/api/products/${adjustProduct.product.id}/stock`, {
+        quantity: adjustQty,
         type: adjustType,
         reason: adjustReason || (adjustType === 'giris' ? 'Manuel giriş' : 'Manuel çıkış'),
       })
@@ -116,18 +116,7 @@ export function MarketStockView({ marketId }: { marketId: string }) {
       setAdjustOpen(false)
       toast.success(`Stok ${adjustType === 'giris' ? 'artırıldı' : 'azaltıldı'}`)
     } catch (e) {
-      // Fallback: direkt product PATCH
-      try {
-        const delta = adjustType === 'giris' ? adjustQty : -adjustQty
-        await apiPatch(`/api/products/${adjustProduct.product.id}`, {
-          stock: adjustProduct.product.stock + delta,
-        })
-        qc.invalidateQueries({ queryKey: ['market-barcodes', marketId] })
-        setAdjustOpen(false)
-        toast.success(`Stok ${adjustType === 'giris' ? 'artırıldı' : 'azaltıldı'}`)
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Stok güncellenemedi')
-      }
+      toast.error(e instanceof Error ? e.message : 'Stok güncellenemedi')
     } finally {
       setAdjusting(false)
     }

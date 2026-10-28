@@ -99,6 +99,9 @@ const NAV_ITEMS: { group: string; items: NavItem[] }[] = [
     group: 'Site Yönetimi',
     items: [
       { view: 'site', label: 'Site Yönetimi', icon: Building2, permission: 'site.view' },
+      // S5: Sakin Portalı erişilebilir yapıldı — yönetici sakinlerin
+      // gördüğü arayüzü inceleyebilir (aidat/duyuru/şikayet görünümü).
+      { view: 'resident-portal', label: 'Sakin Portalı', icon: Home, permission: 'site.view' },
     ],
   },
   {

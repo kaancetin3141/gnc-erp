@@ -145,7 +145,9 @@ const STAGE_COLORS: Record<string, string> = {
   iletisim: PALETTE.sky,
   teklif: PALETTE.amber,
   muzakere: PALETTE.violet,
-  kazanildi: PALETTE.emerald,
+  // Veri/'Deal.stage' değeri Türkçe 'ı' içerir ('kazanıldı') — ASCII anahtar
+  // grafiğin Kazanıldı barını griye düşürüyordu.
+  'kazanıldı': PALETTE.emerald,
   kaybedildi: PALETTE.rose,
 }
 

@@ -82,7 +82,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return s + (r.sale.cashAmount || 0) * ratio
   }, 0)
 
-  const expectedCash = shift.openingCash + salesCash - returnsCash
+  // Bu vardiyada kasaya giren veresiye nakit tahsilatları — çekmecede fiziken
+  // bulunan paradır, beklenen nakite eklenmezse kasiyer her seferinde fark çıkmış görünür.
+  const creditCollections = await db.creditEntry.aggregate({
+    where: { posShiftId: shiftId, type: 'odeme', method: 'nakit' },
+    _sum: { amount: true },
+  })
+  const collectedCash = creditCollections._sum.amount ?? 0
+
+  const expectedCash = shift.openingCash + salesCash - returnsCash + collectedCash
   const actualClose = Number(closingCash ?? 0)
   const difference = actualClose - expectedCash
 

@@ -28,6 +28,12 @@ export async function PATCH(
   const order = await db.cafeOrder.findUnique({ where: { id: orderId } })
   if (!order || order.cafeId !== id) return err('Sipariş bulunamadı', 404)
 
+  // Ödenmiş/iptal edilmiş adisyonun kalemleri değiştirilemez (K12) —
+  // geçmiş ciro ve mutfak kayıtları bozulur.
+  if (!['acik', 'hazirlaniyor', 'hazir'].includes(order.status)) {
+    return err('Ödenmiş veya iptal edilmiş adisyonun kalemleri değiştirilemez', 400)
+  }
+
   const item = await db.cafeOrderItem.findUnique({ where: { id: itemId } })
   if (!item || item.orderId !== orderId) return err('Sipariş kalemi bulunamadı', 404)
 

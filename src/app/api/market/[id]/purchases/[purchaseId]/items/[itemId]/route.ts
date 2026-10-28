@@ -36,14 +36,59 @@ export async function PATCH(
   const newPrice = unitPrice !== undefined ? Number(unitPrice) : item.unitPrice
   const lineTotal = newQty * newPrice
 
-  const updated = await db.purchaseItem.update({
-    where: { id: itemId },
-    data: {
-      ...(qty !== undefined ? { qty: newQty } : {}),
-      ...(unitPrice !== undefined ? { unitPrice: newPrice } : {}),
-      ...(accepted !== undefined ? { accepted } : {}),
-      lineTotal,
-    },
+  // Kabul durumu değişince stok da simetrik güncellenir:
+  //   accepted false→true  → stoğa ekle (kalem kabul edilmiş sayılır)
+  //   accepted true→false  → stoktan geri düş (kabul geri alınır)
+  // Böylece "kabul edildi ama stoğa hiç girmedi" kayıp kalem oluşmaz.
+  const acceptChanged = accepted !== undefined && accepted !== item.accepted
+
+  const updated = await db.$transaction(async (tx) => {
+    const upd = await tx.purchaseItem.update({
+      where: { id: itemId },
+      data: {
+        ...(qty !== undefined ? { qty: newQty } : {}),
+        ...(unitPrice !== undefined ? { unitPrice: newPrice } : {}),
+        ...(accepted !== undefined ? { accepted } : {}),
+        lineTotal,
+      },
+    })
+
+    if (acceptChanged && item.productId) {
+      const qtyForStock = qty !== undefined ? newQty : item.qty
+      if (accepted) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stock: { increment: qtyForStock } },
+        })
+        await tx.stockMovement.create({
+          data: {
+            productId: item.productId,
+            quantity: qtyForStock,
+            type: 'giris',
+            reason: `Mal Kabul Kalemi (${p.number})`,
+            refType: 'purchase_item',
+            refId: itemId,
+          },
+        })
+      } else {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stock: { decrement: qtyForStock } },
+        })
+        await tx.stockMovement.create({
+          data: {
+            productId: item.productId,
+            quantity: -qtyForStock,
+            type: 'cikis',
+            reason: `Mal Kabul Geri Alama (${p.number})`,
+            refType: 'purchase_item',
+            refId: itemId,
+          },
+        })
+      }
+    }
+
+    return upd
   })
 
   // Purchase totalAmount güncelle

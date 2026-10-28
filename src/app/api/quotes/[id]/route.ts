@@ -262,47 +262,58 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Opsiyonel: teklifi faturaya dönüştür
   let createdInvoice: unknown = null
   if (createInvoice && updated.status === 'faturalandi') {
-    const number = await generateInvoiceNumber(existing.tenantId)
-    // Teklif satırlarını da çek (ağırlık dahil)
-    const quoteLines = await db.quoteLine.findMany({ where: { quoteId: id } })
-    const invoice = await db.invoice.create({
-      data: {
-        // SUPERADMIN: fatura teklifin tenantına ait olmalı (çapraz-tenant tutarlılığı)
-        tenantId: existing.tenantId,
-        customerId: updated.customerId,
-        number,
-        status: 'odeme_bekliyor',
-        subtotal: updated.subtotal,
-        taxTotal: updated.taxTotal,
-        total: updated.total,
-        currency: updated.currency,
-        issueDate: new Date(),
-        dueDate: null,
-        lines: {
-          create: quoteLines.map((l) => ({
-            productId: l.productId,
-            description: l.description,
-            qty: l.qty,
-            unitPrice: l.unitPrice,
-            taxRate: l.taxRate,
-            lineTotal: l.lineTotal,
-            weightPerUnit: l.weightPerUnit,
-            weightUnit: l.weightUnit,
-            totalWeight: l.totalWeight,
-            color: l.color,
-          })),
+    // ÇİFT FATURA KORUMASI (ERP-6): bu teklifin zaten bağlı faturası varsa
+    // ikinci fatura ÜRETİLMEZ. (Frontend iki adımlı PATCH+POST kullanır;
+    // bu yol manuel API çağrısında kullanılabilir — invoiceId bağlanmadan
+    // POST /api/invoices guard'ı geçer ve mükerrer fatura oluşurdu.)
+    if (existing.invoiceId) {
+      createdInvoice = await db.invoice.findUnique({ where: { id: existing.invoiceId } })
+    } else {
+      const number = await generateInvoiceNumber(existing.tenantId)
+      // Teklif satırlarını da çek (ağırlık dahil)
+      const quoteLines = await db.quoteLine.findMany({ where: { quoteId: id } })
+      const invoice = await db.invoice.create({
+        data: {
+          // SUPERADMIN: fatura teklifin tenantına ait olmalı (çapraz-tenant tutarlılığı)
+          tenantId: existing.tenantId,
+          customerId: updated.customerId,
+          quoteId: id, // teklif↔fatura bağı — mükerrer üretimi kalıcı engeller
+          number,
+          status: 'odeme_bekliyor',
+          subtotal: updated.subtotal,
+          taxTotal: updated.taxTotal,
+          total: updated.total,
+          currency: updated.currency,
+          issueDate: new Date(),
+          dueDate: null,
+          lines: {
+            create: quoteLines.map((l) => ({
+              productId: l.productId,
+              description: l.description,
+              qty: l.qty,
+              unitPrice: l.unitPrice,
+              taxRate: l.taxRate,
+              lineTotal: l.lineTotal,
+              weightPerUnit: l.weightPerUnit,
+              weightUnit: l.weightUnit,
+              totalWeight: l.totalWeight,
+              color: l.color,
+            })),
+          },
         },
-      },
-    })
-    await writeAuditLog({
-      tenantId: user!.tenantId,
-      actorId: user!.id,
-      action: 'create',
-      entity: 'invoice',
-      entityId: invoice.id,
-      after: safeJsonParse(JSON.stringify(invoice), null),
-    })
-    createdInvoice = invoice
+      })
+      // Teklifin invoiceId'sini bağla — aynı tekliften tekrar fatura üretilemesin
+      await db.quote.update({ where: { id }, data: { invoiceId: invoice.id } })
+      await writeAuditLog({
+        tenantId: user!.tenantId,
+        actorId: user!.id,
+        action: 'create',
+        entity: 'invoice',
+        entityId: invoice.id,
+        after: safeJsonParse(JSON.stringify(invoice), null),
+      })
+      createdInvoice = invoice
+    }
   }
 
   return ok({ ...updated, createdOrder, createdInvoice })

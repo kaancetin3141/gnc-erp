@@ -1,13 +1,27 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
+import { writeAuditLog } from '@/lib/auth'
+
+// TENANT İZOLASYONU (S20): site bu tenant'a ait mi?
+async function checkSite(siteId: string, tenantId: string, isSuperadmin: boolean) {
+  const site = await db.site.findUnique({ where: { id: siteId } })
+  if (!site) return null
+  if (site.tenantId !== tenantId && !isSuperadmin) return null
+  return site
+}
 
 // GET — şikayetler
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
   if (authErr) return authErr
+  if (!user!.permissions.includes('site.view') && user!.role !== 'superadmin') {
+    return err('Bu modül için yetkiniz yok', 403)
+  }
   const { id } = await params
+  const site = await checkSite(id, user!.tenantId, user!.role === 'superadmin')
+  if (!site) return err('Site bulunamadı', 404)
   const url = new URL(req.url)
   const status = url.searchParams.get('status') || ''
   const where: Record<string, unknown> = { siteId: id }
@@ -19,7 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       assignedStaff: { select: { id: true, name: true, role: true, phone: true } },
     },
     orderBy: [
-      { priority: 'asc' }, // acil önce (alfabetik: acil < dusuk < inceleniyor... ama enum string) — aşağıda JS ile sıralanıyor
+      { priority: 'asc' },
       { createdAt: 'desc' },
     ],
   })
@@ -34,7 +48,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const user = await getSession(req)
   const authErr = requireAuth(user)
   if (authErr) return authErr
+  if (!user!.permissions.includes('site.manage') && user!.role !== 'superadmin') {
+    return err('Bu işlem için yetkiniz yok', 403)
+  }
   const { id } = await params
+  const site = await checkSite(id, user!.tenantId, user!.role === 'superadmin')
+  if (!site) return err('Site bulunamadı', 404)
   const body = await req.json()
   if (!body.title || !body.description) return err('Başlık ve açıklama gerekli', 400)
   const complaint = await db.complaint.create({
@@ -53,6 +72,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       resident: { select: { name: true, phone: true } },
       assignedStaff: { select: { id: true, name: true, role: true, phone: true } },
     },
+  })
+  await writeAuditLog({
+    tenantId: user!.tenantId,
+    actorId: user!.id,
+    action: 'create',
+    entity: 'complaint',
+    entityId: complaint.id,
+    after: { title: complaint.title, priority: complaint.priority },
   })
   return ok(complaint)
 }

@@ -360,7 +360,26 @@ export async function GET(req: NextRequest) {
   }))
 
   const totalPipelineValue = activeDeals.reduce((s, d) => s + d.value, 0)
-  const totalRevenueThisMonth = wonDealsThisMonth.reduce((s, d) => s + d.value, 0)
+
+  // DASH-1: "Bu Ay Ciro" artık KAZANILAN DEAL'den değil FATURALARDAN hesaplanır.
+  // Deal value'su teklif tutarıdır — faturalanmamış/silinmiş/iptal olabilir;
+  // ciro = kesilmiş (iptal hariç) fatura toplamıdır. Dövizli faturalar trend
+  // grafiğiyle AYNI sabit kurla TRY'ye çevrilir (iki metrik aynı ekranda
+  // tutarlı olur).
+  const monthInvoices = canSeeAmounts
+    ? await db.invoice.findMany({
+        where: {
+          ...(scopeTenant ? { tenantId: scopeTenant } : {}),
+          status: { not: 'iptal' },
+          issueDate: { gte: monthStart },
+        },
+        select: { total: true, currency: true },
+      })
+    : []
+  const totalRevenueThisMonth = monthInvoices.reduce(
+    (s, inv) => s + inv.total * (FX_TO_TRY[inv.currency] ?? 1),
+    0,
+  )
 
   // Activities over time (last 30 days, grouped by day)
   const activityDayMap = new Map<string, number>()

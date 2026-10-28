@@ -239,7 +239,7 @@ export async function getSiteDashboardData(tenantId: string, rangeStart: Date, n
   const [allDues, residentsCount, apartmentsCount, openComplaints, recentComplaints, recentAnnouncements, staffCount] = await Promise.all([
     db.dues.findMany({
       where: { siteId: { in: siteIds }, year: currentYear },
-      select: { id: true, month: true, year: true, amount: true, paidAmount: true, status: true, paidDate: true, apartmentId: true },
+      select: { id: true, month: true, year: true, amount: true, paidAmount: true, lateFee: true, status: true, paidDate: true, apartmentId: true },
     }),
     db.resident.count({ where: { tenantId, isActive: true } }),
     db.apartment.count({ where: { siteId: { in: siteIds } } }),
@@ -259,8 +259,10 @@ export async function getSiteDashboardData(tenantId: string, rangeStart: Date, n
     db.siteStaff.count({ where: { siteId: { in: siteIds }, isActive: true } }),
   ])
 
-  const totalDuesExpected = allDues.reduce((s, d) => s + d.amount, 0)
-  const totalDuesCollected = allDues.reduce((s, d) => s + (d.paidAmount ?? 0), 0)
+  const totalDuesExpected = allDues.reduce((s, d) => s + d.amount + (d.lateFee ?? 0), 0)
+  // Tahsilat = min(ödenen, borç): gecikme zammı dahil ödemeler oranı %100'ü
+  // aşmasın (aidat listesi ekranındaki Math.min semantiğiyle birebir aynı).
+  const totalDuesCollected = allDues.reduce((s, d) => s + Math.min(d.paidAmount ?? 0, d.amount + (d.lateFee ?? 0)), 0)
   const collectionRate = totalDuesExpected > 0 ? (totalDuesCollected / totalDuesExpected) * 100 : 0
 
   const paidCount = allDues.filter((d) => d.status === 'odendi').length

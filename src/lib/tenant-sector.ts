@@ -67,7 +67,9 @@ export const SECTOR_META: Record<TenantSector, {
  */
 export function getTenantSector(tenantName: string | undefined | null): TenantSector {
   if (!tenantName) return 'crm'
-  const name = tenantName.toLowerCase()
+  // tr-TR locale şart: JS'in standart toLowerCase'i 'İ' → 'i̇' (i + birleşen nokta)
+  // üretir; 'GÜZELLİK MERKEZİ' gibi isimler 'güzellik' eşleşmesini kaçırırdı.
+  const name = tenantName.toLocaleLowerCase('tr-TR')
 
   // Kafe şirketi
   if (name.includes('kafe') || name.includes('restoran') || name.includes('cafe')) {

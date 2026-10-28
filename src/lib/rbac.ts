@@ -185,7 +185,9 @@ export function getAdminPermissionsForTenant(tenantName: string): PermissionKey[
     'hr.view', 'hr.manage', 'tickets.view', 'tickets.manage',
   ]
 
-  const name = tenantName.toLowerCase()
+  // tr-TR locale şart: 'İ' → 'i̇' kombinasyonu 'yönetim'/'güzellik' eşleşmelerini
+  // bozar (tenant-sector.ts ile birebir aynı kural).
+  const name = tenantName.toLocaleLowerCase('tr-TR')
 
   // Kafe şirketi → kafe yetkileri
   if (name.includes('kafe') || name.includes('restoran') || name.includes('cafe')) {
@@ -193,7 +195,7 @@ export function getAdminPermissionsForTenant(tenantName: string): PermissionKey[
   }
 
   // Market şirketi → market yetkileri
-  if (name.includes('market') || name.includes('market') || name.includes('bakkal')) {
+  if (name.includes('market') || name.includes('bakkal')) {
     return [...base, 'market.view', 'market.pos', 'market.stock', 'market.manage']
   }
 

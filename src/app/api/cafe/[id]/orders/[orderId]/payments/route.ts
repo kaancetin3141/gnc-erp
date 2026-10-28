@@ -5,6 +5,53 @@ import { writeAuditLog } from '@/lib/auth'
 
 const VALID_METHODS = ['cash', 'card', 'online']
 
+// Kasa & Banka entegrasyonu (K1): kafe ödemesi artık genel muhasebe kasasına
+// yazılır — nakit → 'kasa' hesabı, kart/online → 'banka' hesabı.
+// Böylece gün sonunda "çekmecede kaç TL olmalı" sorusu Kasa modülünden
+// yanıtlanabilir hale gelir.
+async function writeCashEntry(opts: {
+  tenantId: string
+  userId: string
+  paymentId: string
+  orderNumber: string
+  amount: number
+  method: string
+  type: 'gelir' | 'gider'
+}) {
+  try {
+    const wantType = opts.method === 'cash' ? 'kasa' : 'banka'
+    let account = await db.cashAccount.findFirst({
+      where: { tenantId: opts.tenantId, type: wantType, archived: false },
+      orderBy: { createdAt: 'asc' },
+    })
+    if (!account) {
+      account = await db.cashAccount.create({
+        data: {
+          tenantId: opts.tenantId,
+          name: wantType === 'kasa' ? 'Ana Kasa' : 'Banka / Kart',
+          type: wantType,
+        },
+      })
+    }
+    const methodLabel = opts.method === 'cash' ? 'Nakit' : opts.method === 'card' ? 'Kart' : 'Online'
+    await db.cashTransaction.create({
+      data: {
+        tenantId: opts.tenantId,
+        accountId: account.id,
+        type: opts.type,
+        category: opts.type === 'gelir' ? 'Kafe Satış' : 'Kafe İadesi',
+        amount: opts.amount,
+        description: `${methodLabel} ödeme — Adisyon ${opts.orderNumber}`,
+        refType: 'cafe_payment',
+        refId: opts.paymentId,
+        userId: opts.userId,
+      },
+    })
+  } catch {
+    // Kasa entegrasyonu ödeme akışını bloklamaz
+  }
+}
+
 // ============================================================
 // POST — ödeme ekle
 // Body: { amount, method }
@@ -54,6 +101,17 @@ export async function POST(
       method,
       status: 'tamamlandi',
     },
+  })
+
+  // Kasa hareketi — nakit çekmeceye, kart/online bankaya girer (K1)
+  await writeCashEntry({
+    tenantId: user!.tenantId,
+    userId: user!.id,
+    paymentId: payment.id,
+    orderNumber: order.number,
+    amount,
+    method,
+    type: 'gelir',
   })
 
   // Toplam ödeme total'e eşit veya fazlaysa siparişi kapat

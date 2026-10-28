@@ -25,8 +25,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   })
   if (!customer || customer.marketId !== id) return err('Veresiye müşterisi bulunamadı', 404)
 
-  let balance = 0
-  for (const e of customer.entries) balance += e.type === 'borc' ? e.amount : -e.amount
+  // Bakiye TÜM hareketlerden hesaplanır — liste 200 kayıtla sınırlı olabilir,
+  // eski müşterinin bakiyesi listeden hesaplanırsa yanlış çıkar.
+  const [borcSum, odemeSum] = await Promise.all([
+    db.creditEntry.aggregate({ where: { customerId, type: 'borc' }, _sum: { amount: true } }),
+    db.creditEntry.aggregate({ where: { customerId, type: 'odeme' }, _sum: { amount: true } }),
+  ])
+  const balance = (borcSum._sum.amount ?? 0) - (odemeSum._sum.amount ?? 0)
 
   return ok({
     ...customer,
@@ -75,12 +80,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
+  // Nakit tahsilat açık vardiyaya bağlanır — Z raporundaki beklenen nakite girer,
+  // böylece gün sonu sayım veresiye tahsilatları kadar sapma göstermez.
+  let shiftId: string | null = null
+  if (type === 'odeme' && (method || 'nakit') === 'nakit') {
+    const openShift = await db.posShift.findFirst({
+      where: { marketId: id, status: 'acik' },
+      orderBy: { openingTime: 'desc' },
+    })
+    shiftId = openShift?.id ?? null
+  }
+
   const entry = await db.creditEntry.create({
     data: {
       customerId,
       type,
       amount: amt,
       method: type === 'odeme' ? (method || 'nakit') : null,
+      posShiftId: shiftId,
       dueDate: type === 'borc' && dueDate ? new Date(dueDate) : null,
       note: note?.trim() || null,
       createdById: user!.id,
@@ -106,6 +123,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (permErr) return permErr
 
   const { id, customerId } = await params
+  // TENANT İZOLASYONU: market bu tenant'a ait mi? (diğer tüm market route'larındaki desen)
+  const market = await db.market.findUnique({ where: { id } })
+  if (!market || market.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Market bulunamadı', 404)
   const customer = await db.creditCustomer.findUnique({ where: { id: customerId } })
   if (!customer || customer.marketId !== id) return err('Veresiye müşterisi bulunamadı', 404)
 
@@ -135,6 +155,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (permErr) return permErr
 
   const { id, customerId } = await params
+  // TENANT İZOLASYONU: market bu tenant'a ait mi?
+  const market = await db.market.findUnique({ where: { id } })
+  if (!market || market.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Market bulunamadı', 404)
   const customer = await db.creditCustomer.findUnique({ where: { id: customerId }, include: { entries: true } })
   if (!customer || customer.marketId !== id) return err('Veresiye müşterisi bulunamadı', 404)
 

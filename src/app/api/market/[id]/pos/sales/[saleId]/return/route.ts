@@ -36,9 +36,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Hali hazırda var olan iadeleri çek (önceden iade edilen miktarlar için)
   const existingReturns = await db.marketReturn.findMany({
     where: { saleId, status: 'tamamlandi' },
+    include: { items: true },
   })
+  // Satır bazında daha önce iade edilen miktarı hesapla — aynı fişin
+  // aynı kalemi ikinci kez iade edilemez, stok şişirilemez.
   const previouslyReturned: Record<string, number> = {}
-  // Daha önce iade miktarlarını hareketlerden de bulabiliriz, ama basit tutuyoruz.
+  for (const ret of existingReturns) {
+    for (const it of ret.items) {
+      previouslyReturned[it.saleItemId] = (previouslyReturned[it.saleItemId] ?? 0) + it.qty
+    }
+  }
 
   let totalAmount = 0
   const itemsToReturn: Array<{ saleItemId: string; qty: number; lineTotal: number; productId: string | null }> = []
@@ -50,7 +57,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const alreadyReturned = previouslyReturned[ret.saleItemId] ?? 0
     const maxQty = saleItem.qty - alreadyReturned
-    const qty = Math.min(Number(ret.qty ?? 0), maxQty)
+    const requestedQty = Number(ret.qty ?? 0)
+    // NaN / sonlu olmayan miktarlar DB'ye yazılamaz — lineTotal=NaN fiş bozar
+    if (!Number.isFinite(requestedQty)) {
+      return err(`Geçersiz miktar: ${ret.saleItemId}`, 400)
+    }
+    if (requestedQty > maxQty) {
+      return err(
+        `"${saleItem.name}" için iade edilebilir maksimum miktar ${maxQty} ` +
+        `(satılan ${saleItem.qty}, daha önce iade edilen ${alreadyReturned})`,
+        400,
+      )
+    }
+    const qty = requestedQty
     if (qty <= 0) continue
 
     // İade tutarı (orantılı)
@@ -69,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (itemsToReturn.length === 0) return err('İade edilecek geçerli kalem yok', 400)
 
-  // Transaction: iade kaydı + stok geri al
+  // Transaction: iade kaydı + iade kalemleri + stok geri al
   const result = await db.$transaction(async (tx) => {
     const marketReturn = await tx.marketReturn.create({
       data: {
@@ -78,6 +97,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         totalAmount,
         status: 'tamamlandi',
         userId: user!.id,
+        items: {
+          create: itemsToReturn.map((it) => ({
+            saleItemId: it.saleItemId,
+            qty: it.qty,
+            lineTotal: it.lineTotal,
+          })),
+        },
       },
     })
 
@@ -85,12 +111,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (it.productId) {
         await tx.product.update({
           where: { id: it.productId },
-          data: { stock: { increment: Math.round(it.qty) } },
+          data: { stock: { increment: it.qty } },
         })
         await tx.stockMovement.create({
           data: {
             productId: it.productId,
-            quantity: Math.round(it.qty),
+            quantity: it.qty,
             type: 'giris',
             reason: 'Satış İadesi',
             refType: 'market_return',
@@ -102,6 +128,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return marketReturn
   })
+
+  // VERESİYE İADESİ: veresiyle satılan malın iadesi müşterinin borcunu azaltır.
+  // Yazılmazsa müşteri iade ettiği malın parasını ödemeye devam eder.
+  if (sale.paymentMethod === 'veresiye') {
+    const cc = await db.creditCustomer.findFirst({
+      where: { marketId: id, isActive: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    // Satışın bağlı olduğu veresiye carisi CreditEntry.refSaleId üzerinden bulunur
+    const linkedEntry = await db.creditEntry.findFirst({
+      where: { refSaleId: saleId, type: 'borc' },
+      select: { customerId: true },
+    })
+    const targetCustomerId = linkedEntry?.customerId ?? cc?.id ?? null
+    if (targetCustomerId) {
+      await db.creditEntry.create({
+        data: {
+          customerId: targetCustomerId,
+          type: 'alacak',
+          amount: totalAmount,
+          refSaleId: saleId,
+          note: `İade — ${sale.number} (${reason.trim()})`,
+          createdById: user!.id,
+        },
+      })
+    }
+  }
 
   await writeAuditLog({
     tenantId: user!.tenantId,

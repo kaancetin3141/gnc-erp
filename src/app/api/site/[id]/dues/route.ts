@@ -11,13 +11,27 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+// TENANT İZOLASYONU (S2): site bu tenant'a ait mi?
+async function checkSite(siteId: string, tenantId: string, isSuperadmin: boolean) {
+  const site = await db.site.findUnique({ where: { id: siteId } })
+  if (!site) return null
+  if (site.tenantId !== tenantId && !isSuperadmin) return null
+  return site
+}
+
 // GET — aidat listesi (filtreli)
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
   if (authErr) return authErr
+  if (!user!.permissions.includes('site.view') && user!.role !== 'superadmin') {
+    return err('Bu modül için yetkiniz yok', 403)
+  }
 
   const { id } = await params
+  const site = await checkSite(id, user!.tenantId, user!.role === 'superadmin')
+  if (!site) return err('Site bulunamadı', 404)
+
   const url = new URL(req.url)
   const month = url.searchParams.get('month') || ''
   const year = url.searchParams.get('year') || ''
@@ -38,10 +52,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     take: 500,
   })
 
-  // Stats
+  // Stats — gecikme zammı tahsilata dahil edilir ama toplama DAHİL EDİLMEZ (S6):
+  // Toplam = tahakkuk; Tahsil edilen = ödenen (zamımlı). Böylece tahsilat oranı
+  // %100'ü aşmaz ve kartlar tutarlı olur.
   const totalAmount = dues.reduce((s, d) => s + d.amount, 0)
-  const paidAmount = dues.filter(d => d.status === 'odendi').reduce((s, d) => s + (d.paidAmount || d.amount), 0)
-  const unpaidCount = dues.filter(d => d.status === 'odenmedi').length
+  const paidAmount = dues
+    .filter((d) => d.status === 'odendi')
+    .reduce((s, d) => s + Math.min(d.paidAmount || d.amount, d.amount + (d.lateFee || 0)), 0)
+  const unpaidCount = dues.filter((d) => d.status !== 'odendi').length
 
   return ok({ items: dues, stats: { total: dues.length, totalAmount, paidAmount, unpaidCount } })
 }
@@ -51,21 +69,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const user = await getSession(req)
   const authErr = requireAuth(user)
   if (authErr) return authErr
+  if (!user!.permissions.includes('site.manage') && user!.role !== 'superadmin') {
+    return err('Bu işlem için yetkiniz yok', 403)
+  }
 
   const { id } = await params
+  const site = await checkSite(id, user!.tenantId, user!.role === 'superadmin')
+  if (!site) return err('Site bulunamadı', 404)
+
   const body = await req.json()
   const { month, year, amount, apartmentId, generateAll } = body
 
   if (!month || !year) return err('Ay ve yıl gerekli', 400)
+
+  // Vade günü doğrulaması (S8): 1-28 aralığı dışındaki değerler ay kaymasına
+  // yol açardı (dueDay=45 → sonraki ay, dueDay=0 → önceki ayın son günü)
+  const dueDay = Math.min(28, Math.max(1, site.dueDay || 5))
 
   if (generateAll) {
     // Tüm daireler için aidat oluştur
     const apartments = await db.apartment.findMany({ where: { block: { siteId: id } } })
     if (apartments.length === 0) return err('Bu siteye ait daire yok', 400)
 
-    const site = await db.site.findUnique({ where: { id } })
-    const dueAmount = parseFloat(amount) || site?.defaultDueAmount || 0
-    const dueDate = new Date(year, month - 1, site?.dueDay || 5)
+    const dueAmount = parseFloat(amount) || site.defaultDueAmount || 0
+    const dueDate = new Date(year, month - 1, dueDay)
 
     // Var mı kontrol et
     const existing = await db.dues.findFirst({ where: { siteId: id, month: parseInt(month), year: parseInt(year) } })
@@ -129,9 +156,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     })
   } else if (apartmentId) {
     // Tek daire için
-    const site = await db.site.findUnique({ where: { id } })
     const apt = await db.apartment.findUnique({ where: { id: apartmentId } })
-    const dueDate = new Date(year, month - 1, site?.dueDay || 5)
+    if (!apt) return err('Daire bulunamadı', 404)
+    const dueDate = new Date(year, month - 1, dueDay)
 
     const dues = await db.dues.create({
       data: {
@@ -173,7 +200,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return err("Geçerli bir 'action' gerekli (örn: 'calculate-late-fees')", 400)
   }
 
-  const site = await db.site.findUnique({ where: { id } })
+  const site = await checkSite(id, user!.tenantId, user!.role === 'superadmin')
   if (!site) return err('Site bulunamadı', 404)
 
   const now = new Date()

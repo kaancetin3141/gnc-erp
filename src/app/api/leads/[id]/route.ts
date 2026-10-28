@@ -116,6 +116,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           lng: existing.lng,
           placeId: existing.placeId,
           phone: existing.phone,
+          email: existing.email, // CRM-3: lead e-postası müşteriye taşınır
           web: existing.web,
           status: 'aktif',
           tags: JSON.stringify(['Maps Lead']),
@@ -130,6 +131,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         entity: 'customer',
         entityId: newCustomer.id,
         after: { ...newCustomer, source: 'lead_conversion', leadId: id },
+      })
+    }
+
+    // CRM-3: Lead'e girilen tüm aktivite geçmişi (arama/toplantı/not/ziyaret)
+    // müşteriye taşınır — müşteri 360'da görünmesi için. İki kez çalıştırılırsa
+    // updateMany idempotent olduğu için sorun olmaz (leadId'si artık boş olur).
+    const targetCustomerId = (updateData.convertedCustomerId ?? existing.convertedCustomerId) as string | undefined
+    if (targetCustomerId) {
+      await db.activity.updateMany({
+        where: { leadId: id, customerId: null },
+        data: { customerId: targetCustomerId },
       })
     }
   } else if (status === 'donustu' && convertedCustomerId) {

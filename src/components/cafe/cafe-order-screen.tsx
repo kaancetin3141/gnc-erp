@@ -132,6 +132,11 @@ export function CafeOrderScreen({ cafeId }: { cafeId: string }) {
   const [activeOrder, setActiveOrder] = useState<CafeOrder | null>(null)
   const [activeOrderDialog, setActiveOrderDialog] = useState(false)
   const [cancelTarget, setCancelTarget] = useState<CafeOrder | null>(null)
+  // K5: açık adisyona kalem ekleme (en sık kafe operasyonu)
+  const [addPickerOpen, setAddPickerOpen] = useState(false)
+  const [addItemId, setAddItemId] = useState('')
+  const [addQty, setAddQty] = useState(1)
+  const [addingItem, setAddingItem] = useState(false)
 
   const { data: tablesData, isLoading: tablesLoading } = useQuery({
     queryKey: ['cafe-tables', cafeId],
@@ -251,6 +256,9 @@ export function CafeOrderScreen({ cafeId }: { cafeId: string }) {
       const detail = await apiGet<CafeOrder>(`/api/cafe/${cafeId}/orders/${o.id}`)
       setActiveOrder(detail)
       setActiveOrderDialog(true)
+      setAddPickerOpen(false)
+      setAddItemId('')
+      setAddQty(1)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Sipariş yüklenemedi')
     }
@@ -267,6 +275,30 @@ export function CafeOrderScreen({ cafeId }: { cafeId: string }) {
       if (activeOrder?.id === cancelTarget.id) setActiveOrderDialog(false)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'İptal başarısız')
+    }
+  }
+
+  // K5: açık adisyona kalem ekle — adisyonu yeniden kurmaya gerek kalmadan
+  // "masaya bir kahve daha" operasyonu
+  async function handleAddItems() {
+    if (!activeOrder || !addItemId || addQty <= 0) return
+    setAddingItem(true)
+    try {
+      const res = await apiPost<{ items: OrderItem[] }>(`/api/cafe/${cafeId}/orders/${activeOrder.id}/items`, {
+        items: [{ menuItemId: addItemId, qty: addQty }],
+      })
+      // Diyalogdaki adisyonu anında güncelle
+      setActiveOrder({ ...activeOrder, items: res.items, total: res.items.reduce((s, i) => s + i.unitPrice * i.qty, 0) })
+      qc.invalidateQueries({ queryKey: ['cafe-orders', cafeId] })
+      qc.invalidateQueries({ queryKey: ['cafe-tables', cafeId] })
+      setAddPickerOpen(false)
+      setAddItemId('')
+      setAddQty(1)
+      toast.success('Adisyona eklendi — mutfak/bar kuyruğuna düştü')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Kalem eklenemedi')
+    } finally {
+      setAddingItem(false)
     }
   }
 
@@ -302,8 +334,8 @@ export function CafeOrderScreen({ cafeId }: { cafeId: string }) {
                   <div className="grid grid-cols-3 gap-2">
                     {[
                       { v: 'dine_in', label: 'Masa', icon: Table2 },
-                      { v: 'takeaway', label: 'Paket', icon: Receipt },
-                      { v: 'delivery', label: 'Gel-Al', icon: User },
+                      { v: 'takeaway', label: 'Gel-Al', icon: Receipt },
+                      { v: 'delivery', label: 'Paket Servis', icon: User },
                     ].map((t) => (
                       <button
                         key={t.v}
@@ -591,12 +623,12 @@ export function CafeOrderScreen({ cafeId }: { cafeId: string }) {
                         ) : o.type === 'takeaway' ? (
                           <>
                             <Receipt className="w-3.5 h-3.5" />
-                            Paket {o.customerName ? `· ${o.customerName}` : ''}
+                            Gel-Al {o.customerName ? `· ${o.customerName}` : ''}
                           </>
                         ) : (
                           <>
                             <User className="w-3.5 h-3.5" />
-                            Gel-Al {o.customerName ? `· ${o.customerName}` : ''}
+                            Paket Servis {o.customerName ? `· ${o.customerName}` : ''}
                           </>
                         )}
                       </div>
@@ -643,7 +675,7 @@ export function CafeOrderScreen({ cafeId }: { cafeId: string }) {
                 <div>
                   <span className="text-muted-foreground">Tip:</span>{' '}
                   <span className="font-medium">
-                    {activeOrder.type === 'dine_in' ? 'Masa' : activeOrder.type === 'takeaway' ? 'Paket' : 'Gel-Al'}
+                    {activeOrder.type === 'dine_in' ? 'Masa' : activeOrder.type === 'takeaway' ? 'Gel-Al' : 'Paket Servis'}
                   </span>
                 </div>
                 <div>
@@ -693,6 +725,56 @@ export function CafeOrderScreen({ cafeId }: { cafeId: string }) {
                   {formatCurrency(activeOrder.total)}
                 </span>
               </div>
+              {['acik', 'hazirlaniyor', 'hazir'].includes(activeOrder.status) && (
+                <div className="space-y-2">
+                  {!addPickerOpen ? (
+                    <Button
+                      variant="outline"
+                      className="w-full text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                      onClick={() => setAddPickerOpen(true)}
+                    >
+                      <Plus className="w-4 h-4 mr-1.5" />
+                      Adisyona Kalem Ekle
+                    </Button>
+                  ) : (
+                    <div className="p-3 rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-2">
+                      <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Eklenecek ürün</div>
+                      <Select value={addItemId} onValueChange={setAddItemId}>
+                        <SelectTrigger className="text-xs"><SelectValue placeholder="Menüden ürün seçin" /></SelectTrigger>
+                        <SelectContent>
+                          {allItems.map((it) => (
+                            <SelectItem key={it.id} value={it.id}>
+                              {it.name} · {formatCurrency(it.price)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <Button type="button" variant="outline" size="icon" className="h-7 w-7" onClick={() => setAddQty((q) => Math.max(1, q - 1))}>
+                            <Minus className="w-3 h-3" />
+                          </Button>
+                          <span className="w-8 text-center text-sm font-semibold tabular-nums">{addQty}</span>
+                          <Button type="button" variant="outline" size="icon" className="h-7 w-7" onClick={() => setAddQty((q) => q + 1)}>
+                            <Plus className="w-3 h-3" />
+                          </Button>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="ml-auto bg-emerald-600 hover:bg-emerald-700"
+                          disabled={!addItemId || addingItem}
+                          onClick={handleAddItems}
+                        >
+                          {addingItem ? 'Ekleniyor...' : 'Ekle'}
+                        </Button>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => { setAddPickerOpen(false); setAddItemId(''); setAddQty(1) }}>
+                          Vazgeç
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {activeOrder.status !== 'odendi' && activeOrder.status !== 'iptal' && (
                 <Button
                   variant="outline"

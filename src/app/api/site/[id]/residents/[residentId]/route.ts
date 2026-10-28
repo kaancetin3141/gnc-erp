@@ -92,13 +92,15 @@ export async function PATCH(
     },
   })
 
+  // Audit log'a şifre/hash YAZILMAZ — tam nesne yerine hassas alanlar strip edilir
+  const { password: _rPw, passwordHash: _rPh, ...residentSafe } = resident
+  const { password: _uPw, passwordHash: _uPh, ...updatedSafe } = updated
   await writeAuditLog({
     tenantId: user.tenantId, actorId: user.id, action: 'update',
-    entity: 'resident', entityId: residentId, before: resident, after: updated,
+    entity: 'resident', entityId: residentId, before: residentSafe, after: updatedSafe,
   })
 
-  const { password: _pw, passwordHash: _pwh, ...safe } = updated
-  return ok({ ...safe, hasPassword: !!updated.passwordHash || !!updated.password })
+  return ok({ ...updatedSafe, hasPassword: !!updated.passwordHash || !!updated.password })
 }
 
 // ============================================================

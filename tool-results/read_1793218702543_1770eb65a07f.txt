@@ -1,0 +1,572 @@
+     1→'use client'
+     2→
+     3→// ============================================================
+     4→// SITE — ARIZA / ŞİKAYET TALEP YÖNETİMİ (gelişmiş)
+     5→// — Öncelik + durum akışı (açık→inceleniyor→çözüldü/reddedildi)
+     6→// — Site personeline atama (otomatik durum ilerlemesi)
+     7→// — Tahmini/gerçek maliyet takibi + hedef tarih + gecikme vurgusu
+     8→// — Kategori rozetleri + öncelik sıralı liste + filtreler
+     9→// ============================================================
+    10→
+    11→import { useMemo, useState } from 'react'
+    12→import { useQuery, useQueryClient } from '@tanstack/react-query'
+    13→import { apiGet, apiPatch, apiPost } from '@/lib/api-client'
+    14→import { Card, CardContent } from '@/components/ui/card'
+    15→import { Button } from '@/components/ui/button'
+    16→import { Input } from '@/components/ui/input'
+    17→import { Label } from '@/components/ui/label'
+    18→import { Badge } from '@/components/ui/badge'
+    19→import { Skeleton } from '@/components/ui/skeleton'
+    20→import { Textarea } from '@/components/ui/textarea'
+    21→import {
+    22→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+    23→} from '@/components/ui/dialog'
+    24→import {
+    25→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    26→} from '@/components/ui/select'
+    27→import { toast } from 'sonner'
+    28→import { cn } from '@/lib/utils'
+    29→import { formatCurrency, formatDate, whatsappLink } from '@/lib/format'
+    30→import {
+    31→  Wrench, Plus, Filter, Phone, MessageCircle, CalendarClock, Wallet,
+    32→  UserCheck, CheckCircle2, XCircle, Droplets, Zap, ArrowDownUp, Shield, Sparkles,
+    33→  Volume2, SquareParking, MoreHorizontal, AlertOctagon, Clock,
+    34→} from 'lucide-react'
+    35→
+    36→// ============================================================
+    37→// Tipler
+    38→// ============================================================
+    39→
+    40→export interface ComplaintRow {
+    41→  id: string
+    42→  title: string
+    43→  description: string
+    44→  category: string
+    45→  status: 'acik' | 'inceleniyor' | 'cozuldu' | 'reddedildi'
+    46→  priority: 'dusuk' | 'normal' | 'yuksek' | 'acil'
+    47→  assignedStaffId: string | null
+    48→  assignedStaff?: { id: string; name: string; role: string; phone: string | null } | null
+    49→  estimatedCost: number | null
+    50→  actualCost: number | null
+    51→  dueDate: string | null
+    52→  resolvedAt: string | null
+    53→  response: string | null
+    54→  respondedAt: string | null
+    55→  createdAt: string
+    56→  resident?: { name: string; phone: string | null } | null
+    57→}
+    58→
+    59→interface StaffRow {
+    60→  id: string
+    61→  name: string
+    62→  role: string
+    63→  phone: string | null
+    64→  isActive: boolean
+    65→}
+    66→
+    67→const STATUS_META: Record<ComplaintRow['status'], { label: string; cls: string }> = {
+    68→  acik: { label: 'Açık', cls: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800' },
+    69→  inceleniyor: { label: 'İnceleniyor', cls: 'bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800' },
+    70→  cozuldu: { label: 'Çözüldü', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800' },
+    71→  reddedildi: { label: 'Reddedildi', cls: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-900/60 dark:text-slate-400 dark:border-slate-700' },
+    72→}
+    73→
+    74→const PRIORITY_META: Record<ComplaintRow['priority'], { label: string; cls: string; dot: string }> = {
+    75→  dusuk: { label: 'Düşük', cls: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-900/60 dark:text-slate-400', dot: 'bg-slate-400' },
+    76→  normal: { label: 'Normal', cls: 'bg-sky-100 text-sky-700 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300', dot: 'bg-sky-500' },
+    77→  yuksek: { label: 'Yüksek', cls: 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950/40 dark:text-orange-300', dot: 'bg-orange-500' },
+    78→  acil: { label: 'Acil', cls: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-950/40 dark:text-red-300', dot: 'bg-red-500 animate-pulse' },
+    79→}
+    80→
+    81→const CATEGORY_META: Record<string, { label: string; icon: typeof Wrench }> = {
+    82→  su: { label: 'Su Tesisatı', icon: Droplets },
+    83→  elektrik: { label: 'Elektrik', icon: Zap },
+    84→  asansor: { label: 'Asansör', icon: ArrowDownUp },
+    85→  guvenlik: { label: 'Güvenlik', icon: Shield },
+    86→  temizlik: { label: 'Temizlik', icon: Sparkles },
+    87→  gurultu: { label: 'Gürültü', icon: Volume2 },
+    88→  park: { label: 'Otopark', icon: SquareParking },
+    89→  diger: { label: 'Diğer', icon: MoreHorizontal },
+    90→}
+    91→
+    92→function toInputDate(d: Date): string {
+    93→  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    94→}
+    95→
+    96→// ============================================================
+    97→// Ana bileşen
+    98→// ============================================================
+    99→
+   100→export function SiteComplaints({ siteId }: { siteId: string }) {
+   101→  const qc = useQueryClient()
+   102→  const [statusFilter, setStatusFilter] = useState('all')
+   103→  const [priorityFilter, setPriorityFilter] = useState('all')
+   104→  const [detail, setDetail] = useState<ComplaintRow | null>(null)
+   105→
+   106→  const { data: complaints = [], isLoading } = useQuery<ComplaintRow[]>({
+   107→    queryKey: ['complaints', siteId],
+   108→    queryFn: () => apiGet<ComplaintRow[]>(`/api/site/${siteId}/complaints`),
+   109→  })
+   110→
+   111→  const { data: staffList = [] } = useQuery<StaffRow[]>({
+   112→    queryKey: ['site-staff', siteId],
+   113→    queryFn: () => apiGet(`/api/site/${siteId}/staff`),
+   114→    staleTime: 60_000,
+   115→  })
+   116→  const staff = staffList.filter((s) => s.isActive)
+   117→
+   118→  const filtered = useMemo(() => {
+   119→    return complaints.filter((c) =>
+   120→      (statusFilter === 'all' || c.status === statusFilter) &&
+   121→      (priorityFilter === 'all' || c.priority === priorityFilter),
+   122→    )
+   123→  }, [complaints, statusFilter, priorityFilter])
+   124→
+   125→  const counts = useMemo(() => ({
+   126→    acik: complaints.filter((c) => c.status === 'acik').length,
+   127→    inceleniyor: complaints.filter((c) => c.status === 'inceleniyor').length,
+   128→    acil: complaints.filter((c) => c.priority === 'acil' && c.status !== 'cozuldu' && c.status !== 'reddedildi').length,
+   129→    cozuldu: complaints.filter((c) => c.status === 'cozuldu').length,
+   130→  }), [complaints])
+   131→
+   132→  // Personel iş yükü: atanmış + çözülmemiş talepler
+   133→  const workload = useMemo(() => {
+   134→    const map = new Map<string, number>()
+   135→    for (const c of complaints) {
+   136→      if (c.assignedStaffId && c.status !== 'cozuldu' && c.status !== 'reddedildi') {
+   137→        map.set(c.assignedStaffId, (map.get(c.assignedStaffId) ?? 0) + 1)
+   138→      }
+   139→    }
+   140→    return map
+   141→  }, [complaints])
+   142→
+   143→  const invalidate = () => {
+   144→    void qc.invalidateQueries({ queryKey: ['complaints', siteId] })
+   145→  }
+   146→
+   147→  return (
+   148→    <div className="space-y-4">
+   149→      {/* Mini istatistikler */}
+   150→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+   151→        <Card className="border-0 shadow-sm"><CardContent className="p-3">
+   152→          <div className="text-[11px] text-muted-foreground flex items-center gap-1"><Wrench className="w-3 h-3 text-amber-600" /> Açık</div>
+   153→          <div className="text-xl font-bold">{counts.acik}</div>
+   154→        </CardContent></Card>
+   155→        <Card className="border-0 shadow-sm"><CardContent className="p-3">
+   156→          <div className="text-[11px] text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3 text-sky-600" /> İnceleniyor</div>
+   157→          <div className="text-xl font-bold">{counts.inceleniyor}</div>
+   158→        </CardContent></Card>
+   159→        <Card className="border-0 shadow-sm"><CardContent className="p-3">
+   160→          <div className="text-[11px] text-muted-foreground flex items-center gap-1"><AlertOctagon className="w-3 h-3 text-red-600" /> Acil</div>
+   161→          <div className="text-xl font-bold">{counts.acil}</div>
+   162→        </CardContent></Card>
+   163→        <Card className="border-0 shadow-sm"><CardContent className="p-3">
+   164→          <div className="text-[11px] text-muted-foreground flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-600" /> Çözüldü</div>
+   165→          <div className="text-xl font-bold">{counts.cozuldu}</div>
+   166→        </CardContent></Card>
+   167→      </div>
+   168→
+   169→      {/* Filtre barı */}
+   170→      <div className="flex flex-wrap items-center gap-2">
+   171→        <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+   172→        <Select value={statusFilter} onValueChange={setStatusFilter}>
+   173→          <SelectTrigger className="h-8 w-[140px] text-xs" aria-label="Durum filtresi"><SelectValue /></SelectTrigger>
+   174→          <SelectContent>
+   175→            <SelectItem value="all">Tüm Durumlar</SelectItem>
+   176→            <SelectItem value="acik">Açık</SelectItem>
+   177→            <SelectItem value="inceleniyor">İnceleniyor</SelectItem>
+   178→            <SelectItem value="cozuldu">Çözüldü</SelectItem>
+   179→            <SelectItem value="reddedildi">Reddedildi</SelectItem>
+   180→          </SelectContent>
+   181→        </Select>
+   182→        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+   183→          <SelectTrigger className="h-8 w-[130px] text-xs" aria-label="Öncelik filtresi"><SelectValue /></SelectTrigger>
+   184→          <SelectContent>
+   185→            <SelectItem value="all">Tüm Öncelikler</SelectItem>
+   186→            <SelectItem value="acil">Acil</SelectItem>
+   187→            <SelectItem value="yuksek">Yüksek</SelectItem>
+   188→            <SelectItem value="normal">Normal</SelectItem>
+   189→            <SelectItem value="dusuk">Düşük</SelectItem>
+   190→          </SelectContent>
+   191→        </Select>
+   192→        <div className="flex-1" />
+   193→        {staff.length > 0 && (
+   194→          <div className="flex flex-wrap items-center gap-1">
+   195→            <span className="text-[10px] text-muted-foreground mr-0.5">İş yükü:</span>
+   196→            {staff.slice(0, 4).map((s) => (
+   197→              <Badge key={s.id} variant="outline" className="text-[10px] gap-1">
+   198→                {s.name.split(' ')[0]}
+   199→                <span className={cn('font-bold tabular-nums', (workload.get(s.id) ?? 0) > 0 ? 'text-amber-600' : 'text-emerald-600')}>
+   200→                  {workload.get(s.id) ?? 0}
+   201→                </span>
+   202→              </Badge>
+   203→            ))}
+   204→          </div>
+   205→        )}
+   206→      </div>
+   207→
+   208→      {/* Liste */}
+   209→      {isLoading ? (
+   210→        <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>
+   211→      ) : filtered.length === 0 ? (
+   212→        <Card className="border-dashed">
+   213→          <CardContent className="py-12 text-center">
+   214→            <Wrench className="w-12 h-12 mx-auto mb-3 text-muted-foreground/25" />
+   215→            <p className="font-medium text-sm">{complaints.length === 0 ? 'Henüz talep yok' : 'Filtreye uygun talep yok'}</p>
+   216→            <p className="text-xs text-muted-foreground mt-1">Sakinler portal üzerinden talep oluşturabilir; yönetim buradan takip eder</p>
+   217→          </CardContent>
+   218→        </Card>
+   219→      ) : (
+   220→        <div className="space-y-2">
+   221→          {filtered.map((c) => {
+   222→            const st = STATUS_META[c.status] ?? STATUS_META.acik
+   223→            const pr = PRIORITY_META[c.priority] ?? PRIORITY_META.normal
+   224→            const cat = CATEGORY_META[c.category] ?? CATEGORY_META.diger
+   225→            const CatIcon = cat.icon
+   226→            const isOverdue = c.dueDate && c.status !== 'cozuldu' && c.status !== 'reddedildi' && new Date(c.dueDate).getTime() < Date.now()
+   227→            return (
+   228→              <Card
+   229→                key={c.id}
+   230→                className={cn(
+   231→                  'border shadow-sm hover:shadow-md transition-all cursor-pointer',
+   232→                  c.status === 'acik' && c.priority === 'acil' && 'border-red-300 dark:border-red-800',
+   233→                  isOverdue && 'border-orange-400 dark:border-orange-700',
+   234→                )}
+   235→                onClick={() => setDetail(c)}
+   236→                role="button"
+   237→                tabIndex={0}
+   238→                onKeyDown={(e) => { if (e.key === 'Enter') setDetail(c) }}
+   239→              >
+   240→                <CardContent className="p-4">
+   241→                  <div className="flex flex-wrap items-start gap-2.5">
+   242→                    <div className={cn('flex items-center justify-center w-9 h-9 rounded-lg shrink-0 bg-muted', c.status === 'cozuldu' && 'bg-emerald-50 dark:bg-emerald-950/40')}>
+   243→                      <CatIcon className={cn('w-4.5 h-4.5 w-[18px] h-[18px]', c.status === 'cozuldu' ? 'text-emerald-600' : 'text-muted-foreground')} />
+   244→                    </div>
+   245→                    <div className="flex-1 min-w-[160px]">
+   246→                      <div className="flex flex-wrap items-center gap-1.5">
+   247→                        <span className={cn('font-medium text-sm', (c.status === 'cozuldu' || c.status === 'reddedildi') && 'line-through decoration-muted-foreground/40')}>{c.title}</span>
+   248→                        <Badge variant="outline" className={cn('text-[10px] px-1.5', pr.cls)}>
+   249→                          <span className={cn('w-1.5 h-1.5 rounded-full mr-1 inline-block', pr.dot)} />
+   250→                          {pr.label}
+   251→                        </Badge>
+   252→                        <Badge variant="outline" className={cn('text-[10px] px-1.5', st.cls)}>{st.label}</Badge>
+   253→                        {isOverdue && (
+   254→                          <Badge variant="outline" className="text-[10px] px-1.5 bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950/40 dark:text-orange-300">
+   255→                            <CalendarClock className="w-3 h-3 mr-1" /> gecikti
+   256→                          </Badge>
+   257→                        )}
+   258→                      </div>
+   259→                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{c.description}</p>
+   260→                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-muted-foreground">
+   261→                        <span>{cat.label}</span>
+   262→                        <span>{c.resident?.name ?? 'Anonim'} · {formatDate(c.createdAt)}</span>
+   263→                        {c.assignedStaff ? (
+   264→                          <span className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-400">
+   265→                            <UserCheck className="w-3 h-3" /> {c.assignedStaff.name}
+   266→                          </span>
+   267→                        ) : (
+   268→                          <span className="text-amber-600 dark:text-amber-400">atanmadı</span>
+   269→                        )}
+   270→                        {(c.estimatedCost != null || c.actualCost != null) && (
+   271→                          <span className="inline-flex items-center gap-1">
+   272→                            <Wallet className="w-3 h-3" />
+   273→                            {c.actualCost != null ? formatCurrency(c.actualCost) : `~${formatCurrency(c.estimatedCost ?? 0)}`}
+   274→                          </span>
+   275→                        )}
+   276→                      </div>
+   277→                    </div>
+   278→                  </div>
+   279→                </CardContent>
+   280→              </Card>
+   281→            )
+   282→          })}
+   283→        </div>
+   284→      )}
+   285→
+   286→      {/* Detay/yönetim dialogu */}
+   287→      {detail && (
+   288→        <ComplaintDetailDialog
+   289→          siteId={siteId}
+   290→          complaint={detail}
+   291→          staff={staff}
+   292→          onClose={() => setDetail(null)}
+   293→          onSaved={() => { setDetail(null); invalidate() }}
+   294→        />
+   295→      )}
+   296→    </div>
+   297→  )
+   298→}
+   299→
+   300→// ============================================================
+   301→// Detay dialogu — atama + maliyet + durum yönetimi
+   302→// ============================================================
+   303→
+   304→function ComplaintDetailDialog({ siteId, complaint, staff, onClose, onSaved }: {
+   305→  siteId: string
+   306→  complaint: ComplaintRow
+   307→  staff: StaffRow[]
+   308→  onClose: () => void
+   309→  onSaved: () => void
+   310→}) {
+   311→  const [status, setStatus] = useState(complaint.status)
+   312→  const [priority, setPriority] = useState(complaint.priority)
+   313→  const [assignedStaffId, setAssignedStaffId] = useState(complaint.assignedStaffId ?? 'none')
+   314→  const [estimatedCost, setEstimatedCost] = useState(complaint.estimatedCost?.toString() ?? '')
+   315→  const [actualCost, setActualCost] = useState(complaint.actualCost?.toString() ?? '')
+   316→  const [dueDate, setDueDate] = useState(complaint.dueDate ? toInputDate(new Date(complaint.dueDate)) : '')
+   317→  const [response, setResponse] = useState(complaint.response ?? '')
+   318→  const [saving, setSaving] = useState(false)
+   319→
+   320→  const cat = CATEGORY_META[complaint.category] ?? CATEGORY_META.diger
+   321→  const CatIcon = cat.icon
+   322→
+   323→  const handleSave = async () => {
+   324→    setSaving(true)
+   325→    try {
+   326→      await apiPatch(`/api/site/${siteId}/complaints/${complaint.id}`, {
+   327→        status,
+   328→        priority,
+   329→        assignedStaffId: assignedStaffId === 'none' ? null : assignedStaffId,
+   330→        estimatedCost: estimatedCost === '' ? null : Number(estimatedCost),
+   331→        actualCost: actualCost === '' ? null : Number(actualCost),
+   332→        dueDate: dueDate || null,
+   333→        response: response.trim() || undefined,
+   334→      })
+   335→      toast.success('Talep güncellendi')
+   336→      onSaved()
+   337→    } catch (e) {
+   338→      toast.error(e instanceof Error ? e.message : 'Güncellenemedi')
+   339→    } finally {
+   340→      setSaving(false)
+   341→    }
+   342→  }
+   343→
+   344→  const quickStatus = async (s: ComplaintRow['status']) => {
+   345→    setStatus(s)
+   346→    try {
+   347→      await apiPatch(`/api/site/${siteId}/complaints/${complaint.id}`, { status: s })
+   348→      toast.success(s === 'cozuldu' ? 'Talep çözüldü olarak işaretlendi' : `Durum güncellendi`)
+   349→      onSaved()
+   350→    } catch (e) {
+   351→      toast.error(e instanceof Error ? e.message : 'Güncellenemedi')
+   352→    }
+   353→  }
+   354→
+   355→  return (
+   356→    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+   357→      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto custom-scroll">
+   358→        <DialogHeader>
+   359→          <DialogTitle className="flex items-center gap-2">
+   360→            <CatIcon className="w-5 h-5 text-amber-600" /> {complaint.title}
+   361→          </DialogTitle>
+   362→          <DialogDescription>
+   363→            {cat.label} · {complaint.resident?.name ?? 'Anonim'} · {formatDate(complaint.createdAt)}
+   364→          </DialogDescription>
+   365→        </DialogHeader>
+   366→
+   367→        <div className="space-y-4">
+   368→          <p className="text-sm rounded-lg bg-muted/40 p-3">{complaint.description}</p>
+   369→
+   370→          {/* Hızlı durum butonları */}
+   371→          <div className="flex flex-wrap gap-1.5">
+   372→            <Button size="sm" variant={status === 'inceleniyor' ? 'default' : 'outline'}
+   373→              className={cn('h-8 text-xs', status === 'inceleniyor' && 'bg-sky-600 hover:bg-sky-700 text-white')}
+   374→              onClick={() => void quickStatus('inceleniyor')}>
+   375→              <Clock className="w-3.5 h-3.5 mr-1" /> İnceleniyor
+   376→            </Button>
+   377→            <Button size="sm" variant={status === 'cozuldu' ? 'default' : 'outline'}
+   378→              className={cn('h-8 text-xs', status === 'cozuldu' && 'bg-emerald-600 hover:bg-emerald-700 text-white')}
+   379→              onClick={() => void quickStatus('cozuldu')}>
+   380→              <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Çözüldü
+   381→            </Button>
+   382→            <Button size="sm" variant={status === 'reddedildi' ? 'default' : 'outline'}
+   383→              className={cn('h-8 text-xs', status === 'reddedildi' && 'bg-slate-600 hover:bg-slate-700 text-white')}
+   384→              onClick={() => void quickStatus('reddedildi')}>
+   385→              <XCircle className="w-3.5 h-3.5 mr-1" /> Reddet
+   386→            </Button>
+   387→          </div>
+   388→
+   389→          <div className="grid grid-cols-2 gap-3">
+   390→            <div>
+   391→              <Label className="text-xs">Öncelik</Label>
+   392→              <Select value={priority} onValueChange={(v) => setPriority(v as ComplaintRow['priority'])}>
+   393→                <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+   394→                <SelectContent>
+   395→                  <SelectItem value="dusuk">Düşük</SelectItem>
+   396→                  <SelectItem value="normal">Normal</SelectItem>
+   397→                  <SelectItem value="yuksek">Yüksek</SelectItem>
+   398→                  <SelectItem value="acil">Acil</SelectItem>
+   399→                </SelectContent>
+   400→              </Select>
+   401→            </div>
+   402→            <div>
+   403→              <Label className="text-xs">Personel Ata</Label>
+   404→              <Select value={assignedStaffId} onValueChange={setAssignedStaffId}>
+   405→                <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+   406→                <SelectContent>
+   407→                  <SelectItem value="none">Atanmadı</SelectItem>
+   408→                  {staff.map((s) => (
+   409→                    <SelectItem key={s.id} value={s.id}>
+   410→                      {s.name} · {s.role === 'kapici' ? 'Kapıcı' : s.role === 'guvenlik' ? 'Güvenlik' : s.role === 'temizlik' ? 'Temizlik' : s.role === 'bahcivan' ? 'Bahçıvan' : 'Teknik'}
+   411→                    </SelectItem>
+   412→                  ))}
+   413→                </SelectContent>
+   414→              </Select>
+   415→            </div>
+   416→          </div>
+   417→
+   418→          <div className="grid grid-cols-3 gap-3">
+   419→            <div>
+   420→              <Label className="text-xs">Tahmini Maliyet (₺)</Label>
+   421→              <Input type="number" min={0} value={estimatedCost} onChange={(e) => setEstimatedCost(e.target.value)} className="mt-1 h-9" placeholder="—" />
+   422→            </div>
+   423→            <div>
+   424→              <Label className="text-xs">Gerçek Maliyet (₺)</Label>
+   425→              <Input type="number" min={0} value={actualCost} onChange={(e) => setActualCost(e.target.value)} className="mt-1 h-9" placeholder="—" />
+   426→            </div>
+   427→            <div>
+   428→              <Label className="text-xs">Hedef Tarih</Label>
+   429→              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1 h-9" />
+   430→            </div>
+   431→          </div>
+   432→
+   433→          <div>
+   434→            <Label className="text-xs">Sakine Cevap / Not</Label>
+   435→            <Textarea value={response} onChange={(e) => setResponse(e.target.value)} rows={2} className="mt-1" placeholder="Örn: Teknik ekip perşembe günü bakım yapacak" />
+   436→          </div>
+   437→
+   438→          {/* Maliyet özeti */}
+   439→          {(estimatedCost !== '' || actualCost !== '') && (
+   440→            <div className="flex items-center gap-2 rounded-lg bg-muted/40 p-2.5 text-xs">
+   441→              <Wallet className="w-4 h-4 text-amber-600" />
+   442→              <span>Tahmini: <strong className="tabular-nums">{estimatedCost ? formatCurrency(Number(estimatedCost)) : '—'}</strong></span>
+   443→              <span className="text-muted-foreground">·</span>
+   444→              <span>Gerçek: <strong className="tabular-nums">{actualCost ? formatCurrency(Number(actualCost)) : '—'}</strong></span>
+   445→              {estimatedCost && actualCost && Number(actualCost) > Number(estimatedCost) && (
+   446→                <span className="text-red-600 font-medium">(+{formatCurrency(Number(actualCost) - Number(estimatedCost))} fazla)</span>
+   447→              )}
+   448→            </div>
+   449→          )}
+   450→        </div>
+   451→
+   452→        <DialogFooter className="flex-wrap gap-2 sm:justify-between">
+   453→          <div>
+   454→            {complaint.resident?.phone && (
+   455→              <Button size="sm" variant="outline" className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300" asChild>
+   456→                <a href={whatsappLink(complaint.resident.phone, `Merhaba ${complaint.resident.name}, "${complaint.title}" talebiniz hakkında: ${response || 'inceleniyor'}`)} target="_blank" rel="noopener noreferrer">
+   457→                  <MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp <Phone className="sr-only" /> Cevap Gönder
+   458→                </a>
+   459→              </Button>
+   460→            )}
+   461→          </div>
+   462→          <div className="flex gap-2">
+   463→            <Button variant="outline" onClick={onClose}>Vazgeç</Button>
+   464→            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSave} disabled={saving}>
+   465→              {saving ? 'Kaydediliyor...' : 'Kaydet'}
+   466→            </Button>
+   467→          </div>
+   468→        </DialogFooter>
+   469→      </DialogContent>
+   470→    </Dialog>
+   471→  )
+   472→}
+   473→
+   474→// Yeni talep oluşturma (yönetim tarafı) — sakin adına hızlı giriş
+   475→export function ComplaintCreateButton({ siteId, onCreated }: { siteId: string; onCreated?: () => void }) {
+   476→  const qc = useQueryClient()
+   477→  const [open, setOpen] = useState(false)
+   478→  const [saving, setSaving] = useState(false)
+   479→  const [form, setForm] = useState({ title: '', description: '', category: 'diger', priority: 'normal', estimatedCost: '', dueDate: '' })
+   480→
+   481→  const handleSave = async () => {
+   482→    if (!form.title.trim() || !form.description.trim()) { toast.error('Başlık ve açıklama gerekli'); return }
+   483→    setSaving(true)
+   484→    try {
+   485→      await apiPost(`/api/site/${siteId}/complaints`, {
+   486→        title: form.title,
+   487→        description: form.description,
+   488→        category: form.category,
+   489→        priority: form.priority,
+   490→        estimatedCost: form.estimatedCost ? Number(form.estimatedCost) : undefined,
+   491→        dueDate: form.dueDate || undefined,
+   492→      })
+   493→      toast.success('Talep kaydedildi')
+   494→      void qc.invalidateQueries({ queryKey: ['complaints', siteId] })
+   495→      onCreated?.()
+   496→      setOpen(false)
+   497→      setForm({ title: '', description: '', category: 'diger', priority: 'normal', estimatedCost: '', dueDate: '' })
+   498→    } catch (e) {
+   499→      toast.error(e instanceof Error ? e.message : 'Kaydedilemedi')
+   500→    } finally {
+   501→      setSaving(false)
+   502→    }
+   503→  }
+   504→
+   505→  return (
+   506→    <>
+   507→      <Button size="sm" className="h-8 text-xs bg-amber-600 hover:bg-amber-700 text-white" onClick={() => setOpen(true)}>
+   508→        <Plus className="w-3.5 h-3.5 mr-1" /> Talep Ekle
+   509→      </Button>
+   510→      <Dialog open={open} onOpenChange={setOpen}>
+   511→        <DialogContent className="sm:max-w-md">
+   512→          <DialogHeader>
+   513→            <DialogTitle>Yeni Bakım/Arıza Talebi</DialogTitle>
+   514→            <DialogDescription>Yönetim tarafından manuel talep girişi</DialogDescription>
+   515→          </DialogHeader>
+   516→          <div className="space-y-3">
+   517→            <div>
+   518→              <Label className="text-xs">Başlık *</Label>
+   519→              <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Örn: B Blok asansör arızası" className="mt-1" />
+   520→            </div>
+   521→            <div>
+   522→              <Label className="text-xs">Açıklama *</Label>
+   523→              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="mt-1" />
+   524→            </div>
+   525→            <div className="grid grid-cols-2 gap-3">
+   526→              <div>
+   527→                <Label className="text-xs">Kategori</Label>
+   528→                <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+   529→                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+   530→                  <SelectContent>
+   531→                    {Object.entries(CATEGORY_META).map(([key, m]) => (
+   532→                      <SelectItem key={key} value={key}>{m.label}</SelectItem>
+   533→                    ))}
+   534→                  </SelectContent>
+   535→                </Select>
+   536→              </div>
+   537→              <div>
+   538→                <Label className="text-xs">Öncelik</Label>
+   539→                <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
+   540→                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+   541→                  <SelectContent>
+   542→                    <SelectItem value="dusuk">Düşük</SelectItem>
+   543→                    <SelectItem value="normal">Normal</SelectItem>
+   544→                    <SelectItem value="yuksek">Yüksek</SelectItem>
+   545→                    <SelectItem value="acil">Acil</SelectItem>
+   546→                  </SelectContent>
+   547→                </Select>
+   548→              </div>
+   549→            </div>
+   550→            <div className="grid grid-cols-2 gap-3">
+   551→              <div>
+   552→                <Label className="text-xs">Tahmini Maliyet (₺)</Label>
+   553→                <Input type="number" min={0} value={form.estimatedCost} onChange={(e) => setForm({ ...form, estimatedCost: e.target.value })} className="mt-1" placeholder="—" />
+   554→              </div>
+   555→              <div>
+   556→                <Label className="text-xs">Hedef Tarih</Label>
+   557→                <Input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} className="mt-1" />
+   558→              </div>
+   559→            </div>
+   560→          </div>
+   561→          <DialogFooter>
+   562→            <Button variant="outline" onClick={() => setOpen(false)}>İptal</Button>
+   563→            <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={handleSave} disabled={saving}>
+   564→              {saving ? 'Kaydediliyor...' : 'Kaydet'}
+   565→            </Button>
+   566→          </DialogFooter>
+   567→        </DialogContent>
+   568→      </Dialog>
+   569→    </>
+   570→  )
+   571→}
+   572→

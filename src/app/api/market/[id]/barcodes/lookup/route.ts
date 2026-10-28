@@ -38,6 +38,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Barkod bulunduysa, marketin raflarındaki bilgisini de getir
   if (barcode && barcode.product) {
+    // TENANT İZOLASYONU: barkod kodu global unique olduğundan başka şirketin
+    // barkodu eşleşebilir — ürün tenant'a ait değilse veri sızmaz, bulunamadı sayılır.
+    const productTenant = await db.product.findUnique({
+      where: { id: barcode.product.id },
+      select: { tenantId: true },
+    })
+    if (!productTenant || (productTenant.tenantId !== user!.tenantId && user!.role !== 'superadmin')) {
+      return ok({ found: false, matchType: 'none', product: null, barcode: null, shelfItems: [], suggestions: [] })
+    }
     const shelfItems = await db.shelfItem.findMany({
       where: { productId: barcode.product.id, shelf: { marketId: id } },
       include: { shelf: { select: { id: true, code: true, name: true, aisle: true } } },

@@ -6,6 +6,7 @@ import { cookies } from 'next/headers'
 import { randomBytes } from 'crypto'
 import { db } from './db'
 import { getRolePermissions } from './rbac'
+import { getTenantSector } from './tenant-sector'
 import type { SessionUser } from '@/types'
 
 const SESSION_COOKIE = 'gnc_session'
@@ -143,30 +144,37 @@ function buildSessionUser(user: {
   allPerms = Array.from(new Set([...allPerms, ...guaranteedPerms])) as SessionUser['permissions']
 
   // Admin rolü için tenant adına göre sektörel yetkileri otomatik ekle
+  // TEK KAYNAK (S3/S4): sektör tespiti getTenantSector ile yapılır — önce
+  // burada 3 ayrı kopya vardı ve birbirinden sapmıştı. Market adminine
+  // erp.manage/production sızıyordu; çift sektör isimli tenant ("Kafe
+  // Market A.Ş.") iki sektörün yetkilerini birden alıyordu.
   if (user.role === 'admin' && user.tenant) {
-    const tName = user.tenant.name.toLowerCase()
+    const sector = getTenantSector(user.tenant.name)
     const sectorPerms: string[] = []
-    if (tName.includes('kafe') || tName.includes('restoran') || tName.includes('cafe')) {
-      sectorPerms.push('cafe.view', 'cafe.manage', 'cafe.orders', 'cafe.bar', 'cafe.kitchen')
-    }
-    if (tName.includes('market') || tName.includes('bakkal')) {
-      sectorPerms.push('market.view', 'market.pos', 'market.stock', 'market.manage', 'production.view', 'production.manage', 'erp.manage')
-    }
-    if (tName.includes('site') || tName.includes('apartman')) {
-      sectorPerms.push('site.view', 'site.manage')
-    }
-    if (tName.includes('kuaför') || tName.includes('berber') || tName.includes('güzellik') || tName.includes('diş')) {
-      sectorPerms.push('appointments.view', 'appointments.manage')
-    }
-    // CRM/ERP şirketleri
-    if (sectorPerms.length === 0) {
-      sectorPerms.push(
-        'customers.view.own', 'customers.view.team', 'customers.view.all',
-        'customers.edit', 'customers.delete',
-        'leads.import', 'leads.view', 'leads.edit', 'maps.search',
-        'deals.manage', 'tasks.manage', 'tasks.view',
-        'erp.manage', 'production.view', 'production.manage',
-      )
+    switch (sector) {
+      case 'cafe':
+        sectorPerms.push('cafe.view', 'cafe.manage', 'cafe.orders', 'cafe.bar', 'cafe.kitchen')
+        break
+      case 'market':
+        // Market admini: SADECE market modülü — teklif/fatura/üretim (ERP)
+        // CRM sektörünün alanıdır, market akışının dışındadır.
+        sectorPerms.push('market.view', 'market.pos', 'market.stock', 'market.manage')
+        break
+      case 'site':
+        sectorPerms.push('site.view', 'site.manage')
+        break
+      case 'appointments':
+        sectorPerms.push('appointments.view', 'appointments.manage')
+        break
+      default:
+        // CRM/ERP şirketleri
+        sectorPerms.push(
+          'customers.view.own', 'customers.view.team', 'customers.view.all',
+          'customers.edit', 'customers.delete',
+          'leads.import', 'leads.view', 'leads.edit', 'maps.search',
+          'deals.manage', 'tasks.manage', 'tasks.view',
+          'erp.manage', 'production.view', 'production.manage',
+        )
     }
     allPerms = Array.from(new Set([...allPerms, ...sectorPerms])) as SessionUser['permissions']
   }

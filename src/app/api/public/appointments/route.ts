@@ -7,6 +7,11 @@ import {
   dayKeyFromDate,
   rangesOverlap,
 } from '@/lib/appointment-utils'
+import {
+  findClosureConflict,
+  findTimeOffConflict,
+  timeOffLabel,
+} from '@/lib/appointment-timeoff'
 import { whatsappLink } from '@/lib/format'
 import { bearerToken, verifyToken } from '@/lib/member-auth'
 
@@ -150,6 +155,29 @@ export async function POST(req: NextRequest) {
     return err('Geçmiş tarih için randevu oluşturulamaz', 400)
   }
 
+  // İŞLETME TATİLİ (R1) — bayram/tadilat gününde slot üretilmez ama doğrudan
+  // API çağrısıyla rezervasyon açılabiliyordu; artık açıkça reddedilir.
+  const closureDayStart = new Date(startDate.getTime())
+  closureDayStart.setHours(0, 0, 0, 0)
+  const closures = await db.providerClosure.findMany({
+    where: {
+      providerId: provider.id,
+      date: {
+        gte: new Date(closureDayStart.getTime() - 24 * 60 * 60_000),
+        lte: new Date(closureDayStart.getTime() + 24 * 60 * 60_000),
+      },
+    },
+  })
+  const closureHit = findClosureConflict(closures, startDate.getTime(), endDate.getTime())
+  if (closureHit) {
+    return err(`İşletme bu saatte kapalı (${timeOffLabel(closureHit)})`, 409)
+  }
+
+  // PERSONEL İZİNLERİ (R1) — izinli personele rezervasyon yapılamaz
+  const staffTimeOffs = await db.staffTimeOff.findMany({
+    where: { providerId: provider.id },
+  })
+
   // Staff çözümle
   // SANAL PERSONEL MODU: yeni açılan işletmelerde personel kaydı ya da
   // hizmet-personel bağlantısı olmayabilir — bu hâlde hata vermek yerine
@@ -165,6 +193,11 @@ export async function POST(req: NextRequest) {
       where: { staffId_serviceId: { staffId: staffId!, serviceId } },
     })
     if (!canProvide) return err('Bu personel seçilen hizmeti veremiyor', 400)
+    // Personel izinli mi? (R1 — id-bazlı akışta vardı, slug akışında eksikti)
+    const leaveHit = findTimeOffConflict(staffTimeOffs, staffId!, startDate.getTime(), endDate.getTime())
+    if (leaveHit) {
+      return err(`Personel bu saatte izinli (${timeOffLabel(leaveHit)})`, 409)
+    }
     finalStaffId = staffId!
   } else {
     // "any" — bu hizmeti verebilen ilk müsait personeli seç
@@ -172,8 +205,10 @@ export async function POST(req: NextRequest) {
       where: { serviceId },
       include: { staff: { select: { id: true, isActive: true } } },
     })
+    // İzinli personel aday değildir (R1)
     const activeStaffIds = candidates
       .filter((c) => c.staff.isActive)
+      .filter((c) => !findTimeOffConflict(staffTimeOffs, c.staff.id, startDate.getTime(), endDate.getTime()))
       .map((c) => c.staff.id)
     if (activeStaffIds.length === 0) {
       // Sanal personel modu — aşağıdaki işletme bazlı çakışma kontrolü devreye girer
@@ -245,6 +280,11 @@ export async function POST(req: NextRequest) {
   const wh = safeJsonParse<WorkingHours>(provider.workingHours, {})
   const dayKey = dayKeyFromDate(startDate)
   const daySched = wh[dayKey]
+  // KAPALI GÜN (R7) — işletme o gün kapalıysa "beklemede" bile oluşmamalı;
+  // müşteri yanlış bilgiyle gelmez, işletme iptal etmek zorunda kalmaz.
+  if (daySched && daySched.closed) {
+    return err('İşletme seçilen gün kapalı — lütfen başka bir gün seçin', 409)
+  }
   const startMin = startDate.getHours() * 60 + startDate.getMinutes()
   const endMin = endDate.getHours() * 60 + endDate.getMinutes()
   const inWorkingHours = !!daySched && !daySched.closed && !!daySched.start && !!daySched.end &&
@@ -260,7 +300,7 @@ export async function POST(req: NextRequest) {
   const normalize = (p: string) => {
     let cleaned = p.replace(/[\s\-()]/g, '')
     if (cleaned.startsWith('00')) cleaned = '+' + cleaned.slice(2)
-    if (cleaned.startsWith('0') && !cleaned.startsWith('+')) cleaned = '+9' + cleaned.slice(1)
+    if (cleaned.startsWith('0') && !cleaned.startsWith('+')) cleaned = '+90' + cleaned.slice(1)
     if (!cleaned.startsWith('+')) cleaned = '+90' + cleaned
     return cleaned
   }

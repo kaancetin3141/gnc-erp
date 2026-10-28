@@ -6,8 +6,13 @@ import { writeAuditLog } from '@/lib/auth'
 // GET — sadakat hesapları (puan sıralı)
 export async function GET(req: NextRequest) {
   const user = await getSession(req)
-  const authErr = requireAuth(user)
-  if (authErr) return authErr
+  // CRM-6: müşteri verisi — müşteri görüntüleme VEYA market (POS sadakat
+  // ekranı kasiyeri) yetkisi gerekir
+  const canView =
+    user!.role === 'superadmin' ||
+    user!.permissions.includes('customers.view.own') ||
+    user!.permissions.includes('market.view')
+  if (!canView) return err('Bu modül için yetkiniz yok', 403)
 
   const url = new URL(req.url)
   const q = url.searchParams.get('q') || ''

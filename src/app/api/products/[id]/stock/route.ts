@@ -1,12 +1,20 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { getSession, requireAuth, requirePermission, ok, err } from '@/lib/api-utils'
+import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+
+// Stok hareketi yazabilsin: ERP yöneticisi VEYA market depo/kasa sorumlusu
+function canWriteStock(user: { permissions: string[] } | null): boolean {
+  if (!user) return false
+  return user.permissions.includes('erp.manage') ||
+    user.permissions.includes('market.stock') ||
+    user.permissions.includes('market.manage')
+}
 
 // GET — ürün için tüm stok hareketleri (sayfalanabilir, en yeni en üstte)
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
-  const permErr = requirePermission(user, 'erp.manage')
+  const permErr = requireAuth(user)
   if (permErr) return permErr
 
   const { id } = await params
@@ -34,8 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 // POST — yeni stok hareketi ekle ve ürün stoğunu güncelle
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
-  const permErr = requirePermission(user, 'erp.manage')
-  if (permErr) return permErr
+  if (!canWriteStock(user)) return err('Erişim reddedildi', 403)
 
   const { id } = await params
   const product = await db.product.findUnique({ where: { id } })
@@ -52,45 +59,46 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (typeof quantity !== 'number' || !Number.isFinite(quantity)) {
     return err('Miktar sayısal olmalı', 400)
   }
-  // Tamsayı olmalı (stok birim olarak adet tutuluyor)
-  if (!Number.isInteger(quantity)) {
-    return err('Miktar tam sayı olmalı', 400)
+  // Kesirli miktar kg/lt birimli ürünler için gereklidir (yuvarlama stok sapması yaratır)
+  const rounded = Math.round(quantity * 1000) / 1000
+  if (Math.abs(rounded - quantity) > 1e-9) {
+    return err('Miktar en fazla 3 basamak ondalık içerebilir', 400)
   }
 
   const beforeStock = product.stock
   let newStock = beforeStock
 
   if (type === 'giris') {
-    newStock = beforeStock + quantity
+    newStock = beforeStock + rounded
   } else if (type === 'cikis') {
-    if (quantity <= 0) {
+    if (rounded <= 0) {
       return err('Çıkış miktarı pozitif olmalı', 400)
     }
-    if (quantity > beforeStock) {
+    if (rounded > beforeStock) {
       return err(
-        `Yetersiz stok. Mevcut: ${beforeStock} ${product.unit}, istenen: ${quantity} ${product.unit}`,
+        `Yetersiz stok. Mevcut: ${beforeStock} ${product.unit}, istenen: ${rounded} ${product.unit}`,
         400,
       )
     }
-    newStock = beforeStock - quantity
+    newStock = beforeStock - rounded
   } else if (type === 'duzeltme') {
-    // Mutlak set: quantity yeni stok değeri
-    if (quantity < 0) {
+    // Mutlak set: rounded yeni stok değeri
+    if (rounded < 0) {
       return err('Düzeltme sonrası stok negatif olamaz', 400)
     }
-    newStock = quantity
+    newStock = rounded
   } else if (type === 'transfer') {
     // Transfer tek taraflı kayıt (basitleştirilmiş): çıkış gibi davranır
-    if (quantity <= 0) {
+    if (rounded <= 0) {
       return err('Transfer miktarı pozitif olmalı', 400)
     }
-    if (quantity > beforeStock) {
+    if (rounded > beforeStock) {
       return err(
-        `Yetersiz stok. Mevcut: ${beforeStock} ${product.unit}, istenen: ${quantity} ${product.unit}`,
+        `Yetersiz stok. Mevcut: ${beforeStock} ${product.unit}, istenen: ${rounded} ${product.unit}`,
         400,
       )
     }
-    newStock = beforeStock - quantity
+    newStock = beforeStock - rounded
   }
 
   // Hareketi kaydet ve ürünü güncelle (transaction ile atomik)
@@ -98,7 +106,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     db.stockMovement.create({
       data: {
         productId: id,
-        quantity,
+        quantity: rounded,
         type,
         reason: reason?.trim() || null,
         refType: refType || 'manual',
