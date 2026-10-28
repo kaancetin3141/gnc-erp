@@ -195,6 +195,23 @@ try {
 const leafletRes = (f: { data: string | Uint8Array; type: string }) =>
   new Response(f.data as BodyInit, { headers: { 'content-type': `${f.type}; charset=utf-8`, 'cache-control': 'public, max-age=86400' } });
 
+// ---- Görsel varlıkları (tur5: Apple estetiği hero/karanlık bölüm fotoğrafları)
+import { readdirSync } from 'node:fs';
+const IMG_DIR = join(import.meta.dir, 'assets', 'img');
+const IMG_FILES: Record<string, { data: Uint8Array; type: string }> = {};
+try {
+  for (const f of readdirSync(IMG_DIR)) {
+    if (!/\.(jpe?g|png|webp)$/i.test(f)) continue;
+    const ext = f.slice(f.lastIndexOf('.') + 1).toLowerCase();
+    const type = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    IMG_FILES['/assets/img/' + f] = { data: new Uint8Array(readFileSync(join(IMG_DIR, f))), type };
+  }
+} catch (e) {
+  console.error('[customer-page] Görsel varlıkları okunamadı:', (e as Error).message);
+}
+const imgRes = (f: { data: Uint8Array; type: string }) =>
+  new Response(f.data as BodyInit, { headers: { 'content-type': f.type, 'cache-control': 'public, max-age=86400' } });
+
 // ---------------------------------------------------------------- sayfa render
 
 async function renderDetail(slug: string, subdomain: boolean, gwPort?: string | null, q?: string, embed?: boolean): Promise<{ body: string; status: number }> {
@@ -565,6 +582,10 @@ Bun.serve({
       // --- leaflet varlıkları (self-hosted harita kütüphanesi)
       const lf = LEAFLET_FILES[path];
       if (lf && (method === 'GET' || method === 'HEAD')) return leafletRes(lf);
+
+      // --- gömülü görsel varlıkları (tur5)
+      const im = IMG_FILES[path];
+      if (im && (method === 'GET' || method === 'HEAD')) return imgRes(im);
 
       // Bilinmeyen sayfa: önerili 404 — ?q= terimi hizmet adlarında da aranır
       const nfq = (url.searchParams.get('q') || '').trim();

@@ -9555,3 +9555,41 @@ Stage Summary:
 - Randevu sekmesindeki "Müşteri Görünümü" (Public Booking sihirbazı) tamamen kaldırıldı: sekme + içerik + 190 satırlık bileşen + ölü public-booking.tsx dosyası
 - Müşteri randevu alma AKIŞI KORUNDU: müşteri web sitesi (3002) + widget + /?booking public akışı etkilenmedi — yalnızca CRM panelindeki yinelenen iç görünüm silindi
 - 0 yeni lint/tsc hatası, tarayıcıda 7 sekmenin tamamı çalışıyor, konsol hatası 0
+---
+Task ID: tur5-a-apple-redesign
+Agent: full-stack-developer (Görev A, alt ajan altyapı hatasıyla kesildi — ana ajan tamamladı)
+Task: Kullanıcı talebi — "müşteri sayfasını beğenmedim, assetler ve animasyon olarak apple.com'a benzet"
+
+Work Log:
+- DURUM: Alt ajan (tur5-a) views.ts'i büyük ölçüde yenileyip 3 yeni görsel üretmiş ama altyapı kesintisiyle yarıda kalmıştı: ①js-edits.py (61 blok, JS üretimli HTML'lerdeki emojileri ince SVG ikonlara çeviren migration) HENÜZ ÇALIŞTIRILMAMIŞTI ②mobil yatay taşma testi yapılmamıştı ③worklog kaydı yoktu
+- JS MİGRASYONU: js-edits.py'deki 4 uyumsuzluk düzeltildi (popup metninde fazladan tırnak, mükerrer 😕 kaydı, ST_WL girinti farkı, --muted sayısı 4→3) → script çalıştı: 61 blok uygulandı; UI'da tüm emojiler gitti (kalan 9 eşleşme yalnızca kod yorumlarında)
+- MOBİL TAŞMA HATA AYIKLAMASI (kritik bulgu): detay sayfası 390px'te 1270px'e taşıyordu. Zincir: .book-card (grid) > DIV (overflow:visible, grid item) > #dates (mobilde flex nowrap, 14 butun × 76px + 13 boşluk = 1168px min-content) → grid item'ın automatic minimum size = min-content = 1168 → track 1168 → TÜM bölümler (bhero/bhead/dhead/dcard) 1226'ya gerildi. DÜZELTME: .book-card>*{min-width:0} + .dwrap>*{min-width:0} → 390/390, şerit kendi içinde kaydırılır (288px görünür), bhero tam genişlik 390
+- TESTLER (agent-browser, izole session tur5a): ①ana sayfa masaüstü: nav blur "saturate(1.8) blur(20px)" ✓, hero h1 76px / letter-spacing -1.9px ✓, reveal animasyonları scroll'da tetikleniyor (4/5) ✓, konsol hatası 0 ✓ ②detay: bhero + 7 pf-item + 3 team-card + 14 date-btn + değerlendirmeler ✓ ③lightbox: açılış 1/7 → ok 3/7 → ESC kapandı ✓ ④kategori filtresi: Sakal → 2 görünür ✓ ⑤RANDEVU UÇTAN UCA: hizmet → tarih (Cum 30 Eki) → slot 10:00 → form → onay → BAŞARI kartı + kod 8Y680YXE → DB'den silindi (21→20) ✓ ⑥embed /widget/sik-kuafor: body.embed + header:none + footer:none + mcta yok + form + 7 foto ✓ ⑦mobil 390: ana 390/390 + h1 34px ✓; detay 390/390 (düzeltme sonrası) + mcta flex + şerit kaydırılabilir + 15 slot ✓ ⑧üyelik: Kayıt Ol sekmesi → üye oluşturma → "Henüz randevun yok" göründü → üye DB'den silindi ✓ ⑨koyu bölüm: craft-dark.jpg yükleniyor ✓
+- KALİTE: tsc → index.ts 4 hata = mini-service BASELINE (aynen, views.ts 0 yeni); lint → 7 = BASELINE (0 yeni); build ALINMADI
+- OPS: 3000 dev server test sırasında ölmüştü (bilinen OOM) → yeniden başlatıldı; detay sayfası hatası bunun yan ürünüydü (API proxy boş dönüyordu), tasarım hatası değildi
+- TEMİZLİK: QA randevusu + QA üyesi DB'den silindi; geçici scriptler silindi; tur5-parts (migration kaynakları) tool-results'ta referans için duruyor
+
+Stage Summary:
+- MÜŞTERİ SİTESİ (3002) APPLE.COM ESTETİĞİNDE CANLI: SF Pro tipografi (76px hero, -0.025em tracking), #fff/#f5f5f7 dönüşümlü section'lar, #0071e3 pill CTA'lar, 48px frosted blur nav, IntersectionObserver reveal animasyonları (stagger'lı, prefers-reduced-motion uyumlu), Apple product-tile işletme kartları, ince SVG çizgi ikonlar (emoji tamamen gitti), hairline footer, hero scale-in + parallax, koyu vitrin bölümü
+- YENİ ASSETLER: hero-salon.jpg (113KB) + cover-salon.jpg (122KB) + craft-dark.jpg (95KB) → assets/img/ + index.ts statik görsel servisi; DB kapağı optimize WebP'yle yenilendi (216KB→94KB, eski değer tur5a-old-cover.txt'te)
+- KRİTİK DÜZELTME: mobil grid taşma (1270px) — min-width:0 kuralıyla çözüldü
+- TÜM AKIŞLAR KORUNDU: rezervasyon, lightbox, filtre, embed widget, üyelik kaydı/girişi, bekleme listesi — uçtan uca kanıtlı
+- Risk: ①reveal animasyonları html.js sınıfına bağlı (JS'siz tarayıcıda içerik anında görünür — doğru fallback) ②pf-status (filtre sayaç metni) yeni tasarımda yok — filtre görsel olarak çalışıyor
+---
+Task ID: tur5-b-crm-audit
+Agent: full-stack-developer (Görev B — denetim; alt ajan ekran görüntüleriyle başladı, altyapı kesintisiyle öldü — ana ajan tamamladı)
+Task: Kullanıcı talebi — "uygulamadaki her sekmeyi her fonksiyonu her butonu kontrol et... sıkıntılı bulduklarını bana sorarak değiştir" (KOD DEĞİŞİKLİĞİ YAPILMADI)
+
+Work Log:
+- KAYNAK: önceki denetim ajanının audit5b-00…05 ekran görüntüleri + ana ajanın kendi canlı turu (agent-browser audit5 oturumu, 6 rol)
+- CANLI TUR: login ekranı (7 demo butonu) → kafe admin (Kafe Yönetimi 8 sekme) → market admin (Market Yönetimi 9 sekme) → site admin (Site Yönetimi 6 sekme) → rep (Müşteriler/Potansiyel/Fırsatlar/Görevler) → süperadmin (Admin Paneli 10 sekme + Dağıtım Merkezi + Raporlar + Mesajlar + Giderler) → mobil 390px dashboard → çıkış akışı (UI butonu + reload)
+- SAYAÇ DOĞRULAMA: dashboard "Bekleyen Talep 4" = DB count(beklemede)=4 ✓; todayCount UTC-günü ile tutarlı
+- KOD OKUMA: dashboard-sectors.ts (dayStart sunucu-UTC), appointments route (date+'T00:00:00' UTC), api/auth mustChangePassword('1234'), login-screen DEMO_GROUPS, logout store davranışı, cafe bileşenleri (nested-button statik tarama PCRE2 — 0 sonuç)
+- BULGULAR (detay: agent-ctx/tur5-b-crm-audit.md): K-01 dev server OOM (dmesg kanıtı: next-server 2.3GB RSS kill; denetim sırasında 2 kez öldü) · Y-01 Sık Kuaför demo butonu kırık (kod sikkuafur.com vs DB sikkuaför.com — canlı doğrulandı) · Y-02 kafe modülünde bir kez yakalanan iç içe <button> hidrasyon uyarısı (yeniden üretilemedi, statik tarama temiz) · O-01 tüm hesaplar 1234 olduğundan mustChangePassword her girişte uyarıyor (kullanıcı kararı gerekli) · O-02 çıkışta localStorage'da user/sessionId kalıyor (reload sonrası doğru login ekranı — hijyen notu) · D-01 UTC gün sınırı (İstanbul 00:00–03:00 kenar durumu) · D-02 "Bekleyen" kartı farklı semantik · D-03 ödenmemiş sipariş rozeti (doğrulanmadı)
+- TEMİZ KANITLAR: 6 rolün tüm görünür modülleri 0 konsol hatası; sayaçlar DB tutarlı; mobil 390 taşmasız; demo girişlerin 6/7'si çalışıyor; çıkış akışı uçtan uca doğru
+- OPS: 3000 iki kez öldü (OOM) → iki kez yeniden başlatıldı; tarayıcı oturumları kapatılarak bellek serbest bırakıldı (864MB→1263MB available)
+
+Stage Summary:
+- 8 bulgu raporlandı (1 kritik ortam / 2 yüksek / 2 orta / 3 düşük) — kullanıcıya 5 soruyla sunuldu (demo butonu düzeltmesi, şifre uyarısı, OOM önlemi, hidrasyon araştırması, localStorage temizliği)
+- TAM RAPOR: agent-ctx/tur5-b-crm-audit.md (+ tool-results/audit5b-*.png kanıtları)
+- Kod değişikliği YOK — kullanıcı onayı bekleniyor

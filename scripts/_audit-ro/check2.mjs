@@ -1,0 +1,11 @@
+import { PrismaClient } from '@prisma/client'
+const db = new PrismaClient()
+const c = await db.customer.groupBy({ by: ['tenantId'], _count: true })
+console.log('CUSTOMERS by tenant:', JSON.stringify(c))
+const t = await db.task.groupBy({ by: ['tenantId', 'status'], _count: true })
+console.log('TASKS:', JSON.stringify(t))
+const o = await db.order.groupBy({ by: ['tenantId', 'status'], _count: true })
+console.log('ORDERS:', JSON.stringify(o))
+const u = await db.user.groupBy({ by: ['tenantId', 'role'], _count: true })
+console.log('USERS:', JSON.stringify(u))
+await db.$disconnect()
