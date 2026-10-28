@@ -9758,3 +9758,22 @@ Stage Summary:
 - CEVAP: ERP + randevu sitesi tek repoda (kaancetin3141/gnc-erp) ve TAMAMI push'lu — az önce kalan tek şey QA ekran görüntüleri commit'idir, o da push'landı
 - Randevu sitesi GitHub'da: mini-services/customer-page/ klasöründe (ayrı repo yok)
 - AÇIK KARARLAR: K-01 OOM önlemi, O-01 1234 şifre uyarısı, O-02 çıkışta localStorage temizliği; ayrıca ana-site Meta tasarımı sunucuya çıkmak için: sudo guncelle-gnc.sh
+
+---
+Task ID: tur14
+Agent: Z.ai Code (ana ajan)
+Task: Kullanıcı talebi — "erp deki randevu bölümündeki müşteri kısmını sildiğimizi ve müşteri randevu sistemindeki yeni görüntüyü deploy ediyorum fakat sunucu almıyor, bunları githuba tekrar yükle"
+
+Work Log:
+- KÖK NEDEN ANALİZİ: (1) müşteri randevu sitesi yeni görüntüsü (mini-services/customer-page) GitHub'da ZATEN vardı — commit f72e6ba (00:48, views.ts +1268/-871) push'lanmış durumda; (2) ERP randevu modülündeki Müşteriler sekmesi ise HİÇ SİLİNMEMİŞTİ — kodda hâlâ duruyordu (appointments-view.tsx satır 292) → sunucu bu değişikliği alamıyordu çünkü GitHub'da yoktu; stash/reflog/uzak dal kontrolü: kayıp iş yok, yalnız origin/main mevcut
+- YAPILAN İŞ (appointments-view.tsx): (a) TabsTrigger "customers" (Müşteriler) kaldırıldı, (b) TabsContent "customers" + CustomerManager render bloğu kaldırıldı, (c) import satırı sadeleştirildi (CustomerManager + kullanılmayan RegistryCustomer tipi çıkarıldı; CustomerDetailDialog korundu — randevu satırından açılıyor)
+- KORUNANLAR: randevu satırındaki müşteri adı butonu → Müşteri Geçmişi / kayıt kartı diyaloğu, CustomerAutocomplete (manuel randevu), kayıt defteri API katmanı (customer-page sitesi ve rezervasyon akışı bunları kullanıyor) — yalnız ERP'deki SEKME gitti
+- QA (agent-browser): admin girişi → Randevular modülü → sekmeler artık "Randevular · Takvim · Personel · Hizmetler · Üyelikler · İşletme Ayarları" (Müşteriler YOK), gün özeti kartları doluyor ("Bugün 1 randevu"), müşteri adına tıklayınca "Müşteri Geçmişi" diyaloğu açılıyor, sayfa/konsol hatası 0; kanıt: tool-results/tur14-musteriler-sekmesi-kaldirildi.png
+- Lint: bilinen 7 temel hata (agent-skills/scripts klasörleri) — 0 yeni
+- Commit + push: 33f84e5 → main (GitHub güncel)
+
+Stage Summary:
+- ERP randevu modülünde müşteri yönetimi kaldırıldı; müşteri deneyimi tamamen müşteri randevu sitesine (port 3002, randevu.gncinc.online) devredilmiş durumda
+- SUNUCUYA ÇIKARMAK İÇİN: sudo guncelle-gnc.sh — her iki değişiklik de (yeni site görünümü f72e6ba + sekme kaldırma 33f84e5) artık GitHub'da; deploy sonrası tarayıcıda hard-refresh (Ctrl+Shift+R) önerilir
+- "Sunucu almıyor" belirtisi tekrarlarsa: sunucuda git pull çıktısına bakılmalı (sunucuda elle dosya değiştirilmişse pull reddedebilir) — cd /opt/gnc && git status
+- AÇIK KARARLAR: K-01 OOM önlemi, O-01 1234 şifre uyarısı, O-02 çıkışta localStorage temizliği
