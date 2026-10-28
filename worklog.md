@@ -9684,3 +9684,19 @@ Stage Summary:
 - Hesaplar: ahmet/ayse/mehmet@sikkuaför.com (1234, usta); admin@sikkuaför.com (firma sahibi) tüm yetkilerde
 - AÇIK KARARLAR (önceki turlardan): K-01 OOM önlemi (bugün tekrar yaşamadık), O-01 1234 şifre değiştirme uyarısı, O-02 çıkışta localStorage tam temizliği
 - SONRAKİ FAZ ÖNERİLERİ: çırak örnek hesabı + usta bazlı rapor/haftalık kazanç görünümü; müşteri kayıt defteri erişiminin rol bazlı inceltmesi; ProviderSettings'te usta için salt-okunur işletme bilgisi kartı
+
+---
+Task ID: tur10
+Agent: Z.ai Code (ana ajan)
+Task: Cron görevi 430621 (backup-db.sh çalıştır + raporla) + kullanıcı talebi — GitHub push ("ghp_... githubda pushla")
+
+Work Log:
+- CRON 430621: backup-db.sh çalıştı → custom-20261028-043221.db (2.953.216 bayt, kaynakla birebir) — arşivde 5 yedek (limit 20); script db/latest.db'i git'e commit'ledi (55b3354)
+- GITHUB PUSH: remote origin zaten tanımlıydı (kaancetin3141/gnc-erp, https+token). Kullanıcının YENİ token'ı ile remote URL güncellendi (eski gömülü token değiştirildi); git push -u origin main → db02846..55b3354 main->main BAŞARILI, upstream takibi kuruldu (main → origin/main)
+- DOĞRULAMA: node_modules/.next izlenmiyor (izlenen 1284 dosya, packed ~7 MB — GitHub büyük dosya limiti riski yok); commit'lenmemiş tek dosya tool-results iç araç çıktısıydı (bilinçli push edilmedi)
+- DURUM: tur8 (5 onaylı karar) + tur9 (rol tabanlı yetki sistemi) önceki ajan turlarında tamamlanmış ve commit'lenmişti — bu push ile GitHub'a gitmiş oldular
+
+Stage Summary:
+- Repo GitHub'da güncel: https://github.com/kaancetin3141/gnc-erp (main @ 55b3354); backup → otomatik commit → push zinciri ayakta
+- GÜVENLİK NOTU: token .git/config içinde düz metin duruyor (repo önceden böyle yapılandırılmıştı); token sohbette paylaşıldı — kullanıcıya rotate (yenileme) önerisi iletilecek
+- AÇIK KARARLAR (önceki turlardan): K-01 OOM önlemi, O-01 1234 uyarısı, O-02 localStorage temizliği
