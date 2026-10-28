@@ -9741,3 +9741,20 @@ Stage Summary:
 - Canlıya almak için sunucuda: sudo guncelle-gnc.sh (6/8 adımı ana-site'i /var/www/gncinc-ana'ya kopyalar)
 - Koyu tema kullanıcı tercihinde artık ikincil; ilk ziyaret Meta gibi aydınlık
 - AÇIK KARARLAR (önceki turlardan): K-01 OOM önlemi, O-01 1234 uyarısı, O-02 localStorage temizliği
+
+---
+Task ID: tur13
+Agent: Z.ai Code (ana ajan)
+Task: Kullanıcı sorusu — "erp ve randevu sitesi güncellenmedi githuba pushlamadın mı?" (push durumu denetimi + eksik push tamamlama)
+
+Work Log:
+- DENETİM: git fetch sonrası main, origin/main'in 1 commit önündeydi (a6c6801 push'luydu, fe6ec8f yerelde kalmıştı)
+- fe6ec8f İÇERİĞİ: yalnızca tool-results/meta-*.png QA ekran görüntüleri (cron/webDevReview otomatik commit'i) — KOD DEĞİL
+- PUSH: fe6ec8f → main başarılı (a6c6801..fe6ec8f); artık 0 fark, repo tamamen senkron
+- RANDEVU SİTESİ DOĞRULAMASI: mini-services/customer-page (port 3002, pm2: gnc-customer-page) AYNI repoda — 11 dosya tracked (index.ts, package.json, assets), .gitignore engeli yok, working tree temiz (git diff HEAD boş), son değişiklikler commit'li + push'lu
+- ERP/CRM kodu: tur8-tur12 arası tüm işler (rol tabanlı yetki, vitrin/portföy, ana-site Meta redesign, cubiq nginx düzeltmesi) GitHub main'de mevcut
+
+Stage Summary:
+- CEVAP: ERP + randevu sitesi tek repoda (kaancetin3141/gnc-erp) ve TAMAMI push'lu — az önce kalan tek şey QA ekran görüntüleri commit'idir, o da push'landı
+- Randevu sitesi GitHub'da: mini-services/customer-page/ klasöründe (ayrı repo yok)
+- AÇIK KARARLAR: K-01 OOM önlemi, O-01 1234 şifre uyarısı, O-02 çıkışta localStorage temizliği; ayrıca ana-site Meta tasarımı sunucuya çıkmak için: sudo guncelle-gnc.sh
