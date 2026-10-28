@@ -9700,3 +9700,22 @@ Stage Summary:
 - Repo GitHub'da güncel: https://github.com/kaancetin3141/gnc-erp (main @ 55b3354); backup → otomatik commit → push zinciri ayakta
 - GÜVENLİK NOTU: token .git/config içinde düz metin duruyor (repo önceden böyle yapılandırılmıştı); token sohbette paylaşıldı — kullanıcıya rotate (yenileme) önerisi iletilecek
 - AÇIK KARARLAR (önceki turlardan): K-01 OOM önlemi, O-01 1234 uyarısı, O-02 localStorage temizliği
+
+---
+Task ID: tur11
+Agent: Z.ai Code (ana ajan)
+Task: Kullanıcı talebi — "cubiqle alakalı olan yerleri kontrol et, çakışma mı var?" (Cubiq çakışma denetimi: deploy scriptleri + nginx + pm2 + port planı + ana-site/portfolyo API)
+
+Work Log:
+- DENETİM KAPSAMI: deploy/ (guncelle-gnc.sh 6b, kurulum.sh 10d + nginx şablonu, oyun-deploy.sh v1.3, yeni-proje.sh, otomatik-sertifika.sh) + scripts/ensure-services.sh + src/app/api/portfolio/route.ts + ana-site/index.html + canlı port dinleyicileri; cubiq reposu (kaancetin3141/cubiq) /tmp'ye klonlanıp incelendi
+- 🔴 GERÇEK ÇAKIŞMA BULUNDU (sunucu/nginx): kurulum.sh v3.4+ ana gnc conf'una cubiq bloğunu GÖMÜYOR (363-378) ve üzerine yazarken kontrolsüz mv yapıyor; eski kurulumlarda guncelle-gnc.sh 6b'nin oluşturduğu ayrı gnc-cubiq conf'u varsa çift "server_name cubiq.gncinc.online" → nginx "conflicting server name, ignored" uyarısı, bloklardan biri sessizce yok sayılıyor
+- DÜZELTME (kurulum.sh): mv'den ÖNCE (1) gnc-cubiq available+enabled silinir (cubiq artık gnc conf içinde) + bilgi mesajı, (2) diğer conf'larda (gnc hariç, örn. gnc-proje-cubiq) kalan cubiq tanımı için warn döngüsü eklendi; bash -n OK
+- 🟡 SANDBOX TEMİZLİĞİ: 3007'de 02:16'dan kalma yetim "python3 -m http.server" (cwd=ana-site, eski önizleme artığı) öldürüldü; /home/z/cubiq KLASÖRÜ YOK → cubiq sandbox'ta koşmuyor (ensure-services.sh koşullu atlıyor — tasarım gereği, çökme yok)
+- ✅ ÇAKIŞMA YOK DOĞRULANDI: ana-site ↔ /api/portfolio — API gelirse grid.innerHTML tam değişiyor (çift kart imkânsız), gelmezse sabit fallback kartlar; guncelle-gnc.sh 6b dedup grepi doğru yönde; pm2 isim ayrımı (cubiq ≠ gnc-crm/gnc-customer-page); port planı 3006 tutarlı (kurulum.sh + portfolio API + ana-site + ensure-services.sh); otomatik-sertifika.sh cubiq alt alanını rezerve listeye almış
+- NOT (cubiq reposuna öneri, bu repoda değil): serve.js portu yalnız argv'dan okuyor (Number(argv[2]) || 8123) — process.env.PORT desteği eklenirse pm2/npm start akışlarında daha dayanıklı olur; sunucu akışı etkilenmiyor (oyun-deploy.sh cubiq'i index.html'den STATİK tespit edip pm2 serve ile 3006'da başlatıyor, serve.js kullanılmıyor)
+- GitHub push: kurulum.sh düzeltmesi + worklog → main (695abca sonrası)
+
+Stage Summary:
+- Cubiq çakışma denetimi tamamlandı: 1 gerçek çakışma (nginx çift server_name — kurulum.sh yeniden çalıştırma senaryosu) düzeltildi, 1 sandbox yetim süreci temizlendi, 6 nokta çakışmasız doğrulandı
+- Sunucuda tek yapılması gereken: sudo guncelle-gnc.sh (bu düzeltmeyle kurulum yeniden çalıştırılsa bile cubiq bloğu artık tekil kalır)
+- AÇIK KARARLAR (önceki turlardan): K-01 OOM önlemi, O-01 1234 uyarısı, O-02 localStorage temizliği

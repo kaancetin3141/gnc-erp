@@ -378,6 +378,22 @@ server {
 }
 NGINXEOF
 sed -i "s/__DOMAINRX__/$DOMAIN_RX/g; s/__DOMAIN__/$DOMAIN/g; s/__WWW__/www.$DOMAIN/g; s/__APPPORT__/$APP_PORT/g; s/__CPPORT__/$RANDEVU_PORT/g; s/__OYUNPORT__/$OYUN_PORT/g; s/__KALPORT__/$KALORIAI_PORT/g; s/__CUBPORT__/$CUBIQ_PORT/g; s|__ANA_DIR__|$ANA_DIR|g" /tmp/gnc.nginx
+# ---- ÇAKIŞMA ÖNLEMİ: çift "cubiq." server_name ----
+# Eski guncelle-gnc.sh çalışmaları cubiq için ayrı gnc-cubiq conf'u oluşturmuş olabilir;
+# cubiq artık bu (gnc) conf içinde gömülü geldiği için ayrık blok kaldırılır, aksi halde
+# nginx "conflicting server name" uyarısı verir ve bloklardan biri sessizce yok sayılır.
+if [ -f /etc/nginx/sites-available/gnc-cubiq ] || [ -f /etc/nginx/sites-enabled/gnc-cubiq ]; then
+  $SUDO rm -f /etc/nginx/sites-enabled/gnc-cubiq /etc/nginx/sites-available/gnc-cubiq
+  info "eski gnc-cubiq nginx bloğu kaldırıldı (cubiq artık gnc conf içinde — çift server_name önlemi)"
+fi
+# Başka bir conf'ta (örn. gnc-proje-cubiq) cubiq tanımı kaldıysa uyar — elle temizlik gerekir
+for _f in /etc/nginx/sites-available/*; do
+  [ -f "$_f" ] || continue
+  [ "$(basename "$_f")" = "gnc" ] && continue
+  if $SUDO grep -qs "server_name[[:space:]]*.*\bcubiq\." "$_f"; then
+    warn "$_f içinde hâlâ bir 'cubiq.' server_name tanımı var — çift tanım olmasın diye ilgili server { } bloğunu silin"
+  fi
+done
 $SUDO mv /tmp/gnc.nginx /etc/nginx/sites-available/gnc
 $SUDO ln -sf /etc/nginx/sites-available/gnc /etc/nginx/sites-enabled/gnc
 $SUDO rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/gnc-crm
