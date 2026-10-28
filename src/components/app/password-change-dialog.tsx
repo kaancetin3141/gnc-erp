@@ -15,9 +15,11 @@ import { Eye, EyeOff, KeyRound, Loader2 } from 'lucide-react'
 interface Props {
   open: boolean
   onOpenChange: (v: boolean) => void
+  // Şifre GERÇEKTEN değiştirildiğinde çağrılır (iptal/kenardan kapatma değil)
+  onSuccess?: () => void
 }
 
-export function PasswordChangeDialog({ open, onOpenChange }: Props) {
+export function PasswordChangeDialog({ open, onOpenChange, onSuccess }: Props) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -51,6 +53,7 @@ export function PasswordChangeDialog({ open, onOpenChange }: Props) {
         description: 'Diğer cihazlardaki oturumlarınız kapatıldı.',
       })
       reset()
+      onSuccess?.()
       onOpenChange(false)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Şifre değiştirilemedi')

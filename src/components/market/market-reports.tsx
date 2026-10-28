@@ -13,7 +13,7 @@ import {
   BarChart3, BarChart2, PieChart as PieChartIcon, TrendingUp, Package,
   AlertTriangle, Clock, Calendar, Wallet, Banknote, CreditCard, Receipt,
 } from 'lucide-react'
-import { formatCurrency, formatDateTime } from '@/lib/format'
+import { formatCurrency, formatDateTime, todayLocalISO } from '@/lib/format'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -59,7 +59,7 @@ interface ReportData {
 const CATEGORY_COLORS = ['#10b981', '#14b8a6', '#f59e0b', '#8b5cf6', '#64748b', '#ef4444', '#06b6d4', '#84cc16']
 
 export function MarketReports({ marketId }: { marketId: string }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(todayLocalISO())
 
   const { data, isLoading } = useQuery({
     queryKey: ['market-reports', marketId, date],
@@ -95,7 +95,7 @@ export function MarketReports({ marketId }: { marketId: string }) {
             onChange={(e) => setDate(e.target.value)}
             className="w-auto h-9"
           />
-          <Button variant="ghost" size="sm" onClick={() => setDate(new Date().toISOString().slice(0, 10))}>
+          <Button variant="ghost" size="sm" onClick={() => setDate(todayLocalISO())}>
             Bugün
           </Button>
         </CardContent>

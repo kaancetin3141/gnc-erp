@@ -79,11 +79,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (isNaN(startDate.getTime())) return err('Geçersiz tarih', 400)
     const endDate = new Date(startDate.getTime() + service.duration * 60_000)
 
-    // Geçmiş kontrol
-    if (startDate.getTime() < Date.now() - 60_000) {
-      return err('Geçmiş tarih için randevu oluşturulamaz', 400)
-    }
-
     const dayStart = new Date(startDate.getTime() - 24 * 60 * 60_000)
     const dayEnd = new Date(startDate.getTime() + 24 * 60 * 60_000)
     const dayAppts = await db.appointment.findMany({
@@ -147,6 +142,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const startDate = new Date(date)
   if (isNaN(startDate.getTime())) return err('Geçersiz tarih', 400)
   const endDate = new Date(startDate.getTime() + service.duration * 60_000)
+
+  // GEÇMİŞ KONTROL — personel seçiminden bağımsız olarak HER ZAMAN geçerli
+  // (önceden yalnız "herhangi personel" dalında kontrol ediliyordu; belirli
+  // personel seçilince geçmiş saate randevu açılabiliyordu)
+  if (startDate.getTime() < Date.now() - 60_000) {
+    return err('Geçmiş tarih için randevu oluşturulamaz', 400)
+  }
 
   // Çakışma kontrolü (belirli staff seçildiyse)
   if (staffId && staffId !== 'any' && finalStaffId) {

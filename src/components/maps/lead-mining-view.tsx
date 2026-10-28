@@ -18,7 +18,7 @@ import type { LucideIcon } from 'lucide-react'
 import { apiGet, apiPost, apiPatch, qk } from '@/lib/api-client'
 import { CITIES, MAPS_CATEGORIES, LEAD_STATUSES, getLabel, getColor } from '@/lib/constants'
 import {
-  formatPhone, formatDate, formatRelative, telLink, toCSV, downloadFile, whatsappLink,
+  formatPhone, formatDate, formatRelative, telLink, toCSV, downloadFile, whatsappLink, todayLocalISO,
 } from '@/lib/format'
 import { hasPermission } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
@@ -673,7 +673,7 @@ export function LeadMiningView() {
       Boylam: r.lng,
     }))
     const csv = toCSV(rows)
-    const dateStr = new Date().toISOString().slice(0, 10)
+    const dateStr = todayLocalISO()
     downloadFile(csv, `maps-arama-${dateStr}.csv`)
     toast.success('CSV indirildi', { description: `${results.length} kayıt` })
   }, [results])

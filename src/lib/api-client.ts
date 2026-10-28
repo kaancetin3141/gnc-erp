@@ -23,6 +23,18 @@ function getHeaders(): HeadersInit {
   return headers
 }
 
+// Zombi oturum koruması: oturum açmış bir istemciden gelen HERHANGİ bir
+// isteğe 401 dönüyorsa oturum sunucuda geçersizleşmiştir (sunucu reseti,
+// oturum süresi vb.). Bu durumda oturumu yerel olarak da kapat — aksi halde
+// arka plan poll'ları sonsuz 401 döngüsüne girer ve kullanıcı bozuk bir
+// arayüzde takılır. Giriş ekranındaki yanlış şifre denemesi tetiklemez
+// (orada kullanıcı zaten null'dur).
+function handleAuthFailure(status: number): void {
+  if (status !== 401) return
+  const s = useAppStore.getState()
+  if (s.user) s.logout()
+}
+
 // Opsiyonel `init.headers` ile ek/özel başlık verilerek kullanılabilir
 // (ör. sakın portalı x-resident-session header'ı — getHeaders ile birleştirilir)
 export async function apiGet<T>(path: string, opts?: { headers?: HeadersInit }): Promise<T> {
@@ -32,7 +44,10 @@ export async function apiGet<T>(path: string, opts?: { headers?: HeadersInit }):
   }
   const res = await fetch(path, { headers: merged })
   const data = await res.json()
-  if (!res.ok) throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  if (!res.ok) {
+    handleAuthFailure(res.status)
+    throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  }
   return data as T
 }
 
@@ -43,7 +58,10 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   const data = await res.json()
-  if (!res.ok) throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  if (!res.ok) {
+    handleAuthFailure(res.status)
+    throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  }
   return data as T
 }
 
@@ -54,7 +72,10 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   })
   const data = await res.json()
-  if (!res.ok) throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  if (!res.ok) {
+    handleAuthFailure(res.status)
+    throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  }
   return data as T
 }
 
@@ -65,14 +86,20 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   })
   const data = await res.json()
-  if (!res.ok) throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  if (!res.ok) {
+    handleAuthFailure(res.status)
+    throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  }
   return data as T
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {
   const res = await fetch(path, { method: 'DELETE', headers: getHeaders() })
   const data = await res.json()
-  if (!res.ok) throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  if (!res.ok) {
+    handleAuthFailure(res.status)
+    throw new ApiError(data.error || 'İstek başarısız', res.status, data.details)
+  }
   return data as T
 }
 

@@ -55,7 +55,7 @@ import {
 } from '@/lib/constants'
 import {
   formatPhone, whatsappLink, telLink, formatCurrency, formatRelative,
-  formatDate, formatDateTime, daysSince, initials, getActivityStatusColor,
+  formatDate, formatDateTime, daysSince, initials, getActivityStatusColor, dateToLocalISO,
 } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { toTry, overdueDays, useFxRates } from '@/components/erp/parts/invoice-utils'
@@ -348,7 +348,7 @@ function TaskDialog({
   const [title, setTitle] = useState('')
   const [dueDate, setDueDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 1)
-    return d.toISOString().slice(0, 10)
+    return dateToLocalISO(d)
   })
   const [priority, setPriority] = useState('orta')
   const [assigneeId, setAssigneeId] = useState(defaultAssigneeId || '')
@@ -358,7 +358,7 @@ function TaskDialog({
     if (open) {
       setTitle(''); setPriority('orta')
       const d = new Date(); d.setDate(d.getDate() + 1)
-      setDueDate(d.toISOString().slice(0, 10))
+      setDueDate(dateToLocalISO(d))
       setAssigneeId(defaultAssigneeId || '')
     }
   }, [open, defaultAssigneeId])

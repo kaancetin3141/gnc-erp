@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, err, safeJsonParse } from '@/lib/api-utils'
 import { timeOffCoversRange, findClosureConflict, timeOffLabel } from '@/lib/appointment-timeoff'
+import { dateToLocalISO } from '@/lib/format'
 import {
   type WorkingHours,
   type DaySchedule,
@@ -56,7 +57,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const allSlots = generateSlots(daySched, slotInterval)
   const now = new Date()
-  const isToday = dateStr === now.toISOString().slice(0, 10)
+  // Yerel tarih karşılaştırması — toISOString() UTC verir ve TR'de 21:00'den
+  // sonra "bugün" bir gün kayıyordu; geçmiş slotlara rezervasyon açılıyordu.
+  const isToday = dateStr === dateToLocalISO(now)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
   const dayEndMin = timeToMinutes(daySched.end!)
 

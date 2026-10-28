@@ -40,7 +40,12 @@ interface AppState {
   user: SessionUser | null
   sessionId: string | null
   setSession: (user: SessionUser | null, sessionId: string | null) => void
+  // Oturum doğrulamadan gelen güncel kullanıcı — önbelleği bozmadan senkronize et
+  refreshUser: (user: SessionUser) => void
   logout: () => void
+  // Varsayılan (1234) şifreyle girildi — kalıcı DEĞİL, giriş başına geçici
+  mustChangePassword: boolean
+  setMustChangePassword: (v: boolean) => void
 
   // Navigation
   view: AppView
@@ -87,10 +92,13 @@ export const useAppStore = create<AppState>()(
         queryClient.clear()
         set({ user, sessionId })
       },
+      refreshUser: (user) => set({ user }),
       logout: () => {
         queryClient.clear()
-        set({ user: null, sessionId: null, view: 'dashboard', selectedCustomerId: null, selectedLeadId: null })
+        set({ user: null, sessionId: null, view: 'dashboard', selectedCustomerId: null, selectedLeadId: null, mustChangePassword: false })
       },
+      mustChangePassword: false,
+      setMustChangePassword: (v) => set({ mustChangePassword: v }),
 
       view: 'dashboard',
       setView: (view) => set({ view }),

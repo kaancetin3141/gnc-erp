@@ -16,7 +16,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { formatCurrency, formatDate, formatTime, whatsappLink } from '@/lib/format'
+import { formatCurrency, formatDate, formatTime, whatsappLink, todayLocalISO, dateToLocalISO } from '@/lib/format'
 import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban, UserCheck, UserX, RotateCcw, UserPlus, Ticket, CalendarClock } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { ProviderSettings } from './provider-settings'
@@ -78,7 +78,7 @@ export function AppointmentsView() {
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [tab, setTab] = useState('appointments')
   const [bookOpen, setBookOpen] = useState(false)
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+  const [selectedDate, setSelectedDate] = useState(todayLocalISO())
   const [statusFilter, setStatusFilter] = useState('all')
   const [rejectTarget, setRejectTarget] = useState<Appointment | null>(null)
   const [historyTarget, setHistoryTarget] = useState<{ name: string; phone: string } | null>(null)
@@ -184,7 +184,7 @@ export function AppointmentsView() {
       serviceId: apt.service?.id,
       staffId: apt.staff?.id,
     })
-    setSelectedDate(next.toISOString().slice(0, 10))
+    setSelectedDate(dateToLocalISO(next))
     setBookOpen(true)
   }
 
@@ -632,7 +632,7 @@ function ManualBookingDialog({ provider, open, onOpenChange, onSuccess, initial,
 }) {
   const [form, setForm] = useState({
     serviceId: initial?.serviceId ?? '', staffId: initial?.staffId ?? '',
-    date: new Date().toISOString().slice(0, 10),
+    date: todayLocalISO(),
     time: '10:00', name: initial?.name ?? '', phone: initial?.phone ?? '', email: '', note: '',
   })
   // Usta kilidi: staffId her zaman kendi personel kaydına sabitlenir

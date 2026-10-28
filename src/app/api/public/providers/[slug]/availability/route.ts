@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { ok, err, safeJsonParse } from '@/lib/api-utils'
 import { slugify } from '@/lib/slug'
+import { dateToLocalISO } from '@/lib/format'
 import {
   type WorkingHours,
   type DaySchedule,
@@ -90,7 +91,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
   const allSlots = generateSlots(daySched, slotInterval)
 
   const now = new Date()
-  const isToday = dateStr === now.toISOString().slice(0, 10)
+  // Yerel tarih karşılaştırması (UTC kayması düzeltmesi — detay: id rotasında)
+  const isToday = dateStr === dateToLocalISO(now)
   const nowMinutes = now.getHours() * 60 + now.getMinutes()
   const dayEndMin = timeToMinutes(daySched.end!)
 

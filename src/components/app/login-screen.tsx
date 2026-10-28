@@ -54,6 +54,7 @@ const BADGE_STYLES: Record<string, string> = {
 
 export function LoginScreen() {
   const setSession = useAppStore((s) => s.setSession)
+  const setMustChangePassword = useAppStore((s) => s.setMustChangePassword)
   const [email, setEmail] = useState('') // kullanıcı adı da kabul edilir (örn. "admin" → admin@gnccrm.app)
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -62,7 +63,6 @@ export function LoginScreen() {
   const [needsSeed, setNeedsSeed] = useState(false)
   const [seeding, setSeeding] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [mustChange, setMustChange] = useState(false)
   const [demoLoading, setDemoLoading] = useState<string | null>(null)
   const [showDemoAccounts, setShowDemoAccounts] = useState(false)
 
@@ -101,8 +101,12 @@ export function LoginScreen() {
       '/api/auth',
       { email: loginEmail, password: loginPassword },
     )
+    // Varsayılan şifre uyarısı store'a yazılır — AuthenticatedApp içinde
+    // kalıcı bir şerit + otomatik açılan şifre diyaloğu olarak gösterilir.
+    // (Eski yöntemdeki banner giriş ekranında render ediliyordu ama başarılı
+    // girişte ekran anında değiştiği için ASLA görünmüyordu.)
+    setMustChangePassword(!!res.mustChangePassword)
     setSession(res.user, res.sessionId)
-    setMustChange(!!res.mustChangePassword)
   }
 
   async function handleLogin(e: React.FormEvent) {
@@ -194,13 +198,6 @@ export function LoginScreen() {
             <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               {error}
-            </div>
-          )}
-
-          {mustChange && (
-            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
-              🔐 Varsayılan şifre kullanıyorsunuz — güvenliğiniz için sağ üst menüden
-              <span className="font-semibold"> Şifre Değiştir</span>&apos;i kullanın.
             </div>
           )}
 

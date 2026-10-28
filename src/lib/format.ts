@@ -2,6 +2,20 @@
 
 import { CURRENCIES, CURRENCY_RATES } from './constants'
 
+// Yerel saat diliminde "YYYY-MM-DD" — toISOString().slice(0,10) UTC verdiği
+// için gece yarısından sonra yanlış güne kayıyordu (TR: 00:00-03:00 arası).
+export function dateToLocalISO(date: Date = new Date()): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+// Bugünün yerel tarihi — kısaltma
+export function todayLocalISO(): string {
+  return dateToLocalISO(new Date())
+}
+
 // Tarih: DD.MM.YYYY
 export function formatDate(date: string | Date | null | undefined): string {
   if (!date) return '—'

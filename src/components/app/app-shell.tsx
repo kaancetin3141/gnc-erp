@@ -1,7 +1,11 @@
 'use client'
 
+import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '@/store/app-store'
+import { apiGet } from '@/lib/api-client'
+import type { SessionUser } from '@/types'
 import { LoginScreen } from './login-screen'
+import { PasswordChangeDialog } from './password-change-dialog'
 import { Sidebar } from './sidebar'
 import { Topbar } from './topbar'
 import { CommandPalette } from './command-palette'
@@ -36,9 +40,10 @@ import { HrView } from '@/components/hr/hr-view'
 import { SupportTicketsView } from '@/components/support/support-tickets-view'
 import { hasPermission } from '@/lib/rbac'
 import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { AlertTriangle, X } from 'lucide-react'
 import { ShieldX } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useEffect } from 'react'
 import type { PermissionKey } from '@/types'
 
 function NoPermission({ message }: { message: string }) {
@@ -82,6 +87,36 @@ export function AppShell() {
 // Oturum açmış uygulama — yetki kontrolü + view yönlendirme + render
 function AuthenticatedApp() {
   const { user, view, setView } = useAppStore()
+  const refreshUser = useAppStore((s) => s.refreshUser)
+  const mustChangePassword = useAppStore((s) => s.mustChangePassword)
+  const setMustChangePassword = useAppStore((s) => s.setMustChangePassword)
+  const [pwOpen, setPwOpen] = useState(false)
+  const [pwBannerDismissed, setPwBannerDismissed] = useState(false)
+  const sessionValidated = useRef(false)
+
+  // OTURUM DOĞRULAMA (sayfa yüklenince bir kez): localStorage'daki kalıcı
+  // kullanıcı oturumu sunucu tarafında hâlâ geçerli mi? Sunucu resetlenince
+  // bellek oturumları düşer; bu kontrol olmadan arayüz "zombi giriş"
+  // durumunda sonsuz 401 poll'una takılıyordu. 401'de api-client otomatik
+  // logout yapıyor; geçerliyse rol/yetki değişiklikleri de senkronize edilir.
+  useEffect(() => {
+    if (sessionValidated.current) return
+    sessionValidated.current = true
+    apiGet<{ user: SessionUser }>('/api/auth/session')
+      .then((res) => {
+        if (res.user && user && JSON.stringify(res.user) !== JSON.stringify(user)) {
+          refreshUser(res.user)
+        }
+      })
+      .catch(() => {
+        /* 401 → api-client logout yaptı; ağ hatası → sessiz geç */
+      })
+  }, [])
+
+  // Varsayılan şifre uyarısı: şerit + bir kez otomatik açılan şifre diyaloğu
+  useEffect(() => {
+    if (mustChangePassword) setPwOpen(true)
+  }, [mustChangePassword])
 
   // Login olunca: yetkisiz view'da ise dashboard'a yönlendir
   useEffect(() => {
@@ -145,6 +180,28 @@ function AuthenticatedApp() {
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
         <main className="flex-1 overflow-y-auto custom-scroll">
+          {/* Varsayılan (1234) şifre uyarı şeridi — O-01 */}
+          {mustChangePassword && !pwBannerDismissed && (
+            <div className="mx-auto max-w-[1600px] px-4 pt-4 lg:px-6">
+              <div className="flex items-center gap-3 flex-wrap rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 px-4 py-2.5 text-sm text-amber-900 dark:text-amber-200" role="alert">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <strong>Güvenlik uyarısı:</strong> Varsayılan şifre (1234) ile giriş yaptınız.
+                  Hesabınızın güvende olması için şifrenizi değiştirin.
+                </span>
+                <Button size="sm" className="h-8 bg-amber-600 hover:bg-amber-700 text-white" onClick={() => setPwOpen(true)}>
+                  Şifre Değiştir
+                </Button>
+                <button
+                  className="rounded-md p-1 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                  onClick={() => { setPwBannerDismissed(true); setMustChangePassword(false) }}
+                  aria-label="Uyarıyı kapat"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
           <div className={cn('p-4 lg:p-6 max-w-[1600px] mx-auto', view === 'chat' && 'h-full min-h-0 flex flex-col')}>
             {view === 'dashboard' && (
               <ProtectedView perm="dashboard.view" message="Dashboard görüntüleme yetkiniz yok.">
@@ -288,6 +345,16 @@ function AuthenticatedApp() {
         </main>
       </div>
       <CommandPalette />
+      {/* Şifre değiştirme diyaloğu — 1234 uyarı şeridinden ve topbar menüsünden açılır */}
+      <PasswordChangeDialog
+        open={pwOpen}
+        onOpenChange={setPwOpen}
+        onSuccess={() => {
+          // Şifre gerçekten değişti — uyarı şeridini kaldır
+          setPwBannerDismissed(true)
+          setMustChangePassword(false)
+        }}
+      />
     </div>
   )
 }
