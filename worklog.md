@@ -9612,3 +9612,25 @@ Stage Summary:
 - Y-01 KAPANDI: kırık demo butonu düzeltildi ve uçtan uca doğrulandı (kod+seed)
 - Y-02 KÖK NEDEN KESİN: Menü sekmesi, ürün kartı aksiyon satırındaki Button-içinde-Switch. Düzeltme tek blok, onay bekliyor (kullanıcı 'araştır' dedi, 'değiştir' demedi)
 - Açık kullanıcı kararları: K-01 OOM önlemi, O-01 1234 uyarısı, O-02 localStorage temizliği, + yeni: Y-02 düzeltmesi, 'Şık Kafe/Kuaför' etiket değişikliğinin teyidi
+
+---
+Task ID: tur7
+Agent: Z.ai Code (ana ajan)
+Task: Cron görevi 475633 (backup-db.sh çalıştır + raporla) + tur6 sonrası durum doğrulaması + "4'ü araştır" derinlemesine inceleme (Şık Kuaför bekleyen randevular)
+
+Work Log:
+- CRON 475633: backup-db.sh çalıştı → custom-20261028-020821.db (1.249.280 bayt, kaynakla birebir). DİKKAT: bu yedek O ANKİ BOŞ DB'yi yansıtıyordu
+- P0 TEKRAR KEŞİF: 01:39 ortam sıfırlaması tur6'nın DB kurtarmasını da SİLMİŞ (custom.db 97 tablo/0 satır). Git commit zinciri tarandı: 91ee507(22:31, 2.9MB) → ... → f72e6ba(00:48, 2.9MB — EN YENİ SAĞLAM) → 7e53de8(02:08, boş)
+- KURTARMA #2: f72e6ba blob'u → db/backups/recovery-20261028.db → doğrulama (User 23, Tenant 7, ServiceProvider 1, Staff 3, Service 6, Appointment 19, Customer 33, Resident 8) → serverlar durduruldu → db/custom.db üzerine yazıldı (cmp ile birebir doğrulandı) → yeniden başlatıldı
+- ŞİFRE POLİTİKASI DOĞRULAMA: f72e6ba içeriğinde tur6'nın restore-password-policy sonucu MEVCUT: admin@gnccrm.app/314159 ✓ (mustChangePassword:false), admin@sikkafe.com/1234 ✓ (mustChangePassword:true — beklenen davranış). İlk "başarısız" test, yanlış payload (username alanı) kaynaklıydı — API yalnız 'email' alanı okuyor; 'admin' kısa ad eşlemesi (→@gnccrm.app) sorunsuz
+- Y-01 KALICILIK: login-screen.tsx satır 30/32 'Şık Kafe' + 'admin@sikkuaför.com' ayakta; src içinde 'sikkuafur.com' 0 sonuç — sıfırlama kodu geri almamış (commit'lenmiş)
+- Y-02 DURUM: cafe-menu-manager.tsx 391-399 Button-içinde-Switch HÂLÂ DÜZELTİLMEMİŞ (kullanıcı onayı bekliyor — bilinçli)
+- OOM (K-01) TEKRAR DOĞRULANDI: bu oturumda next-server 2 kez OOM-kill (dmesg: total-vm 22.9GB, anon-rss 2.2GB; sandbox 4GB). ensure-server.sh ile her seferinde toparlandı
+- SERVİSLER: 3000 CRM ✓ 200 · 3002 müşteri sitesi ✓ 200 (ana + /isletme/sik-kuafor detay) · 3005 chat ✓ (400=normal kök yanıtı) · 3010 cron-automation ✓ · 3011 reminders ✓
+- ARAŞTIRMA "4": Dashboard "Bekleyen Talep 4" = Appointment status='beklemede' sayısı (4). Dördünün detayı çıkarıldı: (1) Ece Kaya/Manikür/Ayşe Hanım/15 Eyl 17:00 GEÇMİŞ/web/200TL (2) Test Müşteri/Saç Kesimi/Ahmet Usta/20 Eyl 13:00 GEÇMİŞ/web/'Test randevu' notlu (3) Otomatik Test/Sakal Traşı/Ahmet Usta/20 Eyl 17:00 GEÇMİŞ/web — E2E artığı (4) Ahmet/Saç Kesimi/PERSONEL YOK/27 Eyl 13:00 GEÇMİŞ/phone/150TL
+- ALGORİTMİK BULGULAR: A-01 geçmiş tarihli beklemede randevular süresiz duruyor (oto-iptal/sona erme yok) · A-02 test artıkları gerçek veriyle yaşıyor · A-03 telefontan girilen randevuda personel ataması opsiyonel kalıyor · reminderSent=0 (hepsi)
+
+Stage Summary:
+- VERİ TAM: kurtarma #2 tamamlandı; f72e6ba tur6 durumundan daha yeni (şifre politikası dahil). Backup arşivi hâlâ zayıf (git'te 5 snapshot + boş 02:08 yedeği) — periyodik backup kritik
+- "4'Ü ARAŞTIRMA" CEVABI: 4 bekleyen randevunun tamamı GEÇMİŞ tarihte; 2 test artığı + 1 gerçek müşteri (Ece Kaya) + 1 personelsiz telefon kaydı (Ahmet). Kullanıcıya temizlik/onay kararları sunulacak
+- AÇIK KARARLAR: (1) 4 randevunun akıbeti (sil/iptal/yeniden planla) (2) A-01 oto-iptal kuralı ekensin mi (3) Y-02 Switch düzeltmesi (4) K-01 OOM önlemi (5) O-01 1234 uyarısı (6) O-02 localStorage
