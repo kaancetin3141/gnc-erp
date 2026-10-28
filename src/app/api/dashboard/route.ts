@@ -101,7 +101,11 @@ export async function GET(req: NextRequest) {
     if (sector === 'cafe') return await getCafeDashboardData(user!.tenantId, rangeStart, now)
     if (sector === 'market') return await getMarketDashboardData(user!.tenantId, rangeStart, now)
     if (sector === 'site') return await getSiteDashboardData(user!.tenantId, rangeStart, now)
-    if (sector === 'appointments') return await getAppointmentDashboardData(user!.tenantId, rangeStart, now)
+    // Usta/çırak: dashboard yalnız kendi randevu özeti (staffUserId ile kapsam)
+    if (sector === 'appointments') {
+      const staffUserId = user!.role === 'usta' || user!.role === 'cirak' ? user!.id : null
+      return await getAppointmentDashboardData(user!.tenantId, rangeStart, now, staffUserId)
+    }
     return null
   })()
 

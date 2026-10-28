@@ -81,6 +81,8 @@ const ROLE_VISUAL: Record<Role, { emoji: string; tone: string }> = {
   komi: { emoji: '🍽️', tone: 'text-amber-700 dark:text-amber-300' },
   kasiyer: { emoji: '🧾', tone: 'text-emerald-700 dark:text-emerald-300' },
   depo_sorumlusu: { emoji: '🏭', tone: 'text-emerald-700 dark:text-emerald-300' },
+  usta: { emoji: '💈', tone: 'text-emerald-700 dark:text-emerald-300' },
+  cirak: { emoji: '✂️', tone: 'text-emerald-700 dark:text-emerald-300' },
 }
 
 interface Props {

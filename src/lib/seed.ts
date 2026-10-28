@@ -1982,6 +1982,59 @@ export async function runSeed(): Promise<{ success: boolean; message: string; co
     },
   })
 
+  // Usta/çırak giriş hesapları — personel kayıtlarına bağlı.
+  // Usta kendi hesabıyla giriş yapar; yalnız KENDİ randevu/izin/hizmetlerini
+  // yönetir. Personel/hizmet ekleme ve işletme ayarları şirket admininde kalır.
+  const ustaPerms = JSON.stringify([
+    'dashboard.view', 'messages.view', 'appointments.view', 'appointments.self', 'tickets.view',
+  ])
+  // Not: bcrypt, seed'in sonunda `const { default: bcrypt }` ile dinamik import
+  // edildiğinden burada isim çakışmasını önlemek için ayrı ad kullanılır
+  const { default: bcryptLib } = await import('bcryptjs')
+  const ustaHash = bcryptLib.hashSync('1234', 10)
+  const userAhmet = await db.user.create({
+    data: {
+      tenantId: tenant1.id,
+      email: 'ahmet@sikkuaför.com',
+      name: 'Ahmet Usta',
+      passwordHash: ustaHash,
+      role: 'usta',
+      permissions: ustaPerms,
+      status: 'active',
+      phone: '+90 532 111 22 33',
+      title: 'Usta Berber',
+    },
+  })
+  const userAyse = await db.user.create({
+    data: {
+      tenantId: tenant1.id,
+      email: 'ayse@sikkuaför.com',
+      name: 'Ayşe Hanım',
+      passwordHash: ustaHash,
+      role: 'usta',
+      permissions: ustaPerms,
+      status: 'active',
+      phone: '+90 532 222 33 44',
+      title: 'Kuaför',
+    },
+  })
+  const userMehmet = await db.user.create({
+    data: {
+      tenantId: tenant1.id,
+      email: 'mehmet@sikkuaför.com',
+      name: 'Mehmet Bey',
+      passwordHash: ustaHash,
+      role: 'usta',
+      permissions: ustaPerms,
+      status: 'active',
+      phone: '+90 532 333 44 55',
+      title: 'Berber & Stilist',
+    },
+  })
+  await db.staff.update({ where: { id: staffAhmet.id }, data: { userId: userAhmet.id } })
+  await db.staff.update({ where: { id: staffAyse.id }, data: { userId: userAyse.id } })
+  await db.staff.update({ where: { id: staffMehmet.id }, data: { userId: userMehmet.id } })
+
   // Hizmetler
   const svcSacKesim = await db.service.create({
     data: {

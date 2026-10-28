@@ -146,6 +146,25 @@ export const ROLE_PERMISSIONS: Record<Role, PermissionKey[]> = {
     'irsaliye.view', 'irsaliye.manage',
     'tickets.view',
   ],
+
+  // ===== BERBER/KUAFÖR ROLLERİ — Randevu öz-yönetim =====
+  // Usta ve çırak kendi hesabıyla giriş yapar; personel kaydıyla eşleşir
+  // (Staff.userId). Yalnız KENDİ randevu/izin/hizmet atamalarını yönetir;
+  // personel/hizmet ekleme ve işletme ayarları ŞİRKET ADMİNİNE aittir.
+  usta: [
+    'dashboard.view',
+    'messages.view',
+    'appointments.view',
+    'appointments.self',
+    'tickets.view',
+  ],
+  cirak: [
+    'dashboard.view',
+    'messages.view',
+    'appointments.view',
+    'appointments.self',
+    'tickets.view',
+  ],
 }
 
 // Şirket admini (admin rolü) için sektöre göre ek yetkiler
@@ -212,6 +231,8 @@ export const ROLE_LABELS: Record<Role, string> = {
   komi: 'Komi',
   kasiyer: 'Kasiyer',
   depo_sorumlusu: 'Depo Sorumlusu',
+  usta: 'Usta',
+  cirak: 'Çırak',
 }
 
 export const ROLE_HIERARCHY: Record<Role, number> = {
@@ -225,6 +246,8 @@ export const ROLE_HIERARCHY: Record<Role, number> = {
   komi: 25,         // Kafe komi
   depo_sorumlusu: 25, // Market depo
   stock: 25,        // Üretim depo
+  usta: 28,         // Berber/kuaför usta
+  cirak: 18,        // Berber/kuaför çırak
   readonly: 10,     // Salt okunur
 }
 
@@ -272,6 +295,7 @@ export const ALL_PERMISSIONS: { key: PermissionKey; label: string; group: string
   { key: 'site.manage', label: 'Site yönet (daire, sakin, aidat, personel)', group: 'Site Yönetimi' },
   { key: 'appointments.view', label: 'Randevu sistemini görüntüle', group: 'Randevu' },
   { key: 'appointments.manage', label: 'Randevu yönet (personel/hizmet)', group: 'Randevu' },
+  { key: 'appointments.self', label: 'Kendi randevu/çalışma saat/hizmetlerini yönet (usta/çırak)', group: 'Randevu' },
   { key: 'social.view', label: 'Sosyal medya görüntüle', group: 'Sosyal Medya' },
   { key: 'social.manage', label: 'Sosyal medya yönet (post, hesap, yayınla)', group: 'Sosyal Medya' },
 ]
@@ -327,6 +351,11 @@ export function canDelegatePermission(
 
 export function isCafeRole(role: string): boolean {
   return role === 'kasa' || role === 'barmen' || role === 'komi'
+}
+
+// Berber/kuaför personel rolleri — randevu öz-yönetim (appointments.self)
+export function isStaffRole(role: string): boolean {
+  return role === 'usta' || role === 'cirak'
 }
 
 export function isMarketRole(role: string): boolean {

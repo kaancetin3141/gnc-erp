@@ -106,6 +106,8 @@ const ROLE_AVATAR_GRADIENT: Record<Role, string> = {
   komi: 'from-orange-500 to-amber-600',
   kasiyer: 'from-cyan-500 to-teal-600',
   depo_sorumlusu: 'from-stone-500 to-neutral-600',
+  usta: 'from-emerald-500 to-green-600',
+  cirak: 'from-teal-500 to-emerald-600',
 }
 
 const DOC_TYPE_ICON: Record<ChatDocumentType, LucideIcon> = {

@@ -3,8 +3,10 @@ import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err, safeJsonParse } from '@/lib/api-utils'
 import { upsertCustomerForAppointment } from '@/lib/appointment-customer-server'
 import { timeOffCoversRange, timeOffLabel, findClosureConflict } from '@/lib/appointment-timeoff'
+import { getAppointmentContext, hasNoScope } from '@/lib/appointment-perms'
 
 // GET — randevu listesi (tarih/staff/status filtreli)
+// Usta/çırak: yalnız KENDİ randevularını görür (filtre sunucuda zorlanır)
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
@@ -15,13 +17,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!provider) return err('İşletme bulunamadı', 404)
   if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (hasNoScope(ctx)) return err('Bu işletmede personel kaydınız yok', 403)
+
   const url = new URL(req.url)
   const date = url.searchParams.get('date') // YYYY-MM-DD (tek gün)
   const startDate = url.searchParams.get('startDate') // ISO (takvim aralığı)
   const endDate = url.searchParams.get('endDate') // ISO
-  const staffId = url.searchParams.get('staffId') || ''
+  let staffId = url.searchParams.get('staffId') || ''
   const status = url.searchParams.get('status') || ''
   const phone = url.searchParams.get('phone') // müşteri randevu geçmişi
+
+  // Usta/çırak: personel filtresi kendi kaydına sabitlenir
+  if (ctx.myStaffId) staffId = ctx.myStaffId
 
   const where: Record<string, unknown> = { providerId: id }
   if (staffId && staffId !== 'all') where.staffId = staffId
@@ -34,7 +43,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const digits = phone.replace(/\D/g, '')
     if (digits.length < 4) return err('Telefon en az 4 hane olmalı', 400)
     const all = await db.appointment.findMany({
-      where: { providerId: id },
+      // Usta/çırak yalnız kendi randevuları içinde arar
+      where: { providerId: id, ...(ctx.myStaffId ? { staffId: ctx.myStaffId } : {}) },
       include: {
         staff: { select: { id: true, name: true, title: true, photo: true } },
         service: { select: { id: true, name: true, duration: true, price: true } },
@@ -72,6 +82,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 // POST — yeni randevu oluştur (çakışma kontrolü ile)
+// Usta/çırak: randevu otomatik olarak KENDİ adına açılır (staffId sabitlenir)
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
@@ -79,7 +90,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params
   const body = await req.json()
-  const { staffId, serviceId, customerName, customerPhone, customerEmail, customerNote, date, source, force } = body
+  let { staffId, serviceId, customerName, customerPhone, customerEmail, customerNote, date, source, force } = body
 
   if (!customerName || !customerPhone || !date) return err('Müşteri adı, telefon ve tarih gerekli', 400)
 
@@ -90,6 +101,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   })
   if (!provider) return err('İşletme bulunamadı', 404)
   if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
+
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (hasNoScope(ctx)) return err('Bu işletmede personel kaydınız yok', 403)
+
+  // Usta/çırak: randevu daima kendi adına — başkasına atanamaz
+  if (ctx.myStaffId) staffId = ctx.myStaffId
 
   // Hizmet süresini al
   const service = serviceId ? await db.service.findUnique({ where: { id: serviceId } }) : null

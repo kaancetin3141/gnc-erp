@@ -2,12 +2,15 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { timeOffCoversRange, timeOffWindowMs, timeOffLabel } from '@/lib/appointment-timeoff'
+import { getAppointmentContext, hasNoScope } from '@/lib/appointment-perms'
 
 // ============================================================
 // PERSONEL İZİN GÜNLERİ (TIME-OFF) — liste + oluştur
 // GET  ?staffId=&startDate=&endDate=  → izin kayıtları (staff include)
 // POST { staffId, date, isFullDay, startTime?, endTime?, reason? }
 //   · İzin aralığında aktif randevu varsa 409 — önce taşıma/iptal istenir
+//   · Usta/çırak kendi iznini KENDİSİ ayarlar (şirket adminine gerek
+//     yok); başka personelin iznine müdahale edemez.
 // ============================================================
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -20,10 +23,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!provider) return err('İşletme bulunamadı', 404)
   if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (hasNoScope(ctx)) return err('Bu işletmede personel kaydınız yok', 403)
+
   const url = new URL(req.url)
-  const staffId = url.searchParams.get('staffId') || ''
+  let staffId = url.searchParams.get('staffId') || ''
   const startDate = url.searchParams.get('startDate')
   const endDate = url.searchParams.get('endDate')
+
+  // Usta/çırak yalnız kendi izinlerini görür
+  if (ctx.myStaffId) staffId = ctx.myStaffId
 
   const where: Record<string, unknown> = { providerId: id }
   if (staffId) where.staffId = staffId
@@ -53,8 +63,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!provider) return err('İşletme bulunamadı', 404)
   if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (hasNoScope(ctx)) return err('Bu işletmede personel kaydınız yok', 403)
+
   const body = await req.json()
-  const { staffId, date, isFullDay, startTime, endTime, reason, autoReassign } = body as {
+  let { staffId, date, isFullDay, startTime, endTime, reason, autoReassign } = body as {
     staffId?: string
     date?: string
     isFullDay?: boolean
@@ -63,6 +77,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     reason?: string
     autoReassign?: boolean
   }
+
+  // Usta/çırak kendi iznini kendisi ayarlar — staffId ne olursa olsun
+  // kendi personel kaydına sabitlenir (başkasının iznine dokunamaz)
+  if (ctx.myStaffId) staffId = ctx.myStaffId
 
   if (!staffId) return err('Personel seçimi gerekli', 400)
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {

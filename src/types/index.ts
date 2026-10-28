@@ -12,6 +12,8 @@ export type Role =
   | 'komi'
   | 'kasiyer'
   | 'depo_sorumlusu'
+  | 'usta'
+  | 'cirak'
 
 export type PermissionKey =
   | 'customers.view.own'
@@ -48,6 +50,7 @@ export type PermissionKey =
   | 'site.manage'
   | 'appointments.view'
   | 'appointments.manage'
+  | 'appointments.self'
   | 'expenses.view'
   | 'expenses.manage'
   | 'admin.access'

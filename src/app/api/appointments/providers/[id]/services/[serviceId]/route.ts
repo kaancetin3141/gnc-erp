@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { getAppointmentContext } from '@/lib/appointment-perms'
 
 async function getProviderForUser(providerId: string, tenantId: string) {
   const provider = await db.serviceProvider.findUnique({ where: { id: providerId } })
@@ -16,7 +17,7 @@ async function getServiceForProvider(serviceId: string, providerId: string) {
 }
 
 // ============================================================
-// PATCH — hizmet bilgileri güncelle
+// PATCH — hizmet bilgileri güncelle (YALNIZ şirket admini)
 // ============================================================
 export async function PATCH(
   req: NextRequest,
@@ -29,6 +30,12 @@ export async function PATCH(
   const { id, serviceId } = await params
   const provider = await getProviderForUser(id, user!.tenantId)
   if (!provider) return err('İşletme bulunamadı', 404)
+
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (!ctx.isProviderAdmin) {
+    return err('Hizmet düzenleme yalnızca işletme sahibi (şirket admini) tarafından yapılır', 403)
+  }
 
   const service = await getServiceForProvider(serviceId, id)
   if (!service) return err('Hizmet bulunamadı', 404)
@@ -84,7 +91,7 @@ export async function PATCH(
 }
 
 // ============================================================
-// DELETE — hizmet sil
+// DELETE — hizmet sil (YALNIZ şirket admini)
 // ============================================================
 export async function DELETE(
   req: NextRequest,
@@ -97,6 +104,12 @@ export async function DELETE(
   const { id, serviceId } = await params
   const provider = await getProviderForUser(id, user!.tenantId)
   if (!provider) return err('İşletme bulunamadı', 404)
+
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (!ctx.isProviderAdmin) {
+    return err('Hizmet silme yalnızca işletme sahibi (şirket admini) tarafından yapılır', 403)
+  }
 
   const service = await getServiceForProvider(serviceId, id)
   if (!service) return err('Hizmet bulunamadı', 404)

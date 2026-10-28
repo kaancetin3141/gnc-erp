@@ -84,7 +84,7 @@ model User {
   employeeCode String?  @unique // eşsiz personel kodu: "GNC-001", "KAFE-001"
   name         String
   passwordHash String? // bcrypt hash — gerçek şifreli giriş (null ise eski demo kullanıcı)
-  role         String   @default("rep") // superadmin | admin | manager | rep | readonly | stock
+  role         String   @default("rep") // superadmin | admin | manager | rep | readonly | stock | usta | cirak
   permissions  String   @default("[]") // JSON array of permission keys
   managerId    String?
   manager      User?    @relation("ManagerHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
@@ -110,6 +110,10 @@ model User {
   sessions         Session[]
   assignedTickets  Ticket[]     @relation("TicketAssignee")
   createdTickets   Ticket[]     @relation("TicketCreator")
+
+  // Usta/çırak giriş hesabı ↔ personel kaydı bağlantısı (randevu öz-yönetim)
+  // Bir kullanıcı en fazla BİR personel kaydına bağlı olabilir (unique).
+  staffLink        Staff?       @relation("StaffUserLink")
 }
 
 // Gerçek oturum tablosu — rastgele token, kullanıcı ID'si doğrudan token olarak kullanılmaz
@@ -1169,10 +1173,14 @@ model ProviderPhoto {
 }
 
 // Personel (berber, kuaför, diş hekimi, vs.)
+// userId — opsiyonel giriş hesabı bağlantısı: usta/çırak kendi hesabıyla giriş
+// yapıp kendi randevu/izin/hizmetlerini yönetebilir (şirket adminine gerek yok).
 model Staff {
   id         String          @id @default(cuid())
   providerId String
   provider   ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  userId     String?         @unique
+  user       User?           @relation("StaffUserLink", fields: [userId], references: [id], onDelete: SetNull)
   name       String
   title      String? // "Usta Berber", "Diş Hekimi"
   photo      String?

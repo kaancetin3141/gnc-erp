@@ -46,6 +46,7 @@ import {
   Phone, MessageCircle, CheckCircle2, XCircle, Ban, History,
   UserX, Check, Clock, Trash2, Pencil, CalendarDays, AlertTriangle,
   Users, Move, LayoutGrid, Palmtree, Cake, BarChart3, Building2, ListChecks,
+  UserCircle2,
 } from 'lucide-react'
 
 // ============================================================
@@ -161,17 +162,21 @@ interface SlotCellSpec {
 
 interface CalendarProps {
   providerId: string
+  /** Usta/çırak oturumundaysa kendi personel ID'si — takvim yalnız
+   *  kendi kolonunu/randevularını gösterir, personel filtresi kilitli olur */
+  myStaffId?: string | null
 }
 
-export function AppointmentCalendar({ providerId }: CalendarProps) {
+export function AppointmentCalendar({ providerId, myStaffId }: CalendarProps) {
   const qc = useQueryClient()
-  const [view, setView] = useState<'day' | 'staff' | 'week'>('day')
+  const [view, setView] = useState<'day' | 'staff' | 'week'>(myStaffId ? 'staff' : 'day')
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
     return d
   })
-  const [staffFilter, setStaffFilter] = useState<string>('all')
+  const [staffFilter, setStaffFilter] = useState<string>(myStaffId ?? 'all')
+  const isSelfService = !!myStaffId // usta/çırak: kendi üzerinden
 
   // "Şimdi" göstergesi — her dakika güncellenir
   const [nowMin, setNowMin] = useState(() => {
@@ -216,7 +221,15 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
     queryFn: () => apiGet<StaffResponse | Staff[]>(`/api/appointments/providers/${providerId}/staff`),
     enabled: !!providerId,
   })
-  const staffList = useMemo(() => (Array.isArray(staffData) ? staffData : staffData?.items ?? []), [staffData])
+  // Usta/çırak: /staff zaten yalnız kendi kaydını döndürür; güvenlik için
+  // istemci tarafında da filtrelenir (takvimde SADECE kendini görür)
+  const staffList = useMemo(
+    () => {
+      const list = Array.isArray(staffData) ? staffData : staffData?.items ?? []
+      return myStaffId ? list.filter((s) => s.id === myStaffId) : list
+    },
+    [staffData, myStaffId],
+  )
 
   const { data: serviceData } = useQuery({
     queryKey: ['appointment-services', providerId],
@@ -844,17 +857,25 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <Select value={staffFilter} onValueChange={setStaffFilter}>
-                <SelectTrigger className="h-9 w-40 text-xs">
-                  <SelectValue placeholder="Tüm personel" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tüm Personel</SelectItem>
-                  {staffList.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Personel filtresi — usta/çırak için kilitli (kendisi) */}
+              {isSelfService ? (
+                <div className="h-9 px-3 flex items-center gap-1.5 rounded-md border bg-emerald-50/70 dark:bg-emerald-950/30 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                  <UserCircle2 className="w-3.5 h-3.5" />
+                  {staffList[0]?.name ?? 'Ben'}
+                </div>
+              ) : (
+                <Select value={staffFilter} onValueChange={setStaffFilter}>
+                  <SelectTrigger className="h-9 w-40 text-xs">
+                    <SelectValue placeholder="Tüm personel" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tüm Personel</SelectItem>
+                    {staffList.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <div className="flex border rounded-md overflow-hidden">
                 <Button
                   size="sm"
@@ -902,16 +923,19 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
                 <ListChecks className="w-3.5 h-3.5 sm:mr-1" />
                 <span className="hidden sm:inline">Bugün</span>
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setClosureOpen(true)}
-                title="İşletme tatili / kapanış günleri"
-                className="border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-950/30"
-              >
-                <Building2 className="w-3.5 h-3.5 sm:mr-1" />
-                <span className="hidden sm:inline">Tatil</span>
-              </Button>
+              {/* İşletme tatili — yalnız işletme sahibi tanımlar; usta görüntüler */}
+              {!isSelfService && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setClosureOpen(true)}
+                  title="İşletme tatili / kapanış günleri"
+                  className="border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                >
+                  <Building2 className="w-3.5 h-3.5 sm:mr-1" />
+                  <span className="hidden sm:inline">Tatil</span>
+                </Button>
+              )}
               <Button size="sm" onClick={() => openCreate()} className="bg-emerald-600 hover:bg-emerald-700">
                 <Plus className="w-4 h-4 mr-1" />
                 <span className="hidden sm:inline">Randevu</span>
@@ -1404,19 +1428,30 @@ export function AppointmentCalendar({ providerId }: CalendarProps) {
             </div>
             <div>
               <Label htmlFor="a-staff" className="text-xs">Personel</Label>
-              <Select value={form.staffId} onValueChange={(v) => setForm((f) => ({ ...f, staffId: v }))}>
-                <SelectTrigger id="a-staff" className="mt-1 h-9 text-sm">
-                  <SelectValue placeholder="Personel seçin" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Herhangi biri</SelectItem>
-                  {staffList.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}{s.title ? ` · ${s.title}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isSelfService ? (
+                <div
+                  id="a-staff"
+                  className="mt-1 h-9 px-3 flex items-center rounded-md border bg-muted/50 text-sm"
+                  title="Randevular daima kendi adınıza açılır"
+                >
+                  {staffList[0]?.name ?? 'Ben'}
+                  <span className="ml-2 text-[10px] text-muted-foreground">(kendi adınıza)</span>
+                </div>
+              ) : (
+                <Select value={form.staffId} onValueChange={(v) => setForm((f) => ({ ...f, staffId: v }))}>
+                  <SelectTrigger id="a-staff" className="mt-1 h-9 text-sm">
+                    <SelectValue placeholder="Personel seçin" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Herhangi biri</SelectItem>
+                    {staffList.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}{s.title ? ` · ${s.title}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <CustomerAutocomplete

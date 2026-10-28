@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { getAppointmentContext } from '@/lib/appointment-perms'
 
 // Kapsam: superadmin tümü (platform deseni — üst provider route'u ile
 // aynı kural), diğer roller yalnız kendi tenant'ı → kapsam dışı 404
@@ -18,7 +19,7 @@ async function getStaffForProvider(staffId: string, providerId: string) {
 }
 
 // ============================================================
-// PATCH — personel bilgileri güncelle
+// PATCH — personel bilgileri güncelle (YALNIZ şirket admini)
 // ============================================================
 export async function PATCH(
   req: NextRequest,
@@ -31,6 +32,12 @@ export async function PATCH(
   const { id, staffId } = await params
   const provider = await getProviderForUser(id, user!.tenantId, user!.role === 'superadmin')
   if (!provider) return err('İşletme bulunamadı', 404)
+
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (!ctx.isProviderAdmin) {
+    return err('Personel düzenleme yalnızca işletme sahibi (şirket admini) tarafından yapılır', 403)
+  }
 
   const staff = await getStaffForProvider(staffId, id)
   if (!staff) return err('Personel bulunamadı', 404)
@@ -73,7 +80,7 @@ export async function PATCH(
 }
 
 // ============================================================
-// DELETE — personel sil
+// DELETE — personel sil (YALNIZ şirket admini)
 // ============================================================
 export async function DELETE(
   req: NextRequest,
@@ -86,6 +93,12 @@ export async function DELETE(
   const { id, staffId } = await params
   const provider = await getProviderForUser(id, user!.tenantId, user!.role === 'superadmin')
   if (!provider) return err('İşletme bulunamadı', 404)
+
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (!ctx.isProviderAdmin) {
+    return err('Personel silme yalnızca işletme sahibi (şirket admini) tarafından yapılır', 403)
+  }
 
   const staff = await getStaffForProvider(staffId, id)
   if (!staff) return err('Personel bulunamadı', 404)

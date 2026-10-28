@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { getAppointmentContext, hasNoScope } from '@/lib/appointment-perms'
 
 async function getProviderForUser(providerId: string, tenantId: string) {
   const provider = await db.serviceProvider.findUnique({ where: { id: providerId } })
@@ -21,8 +22,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const provider = await getProviderForUser(id, user!.tenantId)
   if (!provider) return err('İşletme bulunamadı', 404)
 
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (hasNoScope(ctx)) return err('Bu işletmede personel kaydınız yok', 403)
+
   const links = await db.staffService.findMany({
-    where: { staff: { providerId: id } },
+    where: { staff: { providerId: id, ...(ctx.myStaffId ? { id: ctx.myStaffId } : {}) } },
     include: { staff: true, service: true },
   })
 
@@ -40,6 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 // ============================================================
 // POST — personeli hizmete bağla
 // Body: { staffId, serviceId }
+// Şirket admini: herhangi bir personel. Usta/çırak: YALNIZ kendi kaydı.
 // ============================================================
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
@@ -50,10 +56,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const provider = await getProviderForUser(id, user!.tenantId)
   if (!provider) return err('İşletme bulunamadı', 404)
 
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (hasNoScope(ctx)) return err('Bu işletmede personel kaydınız yok', 403)
+
   const body = await req.json()
   const { staffId, serviceId } = body as { staffId?: string; serviceId?: string }
 
   if (!staffId || !serviceId) return err('staffId ve serviceId gerekli', 400)
+
+  // Usta/çırak yalnız KENDİ hizmet atamasını değiştirebilir
+  if (!ctx.isProviderAdmin && staffId !== ctx.myStaffId) {
+    return err('Yalnızca kendi hizmet atamalarınızı yönetebilirsiniz', 403)
+  }
 
   // staff ve service bu sağlayıcıya mı ait?
   const staff = await db.staff.findUnique({ where: { id: staffId } })
@@ -86,6 +101,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 // ============================================================
 // DELETE — bağlantıyı kaldır
 // Body: { staffId, serviceId }
+// Şirket admini: herhangi bir personel. Usta/çırak: YALNIZ kendi kaydı.
 // ============================================================
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
@@ -96,10 +112,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const provider = await getProviderForUser(id, user!.tenantId)
   if (!provider) return err('İşletme bulunamadı', 404)
 
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (hasNoScope(ctx)) return err('Bu işletmede personel kaydınız yok', 403)
+
   const body = await req.json().catch(() => ({}))
   const { staffId, serviceId } = body as { staffId?: string; serviceId?: string }
 
   if (!staffId || !serviceId) return err('staffId ve serviceId gerekli', 400)
+
+  // Usta/çırak yalnız KENDİ hizmet atamasını kaldırabilir
+  if (!ctx.isProviderAdmin && staffId !== ctx.myStaffId) {
+    return err('Yalnızca kendi hizmet atamalarınızı yönetebilirsiniz', 403)
+  }
 
   // Bu bağlantı sağlayıcıya mı ait?
   const staff = await db.staff.findUnique({ where: { id: staffId } })

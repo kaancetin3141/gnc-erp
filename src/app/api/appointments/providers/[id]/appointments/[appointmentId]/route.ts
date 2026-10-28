@@ -2,8 +2,11 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { timeOffCoversRange, timeOffLabel } from '@/lib/appointment-timeoff'
+import { getAppointmentContext, hasNoScope } from '@/lib/appointment-perms'
 
 // PATCH — randevu güncelle (durum + tüm düzenleme alanları)
+// Usta/çırak: YALNIZ kendi randevusunu güncelleyebilir; personel
+// atamasını değiştiremez (başkasına devredemez / üzerinden alamaz).
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string; appointmentId: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
@@ -16,8 +19,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!provider) return err('İşletme bulunamadı', 404)
   if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (hasNoScope(ctx)) return err('Bu işletmede personel kaydınız yok', 403)
+
   const existing = await db.appointment.findUnique({ where: { id: appointmentId } })
   if (!existing || existing.providerId !== id) return err('Randevu bulunamadı', 404)
+
+  // Usta/çırak: yalnız kendi randevusu
+  if (ctx.myStaffId && existing.staffId !== ctx.myStaffId) {
+    return err('Bu randevu size ait değil — yalnızca kendi randevularınızı yönetebilirsiniz', 403)
+  }
 
   const body = await req.json()
   const {
@@ -35,6 +47,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     customerNote?: string | null
     date?: string
     force?: boolean
+  }
+
+  // Usta/çırak: personel ataması değiştirilemez
+  if (ctx.myStaffId && staffId !== undefined && staffId !== ctx.myStaffId) {
+    return err('Randevuyu başka personele devredemezsiniz — işletme sahibine bildirin', 403)
   }
 
   const validStatuses = ['beklemede', 'onaylandi', 'reddedildi', 'tamamlandi', 'iptal', 'gelmedi']
@@ -246,6 +263,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 // DELETE — randevu iptal et
+// Usta/çırak: yalnız kendi randevusunu iptal edebilir
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string; appointmentId: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
@@ -258,8 +276,17 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!provider) return err('İşletme bulunamadı', 404)
   if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (hasNoScope(ctx)) return err('Bu işletmede personel kaydınız yok', 403)
+
   const existing = await db.appointment.findUnique({ where: { id: appointmentId } })
   if (!existing || existing.providerId !== id) return err('Randevu bulunamadı', 404)
+
+  // Usta/çırak: yalnız kendi randevusu
+  if (ctx.myStaffId && existing.staffId !== ctx.myStaffId) {
+    return err('Bu randevu size ait değil — yalnızca kendi randevularınızı iptal edebilirsiniz', 403)
+  }
 
   await db.appointment.update({
     where: { id: appointmentId },

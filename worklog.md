@@ -9656,3 +9656,31 @@ Stage Summary:
 - 5/5 ONAY UYGULANDI VE DOĞRULANDI: 2 test randevusu silindi, Ece Kaya arşiv-iptal, Ahmet'e personel atandı (+geçmiş tarihli olduğundan A-01 ile otomatik iptal kapatıldı — gerçekleştıyse CRM'den 'tamamlandi' yapılabilir), A-01 kuralı canlı (15 dk'lık cron), Y-02 Switch düzeltmesi canlı ve kanıtlı
 - Dashboard 'Bekleyen Talep' artık doğru sayıyor (0); gelecekte geçen beklemedeler 15 dk içinde otomatik kapanacak
 - AÇIK KARARLAR (kullanıcıdan): K-01 OOM önlemi (bugün 3. kill — artık acil), O-01 1234 uyarısı, O-02 localStorage temizliği
+
+---
+Task ID: tur9
+Agent: Z.ai Code (ana ajan)
+Task: Kullanıcı talebi — "berberdeki ustalar ve çıraklar kendi saatlerini ayarlayabilsin (şirket adminine gerek kalmasın); portföy yazılarını yazdığımız yeri randevu bölümünde işletme ayarı kısmında göstersin; yeni personel/hizmet ekleme sadece şirket admini; ustalar randevularını/saatlerini/verdiği hizmetleri yönetsin; takvimde sadece kendilerini görsün; şirket admini hepsini görsün"
+
+Work Log:
+- YEDEK: custom-20261028-035438.db (önce) + custom-20261028-041843.db (sonra) alındı
+- ŞEMA: Staff.userId String? @unique + User.staffLink ilişkisi (StaffUserLink) — personel kaydı ↔ giriş hesabı bağlantısı; db:push başarılı
+- TİP/RBAC: Role tipine 'usta' | 'cirak' eklendi; PermissionKey'e 'appointments.self' eklendi; ROLE_PERMISSIONS.usta/cirak = [dashboard.view, messages.view, appointments.view, appointments.self, tickets.view]; ROLE_LABELS (Usta/Çırak) + ROLE_HIERARCHY (28/18) + ALL_PERMISSIONS kaydı + isStaffRole() helper
+- SUNUCU ZORLAMASI (src/lib/appointment-perms.ts YENİ — getAppointmentContext/hasNoScope): staff POST/PATCH/DELETE → yalnız admin; services POST/PATCH/DELETE → yalnız admin; provider PATCH/DELETE → yalnız admin; closures POST/DELETE → yalnız admin; staff-services POST/DELETE → usta yalnız kendi kaydı; time-off POST/DELETE → usta kendi izni (staffId sunucuda kendi kaydına sabitlenir); appointments GET → usta filtresi zorlanır (tarih aralığı + müşteri geçmişi dahil); appointments POST → usta daima kendi adına; appointments PATCH/DELETE → yalnız kendi randevusu + personel devri yasak; staff/services/staff-services/time-off GET → usta kapsam filtreli
+- HESAPLAR (scripts/create-usta-accounts.mjs YENİ): ahmet/ayse/mehmet@sikkuaför.com (şifre 1234, role usta) oluşturuldu + Staff.userId bağlandı; API doğrulama: usta giriş ✓, staff listesi → sadece Ahmet ✓, randevular → sadece Ahmet'inkiler ✓, POST staff → 403 ✓, time-off sahte staffId → kendi kaydına sabitlendi ✓, provider PATCH → 403 ✓
+- FRONTEND: appointments-view.tsx — rol profili (isProviderAdmin + myStaff via provider.staff.userId eşleşmesi); usta için sekmeler: Randevular/Takvim/Müşteriler/Saatlerim/Hizmetlerim (Üyelikler + İşletme Ayarları GİZLİ); admin tüm sekmeler; otomatik onay anahtarı yalnız adminde (ustada profil bandı); İŞLETME AYARLARINDA YENİ "Vitrin & Portföy" kartı → StorefrontDialog açılır (portföy yazıları = Hakkımızda metni + portföy galerisi + kapak artık randevu bölümünden yönetilir; eskiden yalnız Program Admini panelindeydi); ManuelBookingDialog'a lockStaffId + serviceFilter (usta kendi adına, verdiği hizmetlerden satar)
+- FRONTEND: appointment-calendar.tsx — myStaffId prop; usta: staff görünümü varsayılan, personel filtresi kilitli (isim bandı), staffList istemci tarafında da filtreli, randevu formunda personel kilidi "(kendi adınıza)", Tatil butonu gizli
+- YENİ BİLEŞENLER: my-schedule-manager.tsx (Çalışma Saatlerim — usta kendi iznini/gelmedi saatlerini kendisi ekler/siler; yaklaşan+geçmiş liste; 409 çakışma uyarısı) + my-services-manager.tsx (Hizmetlerim — mevcut hizmetler arasından Switch ile seçim; "yeni hizmet ekleme yalnız işletme sahibine aittir" bilgi notu; POST 400 hatası giderildi — staffId artık gönderiliyor)
+- DASHBOARD KAPSAMI: getAppointmentDashboardData'ya staffUserId parametresi — usta dashboard'u yalnız KENDİ randevu/ciro/bekleyen sayılarını görür (önce işletme geneli sayıyordu)
+- ROL KAYITLARI TAMAMLANDI: role-assign-dialog (💈/✂️), chat-view + users-view (gradient/badge) — usta/cirak girdileri eklendi (TS hatası giderildi)
+- LOGIN: demo listesine "Berber / Kuaför Personeli (Usta)" grubu + Ahmet Usta butonu (teal badge)
+- SEED: kuaför seed'ine 3 usta hesabı + Staff.userId bağlantısı eklendi (gelecek yeniden ekimler için)
+- DOĞRULAMA (agent-browser): ADMIN — tüm sekmeler ✓, İşletme Ayarları'nda Vitrin&Portföy kartı + StorefrontDialog açılıyor (Hakkımızda metni + Portföy Galerisi + Foto Yükle) ✓, takvim personel görünümü 3 kolon (Ahmet/Ayşe/Mehmet) ✓, Personel sekmesi 3 kayıt regresyonsuz ✓; USTA — sidebar sade (Randevular var) ✓, sekmeler Saatlerim/Hizmetlerim ✓, takvim SADECE Ahmet kolonu ✓, dashboard kişisel (0 bugünkü — bugünkü tek randevu Ayşe'nin) ✓, izin ekle→listele→sil ✓, hizmet aç/kapa (Saç Boyama açıldı → 200 → geri kapatıldı, DB doğrulandı: Ahmet = Saç Kesimi+Sakal Traşı, izin 0) ✓, Manuel Randevu personel kilidi ✓; konsol/sayfa hatası 0
+- KALİTE: tsc yeni kodda 0 hata; lint 7 = bilinen baseline (0 yeni); kanıtlar: tool-results/tur9-*.png (5 ekran görüntüsü)
+- OPS: cron 479378 oluşturuldu (15 dk'da bir webDevReview turu); mini-servisler ayakta (3002/3010/3011 200, 3005 400=normal)
+
+Stage Summary:
+- İKİ PROFİLLİ YETKİ MODELİ CANLIDA: (1) ŞİRKET ADMİNİ (firma sahibi) — personel/hizmet ekleme, işletme ayarları, tatiller, ÜYELİKLER, TÜM personelin takvimi, VİTRİN & PORTFÖY YAZILARI (randevu → işletme ayarları → Vitrini Düzenle); (2) USTA/ÇIRAK — kendi hesabıyla giriş (1234), kendi randevularını yönetir, ÇALIŞMA SAATLERİNİ (izinlerini) KENDİSİ ayarlar, hangi hizmetleri vereceğini KENDİSİ seçer, takvimde SADECE kendini görür — sunucu tarafında zorlanır (UI gizlemesi değil)
+- Hesaplar: ahmet/ayse/mehmet@sikkuaför.com (1234, usta); admin@sikkuaför.com (firma sahibi) tüm yetkilerde
+- AÇIK KARARLAR (önceki turlardan): K-01 OOM önlemi (bugün tekrar yaşamadık), O-01 1234 şifre değiştirme uyarısı, O-02 çıkışta localStorage tam temizliği
+- SONRAKİ FAZ ÖNERİLERİ: çırak örnek hesabı + usta bazlı rapor/haftalık kazanç görünümü; müşteri kayıt defteri erişiminin rol bazlı inceltmesi; ProviderSettings'te usta için salt-okunur işletme bilgisi kartı

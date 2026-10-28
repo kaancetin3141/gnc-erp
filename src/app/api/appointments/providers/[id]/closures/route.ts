@@ -2,15 +2,18 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
 import { timeOffCoversRange, timeOffWindowMs, timeOffLabel } from '@/lib/appointment-timeoff'
+import { getAppointmentContext } from '@/lib/appointment-perms'
 
 // ============================================================
 // İŞLETME TATİLİ / KAPANIŞ GÜNLERİ (PROVIDER CLOSURE)
-// GET  ?startDate=&endDate=  → tatil kayıtları
+// GET  ?startDate=&endDate=  → tatil kayıtları (herkes görebilir —
+//        usta planını buna göre yapar)
 // POST { date, isFullDay, startTime?, endTime?, reason?, force? }
+//   · YALNIZ şirket admini — işletme genelini ilgilendirir
 //   · Tatil aralığında aktif randevu varsa 409 — randevu bilgileriyle
 //     liste döner; force=true ile yine de oluşturulabilir (randevular
 //     korunur, yalnızca YENİ randevular engellenir)
-// DELETE .../closures/[closureId] → kaydı sil
+// DELETE .../closures/[closureId] → kaydı sil (yalnız admin)
 // ============================================================
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -50,6 +53,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const provider = await db.serviceProvider.findUnique({ where: { id }, select: { tenantId: true } })
   if (!provider) return err('İşletme bulunamadı', 404)
   if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
+
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (!ctx.isProviderAdmin) {
+    return err('İşletme tatili yalnızca işletme sahibi (şirket admini) tarafından tanımlanır', 403)
+  }
 
   const body = await req.json()
   const { date, isFullDay, startTime, endTime, reason, force } = body as {

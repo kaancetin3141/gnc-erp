@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err } from '@/lib/api-utils'
+import { getAppointmentContext } from '@/lib/appointment-perms'
 
 // DELETE — personel izin kaydını sil
+// Şirket admini: herhangi bir kayıt. Usta/çırak: YALNIZ kendi kaydı.
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; timeOffId: string }> },
@@ -16,8 +18,16 @@ export async function DELETE(
   if (!provider) return err('İşletme bulunamadı', 404)
   if (provider.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
 
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+
   const existing = await db.staffTimeOff.findUnique({ where: { id: timeOffId } })
   if (!existing || existing.providerId !== id) return err('İzin kaydı bulunamadı', 404)
+
+  // Usta/çırak yalnız kendi izin kaydını silebilir
+  if (!ctx.isProviderAdmin && existing.staffId !== ctx.myStaffId) {
+    return err('Yalnızca kendi izin kayıtlarınızı silebilirsiniz', 403)
+  }
 
   await db.staffTimeOff.delete({ where: { id: timeOffId } })
 

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requireAuth, ok, err, safeJsonParse } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { getAppointmentContext } from '@/lib/appointment-perms'
 
 // GET — tek hizmet veren (staff + services + appointments dahil)
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -25,7 +26,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return ok({ ...provider, workingHoursParsed: safeJsonParse(provider.workingHours, {}) })
 }
 
-// PATCH — güncelle
+// PATCH — güncelle (İŞLETME AYARLARI — yalnız şirket admini / firma sahibi)
+// Usta/çırak işletme ayarlarını (çalışma saatleri, otomatik onay vb.) değiştiremez.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
@@ -35,6 +37,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const existing = await db.serviceProvider.findUnique({ where: { id } })
   if (!existing) return err('İşletme bulunamadı', 404)
   if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
+
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (!ctx.isProviderAdmin) {
+    return err('İşletme ayarları yalnızca işletme sahibi (şirket admini) tarafından değiştirilir', 403)
+  }
 
   const body = await req.json()
   const updateData: Record<string, unknown> = {}
@@ -51,7 +59,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return ok(updated)
 }
 
-// DELETE
+// DELETE (işletme silme — yalnız şirket admini)
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSession(req)
   const authErr = requireAuth(user)
@@ -61,6 +69,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const existing = await db.serviceProvider.findUnique({ where: { id } })
   if (!existing) return err('İşletme bulunamadı', 404)
   if (existing.tenantId !== user!.tenantId && user!.role !== 'superadmin') return err('Erişim reddedildi', 403)
+
+  const ctx = await getAppointmentContext(user!, id)
+  if (!ctx) return err('İşletme bulunamadı', 404)
+  if (!ctx.isProviderAdmin) {
+    return err('İşletme silme yalnızca işletme sahibi (şirket admini) tarafından yapılır', 403)
+  }
 
   await db.serviceProvider.delete({ where: { id } })
   return ok({ success: true })

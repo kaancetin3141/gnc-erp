@@ -316,12 +316,23 @@ export async function getSiteDashboardData(tenantId: string, rangeStart: Date, n
 }
 
 // ---------- APPOINTMENTS ----------
-export async function getAppointmentDashboardData(tenantId: string, rangeStart: Date, now: Date) {
+export async function getAppointmentDashboardData(tenantId: string, rangeStart: Date, now: Date, staffUserId?: string | null) {
   const providers = await db.serviceProvider.findMany({
     where: { tenantId, isActive: true },
     select: { id: true, name: true, type: true },
   })
   const providerIds = providers.map((p) => p.id)
+
+  // Usta/çırak (staffUserId verilirse): yalnız KENDİ randevuları sayılır —
+  // kendi panelinde işletme geneli değil kişisel özet görür
+  let staffScope: { staffId: string } | undefined
+  if (staffUserId) {
+    const myStaff = await db.staff.findFirst({
+      where: { userId: staffUserId },
+      select: { id: true },
+    })
+    if (myStaff) staffScope = { staffId: myStaff.id }
+  }
 
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
@@ -329,22 +340,22 @@ export async function getAppointmentDashboardData(tenantId: string, rangeStart: 
 
   const [todayAppts, weekAppts, rangeCompleted, pendingAppts, topServicesRaw] = await Promise.all([
     db.appointment.findMany({
-      where: { providerId: { in: providerIds }, date: { gte: dayStart, lt: dayEnd } },
+      where: { providerId: { in: providerIds }, ...staffScope, date: { gte: dayStart, lt: dayEnd } },
       select: { id: true, status: true, customerName: true, price: true, date: true, service: { select: { name: true } }, staff: { select: { name: true } } },
       orderBy: { date: 'asc' },
     }),
     db.appointment.count({
-      where: { providerId: { in: providerIds }, date: { gte: dayStart, lt: weekEnd } },
+      where: { providerId: { in: providerIds }, ...staffScope, date: { gte: dayStart, lt: weekEnd } },
     }),
     db.appointment.findMany({
-      where: { providerId: { in: providerIds }, status: 'tamamlandi', date: { gte: rangeStart } },
+      where: { providerId: { in: providerIds }, ...staffScope, status: 'tamamlandi', date: { gte: rangeStart } },
       select: { price: true, date: true, serviceId: true, service: { select: { name: true } } },
     }),
     db.appointment.count({
-      where: { providerId: { in: providerIds }, status: 'beklemede' },
+      where: { providerId: { in: providerIds }, ...staffScope, status: 'beklemede' },
     }),
     db.appointment.findMany({
-      where: { providerId: { in: providerIds }, status: 'tamamlandi', date: { gte: rangeStart } },
+      where: { providerId: { in: providerIds }, ...staffScope, status: 'tamamlandi', date: { gte: rangeStart } },
       select: { service: { select: { name: true } }, price: true },
     }),
   ])
@@ -375,7 +386,7 @@ export async function getAppointmentDashboardData(tenantId: string, rangeStart: 
   }
   // last 14 days from DB
   const last14 = await db.appointment.findMany({
-    where: { providerId: { in: providerIds }, date: { gte: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000) } },
+    where: { providerId: { in: providerIds }, ...staffScope, date: { gte: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000) } },
     select: { date: true },
   })
   for (const a of last14) {

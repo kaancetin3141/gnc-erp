@@ -64,6 +64,8 @@ const ROLE_BADGE_CLASS: Record<Role, string> = {
   komi: 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-900/50',
   kasiyer: 'bg-cyan-100 text-cyan-800 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-900/50',
   depo_sorumlusu: 'bg-stone-100 text-stone-700 border-stone-200 dark:bg-stone-800/60 dark:text-stone-300 dark:border-stone-700',
+  usta: 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50',
+  cirak: 'bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-900/50',
 }
 
 const ROLE_AVATAR_GRADIENT: Record<Role, string> = {
@@ -78,6 +80,8 @@ const ROLE_AVATAR_GRADIENT: Record<Role, string> = {
   komi: 'from-orange-500 to-amber-600',
   kasiyer: 'from-cyan-500 to-teal-600',
   depo_sorumlusu: 'from-stone-500 to-neutral-600',
+  usta: 'from-emerald-500 to-green-600',
+  cirak: 'from-teal-500 to-emerald-600',
 }
 
 // ─── Tipler ───────────────────────────────────────────────────────

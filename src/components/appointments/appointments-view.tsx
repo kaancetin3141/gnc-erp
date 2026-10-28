@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatDate, formatTime, whatsappLink } from '@/lib/format'
-import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban, UserCheck, UserX, RotateCcw, UserPlus, Ticket } from 'lucide-react'
+import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban, UserCheck, UserX, RotateCcw, UserPlus, Ticket, CalendarClock } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { ProviderSettings } from './provider-settings'
 import { StaffManager } from './staff-manager'
@@ -29,6 +29,11 @@ import { MembershipTab } from '@/components/membership/membership-tab'
 import { CustomerManager, CustomerDetailDialog, type RegistryCustomer } from './customer-manager'
 import { CustomerAutocomplete } from './customer-autocomplete'
 import { formatDateTime } from '@/lib/format'
+import { useAppStore } from '@/store/app-store'
+import { MyScheduleManager } from './my-schedule-manager'
+import { MyServicesManager } from './my-services-manager'
+import { StorefrontDialog, type StorefrontProviderRef } from '@/components/admin/storefront-dialog'
+import { UserCircle2 } from 'lucide-react'
 
 interface Provider {
   id: string; name: string; type: string; address: string | null; city: string | null
@@ -38,7 +43,7 @@ interface Provider {
   staff: Staff[]; services: Service[]
   _count?: { appointments: number }
 }
-interface Staff { id: string; name: string; title: string | null; photo: string | null; phone: string | null }
+interface Staff { id: string; name: string; title: string | null; photo: string | null; phone: string | null; userId?: string | null }
 interface Service { id: string; name: string; description: string | null; duration: number; price: number; category: string | null; photo: string | null }
 interface Appointment {
   id: string; customerId?: string | null; customer?: { id: string; isBlocked: boolean } | null
@@ -69,6 +74,7 @@ const APPT_STATUS = [
 
 export function AppointmentsView() {
   const qc = useQueryClient()
+  const user = useAppStore((s) => s.user)
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [tab, setTab] = useState('appointments')
   const [bookOpen, setBookOpen] = useState(false)
@@ -78,6 +84,8 @@ export function AppointmentsView() {
   const [historyTarget, setHistoryTarget] = useState<{ name: string; phone: string } | null>(null)
   const [customerDetailId, setCustomerDetailId] = useState<string | null>(null)
   const [bookInitial, setBookInitial] = useState<{ name?: string; phone?: string; serviceId?: string; staffId?: string } | undefined>(undefined)
+  // Vitrin & Portföy diyaloğu (işletme sahibi — İşletme Ayarları'ndan açılır)
+  const [storefrontOpen, setStorefrontOpen] = useState(false)
 
   // Provider list
   const { data: providersData } = useQuery({
@@ -94,6 +102,27 @@ export function AppointmentsView() {
     queryFn: () => apiGet<Provider>(`/api/appointments/providers/${providerId}`),
     enabled: !!providerId,
   })
+
+  // ---- ROL PROFİLİ ----
+  // Şirket admini (firma sahibi): her şeyi görür/yönetir.
+  // Usta/çırak: personel kaydıyla eşleşir; yalnız KENDİ randevu/izin/hizmetlerini yönetir,
+  // takvimde sadece kendini görür. Personel/hizmet ekleme ve işletme ayarları adminde kalır.
+  const isProviderAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+  const myStaff = !isProviderAdmin && provider ? provider.staff.find((s) => s.userId === user?.id) : undefined
+  const myStaffId = myStaff?.id ?? null
+
+  // Usta/çırak: kendi hizmet atamaları — manuel randevu dialoğunda hizmet
+  // listesi buna göre filtrelenir (usta yalnız verdiği hizmeti satar)
+  const { data: myStaffList } = useQuery({
+    queryKey: ['appointment-staff', providerId],
+    queryFn: () => apiGet<(Staff & { services: { id: string; name: string; category: string | null }[] })[]>(
+      `/api/appointments/providers/${providerId}/staff`,
+    ),
+    enabled: !!providerId && !isProviderAdmin,
+  })
+  const myServiceIds = !isProviderAdmin
+    ? new Set((myStaffList?.[0]?.services ?? []).map((s) => s.id))
+    : null
 
   // Appointments for selected date
   const { data: appointments = [], isLoading } = useQuery({
@@ -212,28 +241,39 @@ export function AppointmentsView() {
           </p>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
-          {/* Otomatik onay anahtarı — Randevu Ekle'nin yanı sıra */}
-          <div
-            className={cn(
-              'flex items-center gap-2 h-9 px-3 rounded-lg border transition-colors',
-              autoApprove
-                ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/60'
-                : 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/60',
-            )}
-          >
-            {autoApprove
-              ? <Zap className="w-4 h-4 text-emerald-600 shrink-0" />
-              : <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />}
-            <span className={cn('text-xs font-medium whitespace-nowrap', autoApprove ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400')}>
-              {autoApprove ? 'Otomatik onay' : 'Onay gerekli'}
-            </span>
-            <Switch
-              checked={autoApprove}
-              onCheckedChange={toggleAutoApprove}
-              disabled={autoApproveSaving}
-              aria-label="Randevuları otomatik onayla"
-            />
-          </div>
+          {/* Usta/çırak profil bandı — kendi adına yönetir */}
+          {!isProviderAdmin && myStaff && (
+            <div className="flex items-center gap-2 h-9 px-3 rounded-lg border bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/60">
+              <UserCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
+                {myStaff.name}{myStaff.title ? ` · ${myStaff.title}` : ''}
+              </span>
+            </div>
+          )}
+          {/* Otomatik onay anahtarı — yalnız işletme sahibi (usta işletme ayarını değiştiremez) */}
+          {isProviderAdmin && (
+            <div
+              className={cn(
+                'flex items-center gap-2 h-9 px-3 rounded-lg border transition-colors',
+                autoApprove
+                  ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/60'
+                  : 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/60',
+              )}
+            >
+              {autoApprove
+                ? <Zap className="w-4 h-4 text-emerald-600 shrink-0" />
+                : <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />}
+              <span className={cn('text-xs font-medium whitespace-nowrap', autoApprove ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400')}>
+                {autoApprove ? 'Otomatik onay' : 'Onay gerekli'}
+              </span>
+              <Switch
+                checked={autoApprove}
+                onCheckedChange={toggleAutoApprove}
+                disabled={autoApproveSaving}
+                aria-label="Randevuları otomatik onayla"
+              />
+            </div>
+          )}
           <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-40" />
           <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setBookOpen(true)}>
             <Plus className="w-4 h-4 mr-1.5" /> Randevu Ekle
@@ -250,10 +290,25 @@ export function AppointmentsView() {
           <TabsTrigger value="appointments" className="text-xs"><Calendar className="w-3.5 h-3.5 mr-1" /> Randevular</TabsTrigger>
           <TabsTrigger value="calendar" className="text-xs"><CalendarDays className="w-3.5 h-3.5 mr-1" /> Takvim</TabsTrigger>
           <TabsTrigger value="customers" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Müşteriler</TabsTrigger>
-          <TabsTrigger value="staff" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Personel</TabsTrigger>
-          <TabsTrigger value="services" className="text-xs"><Scissors className="w-3.5 h-3.5 mr-1" /> Hizmetler</TabsTrigger>
-          <TabsTrigger value="membership" className="text-xs"><Ticket className="w-3.5 h-3.5 mr-1" /> Üyelikler</TabsTrigger>
-          <TabsTrigger value="settings" className="text-xs"><Settings2 className="w-3.5 h-3.5 mr-1" /> İşletme Ayarları</TabsTrigger>
+          {/* Personel: yönetici için tam yönetim; usta için kendi izin/çalışma saatleri */}
+          <TabsTrigger value="staff" className="text-xs">
+            {isProviderAdmin
+              ? <><Users className="w-3.5 h-3.5 mr-1" /> Personel</>
+              : <><CalendarClock className="w-3.5 h-3.5 mr-1" /> Saatlerim</>}
+          </TabsTrigger>
+          {/* Hizmetler: yönetici için tam yönetim; usta için kendi hizmet seçimi */}
+          <TabsTrigger value="services" className="text-xs">
+            {isProviderAdmin
+              ? <><Scissors className="w-3.5 h-3.5 mr-1" /> Hizmetler</>
+              : <><Scissors className="w-3.5 h-3.5 mr-1" /> Hizmetlerim</>}
+          </TabsTrigger>
+          {/* Üyelik & İşletme Ayarları: yalnız işletme sahibi */}
+          {isProviderAdmin && (
+            <TabsTrigger value="membership" className="text-xs"><Ticket className="w-3.5 h-3.5 mr-1" /> Üyelikler</TabsTrigger>
+          )}
+          {isProviderAdmin && (
+            <TabsTrigger value="settings" className="text-xs"><Settings2 className="w-3.5 h-3.5 mr-1" /> İşletme Ayarları</TabsTrigger>
+          )}
         </TabsList>
 
         {/* Randevular tab */}
@@ -449,9 +504,9 @@ export function AppointmentsView() {
           )}
         </TabsContent>
 
-        {/* Takvim tab — gün/hafta görünümü */}
+        {/* Takvim tab — gün/hafta görünümü. Usta yalnız kendi kolonunu görür. */}
         <TabsContent value="calendar" className="mt-4">
-          {providerId && <AppointmentCalendar providerId={providerId} />}
+          {providerId && <AppointmentCalendar providerId={providerId} myStaffId={myStaffId} />}
         </TabsContent>
 
         {/* Müşteriler tab — kalıcı müşteri kayıt defteri */}
@@ -467,33 +522,83 @@ export function AppointmentsView() {
           )}
         </TabsContent>
 
-        {/* Personel tab — ekleme/düzenleme/silme yetenekli yönetici */}
+        {/* Personel tab — yönetici: ekleme/düzenleme/silme; usta: kendi izin/çalışma saatleri */}
         <TabsContent value="staff" className="mt-4">
-          {providerId && <StaffManager providerId={providerId} />}
+          {providerId && isProviderAdmin && <StaffManager providerId={providerId} />}
+          {providerId && !isProviderAdmin && myStaffId && (
+            <MyScheduleManager providerId={providerId} myStaffId={myStaffId} myStaffName={myStaff?.name ?? ''} />
+          )}
         </TabsContent>
 
-        {/* Hizmetler tab — ekleme/düzenleme/silme yetenekli yönetici */}
+        {/* Hizmetler tab — yönetici: tam yönetim; usta: kendi hizmet seçimi */}
         <TabsContent value="services" className="mt-4">
-          {providerId && <ServiceManager providerId={providerId} />}
+          {providerId && isProviderAdmin && <ServiceManager providerId={providerId} />}
+          {providerId && !isProviderAdmin && myStaffId && (
+            <MyServicesManager providerId={providerId} myStaffId={myStaffId} myStaffName={myStaff?.name ?? ''} />
+          )}
         </TabsContent>
 
-        {/* İşletme Ayarları — otomatik onay anahtarı, çalışma saatleri */}
+        {/* İşletme Ayarları — yalnız işletme sahibi: otomatik onay, çalışma saatleri, VİTRİN & PORTFÖY */}
         <TabsContent value="settings" className="mt-4">
-          {providerId && <ProviderSettings providerId={providerId} />}
+          {providerId && isProviderAdmin && (
+            <div className="space-y-5">
+              {/* Vitrin & Portföy — firma sahibi portföy yazılarını/fotoğraflarını buradan yazar */}
+              <Card className="border-emerald-200/70 bg-gradient-to-br from-emerald-50/80 to-teal-50/40 dark:border-emerald-900/50 dark:from-emerald-950/20 dark:to-teal-950/10">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 h-10 w-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center shrink-0">
+                        <Store className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-base leading-tight">Vitrin & Portföy</h3>
+                        <p className="text-sm text-muted-foreground mt-0.5 max-w-lg">
+                          Müşteri vitrininizdeki kapak fotoğrafı, tanıtım metnini ve portföy galerisini
+                          (kesim/sakal/stil fotoğrafları + yazıları) buradan yönetin.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => setStorefrontOpen(true)}
+                    >
+                      <Store className="w-4 h-4 mr-2" />
+                      Vitrini Düzenle
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+              <ProviderSettings providerId={providerId} />
+            </div>
+          )}
         </TabsContent>
 
-        {/* Üyelik & Paket Yönetimi */}
+        {/* Üyelik & Paket Yönetimi — yalnız işletme sahibi */}
         <TabsContent value="membership" className="mt-4">
-          <MembershipTab />
+          {isProviderAdmin && <MembershipTab />}
         </TabsContent>
       </Tabs>
 
-      {/* Manual booking dialog */}
+      {/* Vitrin & Portföy diyaloğu — İşletme Ayarları'ndan açılır (firma sahibi) */}
+      {storefrontOpen && provider && (
+        <StorefrontDialog
+          provider={{ id: provider.id, name: provider.name, slug: (provider as unknown as { slug?: string | null }).slug, type: provider.type }}
+          onClose={() => setStorefrontOpen(false)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['provider', providerId] })
+            qc.invalidateQueries({ queryKey: ['providers'] })
+          }}
+        />
+      )}
+
+      {/* Manual booking dialog — usta için personel kilidi: kendi adına */}
       {bookOpen && provider && (
         <ManualBookingDialog
           provider={provider}
           open={bookOpen}
           initial={bookInitial}
+          lockStaffId={myStaffId ?? undefined}
+          serviceFilter={myServiceIds}
           onOpenChange={(v) => { setBookOpen(v); if (!v) setBookInitial(undefined) }}
           onSuccess={() => qc.invalidateQueries({ queryKey: ['appointments'] })}
         />
@@ -532,16 +637,23 @@ export function AppointmentsView() {
   )
 }
 
-// Manual booking dialog (admin) — kayıt defteri otomatik tamamlamalı
-function ManualBookingDialog({ provider, open, onOpenChange, onSuccess, initial }: {
+// Manual booking dialog — usta/çırak için personel seçimi kilitli (kendi adına)
+function ManualBookingDialog({ provider, open, onOpenChange, onSuccess, initial, lockStaffId, serviceFilter }: {
   provider: Provider; open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => void
   initial?: { name?: string; phone?: string; serviceId?: string; staffId?: string }
+  lockStaffId?: string
+  serviceFilter?: Set<string> | null
 }) {
   const [form, setForm] = useState({
     serviceId: initial?.serviceId ?? '', staffId: initial?.staffId ?? '',
     date: new Date().toISOString().slice(0, 10),
     time: '10:00', name: initial?.name ?? '', phone: initial?.phone ?? '', email: '', note: '',
   })
+  // Usta kilidi: staffId her zaman kendi personel kaydına sabitlenir
+  const effStaffId = lockStaffId ?? form.staffId
+  const bookableServices = serviceFilter
+    ? provider.services.filter((s) => serviceFilter.has(s.id))
+    : provider.services
   const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
@@ -550,7 +662,7 @@ function ManualBookingDialog({ provider, open, onOpenChange, onSuccess, initial 
       const dateTime = new Date(`${form.date}T${form.time}:00`)
       await apiPost(`/api/appointments/providers/${provider.id}/appointments`, {
         serviceId: form.serviceId || undefined,
-        staffId: form.staffId || undefined,
+        staffId: effStaffId || undefined,
         customerName: form.name,
         customerPhone: form.phone,
         customerEmail: form.email || undefined,
@@ -586,18 +698,25 @@ function ManualBookingDialog({ provider, open, onOpenChange, onSuccess, initial 
               <SelectTrigger className="h-9"><SelectValue placeholder="Hizmet seç" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">Hizmet seçilmedi</SelectItem>
-                {provider.services.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.duration}dk)</SelectItem>)}
+                {bookableServices.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.duration}dk)</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div><Label className="text-xs">Personel</Label>
-            <Select value={form.staffId || '__none__'} onValueChange={(v) => setForm({ ...form, staffId: v === '__none__' ? '' : v })}>
-              <SelectTrigger className="h-9"><SelectValue placeholder="Herhangi" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Herhangi biri</SelectItem>
-                {provider.staff.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {lockStaffId ? (
+              <div className="h-9 px-3 flex items-center rounded-md border bg-muted/50 text-sm">
+                {provider.staff.find((s) => s.id === lockStaffId)?.name ?? 'Siz'}
+                <span className="ml-2 text-[10px] text-muted-foreground">(kendi adınıza)</span>
+              </div>
+            ) : (
+              <Select value={form.staffId || '__none__'} onValueChange={(v) => setForm({ ...form, staffId: v === '__none__' ? '' : v })}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Herhangi" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Herhangi biri</SelectItem>
+                  {provider.staff.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div><Label className="text-xs">Tarih</Label><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>

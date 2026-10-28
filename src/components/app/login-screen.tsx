@@ -33,12 +33,19 @@ const DEMO_GROUPS: { label: string; accounts: { email: string; name: string; rol
       { email: 'admin@parksitesi.com', name: 'Park Sitesi', role: 'Site Yöneticisi', badge: 'violet' },
     ],
   },
+  {
+    label: 'Berber / Kuaför Personeli (Usta)',
+    accounts: [
+      { email: 'ahmet@sikkuaför.com', name: 'Ahmet Usta', role: 'Usta Berber — kendi randevu/izin/hizmet', badge: 'teal' },
+    ],
+  },
 ]
 
 const BADGE_STYLES: Record<string, string> = {
   emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
   sky: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400',
   amber: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+  teal: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400',
   orange: 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-400',
   lime: 'bg-lime-100 text-lime-700 dark:bg-lime-500/15 dark:text-lime-400',
   rose: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
