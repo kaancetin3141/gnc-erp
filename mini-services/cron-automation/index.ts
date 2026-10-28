@@ -120,11 +120,33 @@ function rem(v: unknown): string {
   return typeof v === 'number' ? String(v) : '0'
 }
 
+// A-01 kuralı (kullanıcı onayı: tur8): süresi geçmiş beklemede randevuları otomatik iptal et
+async function runExpireAppointments() {
+  try {
+    const res = await authedFetch('/api/automation/expire-appointments', { method: 'POST' })
+    if (!res.ok) {
+      console.error(`[${new Date().toISOString()}] Randevu süre aşımı başarısız: ${res.status}`)
+      return
+    }
+    const data = (await res.json()) as { expiredCount?: number }
+    if (data.expiredCount) {
+      console.log(`[${new Date().toISOString()}] Randevu süre aşımı: ${data.expiredCount} beklemede randevu otomatik iptal edildi`)
+    }
+  } catch (e) {
+    console.error(`[${new Date().toISOString()}] Randevu süre aşımı hatası:`, e)
+  }
+}
+
 // Cron schedule: her gece 02:00
 // Dakika Saat Gün Ay Haftaiçi
 cron.schedule('0 2 * * *', () => {
   console.log(`\n[${new Date().toISOString()}] === Günlük otomasyon cron tetiklendi ===`)
   runAutomationForAllTenants()
+})
+
+// A-01: her 15 dakikada bir geçmiş tarihe düşen beklemede randevuları iptal et
+cron.schedule('*/15 * * * *', () => {
+  runExpireAppointments()
 })
 
 // Health check HTTP server
@@ -134,7 +156,7 @@ const server = createServer((req, res) => {
     res.end(JSON.stringify({
       service: 'gnc-cron-automation',
       status: 'running',
-      schedule: '0 2 * * * (her gece 02:00)',
+      schedule: '0 2 * * * (her gece 02:00) + */15 * * * * (randevu süre aşımı)',
       lastRun: lastRunTime,
       port: PORT,
     }))
@@ -159,7 +181,7 @@ const origRun = runAutomationForAllTenants
 
 server.listen(PORT, () => {
   console.log(`[${new Date().toISOString()}] GNC Cron Automation Service çalışıyor — port ${PORT}`)
-  console.log(`[${new Date().toISOString()}] Schedule: her gece 02:00`)
+  console.log(`[${new Date().toISOString()}] Schedule: her gece 02:00 + randevu süre aşımı (15 dk)`)
   console.log(`[${new Date().toISOString()}] Health: http://localhost:${PORT}/health`)
   console.log(`[${new Date().toISOString()}] Manuel tetikleme: POST http://localhost:${PORT}/run-now`)
 })

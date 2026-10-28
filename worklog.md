@@ -9634,3 +9634,25 @@ Stage Summary:
 - VERİ TAM: kurtarma #2 tamamlandı; f72e6ba tur6 durumundan daha yeni (şifre politikası dahil). Backup arşivi hâlâ zayıf (git'te 5 snapshot + boş 02:08 yedeği) — periyodik backup kritik
 - "4'Ü ARAŞTIRMA" CEVABI: 4 bekleyen randevunun tamamı GEÇMİŞ tarihte; 2 test artığı + 1 gerçek müşteri (Ece Kaya) + 1 personelsiz telefon kaydı (Ahmet). Kullanıcıya temizlik/onay kararları sunulacak
 - AÇIK KARARLAR: (1) 4 randevunun akıbeti (sil/iptal/yeniden planla) (2) A-01 oto-iptal kuralı ekensin mi (3) Y-02 Switch düzeltmesi (4) K-01 OOM önlemi (5) O-01 1234 uyarısı (6) O-02 localStorage
+
+---
+Task ID: tur8
+Agent: Z.ai Code (ana ajan)
+Task: Kullanıcının 5 onayının uygulanması — "1.sil 2.arşiv kalsın 3.ahmet ustaya ata 4.otomatik iptal işaretle 5.düzelt"
+
+Work Log:
+- GÜVENLİK YEDEĞİ: backup-db.sh → custom-20261028-025941.db (2.9MB, değişiklik öncesi dolu durum, git'e commit'lendi)
+- VERİ İŞLEMLERİ (scripts/appointments-cleanup-approved.mjs, kimlik+isim doğrulamalı): (1) 'Test Müşteri' + 'Otomatik Test' randevuları SİLİNDİ (toplam 20→18) (2) Ece Kaya/Manikür → status=iptal + not 'Arşiv: randevu tarihi geçti, onaylanmadı (28.10.2026)' (3) Ahmet/Saç Kesimi → staffId=Ahmet Usta atandı
+- BULGU: temizlik öncesi toplam 20 olmuştu (araştırmada 19) — yeni randevu 'erer'/Manikür/28.10 12:00 web'den gelmiş, otomatik onaylanmış (autoApprove) — gelecek tarihli, dokunulmadı
+- A-01 KURALI (onay 4): YENİ endpoint src/app/api/automation/expire-appointments/route.ts — POST, yalnız superadmin, TÜM tenant'larda status='beklemede' && (endTime<now || endTime null && date<now) → status='iptal' + not eki + writeAuditLog('automation.appointment.expire') + yarış koruması (status tekrar kontrol edilir). cron-automation servisine runExpireAppointments + cron.schedule('*/15 * * * *') eklendi; health schedule metni güncellendi (bun --hot otomatik yeniledi)
+- KURAL TESTİ: superadmin session ile POST → {"expiredCount":1, ids:[Ahmet'in randevusu]} — Ahmet kaydı: status=iptal, staff=Ahmet Usta, not='Otomatik iptal: randevu saati geçti, onay gelmedi (28.10.2026)'. SON DURUM: beklemede=0, onaylandi=13, tamamlandi=2, iptal=3 (toplam 18)
+- Y-02 DÜZELTME (onay 5): cafe-menu-manager.tsx 391-399 — <Button> sarmalayıcı kaldırıldı → <div title=...> içinde <Switch onCheckedChange={handleToggleAvailable} aria-label=...> — button>button geçersiz HTML'i bitti, çift tetikleme riski gitti, erişilebilir etiket eklendi
+- Y-02 DOĞRULAMA (agent-browser): Şık Kafe girişi → Kafe Yönetimi → Menü sekmesi: konsol 0 uyarı (hidrasyon hatası GİTTİ); Menemen switch'i tek tık = tek PATCH (isAvailable true→false, DB doğrulandı), tekrar tık = geri true (test etkisi sıfırlandı); aria-label'lar snapshot'ta görünür. Kanıt: tool-results/tur8-menu-duzeltildi.png
+- PANEL DOĞRULAMA: Şık Kuaför girişi → dashboard 'Bekleyen Talep: 0 / Hepsi onaylanmış' (önceden 4 idi)
+- OPS: dev server tur sırasında 1 kez daha OOM-kill oldu (dmesg: 2.8GB RSS; bugün 3. kez) — ensure-server.sh ile toparlandı; tarayıcı oturumları kapatıldı
+- KALİTE: tsc — yalnız bilinen eski hatalar (capacitor + mini-servis tipleri; yeni kod temiz); lint 7 = baseline (0 yeni)
+
+Stage Summary:
+- 5/5 ONAY UYGULANDI VE DOĞRULANDI: 2 test randevusu silindi, Ece Kaya arşiv-iptal, Ahmet'e personel atandı (+geçmiş tarihli olduğundan A-01 ile otomatik iptal kapatıldı — gerçekleştıyse CRM'den 'tamamlandi' yapılabilir), A-01 kuralı canlı (15 dk'lık cron), Y-02 Switch düzeltmesi canlı ve kanıtlı
+- Dashboard 'Bekleyen Talep' artık doğru sayıyor (0); gelecekte geçen beklemedeler 15 dk içinde otomatik kapanacak
+- AÇIK KARARLAR (kullanıcıdan): K-01 OOM önlemi (bugün 3. kill — artık acil), O-01 1234 uyarısı, O-02 localStorage temizliği

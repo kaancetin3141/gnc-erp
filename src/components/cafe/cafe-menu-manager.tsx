@@ -388,15 +388,17 @@ export function CafeMenuManager({ cafeId }: { cafeId: string }) {
                         <Pencil className="w-3 h-3 mr-1" />
                         Düzenle
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-xs"
-                        onClick={() => handleToggleAvailable(item)}
+                      <div
+                        className="flex items-center justify-center h-7 px-2 rounded-md hover:bg-muted transition-colors"
                         title={item.isAvailable ? 'Mevcut değil yap' : 'Mevcut yap'}
                       >
-                        <Switch checked={item.isAvailable} className="scale-75" />
-                      </Button>
+                        <Switch
+                          checked={item.isAvailable}
+                          onCheckedChange={() => handleToggleAvailable(item)}
+                          className="scale-75"
+                          aria-label={item.isAvailable ? `${item.name} — mevcut değil yap` : `${item.name} — mevcut yap`}
+                        />
+                      </div>
                       <Button
                         size="sm"
                         variant="ghost"
