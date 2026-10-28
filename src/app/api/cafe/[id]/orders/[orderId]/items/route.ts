@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requirePermission, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { notifyCafe } from '@/lib/cafe-realtime'
 
 // ============================================================
 // POST — AÇIK ADİSYONA KALEM EKLE (K5)
@@ -100,6 +101,15 @@ export async function POST(
     entity: 'cafe_order',
     entityId: orderId,
     after: { addedItems: newLines.map((l) => ({ name: l.name, qty: l.qty })), newTotal: addedItems.length },
+  })
+
+  // Canlı bildirim: barmen/mutfak FIFO kuyruğuna yeni kalemler anında düşer
+  notifyCafe(user!.tenantId, id, 'order-update', {
+    orderId,
+    action: 'items-added',
+    number: order.number,
+    added: newLines.map((l) => ({ name: l.name, qty: l.qty })),
+    actorName: user!.name,
   })
 
   return ok({ items: addedItems }, 201)

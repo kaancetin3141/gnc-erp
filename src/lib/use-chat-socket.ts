@@ -59,6 +59,14 @@ function getSharedSocket(token: string): Socket {
   return sharedSocket
 }
 
+// Kafe realtime (use-cafe-socket) aynı singleton bağlantıyı paylaşır —
+// oturum değişmedikçe tek socket, tek backend bağlantısı.
+export function getSharedSocketIfAny(): Socket | null {
+  return sharedSocket
+}
+
+export { getSharedSocket }
+
 export function disconnectChatSocket(): void {
   if (sharedSocket) {
     sharedSocket.disconnect()

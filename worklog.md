@@ -9800,3 +9800,26 @@ Stage Summary:
 - CRM tam fonksiyon denetimi tamamlandı: 4 gerçek mantık hatası bulundu ve düzeltildi (zombi oturum, TZ kayması, geçmiş rezervasyon, ölü şifre uyarısı) + kayıp veritabanı git geçmişinden kurtarıldı
 - ⚠️ DEPLOY UYARISI: origin/main'deki refactor (7c63d61) PostgreSQL + port 3001 diyor; kullanıcı sunucusu SQLite + port 3000 kurulu. `sudo guncelle-gnc.sh` bu haliyle `prisma db push` adımında PATLAYABİLİR — deploy öncesi kullanıcı kararı gerekli: (a) refactor'u sunucuya uyarlarsın (postgres kurulumu) ya da (b) şema/port tarafını sqlite/3000'e döneriz. Tur13'te sorulan 2 soru hâlâ açık
 - AÇIK KARARLAR: K-01 OOM önlemi (refactor kısmen ele aldı), refactor uyarlaması (yeni), O-02 localStorage temizliği (queryClient.clear mevcut, yeterli)
+
+---
+Task ID: tur16
+Agent: Z.ai Code (ana ajan)
+Task: Kullanıcı talebi — "geliştirmeye devam et" (TODO yüksek öncelik: socket.io realtime — kafe sipariş akışı + bozuk chat emit düzeltmesi)
+
+Work Log:
+- BEKLEYEN GÖREV: Yedekleme cron'u (Job 475633) koştu → custom-20261028-213410.db (1.39 MB) OK, git commit'li
+- 🔴 KRİTİK BULGU — CHAT REALTIME SESSİZCE BOZUKTU: chat-realtime.ts emit URL'i port 3003'e işaret ediyordu, ama chat-service 3005'e taşınmıştı (3003 Fruit Storm'a verildi). 3003'te dinleyici YOK (curl 000) → REST'ten yazılan mesajlar asla socket.io'ya ulaşmıyor, yalnızca polling yedeği çalışıyordu. DÜZELTME: emit URL 3005 + comment güncellendi; curl+socket.io testiyle uçtan uca doğrulandı (REST mesaj → karşı taraf socket'inde anında göründü)
+- REALTIME ALTYAPI GENİŞLETME (mini-services/chat-service): socket bağlantıları artık `tenant:${tenantId}` odasına da katılıyor (kullanıcı odasının yanında); /internal/emit ucuna `event:'cafe'` tipi eklendi → `cafe:order-update|table-update|menu-update|kasa-update` eventleri tenant odasına yayınlanır
+- KÖPRÜ (src/lib/cafe-realtime.ts): notifyCafe(tenantId, cafeId, event, payload) — fire-and-forget, servis kapalıysa sessiz geç (polling yedeği); cache:'no-store' + AbortSignal.timeout + hata logları eklendi (Next.js fetch patch önlemi)
+- EMIT NOKTALARI (9 rota): orders POST (create) / PATCH (status) / DELETE (iptal), items POST (kalem ekle), items/[itemId] PATCH (bar/mutfak durum akışı), payments POST (ödeme) / DELETE (iade), tables POST/PATCH/DELETE (masa CRUD)
+- FRONTEND (src/lib/use-cafe-socket.ts): chat ile AYNI singleton socket'i paylaşır (getSharedSocket export edildi); cafe:* eventlerinde ['cafe-orders','cafe-bar-queue','cafe-kitchen-queue','cafe-tables','cafe-kasa-open','cafe-kasa-today','cafe-reports','cafes'] cache'lerini invalide eder; yeni adisyon/kalem/ödeme için toast; kafe header'ına Canlı/Çevrimdışı rozeti (Wifi ikonu, title tooltip)
+- QA (curl + socket.io istemcisi): login → socket bağlan → komi sipariş açtı (S-0012) → `cafe:order-update` + `cafe:table-update` ANINDA geldi; iptal → 2 event daha. Chat zinciri: admin REST mesaj → kasa socket'inde anında ✅
+- QA (agent-browser, port 81/Caddy): Kafe Yöneticisi girişi → Kafe Yönetimi → rozet "Canlı"; sayfa dururken komi token'ı ile M1'e sipariş → masa "Boş"→"Sipariş" SAYFA YENİLEMEDEN güncellendi; M2 testi → toast "Yeni sipariş S-0014 — Cafe Yöneticisi adisyon açtı — bar/mutfak kuyruğuna düştü" yakalandı; 0 konsol/sayfa hatası
+- TEMİZLİK: test adisyonları (S-0010/11/13/14) iptal, M1/M2 'bos' yapıldı
+- Kanıtlar: tool-results/tur16-*.png (5 ekran görüntüsü)
+- Lint: bilinen 7 temel hata — 0 yeni
+
+Stage Summary:
+- TODO'nun yüksek öncelikli "Socket.io realtime" maddesi tamamlandı: mesajlaşma (bozuk olan) + kafe sipariş akışı (yeni) — komi→barmen/mutfak→kasa ekranları tek socket üzerinden canlı senkron
+- Chat mesajlaşması prod'da uzun süredir sessizce polling'e düşüyordu; artık gerçek realtime
+- AÇIK KARARLAR: K-01 OOM önlemi (devam), O-02 localStorage temizliği (mevcut yeterli), PostgreSQL/SQLite deploy uyarısı (tur15'ten beri açık — kullanıcı kararı gerekli)

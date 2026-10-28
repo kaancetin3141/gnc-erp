@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requirePermission, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { notifyCafe } from '@/lib/cafe-realtime'
 
 // ============================================================
 // DELETE — ÖDEME İADESİ (K3)
@@ -109,6 +110,23 @@ export async function DELETE(
     before: { status: 'tamamlandi', amount: payment.amount },
     after: { status: 'iade', reopened },
   })
+
+  // Canlı bildirim: iade sonrası adisyon/masa durumu tüm ekranlara yansır
+  notifyCafe(user!.tenantId, id, 'order-update', {
+    orderId,
+    action: 'refund',
+    number: order.number,
+    amount: payment.amount,
+    reopened,
+    actorName: user!.name,
+  })
+  if (reopened && order.tableId) {
+    notifyCafe(user!.tenantId, id, 'table-update', {
+      tableId: order.tableId,
+      status: 'siparis',
+    })
+  }
+  notifyCafe(user!.tenantId, id, 'kasa-update', { action: 'refund' })
 
   return ok({
     refunded: true,

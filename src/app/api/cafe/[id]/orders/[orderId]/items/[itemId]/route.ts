@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requirePermission, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { notifyCafe } from '@/lib/cafe-realtime'
 
 const VALID_ITEM_STATUSES = ['bekliyor', 'hazirlaniyor', 'hazir', 'servis_edildi']
 
@@ -100,6 +101,18 @@ export async function PATCH(
     entityId: itemId,
     before: { status: item.status },
     after: { status: updated.status },
+  })
+
+  // Canlı bildirim: bar/mutfak/komi/kasa kalem durumu akışı anında senkronize olur
+  notifyCafe(user!.tenantId, id, 'order-update', {
+    orderId,
+    action: 'item-status',
+    itemId,
+    number: order.number,
+    itemName: item.name,
+    before: item.status,
+    after: updated.status,
+    actorName: user!.name,
   })
 
   return ok(updated)

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requirePermission, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { notifyCafe } from '@/lib/cafe-realtime'
 
 const VALID_SHAPES = ['square', 'round', 'rectangle']
 const VALID_STATUSES = ['bos', 'dolu', 'rezerve', 'siparis']
@@ -76,6 +77,12 @@ export async function PATCH(
     after: { number: updated.number, x: updated.x, y: updated.y, status: updated.status },
   })
 
+  // Canlı bildirim: masa planı (kuş bakışı) tüm ekranlarda anında güncellenir
+  notifyCafe(user!.tenantId, id, 'table-update', {
+    tableId,
+    status: updated.status,
+  })
+
   return ok(updated)
 }
 
@@ -112,6 +119,11 @@ export async function DELETE(
     entity: 'cafe_table',
     entityId: tableId,
     before: { number: table.number },
+  })
+
+  notifyCafe(user!.tenantId, id, 'table-update', {
+    tableId,
+    status: 'deleted',
   })
 
   return ok({ success: true })

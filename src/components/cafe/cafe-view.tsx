@@ -28,9 +28,10 @@ import {
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Coffee, Plus, Store, MapPin, Phone, Users } from 'lucide-react'
+import { Coffee, Plus, Store, MapPin, Phone, Users, Wifi, WifiOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { useCafeSocket, type CafeSocketStatus } from '@/lib/use-cafe-socket'
 
 // ============================================================
 // Tipler
@@ -63,6 +64,10 @@ export function CafeView() {
   const [newPhone, setNewPhone] = useState('')
   const [creating, setCreating] = useState(false)
   const [tab, setTab] = useState<string>('tables')
+
+  // Gerçek zamanlı senkron: sipariş/masa/kasa değişiklikleri tüm ekranlara
+  // anında yansır (komi → barmen/mutfak → kasa akışı socket.io ile canlı)
+  const { status: liveStatus } = useCafeSocket(selectedCafeId)
 
   // Kafeleri çek
   const { data, isLoading } = useQuery({
@@ -215,7 +220,7 @@ export function CafeView() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <CafeHeader cafe={selectedCafe} cafes={cafes} />
+      <CafeHeader cafe={selectedCafe} cafes={cafes} liveStatus={liveStatus} />
 
       {/* Cafe selector (multi-cafe) */}
       {cafes.length > 1 && (
@@ -293,7 +298,7 @@ export function CafeView() {
 // Header
 // ============================================================
 
-function CafeHeader({ cafe, cafes }: { cafe: Cafe | null; cafes?: Cafe[] }) {
+function CafeHeader({ cafe, cafes, liveStatus }: { cafe: Cafe | null; cafes?: Cafe[]; liveStatus?: CafeSocketStatus }) {
   const { user } = useAppStore()
   const u = user as SessionUser | null
   const isCafeRole = u && (u.role === 'kasa' || u.role === 'barmen' || u.role === 'komi')
@@ -305,9 +310,25 @@ function CafeHeader({ cafe, cafes }: { cafe: Cafe | null; cafes?: Cafe[] }) {
           <Coffee className="w-5 h-5 text-white" />
         </div>
         <div className="min-w-0">
-          <h1 className="text-xl lg:text-2xl font-bold tracking-tight">
-            {cafe ? cafe.name : 'Kafe ERP'}
-          </h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl lg:text-2xl font-bold tracking-tight">
+              {cafe ? cafe.name : 'Kafe ERP'}
+            </h1>
+            {liveStatus && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border',
+                  liveStatus === 'live'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                    : 'bg-muted text-muted-foreground border-border',
+                )}
+                title={liveStatus === 'live' ? 'Canlı senkron açık — sipariş akışı tüm ekranlara anında yansır' : 'Canlı bağlantı yok — veriler periyodik yenileniyor'}
+              >
+                {liveStatus === 'live' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+                {liveStatus === 'live' ? 'Canlı' : 'Çevrimdışı'}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             {isCafeRole
               ? 'Kafe yönetim sistemi'

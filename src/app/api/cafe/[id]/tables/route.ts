@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requirePermission, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { notifyCafe } from '@/lib/cafe-realtime'
 
 const VALID_SHAPES = ['square', 'round', 'rectangle']
 const VALID_STATUSES = ['bos', 'dolu', 'rezerve', 'siparis']
@@ -95,6 +96,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entity: 'cafe_table',
     entityId: table.id,
     after: { number: table.number, shape: table.shape, x: table.x, y: table.y },
+  })
+
+  notifyCafe(user!.tenantId, id, 'table-update', {
+    tableId: table.id,
+    status: 'created',
   })
 
   return ok(table)

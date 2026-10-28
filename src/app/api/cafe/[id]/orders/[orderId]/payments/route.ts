@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requirePermission, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { notifyCafe } from '@/lib/cafe-realtime'
 
 const VALID_METHODS = ['cash', 'card', 'online']
 
@@ -140,6 +141,24 @@ export async function POST(
     entityId: payment.id,
     after: { orderId, amount, method, paidOff: isPaidOff },
   })
+
+  // Canlı bildirim: adisyon kapanışı tüm ekranlarda anında görünür
+  notifyCafe(user!.tenantId, id, 'order-update', {
+    orderId,
+    action: 'payment',
+    number: order.number,
+    amount,
+    method,
+    paidOff: isPaidOff,
+    actorName: user!.name,
+  })
+  if (isPaidOff && order.tableId) {
+    notifyCafe(user!.tenantId, id, 'table-update', {
+      tableId: order.tableId,
+      status: 'bos',
+    })
+  }
+  notifyCafe(user!.tenantId, id, 'kasa-update', { action: 'payment' })
 
   return ok({ payment, paidOff: isPaidOff, totalPaid: newPaid, total: order.total, remaining: Math.max(0, order.total - newPaid) })
 }

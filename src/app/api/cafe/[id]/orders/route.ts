@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, requirePermission, ok, err } from '@/lib/api-utils'
 import { writeAuditLog } from '@/lib/auth'
+import { notifyCafe } from '@/lib/cafe-realtime'
 
 const VALID_ORDER_STATUSES = ['acik', 'hazirlaniyor', 'hazir', 'odendi', 'iptal']
 const VALID_ORDER_TYPES = ['dine_in', 'takeaway', 'delivery']
@@ -200,6 +201,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityId: order.id,
     after: { number: order.number, total: order.total, tableId: order.tableId },
   })
+
+  // Canlı bildirim: bar/mutfak FIFO kuyruğu ve sipariş listesi anında güncellenir
+  notifyCafe(user!.tenantId, id, 'order-update', {
+    orderId: order.id,
+    action: 'create',
+    number: order.number,
+    type: order.type,
+    itemCount: itemLines.length,
+    tableId: order.tableId,
+    actorName: user!.name,
+  })
+  if (tableId) {
+    notifyCafe(user!.tenantId, id, 'table-update', {
+      tableId,
+      status: 'siparis',
+    })
+  }
 
   return ok(order)
 }

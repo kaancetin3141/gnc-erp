@@ -115,6 +115,9 @@ io.on('connection', (socket) => {
   const tenantId = socket.data.tenantId as string
 
   socket.join(`user:${userId}`)
+  // Tenant odası: kafe sipariş akışı gibi tenant geneli canlı eventler için
+  // (komi → barmen/mutfak → kasa ekranları aynı tenant içinde anında güncellenir)
+  socket.join(`tenant:${tenantId}`)
 
   const firstSocket = !onlineSockets.has(userId)
   if (firstSocket) onlineSockets.set(userId, new Set())
@@ -171,11 +174,16 @@ io.on('connection', (socket) => {
 // üzerindeki bu ucu engine.handleRequest'ten ÖNCE kesiştiriyoruz.
 interface InternalEmitBody {
   secret?: string
-  event?: 'message' | 'read'
+  event?: 'message' | 'read' | 'cafe'
   receiverId?: string | null
   senderId?: string | null
   readerId?: string | null
   message?: unknown
+  // event === 'cafe' için: tenant odasına yayınlanır
+  cafeEvent?: 'order-update' | 'table-update' | 'menu-update' | 'kasa-update'
+  tenantId?: string
+  cafeId?: string
+  payload?: unknown
 }
 
 function readJsonBody(req: IncomingMessage): Promise<InternalEmitBody> {
@@ -221,6 +229,14 @@ async function handleInternalEmit(req: IncomingMessage, res: ServerResponse) {
       const { senderId, readerId } = body
       if (senderId && readerId) {
         io.to(`user:${senderId}`).emit('chat:read', { readerId, senderId })
+      }
+    } else if (body.event === 'cafe') {
+      // Kafe sipariş akışı: tenant odasına canlı bildirim
+      // (komi sipariş açar → barmen/mutfak/kasa ekranları anında güncellenir)
+      const { cafeEvent, tenantId: tid, cafeId: cid, payload } = body
+      if (cafeEvent && tid) {
+        io.to(`tenant:${tid}`).emit(`cafe:${cafeEvent}`, { cafeId: cid, payload })
+        console.log(`[${ts()}] cafe:${cafeEvent} → tenant=${tid} cafe=${cid ?? '-'}`)
       }
     } else {
       // Yeni mesaj: alıcı odası + gönderen odası (kendi diğer sekmeleri)
