@@ -27,9 +27,9 @@ const DEMO_GROUPS: { label: string; accounts: { email: string; name: string; rol
   {
     label: 'Diğer Modüller',
     accounts: [
-      { email: 'admin@sikkafe.com', name: 'Sık Kafe', role: 'Kafe Yöneticisi', badge: 'orange' },
+      { email: 'admin@sikkafe.com', name: 'Şık Kafe', role: 'Kafe Yöneticisi', badge: 'orange' },
       { email: 'admin@anadolumarket.com', name: 'Anadolu Market', role: 'Market Yöneticisi', badge: 'lime' },
-      { email: 'admin@sikkuafur.com', name: 'Sık Kuaför', role: 'Kuaför Yöneticisi', badge: 'rose' },
+      { email: 'admin@sikkuaför.com', name: 'Şık Kuaför', role: 'Kuaför Yöneticisi', badge: 'rose' },
       { email: 'admin@parksitesi.com', name: 'Park Sitesi', role: 'Site Yöneticisi', badge: 'violet' },
     ],
   },
