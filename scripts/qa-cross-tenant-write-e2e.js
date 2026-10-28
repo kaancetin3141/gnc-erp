@@ -2,7 +2,7 @@
 // Senaryo: superadmin, BAŞKA bir şirketin müşterisine aktivite ekler →
 // aktivite superadmin'in tenant'ına DEĞİL, müşterinin tenant'ına yazılmalı.
 // Test kaydı sonda silinir (DB cleanup).
-const BASE = process.env.BASE || 'http://localhost:3001'
+const BASE = process.env.BASE || 'http://localhost:3000'
 const { PrismaClient } = require('@prisma/client')
 const prisma = new PrismaClient()
 

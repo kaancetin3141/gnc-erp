@@ -432,7 +432,7 @@ export function DistributionCenter() {
               'bun install',
               'bun run db:push',
               'bun run build:web',
-              'cd .next/standalone && PORT=3001 node server.js',
+              'cd .next/standalone && PORT=3000 node server.js',
             ]}
             onCopy={(c) => copyToClipboard(c, 'Web komutları')}
             copied={copied === 'Web komutları'}

@@ -11,7 +11,7 @@ import { normalizePhoneDigits } from '@/lib/member-auth'
 // GET /api/reports/summary — Randevu özet metrikleri (grafik kartları)
 // · days: son N gün penceresi (default 30, max 90)
 // · tenantId: yalnızca SUPERADMIN opsiyonel filtre; diğer roller kendi tenantı
-// · Hafif SQL: gün gruplama raw (PostgreSQL to_char, index [providerId, date]),
+// · Hafif SQL: gün gruplama raw (SQLite strftime/unixepoch, index [providerId, date]),
 //   durum/hizmet/personel Prisma groupBy — N=90'da bile tek tur aggregation
 // · Not: Appointment'ta tenantId yok — provider üzerinden tenant kapsanır
 // ============================================================
@@ -88,15 +88,15 @@ export async function GET(req: NextRequest) {
   const activeStatusFilter = { notIn: ['iptal', 'reddedildi'] } // "talep edilen" = iptal/reddedildi hariç
 
   const [byDayRows, statusGroups, serviceGroups, staffGroups, totalAppointments, upcomingCount, memberPhones, apptPhones] = await Promise.all([
-    // Gün bazlı trend — raw SQL (PostgreSQL: DateTime timestamp(3) olarak saklanır
-    // → to_char ile UTC duvar tarihi bucket'ı; yukarıdaki açıklamaya bak).
+    // Gün bazlı trend — raw SQL (SQLite DateTime tam sayı ms saklar → unixepoch).
+    // UTC bucket = floating duvar tarihi (yukarıdaki açıklamaya bak).
     db.$queryRaw<Array<{ day: string; total: bigint; onaylandi: bigint; iptal: bigint }>>(
-      Prisma.sql`SELECT to_char("date", 'YYYY-MM-DD') as day,
+      Prisma.sql`SELECT strftime('%Y-%m-%d', "date" / 1000, 'unixepoch') as day,
           COUNT(*) as total,
           SUM(CASE WHEN status = 'onaylandi' THEN 1 ELSE 0 END) as onaylandi,
           SUM(CASE WHEN status = 'iptal' THEN 1 ELSE 0 END) as iptal
         FROM "Appointment"
-        WHERE "providerId" IN (${providerIn}) AND "date" >= ${rangeStart}
+        WHERE "providerId" IN (${providerIn}) AND "date" >= ${rangeStartMs}
         GROUP BY day
         ORDER BY day ASC`
     ),

@@ -1,6 +1,6 @@
 #!/bin/bash
 # GNC CRM — yeni modüller E2E API testi (İK + Destek Masası + Admin)
-BASE="http://localhost:3001"
+BASE="http://localhost:3000"
 JAR="/tmp/gnc-e2e-cookies.txt"
 PASS=0; FAIL=0
 

@@ -1,0 +1,780 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { apiGet, apiPost, apiPatch } from '@/lib/api-client'
+     6→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Input } from '@/components/ui/input'
+     9→import { Label } from '@/components/ui/label'
+    10→import { Textarea } from '@/components/ui/textarea'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Skeleton } from '@/components/ui/skeleton'
+    13→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    14→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+    15→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    16→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    17→import { toast } from 'sonner'
+    18→import { cn } from '@/lib/utils'
+    19→import { formatCurrency, formatDate, formatTime, whatsappLink } from '@/lib/format'
+    20→import { Calendar, CalendarDays, Plus, Scissors, Users, Clock, CheckCircle2, XCircle, Phone, MessageCircle, Store, User, Settings2, Zap, ShieldCheck, CheckCheck, AlertCircle, Wallet, Ban } from 'lucide-react'
+    21→import { Switch } from '@/components/ui/switch'
+    22→import { ProviderSettings } from './provider-settings'
+    23→import { StaffManager } from './staff-manager'
+    24→import { ServiceManager } from './service-manager'
+    25→import { AppointmentCalendar } from './appointment-calendar'
+    26→import { RejectDialog } from './reject-dialog'
+    27→import { CustomerHistoryDialog } from './customer-history-dialog'
+    28→import { formatDateTime } from '@/lib/format'
+    29→
+    30→interface Provider {
+    31→  id: string; name: string; type: string; address: string | null; city: string | null
+    32→  phone: string | null; email: string | null; photo: string | null
+    33→  workingHoursParsed: Record<string, unknown>
+    34→  autoApprove?: boolean
+    35→  staff: Staff[]; services: Service[]
+    36→  _count?: { appointments: number }
+    37→}
+    38→interface Staff { id: string; name: string; title: string | null; photo: string | null; phone: string | null }
+    39→interface Service { id: string; name: string; description: string | null; duration: number; price: number; category: string | null; photo: string | null }
+    40→interface Appointment {
+    41→  id: string; customerName: string; customerPhone: string; customerEmail: string | null
+    42→  customerNote: string | null; date: string; endTime: string | null; status: string
+    43→  price: number; source: string; notes: string | null; reminderSent?: boolean
+    44→  staff: { id: string; name: string } | null
+    45→  service: { id: string; name: string; duration: number; price: number } | null
+    46→}
+    47→
+    48→const PROVIDER_TYPES = [
+    49→  { value: 'berber', label: 'Berber', icon: '💈' },
+    50→  { value: 'kuafor', label: 'Kuaför', icon: '💇' },
+    51→  { value: 'disci', label: 'Dişçi', icon: '🦷' },
+    52→  { value: 'guzellik', label: 'Güzellik Merkezi', icon: '💅' },
+    53→  { value: 'spa', label: 'SPA', icon: '🧖' },
+    54→  { value: 'dovme', label: 'Dövmeci', icon: '🎨' },
+    55→] as const
+    56→
+    57→const APPT_STATUS = [
+    58→  { value: 'beklemede', label: 'Beklemede', color: 'text-amber-600 bg-amber-50 border-amber-200' },
+    59→  { value: 'onaylandi', label: 'Onaylandı', color: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+    60→  { value: 'tamamlandi', label: 'Tamamlandı', color: 'text-teal-600 bg-teal-50 border-teal-200' },
+    61→  { value: 'reddedildi', label: 'Reddedildi', color: 'text-slate-600 bg-slate-100 border-slate-200' },
+    62→  { value: 'iptal', label: 'İptal', color: 'text-red-600 bg-red-50 border-red-200' },
+    63→  { value: 'gelmedi', label: 'Gelmedi', color: 'text-rose-600 bg-rose-50 border-rose-200' },
+    64→] as const
+    65→
+    66→export function AppointmentsView() {
+    67→  const qc = useQueryClient()
+    68→  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
+    69→  const [tab, setTab] = useState('appointments')
+    70→  const [bookOpen, setBookOpen] = useState(false)
+    71→  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+    72→  const [statusFilter, setStatusFilter] = useState('all')
+    73→  const [rejectTarget, setRejectTarget] = useState<Appointment | null>(null)
+    74→  const [historyTarget, setHistoryTarget] = useState<{ name: string; phone: string } | null>(null)
+    75→
+    76→  // Provider list
+    77→  const { data: providersData } = useQuery({
+    78→    queryKey: ['providers'],
+    79→    queryFn: () => apiGet<{ items: Provider[] }>('/api/appointments/providers'),
+    80→  })
+    81→  const providers = providersData?.items ?? []
+    82→  const currentProvider = providers[0] // first provider for now
+    83→  const providerId = selectedProviderId || currentProvider?.id
+    84→
+    85→  // Provider detail (staff + services)
+    86→  const { data: provider } = useQuery({
+    87→    queryKey: ['provider', providerId],
+    88→    queryFn: () => apiGet<Provider>(`/api/appointments/providers/${providerId}`),
+    89→    enabled: !!providerId,
+    90→  })
+    91→
+    92→  // Appointments for selected date
+    93→  const { data: appointments = [], isLoading } = useQuery({
+    94→    queryKey: ['appointments', providerId, selectedDate],
+    95→    queryFn: () => apiGet<Appointment[]>(`/api/appointments/providers/${providerId}/appointments?date=${selectedDate}`),
+    96→    enabled: !!providerId,
+    97→  })
+    98→
+    99→  // Gün özeti + durum filtresi (program geliştirmesi)
+   100→  const dayStats = useMemo(() => {
+   101→    const pending = appointments.filter((a) => a.status === 'beklemede')
+   102→    const approved = appointments.filter((a) => a.status === 'onaylandi')
+   103→    const done = appointments.filter((a) => a.status === 'tamamlandi')
+   104→    const cancelled = appointments.filter((a) => a.status === 'iptal' || a.status === 'gelmedi' || a.status === 'reddedildi')
+   105→    const expectedRevenue = [...pending, ...approved].reduce((sum, a) => sum + (a.price || 0), 0)
+   106→    return {
+   107→      total: appointments.length,
+   108→      pendingCount: pending.length,
+   109→      approvedCount: approved.length,
+   110→      doneCount: done.length,
+   111→      cancelledCount: cancelled.length,
+   112→      expectedRevenue,
+   113→    }
+   114→  }, [appointments])
+   115→
+   116→  const filteredAppointments = useMemo(() => {
+   117→    if (statusFilter === 'all') return appointments
+   118→    if (statusFilter === 'iptal') return appointments.filter((a) => a.status === 'iptal' || a.status === 'gelmedi' || a.status === 'reddedildi')
+   119→    return appointments.filter((a) => a.status === statusFilter)
+   120→  }, [appointments, statusFilter])
+   121→
+   122→  const approveAllPending = async () => {
+   123→    const pending = appointments.filter((a) => a.status === 'beklemede')
+   124→    if (pending.length === 0 || !providerId) return
+   125→    try {
+   126→      await Promise.all(pending.map((a) =>
+   127→        apiPatch(`/api/appointments/providers/${providerId}/appointments/${a.id}`, { status: 'onaylandi' }),
+   128→      ))
+   129→      qc.invalidateQueries({ queryKey: ['appointments'] })
+   130→      toast.success(`${pending.length} randevu onaylandı`, { description: 'Müşterilere WhatsApp ile bilgi gönderebilirsiniz' })
+   131→    } catch (e) {
+   132→      toast.error('Toplu onay başarısız', { description: e instanceof Error ? e.message : '' })
+   133→    }
+   134→  }
+   135→
+   136→  // Otomatik onay — başlıkta hızlı anahtar (ayrıca İşletme Ayarları'nda da var)
+   137→  const autoApprove = provider?.autoApprove ?? true
+   138→  const [autoApproveSaving, setAutoApproveSaving] = useState(false)
+   139→  const toggleAutoApprove = async (checked: boolean) => {
+   140→    if (!providerId) return
+   141→    setAutoApproveSaving(true)
+   142→    try {
+   143→      await apiPatch(`/api/appointments/providers/${providerId}`, { autoApprove: checked })
+   144→      qc.invalidateQueries({ queryKey: ['provider', providerId] })
+   145→      qc.invalidateQueries({ queryKey: ['appointment-provider', providerId] })
+   146→      qc.invalidateQueries({ queryKey: ['providers'] })
+   147→      qc.invalidateQueries({ queryKey: ['appointment-providers'] })
+   148→      toast.success(
+   149→        checked
+   150→          ? 'Otomatik onay açıldı — yeni randevular onaysız kabul edilir'
+   151→          : 'Otomatik onay kapatıldı — yeni randevular onay bekler',
+   152→        { icon: checked ? '⚡' : '⏳' },
+   153→      )
+   154→    } catch (e) {
+   155→      toast.error('Ayar değiştirilemedi', { description: e instanceof Error ? e.message : '' })
+   156→    } finally {
+   157→      setAutoApproveSaving(false)
+   158→    }
+   159→  }
+   160→
+   161→  if (!providersData) {
+   162→    return <div className="p-8"><Skeleton className="h-32" /></div>
+   163→  }
+   164→
+   165→  if (providers.length === 0) {
+   166→    return (
+   167→      <div className="space-y-5 animate-fade-in">
+   168→        <h2 className="text-2xl font-bold">Randevu Sistemi</h2>
+   169→        <Card><CardContent className="p-8 text-center">
+   170→          <Store className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
+   171→          <p className="text-sm text-muted-foreground mb-4">Henüz işletme kaydı yok. İlk işletmenizi oluşturun.</p>
+   172→          <ProviderCreateDialog tenantId="" onCreated={() => qc.invalidateQueries({ queryKey: ['providers'] })} />
+   173→        </CardContent></Card>
+   174→      </div>
+   175→    )
+   176→  }
+   177→
+   178→  return (
+   179→    <div className="space-y-5 animate-fade-in">
+   180→      {/* Header */}
+   181→      <div className="flex items-center justify-between flex-wrap gap-3">
+   182→        <div>
+   183→          <h2 className="text-2xl font-bold tracking-tight">Randevu Sistemi</h2>
+   184→          <p className="text-sm text-muted-foreground mt-0.5">
+   185→            {provider?.name} · {PROVIDER_TYPES.find((t) => t.value === provider?.type)?.label}
+   186→          </p>
+   187→        </div>
+   188→        <div className="flex gap-2 items-center flex-wrap">
+   189→          {/* Otomatik onay anahtarı — Randevu Ekle'nin yanı sıra */}
+   190→          <div
+   191→            className={cn(
+   192→              'flex items-center gap-2 h-9 px-3 rounded-lg border transition-colors',
+   193→              autoApprove
+   194→                ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/60'
+   195→                : 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/60',
+   196→            )}
+   197→          >
+   198→            {autoApprove
+   199→              ? <Zap className="w-4 h-4 text-emerald-600 shrink-0" />
+   200→              : <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />}
+   201→            <span className={cn('text-xs font-medium whitespace-nowrap', autoApprove ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400')}>
+   202→              {autoApprove ? 'Otomatik onay' : 'Onay gerekli'}
+   203→            </span>
+   204→            <Switch
+   205→              checked={autoApprove}
+   206→              onCheckedChange={toggleAutoApprove}
+   207→              disabled={autoApproveSaving}
+   208→              aria-label="Randevuları otomatik onayla"
+   209→            />
+   210→          </div>
+   211→          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-40" />
+   212→          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setBookOpen(true)}>
+   213→            <Plus className="w-4 h-4 mr-1.5" /> Randevu Ekle
+   214→          </Button>
+   215→        </div>
+   216→      </div>
+   217→
+   218→      <Tabs value={tab} onValueChange={(v) => {
+   219→        setTab(v)
+   220→        // Personel/hizmet değişiklikleri Müşteri Görünümü'ne ve listeye yansısın
+   221→        if (v === 'booking' || v === 'appointments') qc.invalidateQueries({ queryKey: ['provider', providerId] })
+   222→      }}>
+   223→        <TabsList>
+   224→          <TabsTrigger value="appointments" className="text-xs"><Calendar className="w-3.5 h-3.5 mr-1" /> Randevular</TabsTrigger>
+   225→          <TabsTrigger value="calendar" className="text-xs"><CalendarDays className="w-3.5 h-3.5 mr-1" /> Takvim</TabsTrigger>
+   226→          <TabsTrigger value="staff" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Personel</TabsTrigger>
+   227→          <TabsTrigger value="services" className="text-xs"><Scissors className="w-3.5 h-3.5 mr-1" /> Hizmetler</TabsTrigger>
+   228→          <TabsTrigger value="booking" className="text-xs"><Store className="w-3.5 h-3.5 mr-1" /> Müşteri Görünümü</TabsTrigger>
+   229→          <TabsTrigger value="settings" className="text-xs"><Settings2 className="w-3.5 h-3.5 mr-1" /> İşletme Ayarları</TabsTrigger>
+   230→        </TabsList>
+   231→
+   232→        {/* Randevular tab */}
+   233→        <TabsContent value="appointments" className="mt-4 space-y-3">
+   234→          {/* Gün özeti kartları */}
+   235→          {!isLoading && appointments.length > 0 && (
+   236→            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+   237→              <Card className="shadow-soft"><CardContent className="p-3">
+   238→                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Calendar className="w-3.5 h-3.5" /> Bugün</div>
+   239→                <div className="text-xl font-bold mt-0.5 tabular-nums">{dayStats.total}</div>
+   240→                <div className="text-[10px] text-muted-foreground">randevu</div>
+   241→              </CardContent></Card>
+   242→              <Card className="shadow-soft"><CardContent className="p-3">
+   243→                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Clock className="w-3.5 h-3.5 text-amber-500" /> Bekleyen</div>
+   244→                <div className="text-xl font-bold mt-0.5 tabular-nums text-amber-600">{dayStats.pendingCount}</div>
+   245→                <div className="text-[10px] text-muted-foreground">onay bekliyor</div>
+   246→              </CardContent></Card>
+   247→              <Card className="shadow-soft"><CardContent className="p-3">
+   248→                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Onaylı</div>
+   249→                <div className="text-xl font-bold mt-0.5 tabular-nums text-emerald-600">{dayStats.approvedCount}</div>
+   250→                <div className="text-[10px] text-muted-foreground">{dayStats.doneCount} tamamlandı</div>
+   251→              </CardContent></Card>
+   252→              <Card className="shadow-soft"><CardContent className="p-3">
+   253→                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><Wallet className="w-3.5 h-3.5 text-teal-500" /> Beklenen</div>
+   254→                <div className="text-xl font-bold mt-0.5 tabular-nums text-teal-600">{formatCurrency(dayStats.expectedRevenue)}</div>
+   255→                <div className="text-[10px] text-muted-foreground">ciro potansiyeli</div>
+   256→              </CardContent></Card>
+   257→            </div>
+   258→          )}
+   259→
+   260→          {/* Onay bekleyen uyarı bandı — otomatik onay kapalıyken */}
+   261→          {!isLoading && !autoApprove && dayStats.pendingCount > 0 && (
+   262→            <div className="flex items-center justify-between gap-3 flex-wrap rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/60 px-4 py-3">
+   263→              <div className="flex items-center gap-2">
+   264→                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+   265→                <span className="text-sm text-amber-800 dark:text-amber-300">
+   266→                  <strong>{dayStats.pendingCount} randevu</strong> onayınızı bekliyor — otomatik onay kapalı
+   267→                </span>
+   268→              </div>
+   269→              <Button size="sm" className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={approveAllPending}>
+   270→                <CheckCheck className="w-3.5 h-3.5 mr-1.5" /> Tümünü Onayla
+   271→              </Button>
+   272→            </div>
+   273→          )}
+   274→
+   275→          {/* Durum filtre çipleri */}
+   276→          {!isLoading && appointments.length > 0 && (
+   277→            <div className="flex items-center gap-1.5 flex-wrap">
+   278→              {([
+   279→                { key: 'all', label: 'Tümü', count: dayStats.total, cls: 'bg-primary text-primary-foreground border-transparent' },
+   280→                { key: 'beklemede', label: 'Beklemede', count: dayStats.pendingCount, cls: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900' },
+   281→                { key: 'onaylandi', label: 'Onaylı', count: dayStats.approvedCount, cls: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900' },
+   282→                { key: 'tamamlandi', label: 'Tamamlanan', count: dayStats.doneCount, cls: 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-900' },
+   283→                { key: 'iptal', label: 'İptal/Gelmedi', count: dayStats.cancelledCount, cls: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900' },
+   284→              ] as const).map((c) => (
+   285→                <button
+   286→                  key={c.key}
+   287→                  onClick={() => setStatusFilter(c.key)}
+   288→                  className={cn(
+   289→                    'h-7 px-2.5 rounded-full border text-[11px] font-medium transition-colors',
+   290→                    statusFilter === c.key ? c.cls : 'bg-background text-muted-foreground border-border hover:bg-accent',
+   291→                  )}
+   292→                >
+   293→                  {c.label} · {c.count}
+   294→                </button>
+   295→              ))}
+   296→            </div>
+   297→          )}
+   298→
+   299→          {isLoading ? (
+   300→            <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
+   301→          ) : filteredAppointments.length === 0 ? (
+   302→            <Card><CardContent className="py-12 text-center">
+   303→              <Calendar className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+   304→              <p className="text-sm text-muted-foreground">
+   305→                {appointments.length === 0
+   306→                  ? `${formatDate(selectedDate)} tarihinde randevu yok`
+   307→                  : 'Bu filtreye uyan randevu yok'}
+   308→              </p>
+   309→            </CardContent></Card>
+   310→          ) : (
+   311→            <div className="space-y-2">
+   312→              {filteredAppointments.map((apt) => {
+   313→                const st = APPT_STATUS.find((s) => s.value === apt.status)
+   314→                return (
+   315→                  <Card key={apt.id} className="shadow-soft">
+   316→                    <CardContent className="p-3 flex items-center gap-3">
+   317→                      <div className="text-center shrink-0 w-16">
+   318→                        <div className="text-lg font-bold tabular-nums">{formatTime(apt.date)}</div>
+   319→                        <div className="text-[10px] text-muted-foreground">{apt.endTime ? formatTime(apt.endTime) : ''}</div>
+   320→                      </div>
+   321→                      <div className="flex-1 min-w-0">
+   322→                        <div className="flex items-center gap-2">
+   323→                          <button
+   324→                            onClick={() => setHistoryTarget({ name: apt.customerName, phone: apt.customerPhone })}
+   325→                            className="font-medium text-sm hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline text-left"
+   326→                            title="Müşteri geçmişini gör"
+   327→                          >
+   328→                            {apt.customerName}
+   329→                          </button>
+   330→                          <Badge variant="outline" className={cn('text-[10px]', st?.color ?? '')}>{st?.label}</Badge>
+   331→                        </div>
+   332→                        <div className="text-xs text-muted-foreground mt-0.5">
+   333→                          {apt.service?.name ?? '—'} · {apt.staff?.name ?? 'Herhangi'} · {formatCurrency(apt.price)}
+   334→                        </div>
+   335→                      </div>
+   336→                      <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+   337→                        {/* Beklemede → hızlı onay */}
+   338→                        {apt.status === 'beklemede' && (
+   339→                          <Button size="sm" className="h-8 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+   340→                            onClick={async () => { await apiPatch(`/api/appointments/providers/${providerId}/appointments/${apt.id}`, { status: 'onaylandi' }); qc.invalidateQueries({ queryKey: ['appointments'] }); toast.success('Randevu onaylandı — WhatsApp ile bilgi gönderebilirsiniz') }}>
+   341→                            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Onayla
+   342→                          </Button>
+   343→                        )}
+   344→                        {/* Beklemede → sebep ile reddet */}
+   345→                        {apt.status === 'beklemede' && (
+   346→                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" title="Reddet (sebep bildir)"
+   347→                            onClick={() => setRejectTarget(apt)}>
+   348→                            <Ban className="w-4 h-4" />
+   349→                          </Button>
+   350→                        )}
+   351→                        {/* Onaylandı → WhatsApp ile bilgi gönder */}
+   352→                        {apt.status === 'onaylandi' && (
+   353→                          <Button
+   354→                            size="sm"
+   355→                            variant={apt.reminderSent ? 'outline' : 'default'}
+   356→                            className={cn(
+   357→                              'h-8 text-[11px]',
+   358→                              !apt.reminderSent && 'bg-[#25D366] hover:bg-[#1fb857] text-white border-0',
+   359→                              apt.reminderSent && 'text-[#25D366] border-[#25D366]/40',
+   360→                            )}
+   361→                            title="Müşteriye WhatsApp ile onay bilgisi gönder"
+   362→                            onClick={async () => {
+   363→                              const svc = apt.service?.name ? apt.service.name : 'randevu'
+   364→                              const stf = apt.staff?.name ? ` (${apt.staff.name})` : ''
+   365→                              const msg = `Merhaba ${apt.customerName}, 🎉\n\n${formatDateTime(apt.date)} tarihli ${svc}${stf} randevunuz ONAYLANDI. ✅\n\nGörüşmek üzere! 🙌`
+   366→                              window.open(whatsappLink(apt.customerPhone, msg), '_blank', 'noopener,noreferrer')
+   367→                              try {
+   368→                                await apiPatch(`/api/appointments/providers/${providerId}/appointments/${apt.id}`, { reminderSent: true })
+   369→                                qc.invalidateQueries({ queryKey: ['appointments'] })
+   370→                              } catch { /* sessiz */ }
+   371→                              toast.success('WhatsApp onay mesajı hazırlandı')
+   372→                            }}
+   373→                          >
+   374→                            <MessageCircle className="w-3.5 h-3.5 mr-1" />
+   375→                            {apt.reminderSent ? 'Bilgi Gönderildi' : 'WhatsApp ile Bilgi Gönder'}
+   376→                          </Button>
+   377→                        )}
+   378→                        <a href={whatsappLink(apt.customerPhone, `Merhaba ${apt.customerName}, ${formatDate(apt.date)} ${formatTime(apt.date)} randevunuz hatırlatmasıdır.`)} target="_blank" rel="noopener">
+   379→                          <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600"><MessageCircle className="w-4 h-4" /></Button>
+   380→                        </a>
+   381→                        <a href={`tel:${apt.customerPhone}`}><Button variant="ghost" size="icon" className="h-8 w-8"><Phone className="w-4 h-4" /></Button></a>
+   382→                        {apt.status === 'onaylandi' && (
+   383→                          <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600" title="Tamamlandı"
+   384→                            onClick={async () => { await apiPatch(`/api/appointments/providers/${providerId}/appointments/${apt.id}`, { status: 'tamamlandi' }); qc.invalidateQueries({ queryKey: ['appointments'] }); toast.success('Randevu tamamlandı') }}>
+   385→                            <CheckCircle2 className="w-4 h-4" />
+   386→                          </Button>
+   387→                        )}
+   388→                        {apt.status !== 'iptal' && apt.status !== 'tamamlandi' && (
+   389→                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600" title="İptal"
+   390→                            onClick={async () => { await apiPatch(`/api/appointments/providers/${providerId}/appointments/${apt.id}`, { status: 'iptal' }); qc.invalidateQueries({ queryKey: ['appointments'] }); toast.success('Randevu iptal edildi') }}>
+   391→                            <XCircle className="w-4 h-4" />
+   392→                          </Button>
+   393→                        )}
+   394→                      </div>
+   395→                    </CardContent>
+   396→                  </Card>
+   397→                )
+   398→              })}
+   399→            </div>
+   400→          )}
+   401→        </TabsContent>
+   402→
+   403→        {/* Takvim tab — gün/hafta görünümü */}
+   404→        <TabsContent value="calendar" className="mt-4">
+   405→          {providerId && <AppointmentCalendar providerId={providerId} />}
+   406→        </TabsContent>
+   407→
+   408→        {/* Personel tab — ekleme/düzenleme/silme yetenekli yönetici */}
+   409→        <TabsContent value="staff" className="mt-4">
+   410→          {providerId && <StaffManager providerId={providerId} />}
+   411→        </TabsContent>
+   412→
+   413→        {/* Hizmetler tab — ekleme/düzenleme/silme yetenekli yönetici */}
+   414→        <TabsContent value="services" className="mt-4">
+   415→          {providerId && <ServiceManager providerId={providerId} />}
+   416→        </TabsContent>
+   417→
+   418→        {/* Müşteri Görünümü — Public Booking */}
+   419→        <TabsContent value="booking" className="mt-4">
+   420→          {provider && <PublicBooking provider={provider} onBooked={() => qc.invalidateQueries({ queryKey: ['appointments'] })} />}
+   421→        </TabsContent>
+   422→
+   423→        {/* İşletme Ayarları — otomatik onay anahtarı, çalışma saatleri */}
+   424→        <TabsContent value="settings" className="mt-4">
+   425→          {providerId && <ProviderSettings providerId={providerId} />}
+   426→        </TabsContent>
+   427→      </Tabs>
+   428→
+   429→      {/* Manual booking dialog */}
+   430→      {bookOpen && provider && (
+   431→        <ManualBookingDialog
+   432→          provider={provider}
+   433→          open={bookOpen}
+   434→          onOpenChange={setBookOpen}
+   435→          onSuccess={() => qc.invalidateQueries({ queryKey: ['appointments'] })}
+   436→        />
+   437→      )}
+   438→
+   439→      {/* Reddet diyaloğu — sebep + WhatsApp bildirimi */}
+   440→      {rejectTarget && providerId && (
+   441→        <RejectDialog
+   442→          target={rejectTarget}
+   443→          providerId={providerId}
+   444→          onOpenChange={(o) => !o && setRejectTarget(null)}
+   445→          onDone={() => qc.invalidateQueries({ queryKey: ['appointments'] })}
+   446→        />
+   447→      )}
+   448→
+   449→      {/* Müşteri randevu geçmişi */}
+   450→      {historyTarget && providerId && (
+   451→        <CustomerHistoryDialog
+   452→          providerId={providerId}
+   453→          customerName={historyTarget.name}
+   454→          phone={historyTarget.phone}
+   455→          onOpenChange={(o) => !o && setHistoryTarget(null)}
+   456→        />
+   457→      )}
+   458→    </div>
+   459→  )
+   460→}
+   461→
+   462→// Müşteri görünümü — public booking widget
+   463→function PublicBooking({ provider, onBooked }: { provider: Provider; onBooked: () => void }) {
+   464→  const [step, setStep] = useState(1)
+   465→  const [selectedService, setSelectedService] = useState<Service | null>(null)
+   466→  const [selectedStaff, setSelectedStaff] = useState<string>('')
+   467→  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+   468→  const [selectedTime, setSelectedTime] = useState('')
+   469→  const [customer, setCustomer] = useState({ name: '', phone: '', email: '', note: '' })
+   470→  const [booking, setBooking] = useState(false)
+   471→  const [bookedStatus, setBookedStatus] = useState<string>('onaylandi')
+   472→
+   473→  // Basit slot üretimi (09:00-18:00, 30dk aralık)
+   474→  const slots = useMemo(() => {
+   475→    const result: string[] = []
+   476→    for (let h = 9; h < 18; h++) {
+   477→      result.push(`${String(h).padStart(2, '0')}:00`)
+   478→      result.push(`${String(h).padStart(2, '0')}:30`)
+   479→    }
+   480→    return result
+   481→  }, [])
+   482→
+   483→  const handleBook = async () => {
+   484→    setBooking(true)
+   485→    try {
+   486→      const dateTime = new Date(`${selectedDate}T${selectedTime}:00`)
+   487→      const created = await apiPost<{ status?: string }>(`/api/appointments/providers/${provider.id}/appointments`, {
+   488→        serviceId: selectedService?.id,
+   489→        staffId: selectedStaff || undefined,
+   490→        customerName: customer.name,
+   491→        customerPhone: customer.phone,
+   492→        customerEmail: customer.email || undefined,
+   493→        customerNote: customer.note || undefined,
+   494→        date: dateTime.toISOString(),
+   495→        source: 'web',
+   496→      })
+   497→      setBookedStatus(created?.status ?? 'onaylandi')
+   498→      toast.success(
+   499→        created?.status === 'beklemede' ? 'Randevu talebiniz alındı — onay bekliyor' : 'Randevu oluşturuldu!',
+   500→        { description: `${formatDate(selectedDate)} ${selectedTime}` },
+   501→      )
+   502→      setStep(5) // success
+   503→      onBooked()
+   504→    } catch (e) {
+   505→      toast.error('Randevu oluşturulamadı', { description: e instanceof Error ? e.message : '' })
+   506→    } finally {
+   507→      setBooking(false)
+   508→    }
+   509→  }
+   510→
+   511→  return (
+   512→    <Card className="shadow-soft max-w-2xl mx-auto">
+   513→      <CardContent className="p-6">
+   514→        {/* Progress */}
+   515→        <div className="flex items-center justify-between mb-6">
+   516→          {['Hizmet', 'Personel', 'Tarih', 'Bilgiler', 'Tamam'].map((label, i) => (
+   517→            <div key={i} className="flex items-center flex-1">
+   518→              <div className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0',
+   519→                step > i + 1 ? 'bg-emerald-500 text-white' : step === i + 1 ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground')}>
+   520→                {step > i + 1 ? '✓' : i + 1}
+   521→              </div>
+   522→              {i < 4 && <div className={cn('flex-1 h-0.5 mx-1', step > i + 1 ? 'bg-emerald-500' : 'bg-muted')} />}
+   523→            </div>
+   524→          ))}
+   525→        </div>
+   526→
+   527→        {/* Step 1: Service */}
+   528→        {step === 1 && (
+   529→          <div className="space-y-3">
+   530→            <h3 className="font-semibold text-lg">Hizmet Seçin</h3>
+   531→            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+   532→              {provider.services.map((s) => (
+   533→                <button key={s.id} onClick={() => { setSelectedService(s); setStep(2) }}
+   534→                  className="flex items-center gap-3 p-3 rounded-lg border border-border hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors text-left">
+   535→                  <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center shrink-0">
+   536→                    <Scissors className="w-5 h-5 text-emerald-600" />
+   537→                  </div>
+   538→                  <div className="flex-1 min-w-0">
+   539→                    <div className="font-medium text-sm">{s.name}</div>
+   540→                    <div className="text-xs text-muted-foreground">{s.duration}dk · {formatCurrency(s.price)}</div>
+   541→                  </div>
+   542→                </button>
+   543→              ))}
+   544→            </div>
+   545→          </div>
+   546→        )}
+   547→
+   548→        {/* Step 2: Staff */}
+   549→        {step === 2 && (
+   550→          <div className="space-y-3">
+   551→            <h3 className="font-semibold text-lg">Personel Seçin</h3>
+   552→            <button onClick={() => { setSelectedStaff(''); setStep(3) }}
+   553→              className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 transition-colors text-left">
+   554→              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center"><User className="w-5 h-5" /></div>
+   555→              <span className="font-medium text-sm">Herhangi biri</span>
+   556→            </button>
+   557→            {provider.staff.map((s) => (
+   558→              <button key={s.id} onClick={() => { setSelectedStaff(s.id); setStep(3) }}
+   559→                className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors text-left">
+   560→                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-sm font-semibold">{s.name.charAt(0)}</div>
+   561→                <div><div className="font-medium text-sm">{s.name}</div><div className="text-xs text-muted-foreground">{s.title}</div></div>
+   562→              </button>
+   563→            ))}
+   564→            <Button variant="ghost" size="sm" onClick={() => setStep(1)}>← Geri</Button>
+   565→          </div>
+   566→        )}
+   567→
+   568→        {/* Step 3: Date & Time */}
+   569→        {step === 3 && (
+   570→          <div className="space-y-3">
+   571→            <h3 className="font-semibold text-lg">Tarih ve Saat Seçin</h3>
+   572→            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} min={new Date().toISOString().slice(0, 10)} />
+   573→            <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
+   574→              {slots.map((time) => (
+   575→                <button key={time} onClick={() => { setSelectedTime(time); setStep(4) }}
+   576→                  className="px-2 py-2 text-sm rounded-lg border border-border hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors tabular-nums">
+   577→                  {time}
+   578→                </button>
+   579→              ))}
+   580→            </div>
+   581→            <Button variant="ghost" size="sm" onClick={() => setStep(2)}>← Geri</Button>
+   582→          </div>
+   583→        )}
+   584→
+   585→        {/* Step 4: Customer info */}
+   586→        {step === 4 && (
+   587→          <div className="space-y-3">
+   588→            <h3 className="font-semibold text-lg">Bilgilerinizi Girin</h3>
+   589→            <div className="space-y-2">
+   590→              <div><Label className="text-xs">Ad Soyad *</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} placeholder="Adınız Soyadınız" /></div>
+   591→              <div><Label className="text-xs">Telefon *</Label><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} placeholder="+90 5xx xxx xx xx" /></div>
+   592→              <div><Label className="text-xs">E-posta (opsiyonel)</Label><Input value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} placeholder="email@ornek.com" /></div>
+   593→              <div><Label className="text-xs">Not (opsiyonel)</Label><Textarea value={customer.note} onChange={(e) => setCustomer({ ...customer, note: e.target.value })} placeholder="Eklemek istedikleriniz" className="h-16" /></div>
+   594→            </div>
+   595→            <div className="p-3 rounded-lg bg-muted/30 text-sm">
+   596→              <div className="font-medium">Özet</div>
+   597→              <div className="text-xs text-muted-foreground mt-1">
+   598→                {selectedService?.name} · {selectedStaff ? provider.staff.find((s) => s.id === selectedStaff)?.name : 'Herhangi'} · {formatDate(selectedDate)} {selectedTime} · {formatCurrency(selectedService?.price ?? 0)}
+   599→              </div>
+   600→            </div>
+   601→            <div className="flex gap-2">
+   602→              <Button variant="ghost" onClick={() => setStep(3)}>← Geri</Button>
+   603→              <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={handleBook} disabled={booking || !customer.name || !customer.phone}>
+   604→                {booking ? 'Oluşturuluyor...' : 'Randevuyu Onayla'}
+   605→              </Button>
+   606→            </div>
+   607→          </div>
+   608→        )}
+   609→
+   610→        {/* Step 5: Success — durum bazlı (onaylandı / onay bekliyor) */}
+   611→        {step === 5 && (
+   612→          <div className="text-center py-8">
+   613→            {bookedStatus === 'beklemede' ? (
+   614→              <>
+   615→                <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-950/30 flex items-center justify-center mx-auto mb-4">
+   616→                  <Clock className="w-8 h-8 text-amber-600" />
+   617→                </div>
+   618→                <h3 className="font-semibold text-lg mb-1">Randevu Talebiniz Alındı!</h3>
+   619→                <p className="text-sm text-muted-foreground mb-1">
+   620→                  {selectedService?.name} · {formatDate(selectedDate)} {selectedTime}
+   621→                </p>
+   622→                <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-lg px-3 py-2 inline-block mb-4">
+   623→                  ⏳ İşletme onayladığında randevunuz kesinleşecek
+   624→                </p>
+   625→              </>
+   626→            ) : (
+   627→              <>
+   628→                <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center mx-auto mb-4">
+   629→                  <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+   630→                </div>
+   631→                <h3 className="font-semibold text-lg mb-1">Randevunuz Oluşturuldu!</h3>
+   632→                <p className="text-sm text-muted-foreground mb-4">
+   633→                  {selectedService?.name} · {formatDate(selectedDate)} {selectedTime}
+   634→                </p>
+   635→              </>
+   636→            )}
+   637→            <a href={whatsappLink(customer.phone, bookedStatus === 'beklemede'
+   638→              ? `Randevu talebiniz alındı: ${selectedService?.name}, ${formatDate(selectedDate)} ${selectedTime}. Onay sonrası bilgi verilecek.`
+   639→              : `Randevunuz onaylandı: ${selectedService?.name}, ${formatDate(selectedDate)} ${selectedTime}`)} target="_blank" rel="noopener">
+   640→              <Button variant="outline" size="sm"><MessageCircle className="w-4 h-4 mr-1.5" /> WhatsApp Hatırlatma</Button>
+   641→            </a>
+   642→            <div className="mt-4">
+   643→              <Button variant="ghost" size="sm" onClick={() => { setStep(1); setSelectedService(null); setSelectedStaff(''); setSelectedTime(''); setCustomer({ name: '', phone: '', email: '', note: '' }) }}>
+   644→                Yeni Randevu
+   645→              </Button>
+   646→            </div>
+   647→          </div>
+   648→        )}
+   649→      </CardContent>
+   650→    </Card>
+   651→  )
+   652→}
+   653→
+   654→// Manual booking dialog (admin)
+   655→function ManualBookingDialog({ provider, open, onOpenChange, onSuccess }: {
+   656→  provider: Provider; open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => void
+   657→}) {
+   658→  const [form, setForm] = useState({
+   659→    serviceId: '', staffId: '', date: new Date().toISOString().slice(0, 10),
+   660→    time: '10:00', name: '', phone: '', email: '', note: '',
+   661→  })
+   662→  const [saving, setSaving] = useState(false)
+   663→
+   664→  const handleSave = async () => {
+   665→    setSaving(true)
+   666→    try {
+   667→      const dateTime = new Date(`${form.date}T${form.time}:00`)
+   668→      await apiPost(`/api/appointments/providers/${provider.id}/appointments`, {
+   669→        serviceId: form.serviceId || undefined,
+   670→        staffId: form.staffId || undefined,
+   671→        customerName: form.name,
+   672→        customerPhone: form.phone,
+   673→        customerEmail: form.email || undefined,
+   674→        customerNote: form.note || undefined,
+   675→        date: dateTime.toISOString(),
+   676→        source: 'phone',
+   677→      })
+   678→      toast.success('Randevu oluşturuldu')
+   679→      onSuccess()
+   680→      onOpenChange(false)
+   681→    } catch (e) {
+   682→      toast.error('Randevu oluşturulamadı', { description: e instanceof Error ? e.message : '' })
+   683→    } finally {
+   684→      setSaving(false)
+   685→    }
+   686→  }
+   687→
+   688→  return (
+   689→    <Dialog open={open} onOpenChange={onOpenChange}>
+   690→      <DialogContent className="sm:max-w-md">
+   691→        <DialogHeader><DialogTitle>Manuel Randevu</DialogTitle></DialogHeader>
+   692→        {provider.autoApprove === false && (
+   693→          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/60 px-3 py-2 -mt-1">
+   694→            <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+   695→            <p className="text-xs text-amber-800 dark:text-amber-300">
+   696→              Otomatik onay <strong>kapalı</strong> — randevu <strong>&quot;Beklemede&quot;</strong> oluşur, onayladıktan sonra kesinleşir.
+   697→            </p>
+   698→          </div>
+   699→        )}
+   700→        <div className="space-y-3">
+   701→          <div><Label className="text-xs">Hizmet</Label>
+   702→            <Select value={form.serviceId || '__none__'} onValueChange={(v) => setForm({ ...form, serviceId: v === '__none__' ? '' : v })}>
+   703→              <SelectTrigger className="h-9"><SelectValue placeholder="Hizmet seç" /></SelectTrigger>
+   704→              <SelectContent>
+   705→                <SelectItem value="__none__">Hizmet seçilmedi</SelectItem>
+   706→                {provider.services.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.duration}dk)</SelectItem>)}
+   707→              </SelectContent>
+   708→            </Select>
+   709→          </div>
+   710→          <div><Label className="text-xs">Personel</Label>
+   711→            <Select value={form.staffId || '__none__'} onValueChange={(v) => setForm({ ...form, staffId: v === '__none__' ? '' : v })}>
+   712→              <SelectTrigger className="h-9"><SelectValue placeholder="Herhangi" /></SelectTrigger>
+   713→              <SelectContent>
+   714→                <SelectItem value="__none__">Herhangi biri</SelectItem>
+   715→                {provider.staff.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+   716→              </SelectContent>
+   717→            </Select>
+   718→          </div>
+   719→          <div className="grid grid-cols-2 gap-2">
+   720→            <div><Label className="text-xs">Tarih</Label><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></div>
+   721→            <div><Label className="text-xs">Saat</Label><Input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} /></div>
+   722→          </div>
+   723→          <div><Label className="text-xs">Ad Soyad *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+   724→          <div><Label className="text-xs">Telefon *</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+90 5xx" /></div>
+   725→          <div><Label className="text-xs">Not</Label><Textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className="h-16" /></div>
+   726→        </div>
+   727→        <DialogFooter>
+   728→          <Button variant="outline" onClick={() => onOpenChange(false)}>İptal</Button>
+   729→          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSave} disabled={saving || !form.name || !form.phone}>{saving ? 'Kaydediliyor...' : 'Randevu Oluştur'}</Button>
+   730→        </DialogFooter>
+   731→      </DialogContent>
+   732→    </Dialog>
+   733→  )
+   734→}
+   735→
+   736→// Provider create dialog
+   737→function ProviderCreateDialog({ tenantId, onCreated }: { tenantId: string; onCreated: () => void }) {
+   738→  const [open, setOpen] = useState(false)
+   739→  const [form, setForm] = useState({ name: '', type: 'kuafor', city: '', phone: '' })
+   740→  const [saving, setSaving] = useState(false)
+   741→
+   742→  const handleSave = async () => {
+   743→    setSaving(true)
+   744→    try {
+   745→      await apiPost('/api/appointments/providers', form)
+   746→      toast.success('İşletme oluşturuldu')
+   747→      onCreated()
+   748→      setOpen(false)
+   749→    } catch { toast.error('Oluşturulamadı') } finally { setSaving(false) }
+   750→  }
+   751→
+   752→  return (
+   753→    <>
+   754→      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setOpen(true)}>
+   755→        <Plus className="w-4 h-4 mr-1.5" /> İşletme Ekle
+   756→      </Button>
+   757→      <Dialog open={open} onOpenChange={setOpen}>
+   758→        <DialogContent className="sm:max-w-md">
+   759→          <DialogHeader><DialogTitle>Yeni İşletme</DialogTitle></DialogHeader>
+   760→          <div className="space-y-3">
+   761→            <div><Label className="text-xs">İşletme Adı *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+   762→            <div><Label className="text-xs">Tür</Label>
+   763→              <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+   764→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+   765→                <SelectContent>{PROVIDER_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.icon} {t.label}</SelectItem>)}</SelectContent>
+   766→              </Select>
+   767→            </div>
+   768→            <div><Label className="text-xs">Şehir</Label><Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
+   769→            <div><Label className="text-xs">Telefon</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+   770→          </div>
+   771→          <DialogFooter>
+   772→            <Button variant="outline" onClick={() => setOpen(false)}>İptal</Button>
+   773→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSave} disabled={saving || !form.name}>{saving ? 'Kaydediliyor...' : 'Oluştur'}</Button>
+   774→          </DialogFooter>
+   775→        </DialogContent>
+   776→      </Dialog>
+   777→    </>
+   778→  )
+   779→}
+   780→

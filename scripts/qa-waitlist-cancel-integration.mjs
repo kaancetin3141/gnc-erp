@@ -13,7 +13,7 @@ import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const db = new PrismaClient();
-const CRM = 'http://localhost:3001';
+const CRM = 'http://localhost:3000';
 const RUNID = Math.random().toString(36).slice(2, 8);
 const XFF = `10.${(Math.random() * 250 | 0) + 1}.${(Math.random() * 250 | 0) + 1}.88`;
 

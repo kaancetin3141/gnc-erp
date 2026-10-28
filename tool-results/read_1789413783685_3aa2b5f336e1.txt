@@ -1,0 +1,692 @@
+     1→'use client'
+     2→
+     3→import { useState } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-client'
+     6→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Input } from '@/components/ui/input'
+     9→import { Label } from '@/components/ui/label'
+    10→import { Badge } from '@/components/ui/badge'
+    11→import { Skeleton } from '@/components/ui/skeleton'
+    12→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+    13→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    14→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    15→import {
+    16→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    17→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    18→} from '@/components/ui/alert-dialog'
+    19→import { toast } from 'sonner'
+    20→import { cn } from '@/lib/utils'
+    21→import { formatCurrency, formatDate, whatsappLink } from '@/lib/format'
+    22→import {
+    23→  Building2, Plus, CheckCircle2, MessageCircle, Users, Megaphone,
+    24→  AlertTriangle, Home, User, Phone, Pencil, Trash2, Calculator,
+    25→} from 'lucide-react'
+    26→import { ApartmentFormDialog, type Apartment } from './apartment-form-dialog'
+    27→import { BlockFormDialog, type Block } from './block-form-dialog'
+    28→
+    29→interface SiteData {
+    30→  id: string; name: string; address: string | null; city: string | null; phone: string | null
+    31→  dueDay: number; defaultDueAmount: number; currency: string; managerName: string | null
+    32→  blocks: { id: string; name: string; _count: { apartments: number } }[]
+    33→  siteStaff: { id: string; name: string; role: string; phone: string | null; photo: string | null; salary: number | null }[]
+    34→  announcements: { id: string; title: string; content: string; type: string; publishDate: string }[]
+    35→  duesStats: { status: string; _count: { amount: number }; _sum: { amount: number } }[]
+    36→  _count: { dues: number; complaints: number }
+    37→}
+    38→
+    39→interface DuesItem {
+    40→  id: string
+    41→  amount: number
+    42→  currency: string
+    43→  dueDate: string
+    44→  status: string
+    45→  lateFee?: number | null
+    46→  lateFeeAppliedAt?: string | null
+    47→  notes?: string | null
+    48→  apartment?: { block?: { name: string }; number: string }
+    49→  resident?: { name: string; phone: string | null } | null
+    50→}
+    51→
+    52→interface ComplaintItem {
+    53→  id: string
+    54→  title: string
+    55→  description: string
+    56→  status: string
+    57→  response: string | null
+    58→  createdAt: string
+    59→  resident?: { name: string } | null
+    60→}
+    61→
+    62→const STAFF_ROLES = [
+    63→  { value: 'kapici', label: 'Kapıcı' },
+    64→  { value: 'guvenlik', label: 'Güvenlik' },
+    65→  { value: 'temizlik', label: 'Temizlik' },
+    66→  { value: 'bahcivan', label: 'Bahçıvan' },
+    67→  { value: 'teknik', label: 'Teknik' },
+    68→] as const
+    69→
+    70→const APARTMENT_TYPE_LABELS: Record<string, string> = {
+    71→  daire: 'Daire',
+    72→  dukkan: 'Dükkan',
+    73→  depo: 'Depo',
+    74→}
+    75→
+    76→export function SiteView() {
+    77→  const qc = useQueryClient()
+    78→  const [tab, setTab] = useState('overview')
+    79→  const [currentMonth] = useState(new Date().getMonth() + 1)
+    80→  const [currentYear] = useState(new Date().getFullYear())
+    81→
+    82→  // Daire form/dialog state
+    83→  const [aptDialogOpen, setAptDialogOpen] = useState(false)
+    84→  const [editApt, setEditApt] = useState<Apartment | null>(null)
+    85→  const [deleteApt, setDeleteApt] = useState<Apartment | null>(null)
+    86→
+    87→  // Blok form/dialog state
+    88→  const [blockDialogOpen, setBlockDialogOpen] = useState(false)
+    89→  const [editBlock, setEditBlock] = useState<Block | null>(null)
+    90→  const [deleteBlock, setDeleteBlock] = useState<Block | null>(null)
+    91→
+    92→  const { data: sitesData } = useQuery({
+    93→    queryKey: ['sites'],
+    94→    queryFn: () => apiGet<{ items: { id: string; name: string }[] }>('/api/site'),
+    95→  })
+    96→  const siteId = sitesData?.items?.[0]?.id
+    97→
+    98→  const { data: site, isLoading } = useQuery<SiteData>({
+    99→    queryKey: ['site', siteId],
+   100→    queryFn: () => apiGet(`/api/site/${siteId}`),
+   101→    enabled: !!siteId,
+   102→  })
+   103→
+   104→  // Daireler (apartments) — units tab'ında yüklenir
+   105→  const { data: apartmentsData, isLoading: apartmentsLoading } = useQuery({
+   106→    queryKey: ['apartments', siteId],
+   107→    queryFn: () => apiGet<{ items: Apartment[] }>(`/api/site/${siteId}/apartments`),
+   108→    enabled: !!siteId && tab === 'units',
+   109→  })
+   110→  const apartments = apartmentsData?.items ?? []
+   111→
+   112→  // Bloklar (blocks) — units tab'ında yüklenir
+   113→  const { data: blocksData, isLoading: blocksLoading } = useQuery({
+   114→    queryKey: ['blocks', siteId],
+   115→    queryFn: () => apiGet<{ items: Block[] }>(`/api/site/${siteId}/blocks`),
+   116→    enabled: !!siteId && tab === 'units',
+   117→  })
+   118→  const blocks = blocksData?.items ?? []
+   119→
+   120→  // Aidat listesi
+   121→  const { data: duesData, isLoading: duesLoading } = useQuery<{ items: DuesItem[]; stats: { total: number; totalAmount: number; paidAmount: number; unpaidCount: number } }>({
+   122→    queryKey: ['dues', siteId, currentMonth, currentYear],
+   123→    queryFn: () => apiGet(`/api/site/${siteId}/dues?month=${currentMonth}&year=${currentYear}`),
+   124→    enabled: !!siteId && tab === 'dues',
+   125→  })
+   126→
+   127→  // Şikayetler (API düz array döner) — overview & complaints tab'ında yüklenir
+   128→  const { data: complaintList = [] } = useQuery<ComplaintItem[]>({
+   129→    queryKey: ['complaints', siteId],
+   130→    queryFn: () => apiGet<ComplaintItem[]>(`/api/site/${siteId}/complaints`),
+   131→    enabled: !!siteId && (tab === 'complaints' || tab === 'overview'),
+   132→  })
+   133→
+   134→  if (!sitesData) return <div className="p-8"><Skeleton className="h-32" /></div>
+   135→
+   136→  if (!siteId) {
+   137→    return (
+   138→      <div className="space-y-5 animate-fade-in">
+   139→        <h2 className="text-2xl font-bold">Site Yönetimi</h2>
+   140→        <Card><CardContent className="p-8 text-center">
+   141→          <Building2 className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
+   142→          <p className="text-sm text-muted-foreground mb-4">Henüz site kaydı yok. İlk sitenizi oluşturun.</p>
+   143→          <CreateSiteDialog onCreated={() => qc.invalidateQueries({ queryKey: ['sites'] })} />
+   144→        </CardContent></Card>
+   145→      </div>
+   146→    )
+   147→  }
+   148→
+   149→  const dues = duesData?.items ?? []
+   150→  const stats = duesData?.stats
+   151→
+   152→  // Silme handlers
+   153→  const handleDeleteApartment = async () => {
+   154→    if (!deleteApt) return
+   155→    try {
+   156→      await apiDelete(`/api/site/${siteId}/apartments/${deleteApt.id}`)
+   157→      toast.success('Daire silindi')
+   158→      qc.invalidateQueries({ queryKey: ['apartments', siteId] })
+   159→      qc.invalidateQueries({ queryKey: ['blocks', siteId] })
+   160→      qc.invalidateQueries({ queryKey: ['site', siteId] })
+   161→      setDeleteApt(null)
+   162→    } catch (e) {
+   163→      toast.error(e instanceof Error ? e.message : 'Silinemedi')
+   164→    }
+   165→  }
+   166→
+   167→  const handleDeleteBlock = async () => {
+   168→    if (!deleteBlock) return
+   169→    try {
+   170→      await apiDelete(`/api/site/${siteId}/blocks/${deleteBlock.id}`)
+   171→      toast.success('Blok silindi')
+   172→      qc.invalidateQueries({ queryKey: ['blocks', siteId] })
+   173→      qc.invalidateQueries({ queryKey: ['apartments', siteId] })
+   174→      qc.invalidateQueries({ queryKey: ['site', siteId] })
+   175→      setDeleteBlock(null)
+   176→    } catch (e) {
+   177→      toast.error(e instanceof Error ? e.message : 'Silinemedi')
+   178→    }
+   179→  }
+   180→
+   181→  return (
+   182→    <div className="space-y-5 animate-fade-in">
+   183→      <div className="flex items-center justify-between flex-wrap gap-3">
+   184→        <div>
+   185→          <h2 className="text-2xl font-bold tracking-tight">{site?.name}</h2>
+   186→          <p className="text-sm text-muted-foreground mt-0.5">
+   187→            {site?.blocks?.length || 0} blok · {site?._count?.dues || 0} aidat kaydı · {site?._count?.complaints || 0} şikayet
+   188→          </p>
+   189→        </div>
+   190→      </div>
+   191→
+   192→      <Tabs value={tab} onValueChange={setTab}>
+   193→        <TabsList className="flex-wrap h-auto">
+   194→          <TabsTrigger value="overview" className="text-xs">Genel Bakış</TabsTrigger>
+   195→          <TabsTrigger value="units" className="text-xs">Blok & Daireler</TabsTrigger>
+   196→          <TabsTrigger value="dues" className="text-xs">Aidatlar</TabsTrigger>
+   197→          <TabsTrigger value="staff" className="text-xs">Personel</TabsTrigger>
+   198→          <TabsTrigger value="announcements" className="text-xs">Duyurular</TabsTrigger>
+   199→          <TabsTrigger value="complaints" className="text-xs">Şikayetler</TabsTrigger>
+   200→        </TabsList>
+   201→
+   202→        {/* Genel Bakış */}
+   203→        <TabsContent value="overview" className="mt-4">
+   204→          {isLoading ? <Skeleton className="h-32" /> : (
+   205→            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   206→              <Card><CardContent className="p-4">
+   207→                <div className="flex items-center gap-2 mb-1"><Home className="w-4 h-4 text-emerald-500" /><span className="text-xs text-muted-foreground">Blok</span></div>
+   208→                <div className="text-xl font-bold">{site?.blocks?.length || 0}</div>
+   209→              </CardContent></Card>
+   210→              <Card><CardContent className="p-4">
+   211→                <div className="flex items-center gap-2 mb-1"><Users className="w-4 h-4 text-violet-500" /><span className="text-xs text-muted-foreground">Personel</span></div>
+   212→                <div className="text-xl font-bold">{site?.siteStaff?.length || 0}</div>
+   213→              </CardContent></Card>
+   214→              <Card><CardContent className="p-4">
+   215→                <div className="flex items-center gap-2 mb-1"><AlertTriangle className="w-4 h-4 text-amber-500" /><span className="text-xs text-muted-foreground">Açık Şikayet</span></div>
+   216→                <div className="text-xl font-bold">{complaintList.filter(c => c.status === 'acik').length}</div>
+   217→              </CardContent></Card>
+   218→              <Card><CardContent className="p-4">
+   219→                <div className="flex items-center gap-2 mb-1"><Megaphone className="w-4 h-4 text-sky-500" /><span className="text-xs text-muted-foreground">Duyuru</span></div>
+   220→                <div className="text-xl font-bold">{site?.announcements?.length || 0}</div>
+   221→              </CardContent></Card>
+   222→            </div>
+   223→          )}
+   224→          {site && site.blocks?.length > 0 && (
+   225→            <Card className="mt-4">
+   226→              <CardHeader className="pb-2">
+   227→                <CardTitle className="text-base flex items-center justify-between">
+   228→                  <span className="flex items-center gap-2"><Building2 className="w-4 h-4 text-emerald-500" /> Blok & Daireler</span>
+   229→                  <Button size="sm" variant="outline" onClick={() => setTab('units')}>
+   230→                    <Building2 className="w-4 h-4 mr-1.5" /> Yönet
+   231→                  </Button>
+   232→                </CardTitle>
+   233→              </CardHeader>
+   234→              <CardContent>
+   235→                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+   236→                  {site.blocks.map(b => (
+   237→                    <div key={b.id} className="p-3 rounded-lg border border-border bg-muted/20">
+   238→                      <div className="font-medium text-sm">{b.name}</div>
+   239→                      <div className="text-xs text-muted-foreground">{b._count.apartments} daire</div>
+   240→                    </div>
+   241→                  ))}
+   242→                </div>
+   243→              </CardContent>
+   244→            </Card>
+   245→          )}
+   246→        </TabsContent>
+   247→
+   248→        {/* Blok & Daireler */}
+   249→        <TabsContent value="units" className="mt-4 space-y-5">
+   250→          {/* Bloklar */}
+   251→          <section>
+   252→            <div className="flex items-center justify-between mb-3">
+   253→              <h3 className="text-sm font-semibold flex items-center gap-2">
+   254→                <Building2 className="w-4 h-4 text-emerald-600" />
+   255→                Bloklar
+   256→                {blocks.length > 0 && (
+   257→                  <Badge variant="outline" className="text-[10px] ml-1">{blocks.length}</Badge>
+   258→                )}
+   259→              </h3>
+   260→              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditBlock(null); setBlockDialogOpen(true) }}>
+   261→                <Plus className="w-4 h-4 mr-1.5" /> Blok Ekle
+   262→              </Button>
+   263→            </div>
+   264→            {blocksLoading ? <Skeleton className="h-24" /> : blocks.length === 0 ? (
+   265→              <Card><CardContent className="py-10 text-center">
+   266→                <Building2 className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+   267→                <p className="text-sm text-muted-foreground mb-3">Henüz blok eklenmemiş. İlk bloğunuzu oluşturun.</p>
+   268→                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditBlock(null); setBlockDialogOpen(true) }}>
+   269→                  <Plus className="w-4 h-4 mr-1.5" /> İlk Bloğu Ekleyin
+   270→                </Button>
+   271→              </CardContent></Card>
+   272→            ) : (
+   273→              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   274→                {blocks.map(b => (
+   275→                  <Card key={b.id}><CardContent className="p-4">
+   276→                    <div className="flex items-start justify-between gap-2">
+   277→                      <div className="min-w-0">
+   278→                        <div className="font-semibold text-sm flex items-center gap-2">
+   279→                          <Building2 className="w-4 h-4 text-muted-foreground" />
+   280→                          {b.name}
+   281→                        </div>
+   282→                        <div className="text-xs text-muted-foreground mt-1">
+   283→                          {b.floors} kat · {b._count?.apartments ?? 0} daire
+   284→                        </div>
+   285→                      </div>
+   286→                      <div className="flex gap-1 shrink-0">
+   287→                        <Button size="icon" variant="ghost" className="h-7 w-7" title="Düzenle"
+   288→                          onClick={() => { setEditBlock(b); setBlockDialogOpen(true) }}>
+   289→                          <Pencil className="w-3.5 h-3.5" />
+   290→                        </Button>
+   291→                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600 hover:text-red-700" title="Sil"
+   292→                          onClick={() => setDeleteBlock(b)}>
+   293→                          <Trash2 className="w-3.5 h-3.5" />
+   294→                        </Button>
+   295→                      </div>
+   296→                    </div>
+   297→                  </CardContent></Card>
+   298→                ))}
+   299→              </div>
+   300→            )}
+   301→          </section>
+   302→
+   303→          {/* Daireler */}
+   304→          <section>
+   305→            <div className="flex items-center justify-between mb-3">
+   306→              <h3 className="text-sm font-semibold flex items-center gap-2">
+   307→                <Home className="w-4 h-4 text-emerald-600" />
+   308→                Daireler
+   309→                {apartments.length > 0 && (
+   310→                  <Badge variant="outline" className="text-[10px] ml-1">{apartments.length}</Badge>
+   311→                )}
+   312→              </h3>
+   313→              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700"
+   314→                onClick={() => { setEditApt(null); setAptDialogOpen(true) }}
+   315→                disabled={blocks.length === 0}
+   316→                title={blocks.length === 0 ? 'Önce blok ekleyin' : 'Yeni daire ekle'}>
+   317→                <Plus className="w-4 h-4 mr-1.5" /> Daire Ekle
+   318→              </Button>
+   319→            </div>
+   320→            {apartmentsLoading ? <Skeleton className="h-48" /> : apartments.length === 0 ? (
+   321→              <Card><CardContent className="py-10 text-center">
+   322→                <Home className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+   323→                <p className="text-sm text-muted-foreground mb-3">
+   324→                  {blocks.length === 0 ? 'Daire eklemek için önce bir blok oluşturun.' : 'Henüz daire eklenmemiş. İlk daireyi ekleyin.'}
+   325→                </p>
+   326→                {blocks.length > 0 && (
+   327→                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditApt(null); setAptDialogOpen(true) }}>
+   328→                    <Plus className="w-4 h-4 mr-1.5" /> İlk Daireyi Ekleyin
+   329→                  </Button>
+   330→                )}
+   331→              </CardContent></Card>
+   332→            ) : (
+   333→              <div className="overflow-x-auto rounded-lg border border-border">
+   334→                <Table>
+   335→                  <TableHeader>
+   336→                    <TableRow className="bg-muted/60">
+   337→                      <TableHead className="text-xs uppercase">Daire No</TableHead>
+   338→                      <TableHead className="text-xs uppercase">Blok</TableHead>
+   339→                      <TableHead className="text-xs uppercase">Kat</TableHead>
+   340→                      <TableHead className="text-xs uppercase">Tip</TableHead>
+   341→                      <TableHead className="text-xs uppercase text-right">Alan (m²)</TableHead>
+   342→                      <TableHead className="text-xs uppercase">Sakin</TableHead>
+   343→                      <TableHead className="text-xs uppercase text-right">İşlem</TableHead>
+   344→                    </TableRow>
+   345→                  </TableHeader>
+   346→                  <TableBody>
+   347→                    {apartments.map(a => (
+   348→                      <TableRow key={a.id} className="text-sm even:bg-muted/20">
+   349→                        <TableCell className="font-medium">{a.number}</TableCell>
+   350→                        <TableCell className="text-muted-foreground">{a.block?.name ?? '—'}</TableCell>
+   351→                        <TableCell className="text-muted-foreground">{a.floor ?? '—'}</TableCell>
+   352→                        <TableCell>
+   353→                          <Badge variant="outline" className="text-[10px]">
+   354→                            {APARTMENT_TYPE_LABELS[a.type] ?? a.type}
+   355→                          </Badge>
+   356→                        </TableCell>
+   357→                        <TableCell className="text-right tabular-nums">{a.area != null ? a.area : '—'}</TableCell>
+   358→                        <TableCell>
+   359→                          {a.resident ? (
+   360→                            <span className="text-muted-foreground">{a.resident.name}</span>
+   361→                          ) : (
+   362→                            <span className="text-muted-foreground/60 italic">Boş</span>
+   363→                          )}
+   364→                        </TableCell>
+   365→                        <TableCell className="text-right whitespace-nowrap">
+   366→                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Düzenle"
+   367→                            onClick={() => { setEditApt(a); setAptDialogOpen(true) }}>
+   368→                            <Pencil className="w-3.5 h-3.5" />
+   369→                          </Button>
+   370→                          <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600 hover:text-red-700" title="Sil"
+   371→                            onClick={() => setDeleteApt(a)}>
+   372→                            <Trash2 className="w-3.5 h-3.5" />
+   373→                          </Button>
+   374→                        </TableCell>
+   375→                      </TableRow>
+   376→                    ))}
+   377→                  </TableBody>
+   378→                </Table>
+   379→              </div>
+   380→            )}
+   381→          </section>
+   382→        </TabsContent>
+   383→
+   384→        {/* Aidatlar */}
+   385→        <TabsContent value="dues" className="mt-4 space-y-3">
+   386→          <div className="flex gap-2 flex-wrap">
+   387→            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={async () => {
+   388→              try {
+   389→                const r = await apiPost<{ created: number; message: string }>(`/api/site/${siteId}/dues`, { month: currentMonth, year: currentYear, generateAll: true, amount: site?.defaultDueAmount })
+   390→                toast.success(`${r.created} daire için aidat oluşturuldu`)
+   391→                qc.invalidateQueries({ queryKey: ['dues'] })
+   392→              } catch (e) { toast.error(e instanceof Error ? e.message : 'Aidat oluşturulamadı') }
+   393→            }}>
+   394→              <Plus className="w-4 h-4 mr-1.5" /> Bu Ay Aidat Oluştur
+   395→            </Button>
+   396→            <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-50" onClick={async () => {
+   397→              try {
+   398→                const r = await apiPost<{ markedLate: number; lateFeeApplied: number; totalLateFee: number; message: string }>(`/api/site/${siteId}/dues/calculate-late-fees`, {})
+   399→                if (r.markedLate === 0 && r.lateFeeApplied === 0) {
+   400→                  toast.info('Gecikmiş aidat yok — uygulanacak gecikme zammı bulunamadı')
+   401→                } else {
+   402→                  toast.success(r.message)
+   403→                }
+   404→                qc.invalidateQueries({ queryKey: ['dues'] })
+   405→              } catch (e) { toast.error(e instanceof Error ? e.message : 'Gecikme zammı hesaplanamadı') }
+   406→            }}>
+   407→              <Calculator className="w-4 h-4 mr-1.5" /> Gecikmeleri Hesapla
+   408→            </Button>
+   409→            <Button variant="outline" size="sm" onClick={async () => {
+   410→              try {
+   411→                const r = await apiPost<{ sent: number; links: Array<{ link: string }> }>(`/api/site/${siteId}/dues/send-reminders`, {})
+   412→                if (r.links.length === 0) { toast.info('Hatırlatma gereken aidat yok'); return }
+   413→                // Open WhatsApp links
+   414→                r.links.forEach((l: { link: string }, i: number) => {
+   415→                  setTimeout(() => window.open(l.link, '_blank'), i * 500)
+   416→                })
+   417→                toast.success(`${r.sent} hatırlatma gönderildi`)
+   418→                qc.invalidateQueries({ queryKey: ['dues'] })
+   419→              } catch (e) { toast.error(e instanceof Error ? e.message : 'Hatırlatma gönderilemedi') }
+   420→            }}>
+   421→              <MessageCircle className="w-4 h-4 mr-1.5" /> WhatsApp Hatırlatma
+   422→            </Button>
+   423→          </div>
+   424→
+   425→          {stats && (
+   426→            <div className="grid grid-cols-3 gap-2">
+   427→              <Card><CardContent className="p-3"><div className="text-xs text-muted-foreground">Toplam</div><div className="text-lg font-bold tabular-nums">{formatCurrency(stats.totalAmount)}</div></CardContent></Card>
+   428→              <Card><CardContent className="p-3"><div className="text-xs text-muted-foreground">Tahsil Edilen</div><div className="text-lg font-bold tabular-nums text-emerald-600">{formatCurrency(stats.paidAmount)}</div></CardContent></Card>
+   429→              <Card><CardContent className="p-3"><div className="text-xs text-muted-foreground">Ödenmeyen</div><div className="text-lg font-bold tabular-nums text-red-600">{stats.unpaidCount}</div></CardContent></Card>
+   430→            </div>
+   431→          )}
+   432→
+   433→          {duesLoading ? <Skeleton className="h-48" /> : (
+   434→            <div className="overflow-x-auto">
+   435→              <Table>
+   436→                <TableHeader><TableRow className="bg-muted/60">
+   437→                  <TableHead className="text-xs uppercase">Daire</TableHead>
+   438→                  <TableHead className="text-xs uppercase">Sakin</TableHead>
+   439→                  <TableHead className="text-xs uppercase text-right">Tutar</TableHead>
+   440→                  <TableHead className="text-xs uppercase text-right">Gec. Zammı</TableHead>
+   441→                  <TableHead className="text-xs uppercase text-right">Toplam</TableHead>
+   442→                  <TableHead className="text-xs uppercase">Son Tarih</TableHead>
+   443→                  <TableHead className="text-xs uppercase">Durum</TableHead>
+   444→                  <TableHead className="text-xs uppercase text-right">İşlem</TableHead>
+   445→                </TableRow></TableHeader>
+   446→                <TableBody>
+   447→                  {dues.map((d) => {
+   448→                    const fee = (d.lateFee ?? 0) > 0 ? d.lateFee! : 0
+   449→                    const total = d.amount + fee
+   450→                    return (
+   451→                    <TableRow key={d.id} className="text-sm even:bg-muted/20">
+   452→                      <TableCell>{d.apartment?.block?.name} {d.apartment?.number}</TableCell>
+   453→                      <TableCell className="text-muted-foreground">{d.resident?.name ?? '—'}</TableCell>
+   454→                      <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(d.amount, d.currency)}</TableCell>
+   455→                      <TableCell className="text-right tabular-nums">
+   456→                        {fee > 0 ? (
+   457→                          <span className="text-red-600 font-medium">+{formatCurrency(fee, d.currency)}</span>
+   458→                        ) : (
+   459→                          <span className="text-muted-foreground/40">—</span>
+   460→                        )}
+   461→                      </TableCell>
+   462→                      <TableCell className="text-right font-bold tabular-nums">{formatCurrency(total, d.currency)}</TableCell>
+   463→                      <TableCell className="text-muted-foreground">{formatDate(d.dueDate)}</TableCell>
+   464→                      <TableCell>
+   465→                        <Badge variant="outline" className={cn('text-[10px]', d.status === 'odendi' ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : d.status === 'gecikti' ? 'text-red-600 bg-red-50 border-red-200' : 'text-amber-600 bg-amber-50 border-amber-200')}>
+   466→                          {d.status === 'odendi' ? 'Ödendi' : d.status === 'gecikti' ? 'Gecikti' : 'Ödenmedi'}
+   467→                        </Badge>
+   468→                        {fee > 0 && (
+   469→                          <span className="block text-[10px] text-red-600/80 mt-0.5" title={d.lateFeeAppliedAt ? `Uygulama: ${formatDate(d.lateFeeAppliedAt)}` : 'Gecikme zammı uygulandı'}>
+   470→                            %5 zam
+   471→                          </span>
+   472→                        )}
+   473→                      </TableCell>
+   474→                      <TableCell className="text-right">
+   475→                        {d.status === 'odenmedi' && (
+   476→                          <>
+   477→                            <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600" title="Ödendi"
+   478→                              onClick={async () => { await apiPatch(`/api/site/${siteId}/dues/${d.id}`, { status: 'odendi' }); qc.invalidateQueries({ queryKey: ['dues'] }); toast.success('Ödendi') }}>
+   479→                              <CheckCircle2 className="w-4 h-4" />
+   480→                            </Button>
+   481→                            {d.resident?.phone && (
+   482→                              <a href={whatsappLink(d.resident.phone, `Sayın ${d.resident.name}, ${currentMonth}/${currentYear} aidatınızın (${formatCurrency(total, d.currency)}) son ödeme tarihi ${formatDate(d.dueDate)}.`)} target="_blank" rel="noopener">
+   483→                                <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600"><MessageCircle className="w-4 h-4" /></Button>
+   484→                              </a>
+   485→                            )}
+   486→                          </>
+   487→                        )}
+   488→                        {d.status === 'gecikti' && (
+   489→                          <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-600" title="Ödendi (Gecikme ile)"
+   490→                            onClick={async () => { await apiPatch(`/api/site/${siteId}/dues/${d.id}`, { status: 'odendi', paidAmount: total }); qc.invalidateQueries({ queryKey: ['dues'] }); toast.success('Ödendi (gecikme zammı dahil)') }}>
+   491→                            <CheckCircle2 className="w-4 h-4" />
+   492→                          </Button>
+   493→                        )}
+   494→                      </TableCell>
+   495→                    </TableRow>
+   496→                    )
+   497→                  })}
+   498→                </TableBody>
+   499→              </Table>
+   500→            </div>
+   501→          )}
+   502→        </TabsContent>
+   503→
+   504→        {/* Personel */}
+   505→        <TabsContent value="staff" className="mt-4">
+   506→          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+   507→            {site?.siteStaff?.map(s => (
+   508→              <Card key={s.id}><CardContent className="p-4 flex items-center gap-3">
+   509→                <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
+   510→                  {s.photo ? <img src={s.photo} className="w-full h-full rounded-lg object-cover" alt={s.name} /> : <User className="w-5 h-5" />}
+   511→                </div>
+   512→                <div className="flex-1 min-w-0">
+   513→                  <div className="font-medium text-sm">{s.name}</div>
+   514→                  <Badge variant="outline" className="text-[10px] mt-0.5">{STAFF_ROLES.find(r => r.value === s.role)?.label ?? s.role}</Badge>
+   515→                  {s.phone && <div className="text-xs text-muted-foreground mt-1"><Phone className="w-3 h-3 inline mr-1" />{s.phone}</div>}
+   516→                  {s.salary && <div className="text-xs text-muted-foreground">{formatCurrency(s.salary)}</div>}
+   517→                </div>
+   518→              </CardContent></Card>
+   519→            ))}
+   520→            {(!site?.siteStaff || site.siteStaff.length === 0) && (
+   521→              <Card><CardContent className="py-8 text-center col-span-full">
+   522→                <Users className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+   523→                <p className="text-sm text-muted-foreground">Henüz personel eklenmemiş</p>
+   524→              </CardContent></Card>
+   525→            )}
+   526→          </div>
+   527→        </TabsContent>
+   528→
+   529→        {/* Duyurular */}
+   530→        <TabsContent value="announcements" className="mt-4">
+   531→          <div className="space-y-2">
+   532→            {site?.announcements?.map(a => (
+   533→              <Card key={a.id}><CardContent className="p-4">
+   534→                <div className="flex items-center gap-2 mb-1">
+   535→                  <Badge variant="outline" className="text-[10px]">{a.type}</Badge>
+   536→                  {a.title}
+   537→                </div>
+   538→                <p className="text-sm text-muted-foreground">{a.content}</p>
+   539→                <div className="text-xs text-muted-foreground mt-1">{formatDate(a.publishDate)}</div>
+   540→              </CardContent></Card>
+   541→            ))}
+   542→            {(!site?.announcements || site.announcements.length === 0) && (
+   543→              <Card><CardContent className="py-8 text-center">
+   544→                <Megaphone className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+   545→                <p className="text-sm text-muted-foreground">Henüz duyuru yok</p>
+   546→              </CardContent></Card>
+   547→            )}
+   548→          </div>
+   549→        </TabsContent>
+   550→
+   551→        {/* Şikayetler */}
+   552→        <TabsContent value="complaints" className="mt-4">
+   553→          <div className="space-y-2">
+   554→            {complaintList.map(c => (
+   555→              <Card key={c.id}><CardContent className="p-4">
+   556→                <div className="flex items-center gap-2 mb-1">
+   557→                  <Badge variant="outline" className={cn('text-[10px]', c.status === 'cozuldu' ? 'text-emerald-600 bg-emerald-50' : c.status === 'acik' ? 'text-amber-600 bg-amber-50' : 'text-slate-600')}>
+   558→                    {c.status === 'acik' ? 'Açık' : c.status === 'inceleniyor' ? 'İnceleniyor' : c.status === 'cozuldu' ? 'Çözüldü' : 'Reddedildi'}
+   559→                  </Badge>
+   560→                  <span className="font-medium text-sm">{c.title}</span>
+   561→                </div>
+   562→                <p className="text-sm text-muted-foreground">{c.description}</p>
+   563→                <div className="text-xs text-muted-foreground mt-1">{c.resident?.name ?? 'Anonim'} · {formatDate(c.createdAt)}</div>
+   564→                {c.response && <div className="mt-2 p-2 rounded-lg bg-muted/30 text-xs"><strong>Cevap:</strong> {c.response}</div>}
+   565→              </CardContent></Card>
+   566→            ))}
+   567→            {complaintList.length === 0 && (
+   568→              <Card><CardContent className="py-8 text-center">
+   569→                <AlertTriangle className="w-10 h-10 mx-auto mb-2 text-muted-foreground/30" />
+   570→                <p className="text-sm text-muted-foreground">Şikayet yok</p>
+   571→              </CardContent></Card>
+   572→            )}
+   573→          </div>
+   574→        </TabsContent>
+   575→      </Tabs>
+   576→
+   577→      {/* Daire Ekle/Düzenle Dialog */}
+   578→      <ApartmentFormDialog
+   579→        open={aptDialogOpen}
+   580→        onOpenChange={(v) => { setAptDialogOpen(v); if (!v) setEditApt(null) }}
+   581→        editApartment={editApt}
+   582→        siteId={siteId}
+   583→      />
+   584→
+   585→      {/* Blok Ekle/Düzenle Dialog */}
+   586→      <BlockFormDialog
+   587→        open={blockDialogOpen}
+   588→        onOpenChange={(v) => { setBlockDialogOpen(v); if (!v) setEditBlock(null) }}
+   589→        editBlock={editBlock}
+   590→        siteId={siteId}
+   591→      />
+   592→
+   593→      {/* Daire Silme Onayı */}
+   594→      <AlertDialog open={deleteApt != null} onOpenChange={(v) => { if (!v) setDeleteApt(null) }}>
+   595→        <AlertDialogContent>
+   596→          <AlertDialogHeader>
+   597→            <AlertDialogTitle>Daireyi Sil</AlertDialogTitle>
+   598→            <AlertDialogDescription>
+   599→              {deleteApt && (
+   600→                <>
+   601→                  <span className="font-medium">{deleteApt.block?.name ?? ''} {deleteApt.number}</span> numaralı daireyi silmek üzerisiniz.
+   602→                  Bu daireye ait tüm aidat kayıtları da silinecek. Bu işlem geri alınamaz.
+   603→                </>
+   604→              )}
+   605→            </AlertDialogDescription>
+   606→          </AlertDialogHeader>
+   607→          <AlertDialogFooter>
+   608→            <AlertDialogCancel>İptal</AlertDialogCancel>
+   609→            <AlertDialogAction
+   610→              onClick={(e) => { e.preventDefault(); void handleDeleteApartment() }}
+   611→              className="bg-red-600 hover:bg-red-700 text-white">
+   612→              <Trash2 className="w-4 h-4 mr-1.5" /> Sil
+   613→            </AlertDialogAction>
+   614→          </AlertDialogFooter>
+   615→        </AlertDialogContent>
+   616→      </AlertDialog>
+   617→
+   618→      {/* Blok Silme Onayı */}
+   619→      <AlertDialog open={deleteBlock != null} onOpenChange={(v) => { if (!v) setDeleteBlock(null) }}>
+   620→        <AlertDialogContent>
+   621→          <AlertDialogHeader>
+   622→            <AlertDialogTitle>Bloğu Sil</AlertDialogTitle>
+   623→            <AlertDialogDescription>
+   624→              {deleteBlock && (
+   625→                <>
+   626→                  <span className="font-medium">{deleteBlock.name}</span> bloğunu silmek üzerisiniz.
+   627→                  Bu bloktaki tüm daireler ve onlara ait aidat kayıtları da silinecek. Bu işlem geri alınamaz.
+   628→                </>
+   629→              )}
+   630→            </AlertDialogDescription>
+   631→          </AlertDialogHeader>
+   632→          <AlertDialogFooter>
+   633→            <AlertDialogCancel>İptal</AlertDialogCancel>
+   634→            <AlertDialogAction
+   635→              onClick={(e) => { e.preventDefault(); void handleDeleteBlock() }}
+   636→              className="bg-red-600 hover:bg-red-700 text-white">
+   637→              <Trash2 className="w-4 h-4 mr-1.5" /> Sil
+   638→            </AlertDialogAction>
+   639→          </AlertDialogFooter>
+   640→        </AlertDialogContent>
+   641→      </AlertDialog>
+   642→    </div>
+   643→  )
+   644→}
+   645→
+   646→function CreateSiteDialog({ onCreated }: { onCreated: () => void }) {
+   647→  const [open, setOpen] = useState(false)
+   648→  const [form, setForm] = useState({ name: '', address: '', city: '', phone: '', managerName: '', dueDay: '5', defaultDueAmount: '500' })
+   649→  const [saving, setSaving] = useState(false)
+   650→
+   651→  const handleSave = async () => {
+   652→    setSaving(true)
+   653→    try {
+   654→      await apiPost('/api/site', form)
+   655→      toast.success('Site oluşturuldu')
+   656→      onCreated()
+   657→      setOpen(false)
+   658→    } catch (e) { toast.error(e instanceof Error ? e.message : 'Oluşturulamadı') }
+   659→    finally { setSaving(false) }
+   660→  }
+   661→
+   662→  return (
+   663→    <>
+   664→      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setOpen(true)}>
+   665→        <Plus className="w-4 h-4 mr-1.5" /> Site Ekle
+   666→      </Button>
+   667→      <Dialog open={open} onOpenChange={setOpen}>
+   668→        <DialogContent className="max-w-md">
+   669→          <DialogHeader><DialogTitle>Yeni Site</DialogTitle></DialogHeader>
+   670→          <div className="space-y-3">
+   671→            <div><Label className="text-xs">Site Adı *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+   672→            <div><Label className="text-xs">Adres</Label><Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
+   673→            <div className="grid grid-cols-2 gap-2">
+   674→              <div><Label className="text-xs">Şehir</Label><Input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} /></div>
+   675→              <div><Label className="text-xs">Telefon</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
+   676→            </div>
+   677→            <div><Label className="text-xs">Yönetici</Label><Input value={form.managerName} onChange={e => setForm({ ...form, managerName: e.target.value })} /></div>
+   678→            <div className="grid grid-cols-2 gap-2">
+   679→              <div><Label className="text-xs">Aidat Günü</Label><Input type="number" value={form.dueDay} onChange={e => setForm({ ...form, dueDay: e.target.value })} /></div>
+   680→              <div><Label className="text-xs">Aidat Tutarı (₺)</Label><Input type="number" value={form.defaultDueAmount} onChange={e => setForm({ ...form, defaultDueAmount: e.target.value })} /></div>
+   681→            </div>
+   682→          </div>
+   683→          <DialogFooter>
+   684→            <Button variant="outline" onClick={() => setOpen(false)}>İptal</Button>
+   685→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSave} disabled={saving || !form.name}>{saving ? 'Kaydediliyor...' : 'Oluştur'}</Button>
+   686→          </DialogFooter>
+   687→        </DialogContent>
+   688→      </Dialog>
+   689→    </>
+   690→  )
+   691→}
+   692→

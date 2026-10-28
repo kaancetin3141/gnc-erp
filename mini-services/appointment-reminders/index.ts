@@ -8,7 +8,7 @@ import cron from './vendor/node-cron/src/node-cron.js'
 import { createServer } from 'http'
 
 const PORT = 3011
-const APP_URL = process.env.APP_URL || 'http://localhost:3001'
+const APP_URL = process.env.APP_URL || 'http://localhost:3000'
 const CRON_SECRET = process.env.CRON_SECRET || ''
 
 let lastRunTime: string | null = null

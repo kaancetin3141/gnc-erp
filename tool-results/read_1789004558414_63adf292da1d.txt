@@ -1,0 +1,1331 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useEffect } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-client'
+     6→import type { SessionUser } from '@/types'
+     7→
+     8→import { Card, CardContent } from '@/components/ui/card'
+     9→import { Button } from '@/components/ui/button'
+    10→import { Input } from '@/components/ui/input'
+    11→import { Label } from '@/components/ui/label'
+    12→import { Textarea } from '@/components/ui/textarea'
+    13→import { Skeleton } from '@/components/ui/skeleton'
+    14→import { Badge } from '@/components/ui/badge'
+    15→import { Separator } from '@/components/ui/separator'
+    16→import {
+    17→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    18→} from '@/components/ui/table'
+    19→import {
+    20→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    21→} from '@/components/ui/select'
+    22→import {
+    23→  Dialog, DialogContent, DialogDescription, DialogFooter,
+    24→  DialogHeader, DialogTitle,
+    25→} from '@/components/ui/dialog'
+    26→import {
+    27→  AlertDialog, AlertDialogAction, AlertDialogCancel,
+    28→  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+    29→  AlertDialogHeader, AlertDialogTitle,
+    30→} from '@/components/ui/alert-dialog'
+    31→import {
+    32→  Tooltip, TooltipContent, TooltipTrigger,
+    33→} from '@/components/ui/tooltip'
+    34→import { ScrollArea } from '@/components/ui/scroll-area'
+    35→import { toast } from 'sonner'
+    36→import {
+    37→  Package, Boxes, TrendingUp, TrendingDown, AlertTriangle,
+    38→  Plus, Pencil, Trash2, Download, Search, X, RefreshCw,
+    39→  Layers, ArrowUpRight, Sliders, Tag,
+    40→  Warehouse, ClipboardList,
+    41→} from 'lucide-react'
+    42→import {
+    43→  CURRENCIES,
+    44→} from '@/lib/constants'
+    45→import {
+    46→  formatCurrency, formatDateTime, toCSV, downloadFile,
+    47→} from '@/lib/format'
+    48→import { useAppStore } from '@/store/app-store'
+    49→import { hasPermission } from '@/lib/rbac'
+    50→import { cn } from '@/lib/utils'
+    51→
+    52→// ============================================================
+    53→// Tipler
+    54→// ============================================================
+    55→
+    56→interface Product {
+    57→  id: string
+    58→  tenantId: string
+    59→  name: string
+    60→  sku: string | null
+    61→  description: string | null
+    62→  price: number
+    63→  currency: string
+    64→  taxRate: number
+    65→  stock: number
+    66→  minStock: number
+    67→  unit: string
+    68→  category: string | null
+    69→  createdAt: string
+    70→  updatedAt: string
+    71→  _count?: { stockMovements: number; quoteLines: number }
+    72→}
+    73→
+    74→interface ProductDetail extends Product {
+    75→  stockMovements: StockMovement[]
+    76→}
+    77→
+    78→interface StockMovement {
+    79→  id: string
+    80→  productId: string
+    81→  quantity: number
+    82→  type: string // giris | cikis | duzeltme | transfer
+    83→  reason: string | null
+    84→  refType: string | null
+    85→  refId: string | null
+    86→  createdAt: string
+    87→}
+    88→
+    89→interface ProductListResponse {
+    90→  items: Product[]
+    91→  total: number
+    92→  limit: number
+    93→  offset: number
+    94→}
+    95→
+    96→// ============================================================
+    97→// Sabitler
+    98→// ============================================================
+    99→
+   100→const MOVEMENT_TYPES = [
+   101→  {
+   102→    value: 'giris', label: 'Giriş', icon: TrendingUp,
+   103→    color: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300',
+   104→    sign: '+',
+   105→  },
+   106→  {
+   107→    value: 'cikis', label: 'Çıkış', icon: TrendingDown,
+   108→    color: 'text-rose-700 bg-rose-50 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300',
+   109→    sign: '-',
+   110→  },
+   111→  {
+   112→    value: 'duzeltme', label: 'Düzeltme', icon: Sliders,
+   113→    color: 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300',
+   114→    sign: '=',
+   115→  },
+   116→  {
+   117→    value: 'transfer', label: 'Transfer', icon: ArrowUpRight,
+   118→    color: 'text-violet-700 bg-violet-50 border-violet-200 dark:bg-violet-950/30 dark:text-violet-300',
+   119→    sign: '-',
+   120→  },
+   121→] as const
+   122→
+   123→const REF_TYPES = [
+   124→  { value: 'manual', label: 'Manuel' },
+   125→  { value: 'quote', label: 'Teklif' },
+   126→  { value: 'invoice', label: 'Fatura' },
+   127→  { value: 'opening', label: 'Açılış' },
+   128→] as const
+   129→
+   130→function getMovementMeta(type: string) {
+   131→  return MOVEMENT_TYPES.find((m) => m.value === type) ?? MOVEMENT_TYPES[0]
+   132→}
+   133→
+   134→function getRefLabel(refType: string | null): string {
+   135→  if (!refType) return '—'
+   136→  return REF_TYPES.find((r) => r.value === refType)?.label ?? refType
+   137→}
+   138→
+   139→// Ürün stok durumu hesapla
+   140→function getStockStatus(p: { stock: number; minStock: number }) {
+   141→  if (p.stock === 0) {
+   142→    return {
+   143→      label: 'Tükendi',
+   144→      color: 'text-red-700 bg-red-50 border-red-200 dark:bg-red-950/30 dark:text-red-300',
+   145→      variant: 'out' as const,
+   146→    }
+   147→  }
+   148→  if (p.stock <= p.minStock) {
+   149→    return {
+   150→      label: 'Düşük Stok',
+   151→      color: 'text-amber-700 bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300',
+   152→      variant: 'low' as const,
+   153→    }
+   154→  }
+   155→  return {
+   156→    label: 'Stokta',
+   157→    color: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300',
+   158→    variant: 'ok' as const,
+   159→  }
+   160→}
+   161→
+   162→// ============================================================
+   163→// Form tipleri
+   164→// ============================================================
+   165→
+   166→interface ProductForm {
+   167→  name: string
+   168→  sku: string
+   169→  description: string
+   170→  price: string
+   171→  currency: string
+   172→  taxRate: string
+   173→  stock: string
+   174→  minStock: string
+   175→  unit: string
+   176→  category: string
+   177→}
+   178→
+   179→const EMPTY_FORM: ProductForm = {
+   180→  name: '',
+   181→  sku: '',
+   182→  description: '',
+   183→  price: '0',
+   184→  currency: 'TRY',
+   185→  taxRate: '20',
+   186→  stock: '0',
+   187→  minStock: '0',
+   188→  unit: 'adet',
+   189→  category: '',
+   190→}
+   191→
+   192→// ============================================================
+   193→// Yardımcı bileşenler
+   194→// ============================================================
+   195→
+   196→function StatCard({
+   197→  label, value, icon: Icon, color, sub,
+   198→}: {
+   199→  label: string
+   200→  value: number | string
+   201→  icon: typeof Boxes
+   202→  color: string
+   203→  sub?: string
+   204→}) {
+   205→  return (
+   206→    <Card className="relative overflow-hidden hover:shadow-sm transition-shadow">
+   207→      <CardContent className="p-4">
+   208→        <div className="flex items-center justify-between">
+   209→          <div className="min-w-0">
+   210→            <div className="text-xs text-muted-foreground truncate">{label}</div>
+   211→            <div className="text-xl font-bold tracking-tight mt-0.5 truncate">{value}</div>
+   212→            {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+   213→          </div>
+   214→          <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center shrink-0', color)}>
+   215→            <Icon className="w-4 h-4 text-white" />
+   216→          </div>
+   217→        </div>
+   218→      </CardContent>
+   219→    </Card>
+   220→  )
+   221→}
+   222→
+   223→// ============================================================
+   224→// Ürün Ekleme/Düzenleme Dialog
+   225→// ============================================================
+   226→
+   227→function ProductFormDialog({
+   228→  open, onOpenChange, editProduct,
+   229→}: {
+   230→  open: boolean
+   231→  onOpenChange: (v: boolean) => void
+   232→  editProduct?: Product | null
+   233→}) {
+   234→  const qc = useQueryClient()
+   235→  const [form, setForm] = useState<ProductForm>(EMPTY_FORM)
+   236→  const [submitting, setSubmitting] = useState(false)
+   237→
+   238→  useEffect(() => {
+   239→    if (open) {
+   240→      if (editProduct) {
+   241→        setForm({
+   242→          name: editProduct.name || '',
+   243→          sku: editProduct.sku || '',
+   244→          description: editProduct.description || '',
+   245→          price: String(editProduct.price ?? 0),
+   246→          currency: editProduct.currency || 'TRY',
+   247→          taxRate: String(editProduct.taxRate ?? 20),
+   248→          // Edit modunda stok doğrudan düzenlenmez — hareketler üzerinden yönetilir
+   249→          stock: String(editProduct.stock ?? 0),
+   250→          minStock: String(editProduct.minStock ?? 0),
+   251→          unit: editProduct.unit || 'adet',
+   252→          category: editProduct.category || '',
+   253→        })
+   254→      } else {
+   255→        setForm(EMPTY_FORM)
+   256→      }
+   257→    }
+   258→  }, [open, editProduct])
+   259→
+   260→  const handleSubmit = async () => {
+   261→    if (!form.name.trim()) {
+   262→      toast.error('Ürün adı gerekli')
+   263→      return
+   264→    }
+   265→    setSubmitting(true)
+   266→    try {
+   267→      if (editProduct) {
+   268→        // PATCH — stok dahil değil
+   269→        await apiPatch(`/api/products/${editProduct.id}`, {
+   270→          name: form.name.trim(),
+   271→          sku: form.sku.trim() || null,
+   272→          description: form.description.trim() || null,
+   273→          price: parseFloat(form.price) || 0,
+   274→          currency: form.currency,
+   275→          taxRate: parseFloat(form.taxRate) || 0,
+   276→          minStock: parseInt(form.minStock) || 0,
+   277→          unit: form.unit.trim() || 'adet',
+   278→          category: form.category.trim() || null,
+   279→        })
+   280→        toast.success('Ürün güncellendi')
+   281→        qc.invalidateQueries({ queryKey: ['product', editProduct.id] })
+   282→      } else {
+   283→        // POST — yeni ürün
+   284→        await apiPost('/api/products', {
+   285→          name: form.name.trim(),
+   286→          sku: form.sku.trim() || null,
+   287→          description: form.description.trim() || null,
+   288→          price: parseFloat(form.price) || 0,
+   289→          currency: form.currency,
+   290→          taxRate: parseFloat(form.taxRate) || 0,
+   291→          stock: parseInt(form.stock) || 0,
+   292→          minStock: parseInt(form.minStock) || 0,
+   293→          unit: form.unit.trim() || 'adet',
+   294→          category: form.category.trim() || null,
+   295→        })
+   296→        toast.success('Ürün eklendi')
+   297→      }
+   298→      qc.invalidateQueries({ queryKey: ['products'] })
+   299→      onOpenChange(false)
+   300→    } catch (e) {
+   301→      toast.error(e instanceof Error ? e.message : 'İşlem başarısız')
+   302→    } finally {
+   303→      setSubmitting(false)
+   304→    }
+   305→  }
+   306→
+   307→  return (
+   308→    <Dialog open={open} onOpenChange={onOpenChange}>
+   309→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto custom-scroll">
+   310→        <DialogHeader>
+   311→          <DialogTitle className="flex items-center gap-2">
+   312→            <Package className="w-5 h-5 text-emerald-600" />
+   313→            {editProduct ? 'Ürünü Düzenle' : 'Yeni Ürün'}
+   314→          </DialogTitle>
+   315→          <DialogDescription>
+   316→            {editProduct
+   317→              ? 'Ürün bilgilerini güncelleyin. Stok güncellemeleri için ürün detayındaki stok hareketi formunu kullanın.'
+   318→              : 'Yeni ürün ekleyin. Başlangıç stoğu için bir "Açılış stoğu" hareketi otomatik oluşturulur.'}
+   319→          </DialogDescription>
+   320→        </DialogHeader>
+   321→
+   322→        <div className="grid grid-cols-2 gap-4 py-2">
+   323→          {/* Ad */}
+   324→          <div className="space-y-1.5 col-span-2">
+   325→            <Label htmlFor="p-name" className="text-xs">Ürün Adı *</Label>
+   326→            <Input
+   327→              id="p-name"
+   328→              value={form.name}
+   329→              onChange={(e) => setForm({ ...form, name: e.target.value })}
+   330→              placeholder="Örn. CRM Pro Paket"
+   331→            />
+   332→          </div>
+   333→
+   334→          {/* SKU */}
+   335→          <div className="space-y-1.5">
+   336→            <Label htmlFor="p-sku" className="text-xs">SKU / Stok Kodu</Label>
+   337→            <Input
+   338→              id="p-sku"
+   339→              value={form.sku}
+   340→              onChange={(e) => setForm({ ...form, sku: e.target.value })}
+   341→              placeholder="CRM-PRO"
+   342→            />
+   343→          </div>
+   344→
+   345→          {/* Kategori */}
+   346→          <div className="space-y-1.5">
+   347→            <Label htmlFor="p-cat" className="text-xs">Kategori</Label>
+   348→            <Input
+   349→              id="p-cat"
+   350→              value={form.category}
+   351→              onChange={(e) => setForm({ ...form, category: e.target.value })}
+   352→              placeholder="Yazılım, Hizmet, Donanım..."
+   353→            />
+   354→          </div>
+   355→
+   356→          {/* Açıklama */}
+   357→          <div className="space-y-1.5 col-span-2">
+   358→            <Label htmlFor="p-desc" className="text-xs">Açıklama</Label>
+   359→            <Textarea
+   360→              id="p-desc"
+   361→              value={form.description}
+   362→              onChange={(e) => setForm({ ...form, description: e.target.value })}
+   363→              placeholder="Ürün açıklaması..."
+   364→              rows={2}
+   365→            />
+   366→          </div>
+   367→
+   368→          {/* Fiyat */}
+   369→          <div className="space-y-1.5">
+   370→            <Label htmlFor="p-price" className="text-xs">Fiyat</Label>
+   371→            <Input
+   372→              id="p-price"
+   373→              type="number"
+   374→              min="0"
+   375→              step="0.01"
+   376→              value={form.price}
+   377→              onChange={(e) => setForm({ ...form, price: e.target.value })}
+   378→            />
+   379→          </div>
+   380→
+   381→          {/* Para birimi */}
+   382→          <div className="space-y-1.5">
+   383→            <Label className="text-xs">Para Birimi</Label>
+   384→            <Select
+   385→              value={form.currency}
+   386→              onValueChange={(v) => setForm({ ...form, currency: v })}
+   387→            >
+   388→              <SelectTrigger className="w-full">
+   389→                <SelectValue />
+   390→              </SelectTrigger>
+   391→              <SelectContent>
+   392→                {CURRENCIES.map((c) => (
+   393→                  <SelectItem key={c.code} value={c.code}>
+   394→                    {c.symbol} {c.code} — {c.label}
+   395→                  </SelectItem>
+   396→                ))}
+   397→              </SelectContent>
+   398→            </Select>
+   399→          </div>
+   400→
+   401→          {/* KDV */}
+   402→          <div className="space-y-1.5">
+   403→            <Label htmlFor="p-tax" className="text-xs">KDV (%)</Label>
+   404→            <Input
+   405→              id="p-tax"
+   406→              type="number"
+   407→              min="0"
+   408→              max="100"
+   409→              step="1"
+   410→              value={form.taxRate}
+   411→              onChange={(e) => setForm({ ...form, taxRate: e.target.value })}
+   412→            />
+   413→          </div>
+   414→
+   415→          {/* Birim */}
+   416→          <div className="space-y-1.5">
+   417→            <Label htmlFor="p-unit" className="text-xs">Birim</Label>
+   418→            <Input
+   419→              id="p-unit"
+   420→              value={form.unit}
+   421→              onChange={(e) => setForm({ ...form, unit: e.target.value })}
+   422→              placeholder="adet, saat, kg, lt..."
+   423→            />
+   424→          </div>
+   425→
+   426→          {/* Min stok */}
+   427→          <div className="space-y-1.5">
+   428→            <Label htmlFor="p-min" className="text-xs">Min. Stok</Label>
+   429→            <Input
+   430→              id="p-min"
+   431→              type="number"
+   432→              min="0"
+   433→              step="1"
+   434→              value={form.minStock}
+   435→              onChange={(e) => setForm({ ...form, minStock: e.target.value })}
+   436→            />
+   437→          </div>
+   438→
+   439→          {/* Başlangıç stoğu (yalnızca yeni ürün) */}
+   440→          {!editProduct && (
+   441→            <div className="space-y-1.5">
+   442→              <Label htmlFor="p-stock" className="text-xs">Başlangıç Stoğu</Label>
+   443→              <Input
+   444→                id="p-stock"
+   445→                type="number"
+   446→                min="0"
+   447→                step="1"
+   448→                value={form.stock}
+   449→                onChange={(e) => setForm({ ...form, stock: e.target.value })}
+   450→              />
+   451→              <p className="text-[10px] text-muted-foreground">
+   452→                Bir &quot;Açılış stoğu&quot; hareketi oluşturulur.
+   453→              </p>
+   454→            </div>
+   455→          )}
+   456→          {editProduct && (
+   457→            <div className="space-y-1.5">
+   458→              <Label className="text-xs">Mevcut Stok</Label>
+   459→              <div className="h-9 flex items-center px-3 rounded-md border border-input bg-muted/40 text-sm font-medium">
+   460→                {editProduct.stock} {editProduct.unit}
+   461→                <span className="ml-auto text-[10px] text-muted-foreground">Stok hareketi ile güncellenir</span>
+   462→              </div>
+   463→            </div>
+   464→          )}
+   465→        </div>
+   466→
+   467→        <DialogFooter>
+   468→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+   469→            İptal
+   470→          </Button>
+   471→          <Button onClick={handleSubmit} disabled={submitting || !form.name.trim()}>
+   472→            {submitting && <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />}
+   473→            {editProduct ? 'Güncelle' : 'Ürün Ekle'}
+   474→          </Button>
+   475→        </DialogFooter>
+   476→      </DialogContent>
+   477→    </Dialog>
+   478→  )
+   479→}
+   480→
+   481→// ============================================================
+   482→// Stok Hareketi Formu (Detail dialog içinde)
+   483→// ============================================================
+   484→
+   485→function StockMovementForm({
+   486→  productId, unit, currentStock, onDone,
+   487→}: {
+   488→  productId: string
+   489→  unit: string
+   490→  currentStock: number
+   491→  onDone: () => void
+   492→}) {
+   493→  const qc = useQueryClient()
+   494→  const [type, setType] = useState<'giris' | 'cikis' | 'duzeltme'>('giris')
+   495→  const [quantity, setQuantity] = useState('')
+   496→  const [reason, setReason] = useState('')
+   497→  const [submitting, setSubmitting] = useState(false)
+   498→
+   499→  const handleSubmit = async () => {
+   500→    const q = parseInt(quantity)
+   501→    if (!Number.isFinite(q)) {
+   502→      toast.error('Miktar girin')
+   503→      return
+   504→    }
+   505→    if (type === 'giris' && q <= 0) {
+   506→      toast.error('Giriş miktarı pozitif olmalı')
+   507→      return
+   508→    }
+   509→    if (type === 'cikis' && q <= 0) {
+   510→      toast.error('Çıkış miktarı pozitif olmalı')
+   511→      return
+   512→    }
+   513→    if (type === 'cikis' && q > currentStock) {
+   514→      toast.error(`Yetersiz stok (mevcut: ${currentStock} ${unit})`)
+   515→      return
+   516→    }
+   517→    if (type === 'duzeltme' && q < 0) {
+   518→      toast.error('Düzeltme sonrası stok negatif olamaz')
+   519→      return
+   520→    }
+   521→    setSubmitting(true)
+   522→    try {
+   523→      await apiPost(`/api/products/${productId}/stock`, {
+   524→        quantity: q,
+   525→        type,
+   526→        reason: reason.trim() || null,
+   527→        refType: 'manual',
+   528→      })
+   529→      toast.success('Stok hareketi eklendi')
+   530→      setQuantity('')
+   531→      setReason('')
+   532→      setType('giris')
+   533→      qc.invalidateQueries({ queryKey: ['product', productId] })
+   534→      qc.invalidateQueries({ queryKey: ['products'] })
+   535→      onDone()
+   536→    } catch (e) {
+   537→      toast.error(e instanceof Error ? e.message : 'Hareket eklenemedi')
+   538→    } finally {
+   539→      setSubmitting(false)
+   540→    }
+   541→  }
+   542→
+   543→  return (
+   544→    <div className="space-y-3">
+   545→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+   546→        <div className="space-y-1">
+   547→          <Label className="text-xs">Hareket Tipi</Label>
+   548→          <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
+   549→            <SelectTrigger className="w-full h-9"><SelectValue /></SelectTrigger>
+   550→            <SelectContent>
+   551→              <SelectItem value="giris">Giriş (+)</SelectItem>
+   552→              <SelectItem value="cikis">Çıkış (-)</SelectItem>
+   553→              <SelectItem value="duzeltme">Düzeltme (=)</SelectItem>
+   554→            </SelectContent>
+   555→          </Select>
+   556→        </div>
+   557→        <div className="space-y-1">
+   558→          <Label className="text-xs">Miktar ({unit})</Label>
+   559→          <Input
+   560→            type="number"
+   561→            min="0"
+   562→            value={quantity}
+   563→            onChange={(e) => setQuantity(e.target.value)}
+   564→            placeholder="0"
+   565→          />
+   566→        </div>
+   567→        <div className="space-y-1 col-span-2">
+   568→          <Label className="text-xs">Açıklama / Sebep</Label>
+   569→          <Input
+   570→            value={reason}
+   571→            onChange={(e) => setReason(e.target.value)}
+   572→            placeholder="Örn. Alım, Satış, Sayım farkı..."
+   573→          />
+   574→        </div>
+   575→      </div>
+   576→      <div className="flex items-center justify-between gap-2">
+   577→        <div className="text-xs text-muted-foreground">
+   578→          {type === 'giris' && <span className="text-emerald-600">Stok artar: {currentStock} → {currentStock + (parseInt(quantity) || 0)}</span>}
+   579→          {type === 'cikis' && <span className="text-rose-600">Stok azalır: {currentStock} → {currentStock - (parseInt(quantity) || 0)}</span>}
+   580→          {type === 'duzeltme' && <span className="text-amber-600">Stok ayarlanır: {currentStock} → {parseInt(quantity) || 0}</span>}
+   581→        </div>
+   582→        <Button size="sm" onClick={handleSubmit} disabled={submitting || !quantity}>
+   583→          {submitting && <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+   584→          <Plus className="w-3.5 h-3.5 mr-1.5" />
+   585→          Hareket Ekle
+   586→        </Button>
+   587→      </div>
+   588→    </div>
+   589→  )
+   590→}
+   591→
+   592→// ============================================================
+   593→// Ürün Detay Dialog
+   594→// ============================================================
+   595→
+   596→function ProductDetailDialog({
+   597→  product, open, onOpenChange, onEdit,
+   598→}: {
+   599→  product: Product | null
+   600→  open: boolean
+   601→  onOpenChange: (v: boolean) => void
+   602→  onEdit: (p: Product) => void
+   603→}) {
+   604→  const qc = useQueryClient()
+   605→  const [deleteOpen, setDeleteOpen] = useState(false)
+   606→  const [deleting, setDeleting] = useState(false)
+   607→
+   608→  // Detay sorgu (son 20 hareket)
+   609→  const { data: detail, isLoading } = useQuery({
+   610→    queryKey: ['product', product?.id],
+   611→    queryFn: () => apiGet<ProductDetail>(`/api/products/${product!.id}`),
+   612→    enabled: !!product && open,
+   613→  })
+   614→
+   615→  if (!product) return null
+   616→
+   617→  const status = getStockStatus(product)
+   618→  const stockValue = product.stock * product.price
+   619→  const movements = detail?.stockMovements ?? []
+   620→
+   621→  const handleDelete = async () => {
+   622→    setDeleting(true)
+   623→    try {
+   624→      await apiDelete(`/api/products/${product.id}`)
+   625→      toast.success('Ürün silindi')
+   626→      qc.invalidateQueries({ queryKey: ['products'] })
+   627→      setDeleteOpen(false)
+   628→      onOpenChange(false)
+   629→    } catch (e) {
+   630→      toast.error(e instanceof Error ? e.message : 'Silme başarısız')
+   631→    } finally {
+   632→      setDeleting(false)
+   633→    }
+   634→  }
+   635→
+   636→  return (
+   637→    <>
+   638→      <Dialog open={open} onOpenChange={onOpenChange}>
+   639→        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto custom-scroll">
+   640→          <DialogHeader>
+   641→            <div className="flex items-start justify-between gap-3">
+   642→              <div className="min-w-0">
+   643→                <DialogTitle className="flex items-center gap-2 flex-wrap">
+   644→                  <Package className="w-5 h-5 text-emerald-600 shrink-0" />
+   645→                  <span className="truncate">{product.name}</span>
+   646→                  <Badge variant="outline" className={cn('text-[10px]', status.color)}>
+   647→                    {status.label}
+   648→                  </Badge>
+   649→                </DialogTitle>
+   650→                <DialogDescription className="mt-1 flex items-center gap-2 flex-wrap text-xs">
+   651→                  {product.sku && (
+   652→                    <span className="inline-flex items-center gap-1 font-mono">
+   653→                      <Tag className="w-3 h-3" />{product.sku}
+   654→                    </span>
+   655→                  )}
+   656→                  {product.category && (
+   657→                    <Badge variant="secondary" className="text-[10px] h-5">
+   658→                      <Layers className="w-3 h-3 mr-1" />{product.category}
+   659→                    </Badge>
+   660→                  )}
+   661→                </DialogDescription>
+   662→              </div>
+   663→              <div className="flex items-center gap-1 shrink-0">
+   664→                <Tooltip>
+   665→                  <TooltipTrigger asChild>
+   666→                    <Button variant="outline" size="sm" onClick={() => onEdit(product)}>
+   667→                      <Pencil className="w-3.5 h-3.5 mr-1" /> Düzenle
+   668→                    </Button>
+   669→                  </TooltipTrigger>
+   670→                  <TooltipContent>Ürün bilgilerini düzenle</TooltipContent>
+   671→                </Tooltip>
+   672→                <Button
+   673→                  variant="outline"
+   674→                  size="sm"
+   675→                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/50"
+   676→                  onClick={() => setDeleteOpen(true)}
+   677→                >
+   678→                  <Trash2 className="w-3.5 h-3.5" />
+   679→                </Button>
+   680→              </div>
+   681→            </div>
+   682→          </DialogHeader>
+   683→
+   684→          {/* Bilgi kartları */}
+   685→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-1">
+   686→            <Card className="bg-muted/30">
+   687→              <CardContent className="p-3">
+   688→                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Fiyat</div>
+   689→                <div className="text-base font-bold mt-0.5">{formatCurrency(product.price, product.currency)}</div>
+   690→                <div className="text-[10px] text-muted-foreground">%{product.taxRate} KDV</div>
+   691→              </CardContent>
+   692→            </Card>
+   693→            <Card className={cn(
+   694→              'bg-muted/30',
+   695→              status.variant === 'low' && 'bg-amber-50/50 dark:bg-amber-950/20',
+   696→              status.variant === 'out' && 'bg-red-50/50 dark:bg-red-950/20',
+   697→            )}>
+   698→              <CardContent className="p-3">
+   699→                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Mevcut Stok</div>
+   700→                <div className={cn(
+   701→                  'text-base font-bold mt-0.5',
+   702→                  status.variant === 'out' && 'text-red-600',
+   703→                  status.variant === 'low' && 'text-amber-600',
+   704→                )}>
+   705→                  {product.stock} {product.unit}
+   706→                </div>
+   707→                <div className="text-[10px] text-muted-foreground">Min: {product.minStock} {product.unit}</div>
+   708→              </CardContent>
+   709→            </Card>
+   710→            <Card className="bg-muted/30">
+   711→              <CardContent className="p-3">
+   712→                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Stok Değeri</div>
+   713→                <div className="text-base font-bold mt-0.5">{formatCurrency(stockValue, product.currency)}</div>
+   714→                <div className="text-[10px] text-muted-foreground">stok × fiyat</div>
+   715→              </CardContent>
+   716→            </Card>
+   717→            <Card className="bg-muted/30">
+   718→              <CardContent className="p-3">
+   719→                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Hareket Sayısı</div>
+   720→                <div className="text-base font-bold mt-0.5">
+   721→                  {detail?._count?.stockMovements ?? product._count?.stockMovements ?? 0}
+   722→                </div>
+   723→                <div className="text-[10px] text-muted-foreground">toplam kayıt</div>
+   724→              </CardContent>
+   725→            </Card>
+   726→          </div>
+   727→
+   728→          {/* Açıklama */}
+   729→          {product.description && (
+   730→            <div className="p-3 rounded-lg bg-muted/40 border border-border">
+   731→              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Açıklama</div>
+   732→              <p className="text-sm">{product.description}</p>
+   733→            </div>
+   734→          )}
+   735→
+   736→          <Separator />
+   737→
+   738→          {/* Stok hareketi ekleme formu */}
+   739→          <div className="space-y-2">
+   740→            <div className="flex items-center gap-2">
+   741→              <TrendingUp className="w-4 h-4 text-emerald-600" />
+   742→              <h4 className="text-sm font-semibold">Stok Hareketi Ekle</h4>
+   743→            </div>
+   744→            <StockMovementForm
+   745→              productId={product.id}
+   746→              unit={product.unit}
+   747→              currentStock={product.stock}
+   748→              onDone={() => {
+   749→                // detail query invalidate handled internally
+   750→              }}
+   751→            />
+   752→          </div>
+   753→
+   754→          <Separator />
+   755→
+   756→          {/* Hareket geçmişi */}
+   757→          <div className="space-y-2">
+   758→            <div className="flex items-center justify-between">
+   759→              <div className="flex items-center gap-2">
+   760→                <ClipboardList className="w-4 h-4 text-slate-600" />
+   761→                <h4 className="text-sm font-semibold">Stok Hareketleri</h4>
+   762→              </div>
+   763→              <span className="text-xs text-muted-foreground">
+   764→                Son {Math.min(movements.length, 20)} hareket
+   765→              </span>
+   766→            </div>
+   767→            {isLoading ? (
+   768→              <div className="space-y-2">
+   769→                {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+   770→              </div>
+   771→            ) : movements.length === 0 ? (
+   772→              <div className="p-6 text-center text-sm text-muted-foreground border border-dashed rounded-lg">
+   773→                <ClipboardList className="w-6 h-6 mx-auto mb-2 opacity-40" />
+   774→                Henüz stok hareketi yok.
+   775→              </div>
+   776→            ) : (
+   777→              <ScrollArea className="h-64 rounded-md border">
+   778→                <Table>
+   779→                  <TableHeader className="sticky top-0 bg-background z-10">
+   780→                    <TableRow className="bg-muted/60">
+   781→                      <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground">Tarih</TableHead>
+   782→                      <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground">Tip</TableHead>
+   783→                      <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground text-right">Miktar</TableHead>
+   784→                      <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground">Sebep</TableHead>
+   785→                      <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground">Kaynak</TableHead>
+   786→                    </TableRow>
+   787→                  </TableHeader>
+   788→                  <TableBody>
+   789→                    {movements.map((m) => {
+   790→                      const meta = getMovementMeta(m.type)
+   791→                      return (
+   792→                        <TableRow key={m.id} className="even:bg-muted/20">
+   793→                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+   794→                            {formatDateTime(m.createdAt)}
+   795→                          </TableCell>
+   796→                          <TableCell>
+   797→                            <Badge variant="outline" className={cn('text-[10px] h-5 gap-1', meta.color)}>
+   798→                              <meta.icon className="w-3 h-3" />
+   799→                              {meta.label}
+   800→                            </Badge>
+   801→                          </TableCell>
+   802→                          <TableCell className="text-right font-mono text-xs">
+   803→                            <span className={cn(
+   804→                              m.type === 'giris' && 'text-emerald-600',
+   805→                              m.type === 'cikis' && 'text-rose-600',
+   806→                              m.type === 'duzeltme' && 'text-amber-600',
+   807→                              m.type === 'transfer' && 'text-violet-600',
+   808→                            )}>
+   809→                              {meta.sign}{m.quantity}
+   810→                            </span>
+   811→                            <span className="text-muted-foreground ml-1">{product.unit}</span>
+   812→                          </TableCell>
+   813→                          <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate">
+   814→                            {m.reason || '—'}
+   815→                          </TableCell>
+   816→                          <TableCell className="text-xs text-muted-foreground">
+   817→                            {getRefLabel(m.refType)}
+   818→                          </TableCell>
+   819→                        </TableRow>
+   820→                      )
+   821→                    })}
+   822→                  </TableBody>
+   823→                </Table>
+   824→              </ScrollArea>
+   825→            )}
+   826→          </div>
+   827→        </DialogContent>
+   828→      </Dialog>
+   829→
+   830→      {/* Silme onayı */}
+   831→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+   832→        <AlertDialogContent>
+   833→          <AlertDialogHeader>
+   834→            <AlertDialogTitle>Ürünü sil?</AlertDialogTitle>
+   835→            <AlertDialogDescription>
+   836→              <strong>{product.name}</strong> ürününü silmek üzeresiniz.
+   837→              Bu işlem geri alınamaz ve tüm stok hareketleri de silinecek.
+   838→              {product._count?.quoteLines ? (
+   839→                <span className="block mt-2 text-amber-600 font-medium">
+   840→                  Bu ürün {product._count.quoteLines} teklif kalemiyle ilişkili — silmek engellenmiş olabilir.
+   841→                </span>
+   842→              ) : null}
+   843→            </AlertDialogDescription>
+   844→          </AlertDialogHeader>
+   845→          <AlertDialogFooter>
+   846→            <AlertDialogCancel disabled={deleting}>İptal</AlertDialogCancel>
+   847→            <AlertDialogAction
+   848→              onClick={(e) => {
+   849→                e.preventDefault()
+   850→                handleDelete()
+   851→              }}
+   852→              disabled={deleting}
+   853→              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+   854→            >
+   855→              {deleting && <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />}
+   856→              Evet, Sil
+   857→            </AlertDialogAction>
+   858→          </AlertDialogFooter>
+   859→        </AlertDialogContent>
+   860→      </AlertDialog>
+   861→    </>
+   862→  )
+   863→}
+   864→
+   865→// ============================================================
+   866→// Ana liste bileşeni
+   867→// ============================================================
+   868→
+   869→export function ProductsView() {
+   870→  const { user } = useAppStore()
+   871→
+   872→  const [search, setSearch] = useState('')
+   873→  const [category, setCategory] = useState('')
+   874→  const [lowStockOnly, setLowStockOnly] = useState(false)
+   875→  const [addOpen, setAddOpen] = useState(false)
+   876→  const [editOpen, setEditOpen] = useState(false)
+   877→  const [editProduct, setEditProduct] = useState<Product | null>(null)
+   878→  const [detailProduct, setDetailProduct] = useState<Product | null>(null)
+   879→  const [detailOpen, setDetailOpen] = useState(false)
+   880→
+   881→  // Query parametreleri
+   882→  const params = useMemo(() => {
+   883→    const p: Record<string, string> = {}
+   884→    if (search) p.search = search
+   885→    if (category) p.category = category
+   886→    if (lowStockOnly) p.lowStock = 'true'
+   887→    p.limit = '200'
+   888→    return p
+   889→  }, [search, category, lowStockOnly])
+   890→
+   891→  const { data, isLoading, isFetching, refetch } = useQuery({
+   892→    queryKey: ['products', params],
+   893→    queryFn: () => {
+   894→      const qs = new URLSearchParams(params).toString()
+   895→      return apiGet<ProductListResponse>(`/api/products?${qs}`)
+   896→    },
+   897→  })
+   898→
+   899→  const products = data?.items ?? []
+   900→  const total = data?.total ?? 0
+   901→
+   902→  // Kategoriler (mevcut ürünlerden türet)
+   903→  const categories = useMemo(() => {
+   904→    const set = new Set<string>()
+   905→    products.forEach((p) => { if (p.category) set.add(p.category) })
+   906→    return Array.from(set).sort()
+   907→  }, [products])
+   908→
+   909→  // İstatistikler
+   910→  const stats = useMemo(() => {
+   911→    const totalStockValue = products.reduce((sum, p) => sum + p.stock * p.price, 0)
+   912→    const lowStockCount = products.filter((p) => p.stock <= p.minStock && p.stock > 0).length
+   913→    const outOfStock = products.filter((p) => p.stock === 0).length
+   914→    const lowOrOutCount = lowStockCount + outOfStock
+   915→    return {
+   916→      total,
+   917→      totalStockValue,
+   918→      lowStockCount: lowOrOutCount,
+   919→      categoryCount: categories.length,
+   920→      outOfStock,
+   921→    }
+   922→  }, [products, total, categories.length])
+   923→
+   924→  const canExport = hasPermission(user as SessionUser | null, 'export.data')
+   925→
+   926→  // CSV dışa aktarma
+   927→  const handleExport = () => {
+   928→    if (!products.length) {
+   929→      toast.error('Dışa aktarılacak ürün yok')
+   930→      return
+   931→    }
+   932→    const rows = products.map((p) => ({
+   933→      Ad: p.name,
+   934→      SKU: p.sku || '',
+   935→      Kategori: p.category || '',
+   936→      Fiyat: p.price,
+   937→      'Para Birimi': p.currency,
+   938→      KDV: p.taxRate,
+   939→      Stok: p.stock,
+   940→      'Min Stok': p.minStock,
+   941→      Birim: p.unit,
+   942→      'Stok Değeri': (p.stock * p.price).toFixed(2),
+   943→      Durum: p.stock === 0 ? 'Tükendi' : p.stock <= p.minStock ? 'Düşük Stok' : 'Stokta',
+   944→    }))
+   945→    const csv = toCSV(rows)
+   946→    downloadFile(csv, `urunler-${new Date().toISOString().slice(0, 10)}.csv`)
+   947→    toast.success(`${products.length} ürün dışa aktarıldı`)
+   948→  }
+   949→
+   950→  const handleClearFilters = () => {
+   951→    setSearch('')
+   952→    setCategory('')
+   953→    setLowStockOnly(false)
+   954→  }
+   955→
+   956→  const activeFilterCount = [search, category].filter(Boolean).length + (lowStockOnly ? 1 : 0)
+   957→
+   958→  // Detay aç
+   959→  const openDetail = (p: Product) => {
+   960→    setDetailProduct(p)
+   961→    setDetailOpen(true)
+   962→  }
+   963→
+   964→  // Düzenle
+   965→  const openEdit = (p: Product) => {
+   966→    setEditProduct(p)
+   967→    setDetailOpen(false)
+   968→    setEditOpen(true)
+   969→  }
+   970→
+   971→  // Detail kapandığında edit'e geçiş varsa state'i temizle
+   972→  const handleDetailOpenChange = (v: boolean) => {
+   973→    setDetailOpen(v)
+   974→    if (!v) {
+   975→      // kısa gecikme ile detail product'ı temizle
+   976→      setTimeout(() => setDetailProduct(null), 100)
+   977→    }
+   978→  }
+   979→
+   980→  const handleEditOpenChange = (v: boolean) => {
+   981→    setEditOpen(v)
+   982→    if (!v) {
+   983→      setTimeout(() => setEditProduct(null), 100)
+   984→    }
+   985→  }
+   986→
+   987→  return (
+   988→    <div className="space-y-5 animate-fade-in">
+   989→      {/* Header */}
+   990→      <div className="flex items-start justify-between flex-wrap gap-3">
+   991→        <div>
+   992→          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   993→            <Boxes className="w-6 h-6 text-emerald-600" />
+   994→            Ürün & Stok Yönetimi
+   995→          </h2>
+   996→          <p className="text-sm text-muted-foreground mt-0.5">
+   997→            Toplam <span className="font-semibold text-foreground">{total}</span> ürün
+   998→            {stats.lowStockCount > 0 && (
+   999→              <span className="ml-2 text-amber-600 font-medium">· {stats.lowStockCount} düşük/tükenmiş stok</span>
+  1000→            )}
+  1001→          </p>
+  1002→        </div>
+  1003→        <div className="flex gap-2 flex-wrap">
+  1004→          <Button
+  1005→            variant={lowStockOnly ? 'default' : 'outline'}
+  1006→            size="sm"
+  1007→            onClick={() => setLowStockOnly((v) => !v)}
+  1008→            className={lowStockOnly ? 'bg-amber-600 hover:bg-amber-700' : ''}
+  1009→          >
+  1010→            <AlertTriangle className="w-4 h-4 mr-1.5" />
+  1011→            Düşük Stok
+  1012→            {stats.lowStockCount > 0 && (
+  1013→              <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">
+  1014→                {stats.lowStockCount}
+  1015→              </Badge>
+  1016→            )}
+  1017→          </Button>
+  1018→          {canExport && (
+  1019→            <Button variant="outline" size="sm" onClick={handleExport}>
+  1020→              <Download className="w-4 h-4 mr-1.5" />
+  1021→              Dışa Aktar
+  1022→            </Button>
+  1023→          )}
+  1024→          <Button size="sm" onClick={() => setAddOpen(true)}>
+  1025→            <Plus className="w-4 h-4 mr-1.5" />
+  1026→            Ürün Ekle
+  1027→          </Button>
+  1028→        </div>
+  1029→      </div>
+  1030→
+  1031→      {/* Stats row */}
+  1032→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+  1033→        <StatCard
+  1034→          label="Toplam Ürün"
+  1035→          value={stats.total}
+  1036→          icon={Package}
+  1037→          color="bg-gradient-to-br from-slate-500 to-slate-600"
+  1038→          sub="Tüm katalog"
+  1039→        />
+  1040→        <StatCard
+  1041→          label="Toplam Stok Değeri"
+  1042→          value={formatCurrency(stats.totalStockValue, user?.tenant.defaultCurrency || 'TRY')}
+  1043→          icon={Warehouse}
+  1044→          color="bg-gradient-to-br from-emerald-500 to-teal-600"
+  1045→          sub="stok × fiyat"
+  1046→        />
+  1047→        <StatCard
+  1048→          label="Düşük / Tükenmiş"
+  1049→          value={stats.lowStockCount}
+  1050→          icon={AlertTriangle}
+  1051→          color="bg-gradient-to-br from-amber-500 to-orange-600"
+  1052→          sub={`${stats.outOfStock} tükenmiş`}
+  1053→        />
+  1054→        <StatCard
+  1055→          label="Kategori Sayısı"
+  1056→          value={stats.categoryCount}
+  1057→          icon={Layers}
+  1058→          color="bg-gradient-to-br from-violet-500 to-fuchsia-600"
+  1059→          sub="farklı kategori"
+  1060→        />
+  1061→      </div>
+  1062→
+  1063→      {/* Filtre barı */}
+  1064→      <Card>
+  1065→        <CardContent className="p-4">
+  1066→          <div className="flex gap-2 flex-wrap items-center">
+  1067→            <div className="relative flex-1 min-w-[200px]">
+  1068→              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+  1069→              <Input
+  1070→                value={search}
+  1071→                onChange={(e) => setSearch(e.target.value)}
+  1072→                placeholder="Ürün adı, SKU veya kategori ara..."
+  1073→                className="pl-9"
+  1074→              />
+  1075→              {search && (
+  1076→                <button
+  1077→                  onClick={() => setSearch('')}
+  1078→                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded"
+  1079→                >
+  1080→                  <X className="w-3.5 h-3.5 text-muted-foreground" />
+  1081→                </button>
+  1082→              )}
+  1083→            </div>
+  1084→            <Select value={category || '__none__'} onValueChange={(v) => setCategory(v === '__none__' ? '' : v)}>
+  1085→              <SelectTrigger className="w-[180px] h-9">
+  1086→                <SelectValue placeholder="Kategori" />
+  1087→              </SelectTrigger>
+  1088→              <SelectContent>
+  1089→                <SelectItem value="__none__">Tüm Kategoriler</SelectItem>
+  1090→                {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+  1091→              </SelectContent>
+  1092→            </Select>
+  1093→            <Button
+  1094→              variant="outline"
+  1095→              size="sm"
+  1096→              onClick={() => refetch()}
+  1097→              disabled={isFetching}
+  1098→              title="Yenile"
+  1099→            >
+  1100→              <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
+  1101→            </Button>
+  1102→            {activeFilterCount > 0 && (
+  1103→              <Button variant="ghost" size="sm" onClick={handleClearFilters}>
+  1104→                <X className="w-3.5 h-3.5 mr-1" />
+  1105→                Temizle
+  1106→              </Button>
+  1107→            )}
+  1108→          </div>
+  1109→        </CardContent>
+  1110→      </Card>
+  1111→
+  1112→      {/* Ürün tablosu */}
+  1113→      <Card>
+  1114→        <CardContent className="p-0">
+  1115→          {isLoading ? (
+  1116→            <div className="p-4 space-y-3">
+  1117→              {[...Array(6)].map((_, i) => (
+  1118→                <Skeleton key={i} className="h-12 w-full" />
+  1119→              ))}
+  1120→            </div>
+  1121→          ) : products.length === 0 ? (
+  1122→            <div className="p-12 text-center">
+  1123→              <div className="w-16 h-16 mx-auto rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center mb-4">
+  1124→                <Boxes className="w-8 h-8 text-emerald-600/70" />
+  1125→              </div>
+  1126→              <h3 className="font-semibold text-lg">Ürün bulunamadı</h3>
+  1127→              <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
+  1128→                {activeFilterCount > 0
+  1129→                  ? 'Seçtiğiniz filtrelere uyan ürün yok. Filtreleri temizlemeyi deneyin.'
+  1130→                  : 'Henüz hiç ürün eklenmemiş. İlk ürününüzü ekleyerek başlayın.'}
+  1131→              </p>
+  1132→              {activeFilterCount > 0 ? (
+  1133→                <Button variant="outline" size="sm" className="mt-4" onClick={handleClearFilters}>
+  1134→                  Filtreleri Temizle
+  1135→                </Button>
+  1136→              ) : (
+  1137→                <Button size="sm" className="mt-4" onClick={() => setAddOpen(true)}>
+  1138→                  <Plus className="w-4 h-4 mr-1.5" />
+  1139→                  İlk Ürünü Ekle
+  1140→                </Button>
+  1141→              )}
+  1142→            </div>
+  1143→          ) : (
+  1144→            <Table>
+  1145→              <TableHeader>
+  1146→                <TableRow className="bg-muted/60 border-b-2 hover:bg-muted/60">
+  1147→                  <TableHead className="pl-4 min-w-[200px] font-semibold text-xs uppercase tracking-wider text-muted-foreground">Ürün</TableHead>
+  1148→                  <TableHead className="hidden md:table-cell font-semibold text-xs uppercase tracking-wider text-muted-foreground">Kategori</TableHead>
+  1149→                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground text-right">Fiyat</TableHead>
+  1150→                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground text-right">Stok</TableHead>
+  1151→                  <TableHead className="hidden lg:table-cell font-semibold text-xs uppercase tracking-wider text-muted-foreground text-right">Min Stok</TableHead>
+  1152→                  <TableHead className="hidden md:table-cell font-semibold text-xs uppercase tracking-wider text-muted-foreground">Birim</TableHead>
+  1153→                  <TableHead className="hidden lg:table-cell font-semibold text-xs uppercase tracking-wider text-muted-foreground text-right">KDV</TableHead>
+  1154→                  <TableHead className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Durum</TableHead>
+  1155→                  <TableHead className="text-right pr-4 font-semibold text-xs uppercase tracking-wider text-muted-foreground">İşlem</TableHead>
+  1156→                </TableRow>
+  1157→              </TableHeader>
+  1158→              <TableBody>
+  1159→                {products.map((p) => {
+  1160→                  const status = getStockStatus(p)
+  1161→                  const isLow = status.variant !== 'ok'
+  1162→                  return (
+  1163→                    <TableRow
+  1164→                      key={p.id}
+  1165→                      className={cn(
+  1166→                        'cursor-pointer group table-row-hover transition-colors',
+  1167→                        isLow ? 'bg-amber-50/40 dark:bg-amber-950/10 hover:bg-amber-50/70 dark:hover:bg-amber-950/20' : 'even:bg-muted/20',
+  1168→                      )}
+  1169→                      onClick={() => openDetail(p)}
+  1170→                    >
+  1171→                      {/* Sol border — düşük stok için amber */}
+  1172→                      <TableCell className="pl-4 relative">
+  1173→                        {isLow && (
+  1174→                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400" />
+  1175→                        )}
+  1176→                        <div className="flex items-start gap-3">
+  1177→                          <div className={cn(
+  1178→                            'w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors',
+  1179→                            isLow
+  1180→                              ? 'bg-amber-100 dark:bg-amber-950/40 group-hover:bg-amber-200 dark:group-hover:bg-amber-900/40'
+  1181→                              : 'bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 group-hover:from-emerald-100 group-hover:to-emerald-200 dark:group-hover:from-emerald-900/40 dark:group-hover:to-emerald-800/40',
+  1182→                          )}>
+  1183→                            <Package className={cn(
+  1184→                              'w-4 h-4',
+  1185→                              isLow
+  1186→                                ? 'text-amber-600 dark:text-amber-400'
+  1187→                                : 'text-slate-600 dark:text-slate-300 group-hover:text-emerald-600',
+  1188→                            )} />
+  1189→                          </div>
+  1190→                          <div className="min-w-0">
+  1191→                            <div className="font-medium text-sm truncate max-w-[220px]">{p.name}</div>
+  1192→                            {p.sku && (
+  1193→                              <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+  1194→                                {p.sku}
+  1195→                              </div>
+  1196→                            )}
+  1197→                          </div>
+  1198→                        </div>
+  1199→                      </TableCell>
+  1200→                      <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+  1201→                        {p.category ? (
+  1202→                          <Badge variant="secondary" className="text-[10px] h-5">
+  1203→                            <Layers className="w-3 h-3 mr-1" />{p.category}
+  1204→                          </Badge>
+  1205→                        ) : (
+  1206→                          <span className="text-muted-foreground">—</span>
+  1207→                        )}
+  1208→                      </TableCell>
+  1209→                      <TableCell className="text-right text-sm font-medium">
+  1210→                        {formatCurrency(p.price, p.currency)}
+  1211→                      </TableCell>
+  1212→                      <TableCell className="text-right">
+  1213→                        <div className="flex items-center justify-end gap-1.5">
+  1214→                          <span className={cn(
+  1215→                            'text-sm font-bold tabular-nums',
+  1216→                            status.variant === 'out' && 'text-red-600',
+  1217→                            status.variant === 'low' && 'text-amber-600',
+  1218→                          )}>
+  1219→                            {p.stock}
+  1220→                          </span>
+  1221→                          {status.variant === 'low' && (
+  1222→                            <Tooltip>
+  1223→                              <TooltipTrigger asChild>
+  1224→                                <span>
+  1225→                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+  1226→                                </span>
+  1227→                              </TooltipTrigger>
+  1228→                              <TooltipContent>Min stok sınırının altında ({p.minStock})</TooltipContent>
+  1229→                            </Tooltip>
+  1230→                          )}
+  1231→                          {status.variant === 'out' && (
+  1232→                            <Tooltip>
+  1233→                              <TooltipTrigger asChild>
+  1234→                                <span>
+  1235→                                  <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+  1236→                                </span>
+  1237→                              </TooltipTrigger>
+  1238→                              <TooltipContent>Stok tükendi</TooltipContent>
+  1239→                            </Tooltip>
+  1240→                          )}
+  1241→                        </div>
+  1242→                      </TableCell>
+  1243→                      <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground tabular-nums">
+  1244→                        {p.minStock}
+  1245→                      </TableCell>
+  1246→                      <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+  1247→                        {p.unit}
+  1248→                      </TableCell>
+  1249→                      <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground tabular-nums">
+  1250→                        %{p.taxRate}
+  1251→                      </TableCell>
+  1252→                      <TableCell>
+  1253→                        <Badge variant="outline" className={cn('text-[10px] h-5', status.color)}>
+  1254→                          {status.label}
+  1255→                        </Badge>
+  1256→                      </TableCell>
+  1257→                      <TableCell className="text-right pr-4">
+  1258→                        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+  1259→                          <Tooltip>
+  1260→                            <TooltipTrigger asChild>
+  1261→                              <Button
+  1262→                                variant="ghost"
+  1263→                                size="sm"
+  1264→                                className="h-8 w-8 p-0"
+  1265→                                onClick={() => openDetail(p)}
+  1266→                              >
+  1267→                                <Package className="w-4 h-4" />
+  1268→                              </Button>
+  1269→                            </TooltipTrigger>
+  1270→                            <TooltipContent>Detay</TooltipContent>
+  1271→                          </Tooltip>
+  1272→                          <Tooltip>
+  1273→                            <TooltipTrigger asChild>
+  1274→                              <Button
+  1275→                                variant="ghost"
+  1276→                                size="sm"
+  1277→                                className="h-8 w-8 p-0"
+  1278→                                onClick={() => openEdit(p)}
+  1279→                              >
+  1280→                                <Pencil className="w-4 h-4" />
+  1281→                              </Button>
+  1282→                            </TooltipTrigger>
+  1283→                            <TooltipContent>Düzenle</TooltipContent>
+  1284→                          </Tooltip>
+  1285→                        </div>
+  1286→                      </TableCell>
+  1287→                    </TableRow>
+  1288→                  )
+  1289→                })}
+  1290→              </TableBody>
+  1291→            </Table>
+  1292→          )}
+  1293→        </CardContent>
+  1294→      </Card>
+  1295→
+  1296→      {/* Footer info */}
+  1297→      {!isLoading && products.length > 0 && (
+  1298→        <div className="flex items-center justify-between text-xs text-muted-foreground">
+  1299→          <div className="flex items-center gap-2">
+  1300→            <Boxes className="w-3.5 h-3.5" />
+  1301→            <span>{products.length} / {total} ürün gösteriliyor</span>
+  1302→          </div>
+  1303→          {isFetching && (
+  1304→            <span className="flex items-center gap-1.5">
+  1305→              <RefreshCw className="w-3 h-3 animate-spin" />
+  1306→              Güncelleniyor...
+  1307→            </span>
+  1308→          )}
+  1309→        </div>
+  1310→      )}
+  1311→
+  1312→      {/* Dialogs */}
+  1313→      <ProductFormDialog
+  1314→        open={addOpen}
+  1315→        onOpenChange={setAddOpen}
+  1316→      />
+  1317→      <ProductFormDialog
+  1318→        open={editOpen}
+  1319→        onOpenChange={handleEditOpenChange}
+  1320→        editProduct={editProduct}
+  1321→      />
+  1322→      <ProductDetailDialog
+  1323→        product={detailProduct}
+  1324→        open={detailOpen}
+  1325→        onOpenChange={handleDetailOpenChange}
+  1326→        onEdit={openEdit}
+  1327→      />
+  1328→    </div>
+  1329→  )
+  1330→}
+  1331→

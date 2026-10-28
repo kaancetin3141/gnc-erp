@@ -1,0 +1,738 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useMemo } from 'react'
+     4→     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→     5→import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-client'
+     6→     6→import { Card, CardContent } from '@/components/ui/card'
+     7→     7→import { Button } from '@/components/ui/button'
+     8→     8→import { Input } from '@/components/ui/input'
+     9→     9→import { Label } from '@/components/ui/label'
+    10→    10→import { Badge } from '@/components/ui/badge'
+    11→    11→import { Skeleton } from '@/components/ui/skeleton'
+    12→    12→import {
+    13→    13→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    14→    14→} from '@/components/ui/select'
+    15→    15→import {
+    16→    16→  Tabs, TabsList, TabsTrigger,
+    17→    17→} from '@/components/ui/tabs'
+    18→    18→import {
+    19→    19→  Dialog, DialogContent, DialogHeader, DialogTitle,
+    20→    20→  DialogDescription, DialogFooter,
+    21→    21→} from '@/components/ui/dialog'
+    22→    22→import {
+    23→    23→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    24→    24→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    25→    25→} from '@/components/ui/alert-dialog'
+    26→    26→import { toast } from 'sonner'
+    27→    27→import { cn } from '@/lib/utils'
+    28→    28→import { formatCurrency, formatDateTime } from '@/lib/format'
+    29→    29→import type { CafeTable } from './cafe-table-layout'
+    30→    30→import {
+    31→    31→  Plus, Minus, ShoppingCart, Trash2, Utensils, Coffee, Cookie,
+    32→    32→  GlassWater, X, Send, Receipt, Bell, CheckCircle2, Clock,
+    33→    33→  Table2, User, ChevronRight, AlertCircle,
+    34→    34→} from 'lucide-react'
+    35→    35→
+    36→    36→// ============================================================
+    37→    37→// Tipler
+    38→    38→// ============================================================
+    39→    39→
+    40→    40→interface MenuItem {
+    41→    41→  id: string
+    42→    42→  categoryId: string
+    43→    43→  name: string
+    44→    44→  description: string | null
+    45→    45→  price: number
+    46→    46→  currency: string
+    47→    47→  photo: string | null
+    48→    48→  isAvailable: boolean
+    49→    49→  prepTime: number
+    50→    50→  station: string
+    51→    51→  recipe: string | null
+    52→    52→  sortOrder: number
+    53→    53→  category?: { id: string; name: string }
+    54→    54→}
+    55→    55→
+    56→    56→interface MenuCategory {
+    57→    57→  id: string
+    58→    58→  cafeId: string
+    59→    59→  name: string
+    60→    60→  icon: string | null
+    61→    61→  sortOrder: number
+    62→    62→  isActive: boolean
+    63→    63→  items: MenuItem[]
+    64→    64→}
+    65→    65→
+    66→    66→interface OrderItem {
+    67→    67→  id: string
+    68→    68→  orderId: string
+    69→    69→  menuItemId: string | null
+    70→    70→  name: string
+    71→    71→  qty: number
+    72→    72→  unitPrice: number
+    73→    73→  status: string
+    74→    74→  notes: string | null
+    75→    75→  station: string
+    76→    76→  menuItem?: { id: string; name: string; photo: string | null; station: string; recipe: string | null } | null
+    77→    77→}
+    78→    78→
+    79→    79→interface CafeOrder {
+    80→    80→  id: string
+    81→    81→  cafeId: string
+    82→    82→  tableId: string | null
+    83→    83→  table?: { id: string; number: string; status: string } | null
+    84→    84→  number: string
+    85→    85→  status: string
+    86→    86→  type: string
+    87→    87→  customerName: string | null
+    88→    88→  subtotal: number
+    89→    89→  taxTotal: number
+    90→    90→  total: number
+    91→    91→  notes: string | null
+    92→    92→  createdById: string | null
+    93→    93→  createdAt: string
+    94→    94→  updatedAt: string
+    95→    95→  items?: OrderItem[]
+    96→    96→  payments?: { id: string; amount: number; method: string; status: string }[]
+    97→    97→}
+    98→    98→
+    99→    99→interface CartItem {
+   100→   100→  menuItem: MenuItem
+   101→   101→  qty: number
+   102→   102→  notes: string
+   103→   103→}
+   104→   104→
+   105→   105→const ORDER_STATUS_META: Record<string, { label: string; color: string; icon: typeof Clock }> = {
+   106→   106→  acik: { label: 'Açık', color: 'text-slate-700 bg-slate-50 border-slate-200 dark:text-slate-300 dark:bg-slate-900/40 dark:border-slate-800', icon: Clock },
+   107→   107→  hazirlaniyor: { label: 'Hazırlanıyor', color: 'text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950/40 dark:border-amber-900/50', icon: Clock },
+   108→   108→  hazir: { label: 'Hazır', color: 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-900/50', icon: CheckCircle2 },
+   109→   109→  odendi: { label: 'Ödendi', color: 'text-teal-700 bg-teal-50 border-teal-200 dark:text-teal-400 dark:bg-teal-950/40 dark:border-teal-900/50', icon: Receipt },
+   110→   110→  iptal: { label: 'İptal', color: 'text-red-700 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950/40 dark:border-red-900/50', icon: X },
+   111→   111→}
+   112→   112→
+   113→   113→const STATION_ICON: Record<string, typeof Coffee> = {
+   114→   114→  bar: GlassWater,
+   115→   115→  kitchen: Utensils,
+   116→   116→  dessert: Cookie,
+   117→   117→}
+   118→   118→
+   119→   119→// ============================================================
+   120→   120→// Main
+   121→   121→// ============================================================
+   122→   122→
+   123→   123→export function CafeOrderScreen({ cafeId }: { cafeId: string }) {
+   124→   124→  const qc = useQueryClient()
+   125→   125→  const [tab, setTab] = useState<'new' | 'active'>('new')
+   126→   126→  const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
+   127→   127→  const [cart, setCart] = useState<CartItem[]>([])
+   128→   128→  const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in')
+   129→   129→  const [customerName, setCustomerName] = useState('')
+   130→   130→  const [orderNotes, setOrderNotes] = useState('')
+   131→   131→  const [sending, setSending] = useState(false)
+   132→   132→  const [activeOrder, setActiveOrder] = useState<CafeOrder | null>(null)
+   133→   133→  const [activeOrderDialog, setActiveOrderDialog] = useState(false)
+   134→   134→  const [cancelTarget, setCancelTarget] = useState<CafeOrder | null>(null)
+   135→   135→
+   136→   136→  const { data: tablesData, isLoading: tablesLoading } = useQuery({
+   137→   137→    queryKey: ['cafe-tables', cafeId],
+   138→   138→    queryFn: () => apiGet<{ items: CafeTable[] }>(`/api/cafe/${cafeId}/tables`),
+   139→   139→  })
+   140→   140→  const { data: menuData, isLoading: menuLoading } = useQuery({
+   141→   141→    queryKey: ['cafe-menu', cafeId],
+   142→   142→    queryFn: () => apiGet<{ items: MenuCategory[] }>(`/api/cafe/${cafeId}/menu`),
+   143→   143→  })
+   144→   144→  const { data: ordersData, isLoading: ordersLoading } = useQuery({
+   145→   145→    queryKey: ['cafe-orders', cafeId, 'active'],
+   146→   146→    queryFn: () => apiGet<{ items: CafeOrder[] }>(`/api/cafe/${cafeId}/orders?status=acik&status=hazirlaniyor&status=hazir`),
+   147→   147→    refetchInterval: 10_000,
+   148→   148→  })
+   149→   149→
+   150→   150→  const tables = tablesData?.items ?? []
+   151→   151→  const categories = menuData?.items ?? []
+   152→   152→  const orders = ordersData?.items ?? []
+   153→   153→
+   154→   154→  // Flat item list with category info
+   155→   155→  const allItems = useMemo(() => {
+   156→   156→    const list: (MenuItem & { categoryName: string })[] = []
+   157→   157→    for (const cat of categories) {
+   158→   158→      for (const it of cat.items) {
+   159→   159→        list.push({ ...it, categoryName: cat.name })
+   160→   160→      }
+   161→   161→    }
+   162→   162→    return list.filter((i) => i.isAvailable)
+   163→   163→  }, [categories])
+   164→   164→
+   165→   165→  const cartTotal = useMemo(() => cart.reduce((s, c) => s + c.menuItem.price * c.qty, 0), [cart])
+   166→   166→
+   167→   167→  function addToCart(item: MenuItem) {
+   168→   168→    setCart((prev) => {
+   169→   169→      const ex = prev.find((c) => c.menuItem.id === item.id && c.notes === '')
+   170→   170→      if (ex) {
+   171→   171→        return prev.map((c) =>
+   172→   172→          c.menuItem.id === item.id && c.notes === '' ? { ...c, qty: c.qty + 1 } : c,
+   173→   173→        )
+   174→   174→      }
+   175→   175→      return [...prev, { menuItem: item, qty: 1, notes: '' }]
+   176→   176→    })
+   177→   177→  }
+   178→   178→
+   179→   179→  function updateQty(idx: number, delta: number) {
+   180→   180→    setCart((prev) => {
+   181→   181→      const next = [...prev]
+   182→   182→      const newQty = next[idx].qty + delta
+   183→   183→      if (newQty <= 0) {
+   184→   184→        next.splice(idx, 1)
+   185→   185→      } else {
+   186→   186→        next[idx] = { ...next[idx], qty: newQty }
+   187→   187→      }
+   188→   188→      return next
+   189→   189→    })
+   190→   190→  }
+   191→   191→
+   192→   192→  function updateNotes(idx: number, notes: string) {
+   193→   193→    setCart((prev) => {
+   194→   194→      const next = [...prev]
+   195→   195→      next[idx] = { ...next[idx], notes }
+   196→   196→      return next
+   197→   197→    })
+   198→   198→  }
+   199→   199→
+   200→   200→  function removeFromCart(idx: number) {
+   201→   201→    setCart((prev) => {
+   202→   202→      const next = [...prev]
+   203→   203→      next.splice(idx, 1)
+   204→   204→      return next
+   205→   205→    })
+   206→   206→  }
+   207→   207→
+   208→   208→  function clearCart() {
+   209→   209→    setCart([])
+   210→   210→    setOrderNotes('')
+   211→   211→    setCustomerName('')
+   212→   212→  }
+   213→   213→
+   214→   214→  async function handleSendOrder() {
+   215→   215→    if (cart.length === 0) {
+   216→   216→      toast.error('Sepet boş')
+   217→   217→      return
+   218→   218→    }
+   219→   219→    if (orderType === 'dine_in' && !selectedTableId) {
+   220→   220→      toast.error('Masa seçimi gerekli')
+   221→   221→      return
+   222→   222→    }
+   223→   223→    setSending(true)
+   224→   224→    try {
+   225→   225→      await apiPost(`/api/cafe/${cafeId}/orders`, {
+   226→   226→        tableId: orderType === 'dine_in' ? selectedTableId : null,
+   227→   227→        type: orderType,
+   228→   228→        customerName: customerName || undefined,
+   229→   229→        notes: orderNotes || undefined,
+   230→   230→        items: cart.map((c) => ({
+   231→   231→          menuItemId: c.menuItem.id,
+   232→   232→          qty: c.qty,
+   233→   233→          notes: c.notes || undefined,
+   234→   234→        })),
+   235→   235→      })
+   236→   236→      qc.invalidateQueries({ queryKey: ['cafe-orders', cafeId] })
+   237→   237→      qc.invalidateQueries({ queryKey: ['cafe-tables', cafeId] })
+   238→   238→      toast.success('Sipariş gönderildi')
+   239→   239→      clearCart()
+   240→   240→      setSelectedTableId(null)
+   241→   241→      setTab('active')
+   242→   242→    } catch (e) {
+   243→   243→      toast.error(e instanceof Error ? e.message : 'Sipariş gönderilemedi')
+   244→   244→    } finally {
+   245→   245→      setSending(false)
+   246→   246→    }
+   247→   247→  }
+   248→   248→
+   249→   249→  async function openOrderDetail(o: CafeOrder) {
+   250→   250→    try {
+   251→   251→      const detail = await apiGet<CafeOrder>(`/api/cafe/${cafeId}/orders/${o.id}`)
+   252→   252→      setActiveOrder(detail)
+   253→   253→      setActiveOrderDialog(true)
+   254→   254→    } catch (e) {
+   255→   255→      toast.error(e instanceof Error ? e.message : 'Sipariş yüklenemedi')
+   256→   256→    }
+   257→   257→  }
+   258→   258→
+   259→   259→  async function handleCancelOrder() {
+   260→   260→    if (!cancelTarget) return
+   261→   261→    try {
+   262→   262→      await apiDelete(`/api/cafe/${cafeId}/orders/${cancelTarget.id}`)
+   263→   263→      qc.invalidateQueries({ queryKey: ['cafe-orders', cafeId] })
+   264→   264→      qc.invalidateQueries({ queryKey: ['cafe-tables', cafeId] })
+   265→   265→      toast.success('Sipariş iptal edildi')
+   266→   266→      setCancelTarget(null)
+   267→   267→      if (activeOrder?.id === cancelTarget.id) setActiveOrderDialog(false)
+   268→   268→    } catch (e) {
+   269→   269→      toast.error(e instanceof Error ? e.message : 'İptal başarısız')
+   270→   270→    }
+   271→   271→  }
+   272→   272→
+   273→   273→  return (
+   274→   274→    <div className="space-y-4">
+   275→   275→      <Tabs value={tab} onValueChange={(v) => setTab(v as 'new' | 'active')}>
+   276→   276→        <TabsList>
+   277→   277→          <TabsTrigger value="new" className="text-xs sm:text-sm">
+   278→   278→            <Plus className="w-3.5 h-3.5 mr-1" />
+   279→   279→            Yeni Sipariş
+   280→   280→          </TabsTrigger>
+   281→   281→          <TabsTrigger value="active" className="text-xs sm:text-sm">
+   282→   282→            <Receipt className="w-3.5 h-3.5 mr-1" />
+   283→   283→            Aktif Siparişler
+   284→   284→            {orders.length > 0 && (
+   285→   285→              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+   286→   286→                {orders.length}
+   287→   287→              </span>
+   288→   288→            )}
+   289→   289→          </TabsTrigger>
+   290→   290→        </TabsList>
+   291→   291→      </Tabs>
+   292→   292→
+   293→   293→      {/* New order tab */}
+   294→   294→      {tab === 'new' && (
+   295→   295→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   296→   296→          {/* Left: menu */}
+   297→   297→          <div className="lg:col-span-2 space-y-3">
+   298→   298→            {/* Order type selector */}
+   299→   299→            <Card>
+   300→   300→              <CardContent className="p-3">
+   301→   301→                <div className="space-y-3">
+   302→   302→                  <div className="grid grid-cols-3 gap-2">
+   303→   303→                    {[
+   304→   304→                      { v: 'dine_in', label: 'Masa', icon: Table2 },
+   305→   305→                      { v: 'takeaway', label: 'Paket', icon: Receipt },
+   306→   306→                      { v: 'delivery', label: 'Gel-Al', icon: User },
+   307→   307→                    ].map((t) => (
+   308→   308→                      <button
+   309→   309→                        key={t.v}
+   310→   310→                        onClick={() => setOrderType(t.v as 'dine_in' | 'takeaway' | 'delivery')}
+   311→   311→                        className={cn(
+   312→   312→                          'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all',
+   313→   313→                          orderType === t.v
+   314→   314→                            ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
+   315→   315→                            : 'border-border hover:border-emerald-300',
+   316→   316→                        )}
+   317→   317→                      >
+   318→   318→                        <t.icon className="w-4 h-4" />
+   319→   319→                        <span className="text-xs">{t.label}</span>
+   320→   320→                      </button>
+   321→   321→                    ))}
+   322→   322→                  </div>
+   323→   323→
+   324→   324→                  {orderType === 'dine_in' && (
+   325→   325→                    <div>
+   326→   326→                      <Label className="text-xs text-muted-foreground">Masa</Label>
+   327→   327→                      {tablesLoading ? (
+   328→   328→                        <Skeleton className="h-9 w-full mt-1" />
+   329→   329→                      ) : tables.length === 0 ? (
+   330→   330→                        <p className="text-xs text-amber-600 mt-1">Önce kafe yöneticisi masa eklemeli.</p>
+   331→   331→                      ) : (
+   332→   332→                        <Select value={selectedTableId ?? ''} onValueChange={setSelectedTableId}>
+   333→   333→                          <SelectTrigger className="mt-1">
+   334→   334→                            <SelectValue placeholder="Masa seçin..." />
+   335→   335→                          </SelectTrigger>
+   336→   336→                          <SelectContent>
+   337→   337→                            {tables
+   338→   338→                              .filter((t) => t.status !== 'siparis' || t.id === selectedTableId)
+   339→   339→                              .map((t) => (
+   340→   340→                                <SelectItem key={t.id} value={t.id} disabled={t.status === 'siparis' && t.id !== selectedTableId}>
+   341→   341→                                  Masa {t.number} {t.status === 'siparis' ? '(dolu)' : `· ${t.status}`}
+   342→   342→                                </SelectItem>
+   343→   343→                              ))}
+   344→   344→                          </SelectContent>
+   345→   345→                        </Select>
+   346→   346→                      )}
+   347→   347→                    </div>
+   348→   348→                  )}
+   349→   349→
+   350→   350→                  {(orderType === 'takeaway' || orderType === 'delivery') && (
+   351→   351→                    <div>
+   352→   352→                      <Label className="text-xs text-muted-foreground">Müşteri Adı</Label>
+   353→   353→                      <Input
+   354→   354→                        value={customerName}
+   355→   355→                        onChange={(e) => setCustomerName(e.target.value)}
+   356→   356→                        placeholder="Müşteri adı (opsiyonel)"
+   357→   357→                        className="mt-1 h-9"
+   358→   358→                      />
+   359→   359→                    </div>
+   360→   360→                  )}
+   361→   361→                </div>
+   362→   362→              </CardContent>
+   363→   363→            </Card>
+   364→   364→
+   365→   365→            {/* Menu items */}
+   366→   366→            <Card>
+   367→   367→              <CardContent className="p-3">
+   368→   368→                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+   369→   369→                  Menü
+   370→   370→                </div>
+   371→   371→                {menuLoading ? (
+   372→   372→                  <div className="space-y-2">
+   373→   373→                    {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+   374→   374→                  </div>
+   375→   375→                ) : allItems.length === 0 ? (
+   376→   376→                  <div className="text-center py-8 text-sm text-muted-foreground">
+   377→   377→                    <Coffee className="w-8 h-8 mx-auto mb-2 opacity-50" />
+   378→   378→                    Menüde ürün yok
+   379→   379→                  </div>
+   380→   380→                ) : (
+   381→   381→                  <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scroll pr-1">
+   382→   382→                    {categories.map((cat) => {
+   383→   383→                      const items = cat.items.filter((i) => i.isAvailable)
+   384→   384→                      if (items.length === 0) return null
+   385→   385→                      return (
+   386→   386→                        <div key={cat.id}>
+   387→   387→                          <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground mb-2 px-1">
+   388→   388→                            {cat.icon ? <span>{cat.icon}</span> : <Coffee className="w-3.5 h-3.5" />}
+   389→   389→                            {cat.name}
+   390→   390→                            <Badge variant="outline" className="text-[10px] h-4">{items.length}</Badge>
+   391→   391→                          </div>
+   392→   392→                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+   393→   393→                            {items.map((item) => {
+   394→   394→                              const Icon = STATION_ICON[item.station] ?? Coffee
+   395→   395→                              return (
+   396→   396→                                <button
+   397→   397→                                  key={item.id}
+   398→   398→                                  onClick={() => addToCart(item)}
+   399→   399→                                  className="group p-2.5 rounded-lg border border-border hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 text-left transition-all"
+   400→   400→                                >
+   401→   401→                                  <div className="flex items-start gap-2">
+   402→   402→                                    <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center shrink-0 overflow-hidden">
+   403→   403→                                      {item.photo ? (
+   404→   404→                                        // eslint-disable-next-line @next/next/no-img-element
+   405→   405→                                        <img src={item.photo} alt={item.name} className="w-full h-full object-cover" />
+   406→   406→                                      ) : (
+   407→   407→                                        <Icon className="w-4 h-4 text-muted-foreground" />
+   408→   408→                                      )}
+   409→   409→                                    </div>
+   410→   410→                                    <div className="flex-1 min-w-0">
+   411→   411→                                      <div className="text-xs font-medium leading-tight truncate">{item.name}</div>
+   412→   412→                                      <div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
+   413→   413→                                        {formatCurrency(item.price, item.currency)}
+   414→   414→                                      </div>
+   415→   415→                                    </div>
+   416→   416→                                  </div>
+   417→   417→                                </button>
+   418→   418→                              )
+   419→   419→                            })}
+   420→   420→                          </div>
+   421→   421→                        </div>
+   422→   422→                      )
+   423→   423→                    })}
+   424→   424→                  </div>
+   425→   425→                )}
+   426→   426→              </CardContent>
+   427→   427→            </Card>
+   428→   428→          </div>
+   429→   429→
+   430→   430→          {/* Right: cart */}
+   431→   431→          <Card className="lg:sticky lg:top-4 h-fit">
+   432→   432→            <CardContent className="p-3">
+   433→   433→              <div className="flex items-center justify-between mb-3">
+   434→   434→                <div className="flex items-center gap-2">
+   435→   435→                  <ShoppingCart className="w-4 h-4 text-emerald-600" />
+   436→   436→                  <span className="text-sm font-semibold">Sepet</span>
+   437→   437→                  {cart.length > 0 && (
+   438→   438→                    <Badge variant="outline" className="text-[10px] h-5">{cart.length}</Badge>
+   439→   439→                  )}
+   440→   440→                </div>
+   441→   441→                {cart.length > 0 && (
+   442→   442→                  <Button size="sm" variant="ghost" onClick={clearCart} className="h-7 text-xs text-red-600 hover:text-red-700">
+   443→   443→                    <Trash2 className="w-3 h-3 mr-1" />
+   444→   444→                    Temizle
+   445→   445→                  </Button>
+   446→   446→                )}
+   447→   447→              </div>
+   448→   448→
+   449→   449→              {cart.length === 0 ? (
+   450→   450→                <div className="text-center py-8 text-sm text-muted-foreground">
+   451→   451→                  <ShoppingCart className="w-8 h-8 mx-auto mb-2 opacity-50" />
+   452→   452→                  Sepet boş
+   453→   453→                </div>
+   454→   454→              ) : (
+   455→   455→                <div className="space-y-2 max-h-[40vh] overflow-y-auto custom-scroll">
+   456→   456→                  {cart.map((c, idx) => {
+   457→   457→                    const Icon = STATION_ICON[c.menuItem.station] ?? Coffee
+   458→   458→                    return (
+   459→   459→                      <div key={idx} className="p-2 rounded-lg bg-muted/50">
+   460→   460→                        <div className="flex items-start gap-2">
+   461→   461→                          <Icon className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
+   462→   462→                          <div className="flex-1 min-w-0">
+   463→   463→                            <div className="flex items-start justify-between gap-2">
+   464→   464→                              <span className="text-xs font-medium leading-tight">{c.menuItem.name}</span>
+   465→   465→                              <button
+   466→   466→                                onClick={() => removeFromCart(idx)}
+   467→   467→                                className="text-red-500 hover:text-red-700 shrink-0"
+   468→   468→                              >
+   469→   469→                                <X className="w-3.5 h-3.5" />
+   470→   470→                              </button>
+   471→   471→                            </div>
+   472→   472→                            <div className="text-[10px] text-muted-foreground">
+   473→   473→                              {formatCurrency(c.menuItem.price, c.menuItem.currency)} × {c.qty} ={' '}
+   474→   474→                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+   475→   475→                                {formatCurrency(c.menuItem.price * c.qty, c.menuItem.currency)}
+   476→   476→                              </span>
+   477→   477→                            </div>
+   478→   478→                            <Input
+   479→   479→                              value={c.notes}
+   480→   480→                              onChange={(e) => updateNotes(idx, e.target.value)}
+   481→   481→                              placeholder="Not: az şekerli..."
+   482→   482→                              className="h-7 mt-1 text-[11px]"
+   483→   483→                            />
+   484→   484→                          </div>
+   485→   485→                        </div>
+   486→   486→                        <div className="flex items-center justify-end gap-1.5 mt-1.5">
+   487→   487→                          <Button
+   488→   488→                            size="sm"
+   489→   489→                            variant="outline"
+   490→   490→                            className="h-6 w-6 p-0"
+   491→   491→                            onClick={() => updateQty(idx, -1)}
+   492→   492→                          >
+   493→   493→                            <Minus className="w-3 h-3" />
+   494→   494→                          </Button>
+   495→   495→                          <span className="text-xs font-semibold w-6 text-center">{c.qty}</span>
+   496→   496→                          <Button
+   497→   497→                            size="sm"
+   498→   498→                            variant="outline"
+   499→   499→                            className="h-6 w-6 p-0"
+   500→   500→                            onClick={() => updateQty(idx, 1)}
+   501→   501→                          >
+   502→   502→                            <Plus className="w-3 h-3" />
+   503→   503→                          </Button>
+   504→   504→                        </div>
+   505→   505→                      </div>
+   506→   506→                    )
+   507→   507→                  })}
+   508→   508→                </div>
+   509→   509→              )}
+   510→   510→
+   511→   511→              {cart.length > 0 && (
+   512→   512→                <div className="space-y-2 mt-3 pt-3 border-t">
+   513→   513→                  <Input
+   514→   514→                    value={orderNotes}
+   515→   515→                    onChange={(e) => setOrderNotes(e.target.value)}
+   516→   516→                    placeholder="Sipariş notu (genel)"
+   517→   517→                    className="h-8 text-xs"
+   518→   518→                  />
+   519→   519→                  <div className="flex items-center justify-between">
+   520→   520→                    <span className="text-xs text-muted-foreground">Toplam</span>
+   521→   521→                    <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+   522→   522→                      {formatCurrency(cartTotal)}
+   523→   523→                    </span>
+   524→   524→                  </div>
+   525→   525→                  <Button
+   526→   526→                    onClick={handleSendOrder}
+   527→   527→                    disabled={sending || (orderType === 'dine_in' && !selectedTableId)}
+   528→   528→                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+   529→   529→                  >
+   530→   530→                    {sending ? (
+   531→   531→                      <>
+   532→   532→                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5" />
+   533→   533→                        Gönderiliyor...
+   534→   534→                      </>
+   535→   535→                    ) : (
+   536→   536→                      <>
+   537→   537→                        <Send className="w-4 h-4 mr-1.5" />
+   538→   538→                        Siparişi Gönder
+   539→   539→                      </>
+   540→   540→                    )}
+   541→   541→                  </Button>
+   542→   542→                </div>
+   543→   543→              )}
+   544→   544→            </CardContent>
+   545→   545→          </Card>
+   546→   546→        </div>
+   547→   547→      )}
+   548→   548→
+   549→   549→      {/* Active orders tab */}
+   550→   550→      {tab === 'active' && (
+   551→   551→        <div className="space-y-3">
+   552→   552→          {ordersLoading ? (
+   553→   553→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   554→   554→              {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-40" />)}
+   555→   555→            </div>
+   556→   556→          ) : orders.length === 0 ? (
+   557→   557→            <Card>
+   558→   558→              <CardContent className="p-12 text-center">
+   559→   559→                <Receipt className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
+   560→   560→                <h3 className="font-semibold mb-1">Aktif sipariş yok</h3>
+   561→   561→                <p className="text-sm text-muted-foreground">
+   562→   562→                  Tüm siparişler tamamlandı veya ödendi.
+   563→   563→                </p>
+   564→   564→              </CardContent>
+   565→   565→            </Card>
+   566→   566→          ) : (
+   567→   567→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   568→   568→              {orders.map((o) => {
+   569→   569→                const meta = ORDER_STATUS_META[o.status] ?? ORDER_STATUS_META.acik
+   570→   570→                return (
+   571→   571→                  <Card
+   572→   572→                    key={o.id}
+   573→   573→                    className={cn('cursor-pointer hover:shadow-md transition-shadow', meta.color.split(' ').filter(c => c.startsWith('border')).join(' '))}
+   574→   574→                  >
+   575→   575→                    <CardContent className="p-3" onClick={() => openOrderDetail(o)}>
+   576→   576→                      <div className="flex items-start justify-between mb-2">
+   577→   577→                        <div>
+   578→   578→                          <div className="font-bold text-sm">#{o.number}</div>
+   579→   579→                          <div className="text-[11px] text-muted-foreground">{formatDateTime(o.createdAt)}</div>
+   580→   580→                        </div>
+   581→   581→                        <Badge variant="outline" className={cn('text-[10px]', meta.color)}>
+   582→   582→                          <meta.icon className="w-3 h-3 mr-1" />
+   583→   583→                          {meta.label}
+   584→   584→                        </Badge>
+   585→   585→                      </div>
+   586→   586→                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+   587→   587→                        {o.type === 'dine_in' ? (
+   588→   588→                          <>
+   589→   589→                            <Table2 className="w-3.5 h-3.5" />
+   590→   590→                            Masa {o.table?.number ?? '—'}
+   591→   591→                          </>
+   592→   592→                        ) : o.type === 'takeaway' ? (
+   593→   593→                          <>
+   594→   594→                            <Receipt className="w-3.5 h-3.5" />
+   595→   595→                            Paket {o.customerName ? `· ${o.customerName}` : ''}
+   596→   596→                          </>
+   597→   597→                        ) : (
+   598→   598→                          <>
+   599→   599→                            <User className="w-3.5 h-3.5" />
+   600→   600→                            Gel-Al {o.customerName ? `· ${o.customerName}` : ''}
+   601→   601→                          </>
+   602→   602→                        )}
+   603→   603→                      </div>
+   604→   604→                      <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-2">
+   605→   605→                        {formatCurrency(o.total)}
+   606→   606→                      </div>
+   607→   607→                      <Button
+   608→   608→                        size="sm"
+   609→   609→                        variant="ghost"
+   610→   610→                        className="w-full mt-2 h-7 text-xs"
+   611→   611→                        onClick={(e) => { e.stopPropagation(); openOrderDetail(o) }}
+   612→   612→                      >
+   613→   613→                        Detay
+   614→   614→                        <ChevronRight className="w-3 h-3 ml-1" />
+   615→   615→                      </Button>
+   616→   616→                    </CardContent>
+   617→   617→                  </Card>
+   618→   618→                )
+   619→   619→              })}
+   620→   620→            </div>
+   621→   621→          )}
+   622→   622→        </div>
+   623→   623→      )}
+   624→   624→
+   625→   625→      {/* Order detail dialog */}
+   626→   626→      <Dialog open={activeOrderDialog} onOpenChange={setActiveOrderDialog}>
+   627→   627→        <DialogContent className="sm:max-w-lg">
+   628→   628→          <DialogHeader>
+   629→   629→            <DialogTitle className="flex items-center gap-2">
+   630→   630→              Sipariş #{activeOrder?.number}
+   631→   631→              {activeOrder && (
+   632→   632→                <Badge variant="outline" className={cn('text-[10px]', (ORDER_STATUS_META[activeOrder.status] ?? ORDER_STATUS_META.acik).color)}>
+   633→   633→                  {(ORDER_STATUS_META[activeOrder.status] ?? ORDER_STATUS_META.acik).label}
+   634→   634→                </Badge>
+   635→   635→              )}
+   636→   636→            </DialogTitle>
+   637→   637→            <DialogDescription>
+   638→   638→              {activeOrder && formatDateTime(activeOrder.createdAt)}
+   639→   639→            </DialogDescription>
+   640→   640→          </DialogHeader>
+   641→   641→          {activeOrder && (
+   642→   642→            <div className="space-y-3 max-h-[60vh] overflow-y-auto custom-scroll pr-1">
+   643→   643→              <div className="grid grid-cols-2 gap-3 text-xs">
+   644→   644→                <div>
+   645→   645→                  <span className="text-muted-foreground">Tip:</span>{' '}
+   646→   646→                  <span className="font-medium">
+   647→   647→                    {activeOrder.type === 'dine_in' ? 'Masa' : activeOrder.type === 'takeaway' ? 'Paket' : 'Gel-Al'}
+   648→   648→                  </span>
+   649→   649→                </div>
+   650→   650→                <div>
+   651→   651→                  <span className="text-muted-foreground">Masa:</span>{' '}
+   652→   652→                  <span className="font-medium">{activeOrder.table?.number ?? '—'}</span>
+   653→   653→                </div>
+   654→   654→                {activeOrder.customerName && (
+   655→   655→                  <div>
+   656→   656→                    <span className="text-muted-foreground">Müşteri:</span>{' '}
+   657→   657→                    <span className="font-medium">{activeOrder.customerName}</span>
+   658→   658→                  </div>
+   659→   659→                )}
+   660→   660→              </div>
+   661→   661→              {activeOrder.notes && (
+   662→   662→                <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-xs text-amber-800 dark:text-amber-200">
+   663→   663→                  <AlertCircle className="w-3.5 h-3.5 inline mr-1" />
+   664→   664→                  {activeOrder.notes}
+   665→   665→                </div>
+   666→   666→              )}
+   667→   667→              <div className="space-y-1.5">
+   668→   668→                {activeOrder.items?.map((it) => {
+   669→   669→                  const Icon = STATION_ICON[it.station] ?? Coffee
+   670→   670→                  return (
+   671→   671→                    <div key={it.id} className="flex items-start gap-2 p-2 rounded-lg bg-muted/50">
+   672→   672→                      <Icon className="w-3.5 h-3.5 mt-0.5 text-muted-foreground shrink-0" />
+   673→   673→                      <div className="flex-1 min-w-0">
+   674→   674→                        <div className="flex items-start justify-between gap-2">
+   675→   675→                          <span className="text-xs font-medium">{it.name}</span>
+   676→   676→                          <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">
+   677→   677→                            {formatCurrency(it.unitPrice * it.qty)}
+   678→   678→                          </span>
+   679→   679→                        </div>
+   680→   680→                        <div className="text-[10px] text-muted-foreground">
+   681→   681→                          {it.qty} × {formatCurrency(it.unitPrice)}
+   682→   682→                        </div>
+   683→   683→                        {it.notes && (
+   684→   684→                          <div className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">Not: {it.notes}</div>
+   685→   685→                        )}
+   686→   686→                      </div>
+   687→   687→                    </div>
+   688→   688→                  )
+   689→   689→                })}
+   690→   690→              </div>
+   691→   691→              <div className="flex items-center justify-between pt-2 border-t">
+   692→   692→                <span className="text-sm font-semibold">Toplam</span>
+   693→   693→                <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+   694→   694→                  {formatCurrency(activeOrder.total)}
+   695→   695→                </span>
+   696→   696→              </div>
+   697→   697→              {activeOrder.status !== 'odendi' && activeOrder.status !== 'iptal' && (
+   698→   698→                <Button
+   699→   699→                  variant="outline"
+   700→   700→                  className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+   701→   701→                  onClick={() => setCancelTarget(activeOrder)}
+   702→   702→                >
+   703→   703→                  <X className="w-4 h-4 mr-1.5" />
+   704→   704→                  Siparişi İptal Et
+   705→   705→                </Button>
+   706→   706→              )}
+   707→   707→            </div>
+   708→   708→          )}
+   709→   709→        </DialogContent>
+   710→   710→      </Dialog>
+   711→   711→
+   712→   712→      {/* Cancel confirm */}
+   713→   713→      <AlertDialog
+   714→   714→        open={!!cancelTarget}
+   715→   715→        onOpenChange={(o) => { if (!o) setCancelTarget(null) }}
+   716→   716→      >
+   717→   717→        <AlertDialogContent>
+   718→   718→          <AlertDialogHeader>
+   719→   719→            <AlertDialogTitle>Sipariş iptal edilsin mi?</AlertDialogTitle>
+   720→   720→            <AlertDialogDescription>
+   721→   721→              #{cancelTarget?.number} numaralı sipariş iptal edilecek. Masa boşaltılacak.
+   722→   722→            </AlertDialogDescription>
+   723→   723→          </AlertDialogHeader>
+   724→   724→          <AlertDialogFooter>
+   725→   725→            <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+   726→   726→            <AlertDialogAction
+   727→   727→              onClick={handleCancelOrder}
+   728→   728→              className="bg-red-600 hover:bg-red-700 text-white"
+   729→   729→            >
+   730→   730→              İptal Et
+   731→   731→            </AlertDialogAction>
+   732→   732→          </AlertDialogFooter>
+   733→   733→        </AlertDialogContent>
+   734→   734→      </AlertDialog>
+   735→   735→    </div>
+   736→   736→  )
+   737→   737→}
+   738→   738→

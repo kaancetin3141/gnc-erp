@@ -1,7 +1,7 @@
 // ============================================================
 // GNC CRM — Chat Service (socket.io, mini-servis)
 // ============================================================
-// - PORT KESİN 3012 (sabit — env'den okuma YOK; Caddy XTransformPort kuralı)
+// - PORT KESİN 3003 (sabit — env'den okuma YOK; Caddy XTransformPort kuralı)
 // - Socket.io path '/' DEĞİŞMEZ (Caddy forwarding kuralı)
 // - Sadece YAYINCI: mesajlar REST (/api/messages) üzerinden yazılır,
 //   Next.js API route'u POST /internal/emit ile bu servise bildirir.
@@ -13,7 +13,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { Server } from 'socket.io'
 import { PrismaClient } from '@prisma/client'
 
-const PORT = 3012 // SABİT — ERP yardımcı servisi (3000-3007 aralığı ana ürünlere ayrıldı: 3001=ERP/CRM, 3002=randevu, 3003=KaloriAI, 3004=Fruit Storm, 3005=Cubiq)
+const PORT = 3005 // SABİT — Fruit Storm artık 3003'te (3003=customer oyun, 3002=customer-page, 3004=KaloriAI)
 const INTERNAL_SECRET = 'gnc-internal-chat-2026'
 
 const prisma = new PrismaClient()

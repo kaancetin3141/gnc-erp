@@ -1,28 +1,21 @@
 #!/bin/bash
-# GNC ERP/CRM — dev server çökerse yeniden başlat (sonsuz döngü).
-# NOT: yalnızca BU repoya (cwd) bağlı Next.js süreçlerini temizler —
-# aynı sunucuda koşan diğer servisler etkilenmez.
-cd "$(dirname "$0")" || exit 1
-
-PORT=3001
-
-cleanup_repo_procs() {
-  for pid in $(pgrep -f "next dev -p $PORT" 2>/dev/null) $(pgrep -f "next-server" 2>/dev/null); do
-    [ "$(readlink -f "/proc/$pid/cwd" 2>/dev/null)" = "$(pwd)" ] && kill -9 "$pid" 2>/dev/null
-  done
-}
+# Simple auto-restart — Next.js dev server'ı çökerse yeniden başlat
+cd /home/z/my-project
 
 while true; do
-  cleanup_repo_procs
+  # Önce eski process'leri temizle
+  pkill -9 -f "next dev" 2>/dev/null
+  pkill -9 -f "next-server" 2>/dev/null
+  pkill -9 -f "npm exec next" 2>/dev/null
   sleep 2
 
-  NODE_OPTIONS="--max-old-space-size=1024" NEXT_TELEMETRY_DISABLED=1 \
-    nohup bun run dev >> dev.log 2>&1 &
+  # Next.js'i başlat — bu sefer bash içinde, watchdog'la birlikte
+  NEXT_DISABLE_TURBOPACK=1 NODE_OPTIONS="--max-old-space-size=2048" NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3000 > dev.log 2>&1 &
   PID=$!
-  echo "[$(date '+%H:%M:%S')] dev server başlatıldı (PID $PID)"
+  echo "[$(date)] Started Next.js (PID: $PID)"
 
-  # Süreç ölünceye kadar bekle — ölünce döngü yeniden başlatır
-  wait "$PID"
-  echo "[$(date '+%H:%M:%S')] dev server sonlandı (exit $?) — 10 sn sonra yeniden başlatılıyor..."
-  sleep 10
+  # Process ölününe kadar bekle
+  wait $PID
+  echo "[$(date)] Process died (exit: $?), restarting in 5s..."
+  sleep 5
 done

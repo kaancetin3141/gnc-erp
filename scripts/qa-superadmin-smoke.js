@@ -1,6 +1,6 @@
 // QA smoke test — Superadmin platform-geneli görünürlük + rol regresyonu
 // Kullanım: node scripts/qa-superadmin-smoke.js
-const BASE = process.env.BASE || 'http://localhost:3001'
+const BASE = process.env.BASE || 'http://localhost:3000'
 
 async function login(email, password) {
   const r = await fetch(`${BASE}/api/auth`, {

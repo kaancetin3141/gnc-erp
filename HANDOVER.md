@@ -7,7 +7,7 @@
 
 - **Proje Adı**: GNC CRM + ERP Süperapp
 - **Teknoloji**: Next.js 16 (App Router) + TypeScript + Prisma + SQLite + shadcn/ui
-- **Port**: 3001 (dev server)
+- **Port**: 3000 (dev server)
 - **Veritabanı**: `db/custom.db` (SQLite)
 - **SDK**: z-ai-web-dev-sdk v0.0.18
 
@@ -17,10 +17,10 @@
 # 1. Sunucuyu başlat (her zaman bu komutla)
 cd /home/z/my-project
 pkill -9 -f "next" 2>/dev/null; sleep 3
-nohup bash -c 'cd /home/z/my-project && NODE_OPTIONS="--max-old-space-size=2048" NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3001' > dev.log 2>&1 &
+nohup bash -c 'cd /home/z/my-project && NODE_OPTIONS="--max-old-space-size=2048" NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3000' > dev.log 2>&1 &
 disown
 sleep 15
-curl -s -o /dev/null -w "HTTP: %{http_code}\n" http://localhost:3001/
+curl -s -o /dev/null -w "HTTP: %{http_code}\n" http://localhost:3000/
 
 # 2. Lint kontrolü
 npx eslint src/ --quiet
@@ -29,7 +29,7 @@ npx eslint src/ --quiet
 bun run db:push
 
 # 4. Demo verisi sıfırlama (gerekirse)
-curl -X POST http://localhost:3001/api/seed -H "Content-Type: application/json"
+curl -X POST http://localhost:3000/api/seed -H "Content-Type: application/json"
 ```
 
 ## ⚠️ Kritik Bilgiler
@@ -185,7 +185,7 @@ Stage Summary:
 ### Sunucu çöktü
 ```bash
 pkill -9 -f "next"; sleep 3
-nohup bash -c 'cd /home/z/my-project && NODE_OPTIONS="--max-old-space-size=2048" NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3001' > dev.log 2>&1 &
+nohup bash -c 'cd /home/z/my-project && NODE_OPTIONS="--max-old-space-size=2048" NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3000' > dev.log 2>&1 &
 disown; sleep 15
 ```
 

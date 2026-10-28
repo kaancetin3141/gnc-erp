@@ -1,0 +1,1028 @@
+     1→'use client'
+     2→
+     3→// Mesajlar — şirket içi gerçek zamanlı sohbet
+     4→// - Gerçek zamanlı: socket.io (mini-services/chat-service, port 3003 → useChatSocket)
+     5→//   Mesaj gönderimi REST POST /api/messages (kaynak doğruluk) + servis yayınlar.
+     6→// - Scroll: kimlik bazlı akıllı kaydırma — kullanıcı yukarıdayken otomatik
+     7→//   kaydırma yapılmaz, "↓ Yeni mesaj" pill butonu gösterilir.
+     8→
+     9→import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+    10→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+    11→import { toast } from 'sonner'
+    12→import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from '@/lib/api-client'
+    13→import { useAppStore } from '@/store/app-store'
+    14→import { useChatSocket, type ChatSocketStatus } from '@/lib/use-chat-socket'
+    15→import { cn } from '@/lib/utils'
+    16→import { initials, formatCurrency, formatDate } from '@/lib/format'
+    17→import type { Role } from '@/types'
+    18→import {
+    19→  Card, CardContent,
+    20→} from '@/components/ui/card'
+    21→import { Button } from '@/components/ui/button'
+    22→import { Input } from '@/components/ui/input'
+    23→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+    24→import { Badge } from '@/components/ui/badge'
+    25→import { ScrollArea } from '@/components/ui/scroll-area'
+    26→import {
+    27→  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+    28→} from '@/components/ui/tooltip'
+    29→import {
+    30→  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    31→  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+    32→} from '@/components/ui/dropdown-menu'
+    33→import {
+    34→  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+    35→} from '@/components/ui/dialog'
+    36→import {
+    37→  Send, ArrowLeft, MessageCircle, Search, Trash2, CheckCheck,
+    38→  Paperclip, ArrowDown, Copy, FileText, Package, FileSpreadsheet,
+    39→  ClipboardList, Loader2, type LucideIcon,
+    40→} from 'lucide-react'
+    41→
+    42→// ─── Types ───────────────────────────────────────────────────────
+    43→interface ChatMessage {
+    44→  id: string
+    45→  tenantId: string
+    46→  senderId: string
+    47→  receiverId: string | null
+    48→  content: string
+    49→  isRead: boolean
+    50→  createdAt: string
+    51→  sender: {
+    52→    id: string; name: string; avatarUrl: string | null
+    53→    title: string | null; role: Role
+    54→  }
+    55→  receiver: {
+    56→    id: string; name: string; avatarUrl: string | null
+    57→    title: string | null; role: Role
+    58→  } | null
+    59→}
+    60→
+    61→interface MessagesResponse {
+    62→  items: ChatMessage[]
+    63→  total: number
+    64→}
+    65→
+    66→interface UsersResponse {
+    67→  items: {
+    68→    id: string
+    69→    name: string
+    70→    email: string
+    71→    role: Role
+    72→    title: string | null
+    73→    avatarUrl: string | null
+    74→    phone: string | null
+    75→    status?: string
+    76→  }[]
+    77→  total: number
+    78→}
+    79→
+    80→type ChatDocumentType = 'Fatura' | 'Sipariş' | 'Proforma' | 'Teklif'
+    81→
+    82→interface ChatDocument {
+    83→  id: string
+    84→  number: string
+    85→  customerName: string
+    86→  total: number
+    87→  currency: string
+    88→  type: ChatDocumentType
+    89→  createdAt: string
+    90→}
+    91→
+    92→interface DocumentsResponse {
+    93→  items: ChatDocument[]
+    94→  total: number
+    95→}
+    96→
+    97→const ROLE_AVATAR_GRADIENT: Record<Role, string> = {
+    98→  superadmin: 'from-amber-500 to-orange-600',
+    99→  admin: 'from-emerald-500 to-teal-600',
+   100→  manager: 'from-violet-500 to-purple-600',
+   101→  rep: 'from-teal-500 to-cyan-600',
+   102→  readonly: 'from-slate-500 to-slate-600',
+   103→  stock: 'from-rose-500 to-pink-600',
+   104→}
+   105→
+   106→const DOC_TYPE_ICON: Record<ChatDocumentType, LucideIcon> = {
+   107→  Fatura: FileText,
+   108→  Sipariş: Package,
+   109→  Proforma: FileSpreadsheet,
+   110→  Teklif: ClipboardList,
+   111→}
+   112→
+   113→// Bağlantı durumu → rozet metni/renkleri
+   114→const CONNECTION_META: Record<ChatSocketStatus, { label: string; dot: string; cls: string }> = {
+   115→  online: {
+   116→    label: 'Anlık',
+   117→    dot: 'bg-emerald-500',
+   118→    cls: 'text-emerald-700 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 dark:border-emerald-900 dark:text-emerald-300',
+   119→  },
+   120→  connecting: {
+   121→    label: 'Bağlanıyor…',
+   122→    dot: 'bg-amber-500',
+   123→    cls: 'text-amber-700 border-amber-200 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-900 dark:text-amber-300',
+   124→  },
+   125→  offline: {
+   126→    label: 'Yenileniyor',
+   127→    dot: 'bg-slate-400',
+   128→    cls: 'text-slate-600 border-border bg-muted/40 dark:text-slate-300',
+   129→  },
+   130→}
+   131→
+   132→// ─── Helper: format time HH:mm ───────────────────────────────────
+   133→function fmtTime(dateStr: string): string {
+   134→  const d = new Date(dateStr)
+   135→  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+   136→}
+   137→
+   138→function fmtDateLabel(dateStr: string): string {
+   139→  const d = new Date(dateStr)
+   140→  const now = new Date()
+   141→  const isToday = d.toDateString() === now.toDateString()
+   142→  const yest = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+   143→  const isYesterday = d.toDateString() === yest.toDateString()
+   144→  if (isToday) return 'Bugün'
+   145→  if (isYesterday) return 'Dün'
+   146→  return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })
+   147→}
+   148→
+   149→// ─── Helper: mesaj içeriğinden belge eki çıkar ───────────────────
+   150→// Format: "📎 Fatura FAT-2026-001 — Müşteri Adı — 1.234,56 TRY"
+   151→function parseAttachment(content: string): { type: ChatDocumentType; number: string; rest: string } | null {
+   152→  const match = /^📎\s*(Fatura|Sipariş|Proforma|Teklif)\s+([A-Za-z0-9çğıöşüÇĞİÖŞÜ._-]+)\s*—\s*([\s\S]*)$/.exec(content)
+   153→  if (!match) return null
+   154→  return { type: match[1] as ChatDocumentType, number: match[2], rest: match[3].trim() }
+   155→}
+   156→
+   157→// ─── Main view ───────────────────────────────────────────────────
+   158→export function ChatView() {
+   159→  const { user } = useAppStore()
+   160→  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+   161→  const [mobileShowConversation, setMobileShowConversation] = useState(false)
+   162→  const [search, setSearch] = useState('')
+   163→
+   164→  // Gerçek zamanlı bağlantı (socket.io) — presence + typing + read receipt
+   165→  const { status: socketStatus, onlineUserIds, typingUserIds, sendTyping, sendReadReceipt } = useChatSocket()
+   166→
+   167→  // Aynı şirketteki kullanıcıları çek (mesajlaşma için)
+   168→  const { data: usersData, isLoading: usersLoading } = useQuery({
+   169→    queryKey: ['chat-users'],
+   170→    queryFn: () => apiGet<UsersResponse>('/api/messages?type=users'),
+   171→    enabled: !!user,
+   172→  })
+   173→
+   174→  // Tüm mesajları çek (currentUser ile ilgili) — sol panel preview + unread için
+   175→  // (gerçek zamanlı akış socket'tan gelir; polling yedek: 30sn)
+   176→  const { data: allMessagesData } = useQuery({
+   177→    queryKey: ['all-messages'],
+   178→    queryFn: () => apiGet<MessagesResponse>('/api/messages?limit=200'),
+   179→    enabled: !!user,
+   180→    refetchInterval: 30_000,
+   181→  })
+   182→
+   183→  // Seçili kullanıcı ile 1-1 sohbet mesajları (polling yedek: 30sn)
+   184→  const { data: conversationData, isLoading: conversationLoading } = useQuery({
+   185→    queryKey: ['conversation', selectedUserId],
+   186→    queryFn: () => apiGet<MessagesResponse>(`/api/messages?userId=${selectedUserId}&limit=200`),
+   187→    enabled: !!user && !!selectedUserId,
+   188→    refetchInterval: 30_000,
+   189→  })
+   190→
+   191→  const allMessages = useMemo(() => allMessagesData?.items ?? [], [allMessagesData])
+   192→  const colleagues = useMemo(() => {
+   193→    let list = (usersData?.items ?? []).filter(
+   194→      (u) => u.id !== user?.id,
+   195→    )
+   196→    if (search.trim()) {
+   197→      const q = search.toLowerCase().trim()
+   198→      list = list.filter(
+   199→        (u) => u.name.toLowerCase().includes(q) || (u.title ?? '').toLowerCase().includes(q),
+   200→      )
+   201→    }
+   202→    return list
+   203→  }, [usersData, user, search])
+   204→
+   205→  // Kullanıcı bazlı son mesaj ve okunmamış sayısı
+   206→  const userMeta = useMemo(() => {
+   207→    const meta = new Map<string, { lastMsg: ChatMessage; unread: number }>()
+   208→    for (const m of allMessages) {
+   209→      // currentUser ↔ otherUser
+   210→      const otherId = m.senderId === user?.id ? m.receiverId : m.senderId
+   211→      if (!otherId) continue
+   212→      const existing = meta.get(otherId)
+   213→      if (!existing || new Date(m.createdAt) > new Date(existing.lastMsg.createdAt)) {
+   214→        meta.set(otherId, {
+   215→          lastMsg: m,
+   216→          unread: existing?.unread ?? 0,
+   217→        })
+   218→      }
+   219→      // Unread: bana gelen ve okunmamış
+   220→      if (m.receiverId === user?.id && !m.isRead) {
+   221→        const cur = meta.get(otherId)
+   222→        if (cur) {
+   223→          cur.unread += 1
+   224→        }
+   225→      }
+   226→    }
+   227→    return meta
+   228→  }, [allMessages, user])
+   229→
+   230→  const handleSelectUser = (uid: string) => {
+   231→    setSelectedUserId(uid)
+   232→    setMobileShowConversation(true)
+   233→  }
+   234→
+   235→  const handleBack = () => {
+   236→    setMobileShowConversation(false)
+   237→  }
+   238→
+   239→  if (!user) {
+   240→    return (
+   241→      <div className="p-8 text-center text-sm text-muted-foreground">
+   242→        Oturum açmanız gerekir.
+   243→      </div>
+   244→    )
+   245→  }
+   246→
+   247→  const conn = CONNECTION_META[socketStatus]
+   248→
+   249→  return (
+   250→    <TooltipProvider delayDuration={200}>
+   251→      <div className="space-y-4 animate-fade-in">
+   252→        {/* Header */}
+   253→        <div className="flex items-start justify-between flex-wrap gap-3">
+   254→          <div>
+   255→            <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   256→              <MessageCircle className="w-6 h-6 text-emerald-600" />
+   257→              <span className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 bg-clip-text text-transparent">
+   258→                Mesajlar
+   259→              </span>
+   260→            </h2>
+   261→            <p className="text-sm text-muted-foreground mt-0.5">
+   262→              Şirket içi anlık mesajlaşma — {colleagues.length} meslektaşınla iletişim kur.
+   263→            </p>
+   264→          </div>
+   265→          {/* Bağlantı göstergesi */}
+   266→          <Badge variant="outline" className={cn('gap-1.5 font-normal', conn.cls)}>
+   267→            <span
+   268→              className={cn(
+   269→                'w-1.5 h-1.5 rounded-full',
+   270→                conn.dot,
+   271→                socketStatus === 'online' && 'animate-pulse',
+   272→              )}
+   273→            />
+   274→            {conn.label}
+   275→          </Badge>
+   276→        </div>
+   277→
+   278→        <Card className="overflow-hidden">
+   279→          <CardContent className="p-0">
+   280→            <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[320px_1fr] h-[70vh] min-h-[520px]">
+   281→              {/* Sol panel — kullanıcı listesi */}
+   282→              <div
+   283→                className={cn(
+   284→                  'border-r flex flex-col bg-muted/20',
+   285→                  mobileShowConversation && selectedUserId ? 'hidden md:flex' : 'flex',
+   286→                )}
+   287→              >
+   288→                <div className="p-3 border-b bg-background">
+   289→                  <div className="relative">
+   290→                    <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+   291→                    <Input
+   292→                      placeholder="Meslektaş ara…"
+   293→                      value={search}
+   294→                      onChange={(e) => setSearch(e.target.value)}
+   295→                      className="pl-9 h-9 text-sm"
+   296→                    />
+   297→                  </div>
+   298→                </div>
+   299→                <ScrollArea className="flex-1">
+   300→                  <div className="p-1.5">
+   301→                    {usersLoading ? (
+   302→                      [...Array(5)].map((_, i) => (
+   303→                        <div key={i} className="p-2.5 animate-pulse">
+   304→                          <div className="flex items-center gap-2.5">
+   305→                            <div className="w-10 h-10 rounded-full bg-muted" />
+   306→                            <div className="flex-1 space-y-1.5">
+   307→                              <div className="h-3 w-24 bg-muted rounded" />
+   308→                              <div className="h-2.5 w-32 bg-muted rounded" />
+   309→                            </div>
+   310→                          </div>
+   311→                        </div>
+   312→                      ))
+   313→                    ) : colleagues.length === 0 ? (
+   314→                      <div className="p-8 text-center text-xs text-muted-foreground">
+   315→                        <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
+   316→                        Meslektaş bulunamadı.
+   317→                      </div>
+   318→                    ) : (
+   319→                      colleagues.map((u) => {
+   320→                        const meta = userMeta.get(u.id)
+   321→                        const unread = meta?.unread ?? 0
+   322→                        const isSelected = selectedUserId === u.id
+   323→                        const online = onlineUserIds.has(u.id) // gerçek presence
+   324→                        return (
+   325→                          <button
+   326→                            key={u.id}
+   327→                            onClick={() => handleSelectUser(u.id)}
+   328→                            className={cn(
+   329→                              'w-full flex items-center gap-2.5 p-2.5 rounded-lg transition-colors text-left',
+   330→                              isSelected
+   331→                                ? 'bg-emerald-50 dark:bg-emerald-950/30'
+   332→                                : 'hover:bg-muted/60',
+   333→                            )}
+   334→                          >
+   335→                            <div className="relative shrink-0">
+   336→                              <Avatar className="w-10 h-10">
+   337→                                {u.avatarUrl ? <AvatarImage src={u.avatarUrl} alt={u.name} /> : null}
+   338→                                <AvatarFallback
+   339→                                  className={cn(
+   340→                                    'bg-gradient-to-br text-white text-xs font-semibold',
+   341→                                    ROLE_AVATAR_GRADIENT[u.role],
+   342→                                  )}
+   343→                                >
+   344→                                  {initials(u.name)}
+   345→                                </AvatarFallback>
+   346→                              </Avatar>
+   347→                              {online && (
+   348→                                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-background" />
+   349→                              )}
+   350→                            </div>
+   351→                            <div className="flex-1 min-w-0">
+   352→                              <div className="flex items-center justify-between gap-2">
+   353→                                <span className="text-sm font-medium truncate">{u.name}</span>
+   354→                                {meta && (
+   355→                                  <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
+   356→                                    {fmtTime(meta.lastMsg.createdAt)}
+   357→                                  </span>
+   358→                                )}
+   359→                              </div>
+   360→                              <div className="flex items-center justify-between gap-2 mt-0.5">
+   361→                                <span className="text-xs text-muted-foreground truncate">
+   362→                                  {meta
+   363→                                    ? (meta.lastMsg.senderId === user.id ? 'Sen: ' : '') + meta.lastMsg.content
+   364→                                    : u.title ?? '—'}
+   365→                                </span>
+   366→                                {unread > 0 && (
+   367→                                  <Badge className="unread-pulse shrink-0 h-4 px-1.5 text-[10px] bg-emerald-600 text-white hover:bg-emerald-600">
+   368→                                    {unread}
+   369→                                  </Badge>
+   370→                                )}
+   371→                              </div>
+   372→                            </div>
+   373→                          </button>
+   374→                        )
+   375→                      })
+   376→                    )}
+   377→                  </div>
+   378→                </ScrollArea>
+   379→              </div>
+   380→
+   381→              {/* Sağ panel — sohbet */}
+   382→              <div
+   383→                className={cn(
+   384→                  'relative flex flex-col bg-background',
+   385→                  !mobileShowConversation && selectedUserId ? 'hidden md:flex' : 'flex',
+   386→                )}
+   387→              >
+   388→                {selectedUserId ? (
+   389→                  <ConversationPanel
+   390→                    otherUser={colleagues.find((u) => u.id === selectedUserId) ?? null}
+   391→                    messages={conversationData?.items ?? []}
+   392→                    loading={conversationLoading}
+   393→                    currentUserId={user.id}
+   394→                    onlineUserIds={onlineUserIds}
+   395→                    isTyping={typingUserIds.has(selectedUserId)}
+   396→                    sendTyping={sendTyping}
+   397→                    sendReadReceipt={sendReadReceipt}
+   398→                    onBack={handleBack}
+   399→                  />
+   400→                ) : (
+   401→                  <EmptyConversation />
+   402→                )}
+   403→              </div>
+   404→            </div>
+   405→          </CardContent>
+   406→        </Card>
+   407→      </div>
+   408→    </TooltipProvider>
+   409→  )
+   410→}
+   411→
+   412→// ─── Empty state ─────────────────────────────────────────────────
+   413→function EmptyConversation() {
+   414→  return (
+   415→    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+   416→      <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center mb-4">
+   417→        <MessageCircle className="w-8 h-8 text-emerald-600" />
+   418→      </div>
+   419→      <h3 className="font-semibold text-base mb-1">Sohbet başlat</h3>
+   420→      <p className="text-sm text-muted-foreground max-w-xs">
+   421→        Bir kullanıcı seçin veya mesaj gönderin. Meslektaşlarınla anlık olarak iletişim kurabilirsin.
+   422→      </p>
+   423→    </div>
+   424→  )
+   425→}
+   426→
+   427→// ─── Belge seçici diyaloğu (gerçek kayıtlar, aramalı) ────────────
+   428→function DocumentPickerDialog({
+   429→  open,
+   430→  onOpenChange,
+   431→  initialType,
+   432→  onPick,
+   433→}: {
+   434→  open: boolean
+   435→  onOpenChange: (open: boolean) => void
+   436→  initialType: ChatDocumentType
+   437→  onPick: (doc: ChatDocument) => void
+   438→}) {
+   439→  const [typeFilter, setTypeFilter] = useState<ChatDocumentType | 'Tümü'>(initialType)
+   440→  const [search, setSearch] = useState('')
+   441→
+   442→  useEffect(() => {
+   443→    if (open) {
+   444→      setTypeFilter(initialType)
+   445→      setSearch('')
+   446→    }
+   447→  }, [open, initialType])
+   448→
+   449→  const { data, isLoading } = useQuery({
+   450→    queryKey: ['chat-documents'],
+   451→    queryFn: () => apiGet<DocumentsResponse>('/api/messages?type=documents'),
+   452→    enabled: open,
+   453→    staleTime: 30_000,
+   454→  })
+   455→
+   456→  const filtered = useMemo(() => {
+   457→    let list = data?.items ?? []
+   458→    if (typeFilter !== 'Tümü') list = list.filter((d) => d.type === typeFilter)
+   459→    if (search.trim()) {
+   460→      const q = search.toLowerCase().trim()
+   461→      list = list.filter(
+   462→        (d) =>
+   463→          d.number.toLowerCase().includes(q) ||
+   464→          d.customerName.toLowerCase().includes(q),
+   465→      )
+   466→    }
+   467→    return list
+   468→  }, [data, typeFilter, search])
+   469→
+   470→  const types: (ChatDocumentType | 'Tümü')[] = ['Tümü', 'Fatura', 'Sipariş', 'Proforma', 'Teklif']
+   471→
+   472→  return (
+   473→    <Dialog open={open} onOpenChange={onOpenChange}>
+   474→      <DialogContent className="sm:max-w-md">
+   475→        <DialogHeader>
+   476→          <DialogTitle>Belge Gönder</DialogTitle>
+   477→          <DialogDescription>
+   478→            Gerçek bir belge seç — numarası mesaja ek olarak gider.
+   479→          </DialogDescription>
+   480→        </DialogHeader>
+   481→
+   482→        <div className="flex flex-wrap gap-1.5">
+   483→          {types.map((t) => (
+   484→            <button
+   485→              key={t}
+   486→              type="button"
+   487→              onClick={() => setTypeFilter(t)}
+   488→              className={cn(
+   489→                'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+   490→                typeFilter === t
+   491→                  ? 'border-emerald-600 bg-emerald-600 text-white'
+   492→                  : 'border-border text-muted-foreground hover:bg-muted',
+   493→              )}
+   494→            >
+   495→              {t}
+   496→            </button>
+   497→          ))}
+   498→        </div>
+   499→
+   500→        <div className="relative">
+   501→          <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+   502→          <Input
+   503→            value={search}
+   504→            onChange={(e) => setSearch(e.target.value)}
+   505→            placeholder="Numara veya müşteri ara…"
+   506→            className="pl-9 h-9 text-sm"
+   507→          />
+   508→        </div>
+   509→
+   510→        <div className="max-h-80 overflow-y-auto custom-scroll space-y-1.5 -mx-1 px-1">
+   511→          {isLoading ? (
+   512→            <div className="py-8 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+   513→              <Loader2 className="w-4 h-4 animate-spin" />
+   514→              Belgeler yükleniyor…
+   515→            </div>
+   516→          ) : filtered.length === 0 ? (
+   517→            <div className="py-8 text-center text-xs text-muted-foreground">
+   518→              Bu kriterde belge bulunamadı.
+   519→            </div>
+   520→          ) : (
+   521→            filtered.map((doc) => {
+   522→              const Icon = DOC_TYPE_ICON[doc.type] ?? FileText
+   523→              return (
+   524→                <button
+   525→                  key={`${doc.type}-${doc.id}`}
+   526→                  type="button"
+   527→                  onClick={() => onPick(doc)}
+   528→                  className="w-full flex items-center gap-3 rounded-lg border p-2.5 text-left hover:bg-muted/60 transition-colors"
+   529→                >
+   530→                  <span className="w-8 h-8 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center shrink-0">
+   531→                    <Icon className="w-4 h-4" />
+   532→                  </span>
+   533→                  <span className="flex-1 min-w-0">
+   534→                    <span className="block text-sm font-medium truncate">{doc.number}</span>
+   535→                    <span className="block text-xs text-muted-foreground truncate">
+   536→                      {doc.customerName} · {formatDate(doc.createdAt)}
+   537→                    </span>
+   538→                  </span>
+   539→                  <span className="text-xs font-semibold tabular-nums shrink-0">
+   540→                    {formatCurrency(doc.total, doc.currency)}
+   541→                  </span>
+   542→                </button>
+   543→              )
+   544→            })
+   545→          )}
+   546→        </div>
+   547→      </DialogContent>
+   548→    </Dialog>
+   549→  )
+   550→}
+   551→
+   552→// ─── Conversation panel ──────────────────────────────────────────
+   553→function ConversationPanel({
+   554→  otherUser,
+   555→  messages,
+   556→  loading,
+   557→  currentUserId,
+   558→  onlineUserIds,
+   559→  isTyping,
+   560→  sendTyping,
+   561→  sendReadReceipt,
+   562→  onBack,
+   563→}: {
+   564→  otherUser: UsersResponse['items'][0] | null
+   565→  messages: ChatMessage[]
+   566→  loading: boolean
+   567→  currentUserId: string
+   568→  onlineUserIds: ReadonlySet<string>
+   569→  isTyping: boolean
+   570→  sendTyping: (toUserId: string) => void
+   571→  sendReadReceipt: (senderId: string) => void
+   572→  onBack: () => void
+   573→}) {
+   574→  const qc = useQueryClient()
+   575→  const [input, setInput] = useState('')
+   576→  const [docPickerOpen, setDocPickerOpen] = useState(false)
+   577→  const [docPickerType, setDocPickerType] = useState<ChatDocumentType>('Fatura')
+   578→
+   579→  // ── Akıllı kaydırma state'leri ──
+   580→  const scrollRef = useRef<HTMLDivElement>(null)
+   581→  const atBottomRef = useRef(true) // kullanıcı altta mı? (alttan <120px)
+   582→  const forceScrollRef = useRef(false) // kendi mesajını gönderdi → her zaman en alta
+   583→  const [showJumpPill, setShowJumpPill] = useState(false)
+   584→  const [newBelowCount, setNewBelowCount] = useState(0)
+   585→
+   586→  // En alta kaydır — çift requestAnimationFrame ile (DOM paint'ten sonra)
+   587→  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+   588→    requestAnimationFrame(() => {
+   589→      requestAnimationFrame(() => {
+   590→        const el = scrollRef.current
+   591→        if (!el) return
+   592→        el.scrollTo({ top: el.scrollHeight, behavior })
+   593→        atBottomRef.current = true
+   594→        setShowJumpPill(false)
+   595→        setNewBelowCount(0)
+   596→      })
+   597→    })
+   598→  }, [])
+   599→
+   600→  // Kullanıcı kaydırınca pozisyonu izle (alttan >120px → otomatik kaydırma durur)
+   601→  const handleScroll = useCallback(() => {
+   602→    const el = scrollRef.current
+   603→    if (!el) return
+   604→    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+   605→    const atBottom = distance < 120
+   606→    atBottomRef.current = atBottom
+   607→    if (atBottom) {
+   608→      setShowJumpPill(false)
+   609→      setNewBelowCount(0)
+   610→    } else {
+   611→      setShowJumpPill(true)
+   612→    }
+   613→  }, [])
+   614→
+   615→  // Konuşma değişince (otherUser.id) anında en alta + göstergeleri sıfırla
+   616→  useEffect(() => {
+   617→    atBottomRef.current = true
+   618→    setShowJumpPill(false)
+   619→    setNewBelowCount(0)
+   620→    scrollToBottom('auto')
+   621→  }, [otherUser?.id, scrollToBottom])
+   622→
+   623→  // Mesaj listesi değiştiğinde (array identity + son mesaj id) kaydır:
+   624→  //  - kendi gönderdiğimiz mesaj → HER ZAMAN en alta
+   625→  //  - zaten alttaysak → sessizce takip et
+   626→  //  - yukarıda okuyorsak → KAYDIRMA, "yeni mesaj" sayacını artır
+   627→  const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : ''
+   628→  useEffect(() => {
+   629→    if (messages.length === 0) return
+   630→    if (forceScrollRef.current) {
+   631→      forceScrollRef.current = false
+   632→      scrollToBottom('smooth')
+   633→      return
+   634→    }
+   635→    const last = messages[messages.length - 1]
+   636→    if (atBottomRef.current) {
+   637→      scrollToBottom('auto')
+   638→    } else if (last.senderId !== currentUserId) {
+   639→      setNewBelowCount((c) => c + 1)
+   640→    }
+   641→  }, [messages, lastMessageId, currentUserId, scrollToBottom])
+   642→
+   643→  const sendMut = useMutation({
+   644→    mutationFn: (body: {
+   645→      receiverId: string
+   646→      content: string
+   647→      attachmentType?: string
+   648→      attachmentId?: string
+   649→      attachmentName?: string
+   650→    }) => apiPost<ChatMessage>('/api/messages', body),
+   651→    onSuccess: (msg) => {
+   652→      setInput('')
+   653→      // Optimistic enjeksiyon (socket event'i id ile tekilleştirir)
+   654→      if (otherUser?.id) {
+   655→        const conv = qc.getQueryData<MessagesResponse>(['conversation', otherUser.id])
+   656→        if (conv && !conv.items.some((m) => m.id === msg.id)) {
+   657→          qc.setQueryData<MessagesResponse>(['conversation', otherUser.id], {
+   658→            ...conv,
+   659→            items: [...conv.items, msg],
+   660→            total: conv.total + 1,
+   661→          })
+   662→        }
+   663→        const all = qc.getQueryData<MessagesResponse>(['all-messages'])
+   664→        if (all && !all.items.some((m) => m.id === msg.id)) {
+   665→          qc.setQueryData<MessagesResponse>(['all-messages'], {
+   666→            ...all,
+   667→            items: [...all.items, msg],
+   668→            total: all.total + 1,
+   669→          })
+   670→        }
+   671→      }
+   672→      qc.invalidateQueries({ queryKey: ['all-messages'] })
+   673→      qc.invalidateQueries({ queryKey: ['unread-messages'] })
+   674→    },
+   675→    onError: (e: ApiError) => {
+   676→      forceScrollRef.current = false
+   677→      toast.error('Mesaj gönderilemedi', { description: e.message })
+   678→    },
+   679→  })
+   680→
+   681→  const deleteMut = useMutation({
+   682→    mutationFn: (id: string) => apiDelete<{ success: boolean }>(`/api/messages/${id}`),
+   683→    onSuccess: () => {
+   684→      qc.invalidateQueries({ queryKey: ['all-messages'] })
+   685→      qc.invalidateQueries({ queryKey: ['conversation', otherUser?.id] })
+   686→      qc.invalidateQueries({ queryKey: ['unread-messages'] })
+   687→    },
+   688→    onError: (e: ApiError) => {
+   689→      toast.error('Mesaj silinemedi', { description: e.message })
+   690→    },
+   691→  })
+   692→
+   693→  const handleSend = () => {
+   694→    if (!input.trim() || !otherUser) return
+   695→    // Mesaj gönderince HER ZAMAN en alta (kullanıcı yukarıdayken bile)
+   696→    forceScrollRef.current = true
+   697→    scrollToBottom('smooth')
+   698→    sendMut.mutate({ receiverId: otherUser.id, content: input.trim() })
+   699→  }
+   700→
+   701→  // Gerçek belge gönder (fatura/sipariş/proforma/teklif — gerçek kayıtlar)
+   702→  const handleSendDocument = (doc: ChatDocument) => {
+   703→    if (!otherUser) return
+   704→    forceScrollRef.current = true
+   705→    scrollToBottom('smooth')
+   706→    sendMut.mutate({
+   707→      receiverId: otherUser.id,
+   708→      content: `📎 ${doc.type} ${doc.number} — ${doc.customerName} — ${formatCurrency(doc.total, doc.currency)}`,
+   709→      attachmentType: doc.type,
+   710→      attachmentId: doc.id,
+   711→      attachmentName: doc.number,
+   712→    })
+   713→    toast.success(`${doc.type} gönderildi`, {
+   714→      description: `${doc.number} · ${doc.customerName}`,
+   715→    })
+   716→    setDocPickerOpen(false)
+   717→  }
+   718→
+   719→  const handleKeyDown = (e: React.KeyboardEvent) => {
+   720→    if (e.key === 'Enter' && !e.shiftKey) {
+   721→      e.preventDefault()
+   722→      handleSend()
+   723→    }
+   724→  }
+   725→
+   726→  const handleDelete = (id: string) => {
+   727→    deleteMut.mutate(id)
+   728→  }
+   729→
+   730→  const copyToClipboard = (text: string) => {
+   731→    navigator.clipboard?.writeText(text).then(
+   732→      () => toast.success('Kopyalandı', { description: text }),
+   733→      () => toast.error('Kopyalanamadı'),
+   734→    )
+   735→  }
+   736→
+   737→  // ── Görüldü: gelen okunmamışları işaretle (PATCH = DB doğruluğu, socket = anında sinyal)
+   738→  const messagesRef = useRef(messages)
+   739→  useEffect(() => {
+   740→    messagesRef.current = messages
+   741→  }, [messages])
+   742→  const unreadCount = useMemo(
+   743→    () => messages.reduce((n, m) => n + (m.receiverId === currentUserId && !m.isRead ? 1 : 0), 0),
+   744→    [messages, currentUserId],
+   745→  )
+   746→  const otherId = otherUser?.id ?? null
+   747→  useEffect(() => {
+   748→    if (unreadCount === 0 || !otherId) return
+   749→    const mark = async () => {
+   750→      sendReadReceipt(otherId) // anında görüldü sinyali (socket)
+   751→      const targets = messagesRef.current.filter(
+   752→        (m) => m.receiverId === currentUserId && !m.isRead,
+   753→      )
+   754→      await Promise.all(
+   755→        targets.map((m) => apiPatch(`/api/messages/${m.id}`, {}).catch(() => null)),
+   756→      )
+   757→      qc.invalidateQueries({ queryKey: ['all-messages'] })
+   758→      qc.invalidateQueries({ queryKey: ['conversation', otherId] })
+   759→      qc.invalidateQueries({ queryKey: ['unread-messages'] })
+   760→    }
+   761→    const t = setTimeout(mark, 400)
+   762→    return () => clearTimeout(t)
+   763→  }, [unreadCount, otherId, currentUserId, qc, sendReadReceipt])
+   764→
+   765→  if (!otherUser) {
+   766→    return <EmptyConversation />
+   767→  }
+   768→
+   769→  // Group messages by date
+   770→  const groups: { label: string; messages: ChatMessage[] }[] = []
+   771→  let currentLabel = ''
+   772→  for (const m of messages) {
+   773→    const label = fmtDateLabel(m.createdAt)
+   774→    if (label !== currentLabel) {
+   775→      groups.push({ label, messages: [] })
+   776→      currentLabel = label
+   777→    }
+   778→    groups[groups.length - 1].messages.push(m)
+   779→  }
+   780→
+   781→  const online = onlineUserIds.has(otherUser.id)
+   782→
+   783→  return (
+   784→    <>
+   785→      {/* Header */}
+   786→      <div className="flex items-center gap-3 p-3 border-b bg-background">
+   787→        <Button
+   788→          variant="ghost"
+   789→          size="icon"
+   790→          className="md:hidden h-8 w-8"
+   791→          onClick={onBack}
+   792→        >
+   793→          <ArrowLeft className="w-4 h-4" />
+   794→        </Button>
+   795→        <div className="relative">
+   796→          <Avatar className="w-9 h-9">
+   797→            {otherUser.avatarUrl ? <AvatarImage src={otherUser.avatarUrl} alt={otherUser.name} /> : null}
+   798→            <AvatarFallback
+   799→              className={cn(
+   800→                'bg-gradient-to-br text-white text-xs font-semibold',
+   801→                ROLE_AVATAR_GRADIENT[otherUser.role],
+   802→              )}
+   803→            >
+   804→              {initials(otherUser.name)}
+   805→            </AvatarFallback>
+   806→          </Avatar>
+   807→          {online && (
+   808→            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-background" />
+   809→          )}
+   810→        </div>
+   811→        <div className="flex-1 min-w-0">
+   812→          <div className="text-sm font-semibold truncate">{otherUser.name}</div>
+   813→          <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+   814→            {otherUser.title && <span className="truncate">{otherUser.title}</span>}
+   815→            {otherUser.title && <span>·</span>}
+   816→            <span>{online ? 'Çevrimiçi' : 'Çevrimdışı'}</span>
+   817→          </div>
+   818→        </div>
+   819→      </div>
+   820→
+   821→      {/* Yazıyor göstergesi */}
+   822→      {isTyping && (
+   823→        <div className="flex items-center gap-1 px-4 py-1.5 border-b bg-emerald-50/60 dark:bg-emerald-950/20 text-[11px] text-emerald-700 dark:text-emerald-300">
+   824→          <span className="typing-dot" />
+   825→          <span className="typing-dot [animation-delay:150ms]" />
+   826→          <span className="typing-dot [animation-delay:300ms]" />
+   827→          <span className="ml-1">{otherUser.name} yazıyor…</span>
+   828→        </div>
+   829→      )}
+   830→
+   831→      {/* Messages */}
+   832→      <div
+   833→        ref={scrollRef}
+   834→        onScroll={handleScroll}
+   835→        className="flex-1 overflow-y-auto custom-scroll p-4 space-y-4 bg-muted/10"
+   836→      >
+   837→        {loading ? (
+   838→          <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
+   839→            Mesajlar yükleniyor…
+   840→          </div>
+   841→        ) : messages.length === 0 ? (
+   842→          <div className="flex flex-col items-center justify-center h-full text-center">
+   843→            <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center mb-3">
+   844→              <MessageCircle className="w-6 h-6 text-emerald-600" />
+   845→            </div>
+   846→            <p className="text-sm text-muted-foreground max-w-xs">
+   847→              {otherUser.name} ile henüz mesajlaşmadın. İlk mesajı gönder!
+   848→            </p>
+   849→          </div>
+   850→        ) : (
+   851→          groups.map((g) => (
+   852→            <div key={g.label} className="space-y-2">
+   853→              <div className="flex items-center justify-center">
+   854→                <span className="text-[10px] text-muted-foreground bg-background px-2 py-0.5 rounded-full border">
+   855→                  {g.label}
+   856→                </span>
+   857→              </div>
+   858→              {g.messages.map((m) => {
+   859→                const mine = m.senderId === currentUserId
+   860→                const att = parseAttachment(m.content)
+   861→                const AttIcon = att ? DOC_TYPE_ICON[att.type] : null
+   862→                return (
+   863→                  <div
+   864→                    key={m.id}
+   865→                    className={cn(
+   866→                      'flex items-end gap-2 group',
+   867→                      mine ? 'justify-end' : 'justify-start',
+   868→                    )}
+   869→                  >
+   870→                    {!mine && (
+   871→                      <Avatar className="w-7 h-7 shrink-0">
+   872→                        {otherUser.avatarUrl ? <AvatarImage src={otherUser.avatarUrl} alt={otherUser.name} /> : null}
+   873→                        <AvatarFallback
+   874→                          className={cn(
+   875→                            'bg-gradient-to-br text-white text-[10px] font-semibold',
+   876→                            ROLE_AVATAR_GRADIENT[otherUser.role],
+   877→                          )}
+   878→                        >
+   879→                          {initials(otherUser.name)}
+   880→                        </AvatarFallback>
+   881→                      </Avatar>
+   882→                    )}
+   883→                    <div
+   884→                      className={cn(
+   885→                        'max-w-[75%] rounded-2xl px-3.5 py-2 text-sm relative space-y-1.5',
+   886→                        mine
+   887→                          ? 'bg-emerald-600 text-white rounded-br-sm'
+   888→                          : 'bg-background border rounded-bl-sm',
+   889→                      )}
+   890→                    >
+   891→                      {att && AttIcon ? (
+   892→                        // Belge eki chip'i — tıklayınca numara panoya kopyalanır
+   893→                        <button
+   894→                          type="button"
+   895→                          onClick={() => copyToClipboard(att.number)}
+   896→                          title="Numarayı panoya kopyala"
+   897→                          className={cn(
+   898→                            'flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-colors w-fit',
+   899→                            mine
+   900→                              ? 'bg-white/15 hover:bg-white/25 text-white'
+   901→                              : 'bg-muted hover:bg-accent text-foreground',
+   902→                          )}
+   903→                        >
+   904→                          <AttIcon className="w-3.5 h-3.5 shrink-0" />
+   905→                          <span>{att.type} · {att.number}</span>
+   906→                          <Copy className="w-3 h-3 opacity-60 shrink-0" />
+   907→                        </button>
+   908→                      ) : null}
+   909→                      <div className="whitespace-pre-wrap break-words leading-snug">
+   910→                        {att ? att.rest : m.content}
+   911→                      </div>
+   912→                      <div
+   913→                        className={cn(
+   914→                          'flex items-center gap-1 mt-1 text-[10px]',
+   915→                          mine ? 'text-emerald-100' : 'text-muted-foreground',
+   916→                        )}
+   917→                      >
+   918→                        <span>{fmtTime(m.createdAt)}</span>
+   919→                        {mine && (
+   920→                          <span className="flex items-center gap-0.5">
+   921→                            {m.isRead && <span className="text-[9px]">Görüldü</span>}
+   922→                            <CheckCheck
+   923→                              className={cn('w-3 h-3', m.isRead ? 'text-emerald-100' : 'text-emerald-300/70')}
+   924→                            />
+   925→                          </span>
+   926→                        )}
+   927→                      </div>
+   928→                      {mine && (
+   929→                        <Tooltip>
+   930→                          <TooltipTrigger asChild>
+   931→                            <button
+   932→                              onClick={() => handleDelete(m.id)}
+   933→                              className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-background border shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 hover:text-red-600"
+   934→                            >
+   935→                              <Trash2 className="w-2.5 h-2.5" />
+   936→                            </button>
+   937→                          </TooltipTrigger>
+   938→                          <TooltipContent>Mesajı sil</TooltipContent>
+   939→                        </Tooltip>
+   940→                      )}
+   941→                    </div>
+   942→                  </div>
+   943→                )
+   944→              })}
+   945→            </div>
+   946→          ))
+   947→        )}
+   948→      </div>
+   949→
+   950→      {/* "↓ Yeni mesaj" pill — kullanıcı yukarı okurken görünür */}
+   951→      {showJumpPill && (
+   952→        <button
+   953→          type="button"
+   954→          onClick={() => scrollToBottom('smooth')}
+   955→          className="absolute bottom-24 right-5 z-10 flex items-center gap-1.5 rounded-full bg-emerald-600 px-3.5 py-2 text-xs font-medium text-white shadow-lg shadow-emerald-600/25 hover:bg-emerald-700 transition-colors animate-fade-in"
+   956→        >
+   957→          <ArrowDown className="w-3.5 h-3.5" />
+   958→          {newBelowCount > 0 ? 'Yeni mesaj' : 'En alta git'}
+   959→          {newBelowCount > 0 && (
+   960→            <span className="unread-pulse flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[10px] font-bold text-emerald-700">
+   961→              {newBelowCount}
+   962→            </span>
+   963→          )}
+   964→        </button>
+   965→      )}
+   966→
+   967→      {/* Input */}
+   968→      <div className="p-3 border-t bg-background">
+   969→        <div className="flex items-center gap-2">
+   970→          <DropdownMenu>
+   971→            <DropdownMenuTrigger asChild>
+   972→              <Button variant="ghost" size="icon" className="shrink-0 h-9 w-9" title="Belge gönder">
+   973→                <Paperclip className="w-4 h-4" />
+   974→              </Button>
+   975→            </DropdownMenuTrigger>
+   976→            <DropdownMenuContent align="start">
+   977→              <DropdownMenuLabel>Belge Gönder</DropdownMenuLabel>
+   978→              <DropdownMenuSeparator />
+   979→              <DropdownMenuItem onClick={() => { setDocPickerType('Fatura'); setDocPickerOpen(true) }}>
+   980→                🧾 Fatura
+   981→              </DropdownMenuItem>
+   982→              <DropdownMenuItem onClick={() => { setDocPickerType('Sipariş'); setDocPickerOpen(true) }}>
+   983→                📦 Sipariş
+   984→              </DropdownMenuItem>
+   985→              <DropdownMenuItem onClick={() => { setDocPickerType('Proforma'); setDocPickerOpen(true) }}>
+   986→                📄 Proforma
+   987→              </DropdownMenuItem>
+   988→              <DropdownMenuItem onClick={() => { setDocPickerType('Teklif'); setDocPickerOpen(true) }}>
+   989→                📋 Teklif
+   990→              </DropdownMenuItem>
+   991→            </DropdownMenuContent>
+   992→          </DropdownMenu>
+   993→          <Input
+   994→            value={input}
+   995→            onChange={(e) => {
+   996→              setInput(e.target.value)
+   997→              if (otherUser) sendTyping(otherUser.id)
+   998→            }}
+   999→            onKeyDown={handleKeyDown}
+  1000→            placeholder={`${otherUser.name} kişisine mesaj yaz…`}
+  1001→            disabled={sendMut.isPending}
+  1002→            className="flex-1"
+  1003→          />
+  1004→          <Button
+  1005→            onClick={handleSend}
+  1006→            disabled={!input.trim() || sendMut.isPending}
+  1007→            size="icon"
+  1008→            className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+  1009→          >
+  1010→            <Send className="w-4 h-4" />
+  1011→          </Button>
+  1012→        </div>
+  1013→        <div className="text-[10px] text-muted-foreground mt-1.5 text-center">
+  1014→          Enter ile gönder · Shift+Enter ile yeni satır
+  1015→        </div>
+  1016→      </div>
+  1017→
+  1018→      {/* Gerçek belge seçici */}
+  1019→      <DocumentPickerDialog
+  1020→        open={docPickerOpen}
+  1021→        onOpenChange={setDocPickerOpen}
+  1022→        initialType={docPickerType}
+  1023→        onPick={handleSendDocument}
+  1024→      />
+  1025→    </>
+  1026→  )
+  1027→}
+  1028→

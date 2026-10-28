@@ -27,7 +27,7 @@ if [ -f "$BASE/../scripts/.cron-env" ]; then
   fi
   # 2) appointment-reminders/.env
   if [ ! -f "$BASE/appointment-reminders/.env" ]; then
-    printf '%s\nAPP_URL=http://localhost:3001\n' "$SECRET_LINE" > "$BASE/appointment-reminders/.env"
+    printf '%s\nAPP_URL=http://localhost:3000\n' "$SECRET_LINE" > "$BASE/appointment-reminders/.env"
     chmod 600 "$BASE/appointment-reminders/.env"
   fi
 fi
@@ -87,21 +87,21 @@ if [ -d "/home/z/my-project/ana-site" ] && ! port_alive 3007; then
   port_alive 3007 || RESTARTED="$RESTARTED anasite-3007(SORUNLU)"
 fi
 
-# --- CRM ana site (3001) ---
+# --- CRM ana site (3000) ---
 # Sunucuda pm2 yönetir (port canlıysa bu blok hiç çalışmaz, no-op).
 # Sandbox'ta süreç bekçisi yok; port ölmüşse root'tan dev başlatılır.
 # Not: .next/standalone + server.log varsa PRODUCTION sunucusu demektir →
 # pm2'ye karışmayalım (port_alive zaten true dönecektir).
-if ! port_alive 3001; then
+if ! port_alive 3000; then
   for attempt in 1 2 3; do
-    (cd /home/z/my-project && nohup bun run dev > "$LOGDIR/crm-3001.log" 2>&1 &)
+    (cd /home/z/my-project && nohup bun run dev > "$LOGDIR/crm-3000.log" 2>&1 &)
     for i in $(seq 1 15); do
       sleep 2
-      port_alive 3001 && { RESTARTED="$RESTARTED crm-3001(restart)"; break; }
+      port_alive 3000 && { RESTARTED="$RESTARTED crm-3000(restart)"; break; }
     done
-    port_alive 3001 && break
+    port_alive 3000 && break
   done
-  port_alive 3001 || RESTARTED="$RESTARTED crm-3001(SORUNLU)"
+  port_alive 3000 || RESTARTED="$RESTARTED crm-3000(SORUNLU)"
 fi
 
 if [ -n "$RESTARTED" ]; then

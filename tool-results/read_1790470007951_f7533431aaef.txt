@@ -1,0 +1,1600 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useCallback, useRef } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import {
+     7→  MapPin, Search, Download, Plus, Star, Phone, Globe, Check, X,
+     8→  Loader2, Users, Eye, UserPlus, ZoomIn, ZoomOut, Layers, History,
+     9→  Clock, ChevronRight, Building2, Filter, FileSpreadsheet, AlertCircle,
+    10→  CheckCircle2, UserCircle, Sparkles, Navigation,
+    11→} from 'lucide-react'
+    12→
+    13→import { apiGet, apiPost, apiPatch, qk } from '@/lib/api-client'
+    14→import { CITIES, MAPS_CATEGORIES, LEAD_STATUSES, getLabel, getColor } from '@/lib/constants'
+    15→import {
+    16→  formatPhone, formatDate, formatRelative, telLink, toCSV, downloadFile,
+    17→} from '@/lib/format'
+    18→import { hasPermission } from '@/lib/rbac'
+    19→import { cn } from '@/lib/utils'
+    20→import { useAppStore } from '@/store/app-store'
+    21→import type { MapsResult, Lead, MapsSearch, UserListItem } from '@/types'
+    22→
+    23→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+    24→import { Button } from '@/components/ui/button'
+    25→import { Input } from '@/components/ui/input'
+    26→import {
+    27→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    28→} from '@/components/ui/select'
+    29→import { Checkbox } from '@/components/ui/checkbox'
+    30→import {
+    31→  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+    32→} from '@/components/ui/table'
+    33→import { Badge } from '@/components/ui/badge'
+    34→import {
+    35→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+    36→  DialogFooter, DialogClose,
+    37→} from '@/components/ui/dialog'
+    38→import { ScrollArea } from '@/components/ui/scroll-area'
+    39→import { Skeleton } from '@/components/ui/skeleton'
+    40→import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+    41→import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+    42→import { Separator } from '@/components/ui/separator'
+    43→
+    44→// ----------------------------------------------------------------------------
+    45→// Constants
+    46→// ----------------------------------------------------------------------------
+    47→
+    48→const RADII = [5, 10, 25, 50] as const
+    49→const DAILY_LIMIT = 50
+    50→
+    51→// ----------------------------------------------------------------------------
+    52→// API response shapes
+    53→// ----------------------------------------------------------------------------
+    54→
+    55→interface SearchResponse {
+    56→  results: MapsResult[]
+    57→  searchId: string
+    58→  search: MapsSearch
+    59→}
+    60→interface ImportResponse {
+    61→  created: Lead[]
+    62→  skipped: number
+    63→  searchId: string
+    64→}
+    65→interface UsersResponse {
+    66→  items: UserListItem[]
+    67→}
+    68→interface LeadsResponse {
+    69→  items: Lead[]
+    70→  total: number
+    71→}
+    72→interface MapsSearchesResponse {
+    73→  items: MapsSearch[]
+    74→}
+    75→
+    76→// ----------------------------------------------------------------------------
+    77→// Small UI helpers
+    78→// ----------------------------------------------------------------------------
+    79→
+    80→function StarRating({
+    81→  rating,
+    82→  reviewCount,
+    83→  className,
+    84→}: {
+    85→  rating: number | null
+    86→  reviewCount?: number | null
+    87→  className?: string
+    88→}) {
+    89→  if (rating === null || rating === undefined) {
+    90→    return <span className={cn('text-xs text-muted-foreground', className)}>—</span>
+    91→  }
+    92→  return (
+    93→    <div className={cn('flex items-center gap-1', className)}>
+    94→      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+    95→      <span className="text-xs font-medium tabular-nums">{rating.toFixed(1)}</span>
+    96→      {reviewCount !== null && reviewCount !== undefined && reviewCount > 0 && (
+    97→        <span className="text-[10px] text-muted-foreground">({reviewCount})</span>
+    98→      )}
+    99→    </div>
+   100→  )
+   101→}
+   102→
+   103→function webHref(web: string | null): string | null {
+   104→  if (!web) return null
+   105→  if (/^https?:\/\//i.test(web)) return web
+   106→  return `https://${web}`
+   107→}
+   108→
+   109→// ----------------------------------------------------------------------------
+   110→// Map bounds + normalization + clustering
+   111→// ----------------------------------------------------------------------------
+   112→
+   113→interface Bounds {
+   114→  minLat: number
+   115→  maxLat: number
+   116→  minLng: number
+   117→  maxLng: number
+   118→}
+   119→
+   120→function computeBounds(results: MapsResult[]): Bounds | null {
+   121→  if (results.length === 0) return null
+   122→  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity
+   123→  for (const r of results) {
+   124→    minLat = Math.min(minLat, r.lat)
+   125→    maxLat = Math.max(maxLat, r.lat)
+   126→    minLng = Math.min(minLng, r.lng)
+   127→    maxLng = Math.max(maxLng, r.lng)
+   128→  }
+   129→  const latRange = maxLat - minLat || 0.01
+   130→  const lngRange = maxLng - minLng || 0.01
+   131→  return {
+   132→    minLat: minLat - latRange * 0.18,
+   133→    maxLat: maxLat + latRange * 0.18,
+   134→    minLng: minLng - lngRange * 0.18,
+   135→    maxLng: maxLng + lngRange * 0.18,
+   136→  }
+   137→}
+   138→
+   139→function project(lat: number, lng: number, b: Bounds, zoom: number) {
+   140→  const xRange = b.maxLng - b.minLng || 1
+   141→  const yRange = b.maxLat - b.minLat || 1
+   142→  let x = ((lng - b.minLng) / xRange) * 100
+   143→  let y = ((b.maxLat - lat) / yRange) * 100 // invert Y
+   144→  // zoom around center (50,50)
+   145→  x = 50 + (x - 50) * zoom
+   146→  y = 50 + (y - 50) * zoom
+   147→  // clamp to viewport with padding
+   148→  x = Math.max(4, Math.min(96, x))
+   149→  y = Math.max(6, Math.min(94, y))
+   150→  return { x, y }
+   151→}
+   152→
+   153→interface MarkerItem {
+   154→  type: 'cluster' | 'single'
+   155→  x: number
+   156→  y: number
+   157→  count: number
+   158→  results: MapsResult[]
+   159→}
+   160→
+   161→function clusterMarkers(
+   162→  positions: { x: number; y: number; result: MapsResult }[],
+   163→  threshold: number,
+   164→): MarkerItem[] {
+   165→  const items: MarkerItem[] = []
+   166→  const assigned = new Set<number>()
+   167→  for (let i = 0; i < positions.length; i++) {
+   168→    if (assigned.has(i)) continue
+   169→    const group = [positions[i]]
+   170→    assigned.add(i)
+   171→    for (let j = i + 1; j < positions.length; j++) {
+   172→      if (assigned.has(j)) continue
+   173→      const dx = positions[i].x - positions[j].x
+   174→      const dy = positions[i].y - positions[j].y
+   175→      if (Math.sqrt(dx * dx + dy * dy) < threshold) {
+   176→        group.push(positions[j])
+   177→        assigned.add(j)
+   178→      }
+   179→    }
+   180→    const cx = group.reduce((s, g) => s + g.x, 0) / group.length
+   181→    const cy = group.reduce((s, g) => s + g.y, 0) / group.length
+   182→    items.push({
+   183→      type: group.length > 1 ? 'cluster' : 'single',
+   184→      x: cx,
+   185→      y: cy,
+   186→      count: group.length,
+   187→      results: group.map((g) => g.result),
+   188→    })
+   189→  }
+   190→  return items
+   191→}
+   192→
+   193→// ----------------------------------------------------------------------------
+   194→// MapView — SVG + HTML markers, zoom, clusters, popover, legend
+   195→// ----------------------------------------------------------------------------
+   196→
+   197→interface MapViewProps {
+   198→  results: MapsResult[]
+   199→  selectedIds: Set<string>
+   200→  onToggleSelect: (placeId: string) => void
+   201→  city: string | null
+   202→  hasSearched: boolean
+   203→}
+   204→
+   205→function MapView({
+   206→  results, selectedIds, onToggleSelect, city, hasSearched,
+   207→}: MapViewProps) {
+   208→  const [zoom, setZoom] = useState(1)
+   209→  const [activeMarker, setActiveMarker] = useState<MarkerItem | null>(null)
+   210→  const [hovered, setHovered] = useState<string | null>(null)
+   211→  const containerRef = useRef<HTMLDivElement>(null)
+   212→
+   213→  // NOTE: zoom + activeMarker reset is handled by remount via `key` prop on
+   214→  // the parent (key changes per search), so no effect needed here.
+   215→  const bounds = useMemo(() => computeBounds(results), [results])
+   216→
+   217→  const items = useMemo(() => {
+   218→    if (!bounds) return []
+   219→    const positions = results.map((r) => ({
+   220→      ...project(r.lat, r.lng, bounds, zoom),
+   221→      result: r,
+   222→    }))
+   223→    // threshold shrinks as we zoom in
+   224→    const threshold = Math.max(2.5, 8 / zoom)
+   225→    return clusterMarkers(positions, threshold)
+   226→  }, [results, bounds, zoom])
+   227→
+   228→  // deterministically generated street lines for visual richness
+   229→  const streets = useMemo(() => {
+   230→    const lines: { x1: number; y1: number; x2: number; y2: number; w: number; o: number }[] = []
+   231→    let seed = 7
+   232→    const rand = () => {
+   233→      seed = (seed * 9301 + 49297) % 233280
+   234→      return seed / 233280
+   235→    }
+   236→    for (let i = 0; i < 14; i++) {
+   237→      const x1 = rand() * 100
+   238→      const y1 = rand() * 100
+   239→      const len = 20 + rand() * 50
+   240→      const angle = rand() * Math.PI * 2
+   241→      lines.push({
+   242→        x1,
+   243→        y1,
+   244→        x2: x1 + Math.cos(angle) * len,
+   245→        y2: y1 + Math.sin(angle) * len,
+   246→        w: 0.4 + rand() * 1.4,
+   247→        o: 0.04 + rand() * 0.08,
+   248→      })
+   249→    }
+   250→    return lines
+   251→  }, [])
+   252→
+   253→  const handleZoomIn = () => setZoom((z) => Math.min(3, +(z + 0.5).toFixed(1)))
+   254→  const handleZoomOut = () => setZoom((z) => Math.max(1, +(z - 0.5).toFixed(1)))
+   255→
+   256→  const markerColor = (r: MapsResult): string => {
+   257→    if (r.existsInCrm) return 'emerald'
+   258→    if (selectedIds.has(r.placeId)) return 'sky'
+   259→    return 'slate'
+   260→  }
+   261→
+   262→  return (
+   263→    <div
+   264→      ref={containerRef}
+   265→      className="relative w-full h-[420px] sm:h-[480px] lg:h-[560px] rounded-xl overflow-hidden border border-border bg-slate-100 dark:bg-slate-900 select-none"
+   266→    >
+   267→      {/* SVG background: gradient + grid + streets + water blobs */}
+   268→      <svg
+   269→        className="absolute inset-0 w-full h-full"
+   270→        viewBox="0 0 100 100"
+   271→        preserveAspectRatio="none"
+   272→        aria-hidden
+   273→      >
+   274→        <defs>
+   275→          <linearGradient id="mapBg" x1="0" y1="0" x2="1" y2="1">
+   276→            <stop offset="0%" stopColor="oklch(0.96 0.012 150)" />
+   277→            <stop offset="55%" stopColor="oklch(0.94 0.018 170)" />
+   278→            <stop offset="100%" stopColor="oklch(0.92 0.014 200)" />
+   279→          </linearGradient>
+   280→          <radialGradient id="park" cx="0.5" cy="0.5" r="0.5">
+   281→            <stop offset="0%" stopColor="oklch(0.88 0.05 145)" stopOpacity="0.55" />
+   282→            <stop offset="100%" stopColor="oklch(0.88 0.05 145)" stopOpacity="0" />
+   283→          </radialGradient>
+   284→          <radialGradient id="water" cx="0.5" cy="0.5" r="0.5">
+   285→            <stop offset="0%" stopColor="oklch(0.82 0.04 220)" stopOpacity="0.5" />
+   286→            <stop offset="100%" stopColor="oklch(0.82 0.04 220)" stopOpacity="0" />
+   287→          </radialGradient>
+   288→        </defs>
+   289→        <rect width="100" height="100" fill="url(#mapBg)" />
+   290→
+   291→        {/* parks + water blobs */}
+   292→        <ellipse cx="22" cy="30" rx="14" ry="10" fill="url(#park)" />
+   293→        <ellipse cx="78" cy="72" rx="18" ry="12" fill="url(#park)" />
+   294→        <ellipse cx="88" cy="22" rx="16" ry="10" fill="url(#water)" />
+   295→        <ellipse cx="12" cy="82" rx="12" ry="8" fill="url(#water)" />
+   296→
+   297→        {/* grid lines */}
+   298→        <g stroke="oklch(0.7 0.01 200)" strokeWidth="0.12" opacity="0.45">
+   299→          {Array.from({ length: 11 }).map((_, i) => (
+   300→            <line key={`v${i}`} x1={i * 10} y1="0" x2={i * 10} y2="100" />
+   301→          ))}
+   302→          {Array.from({ length: 11 }).map((_, i) => (
+   303→            <line key={`h${i}`} x1="0" y1={i * 10} x2="100" y2={i * 10} />
+   304→          ))}
+   305→        </g>
+   306→
+   307→        {/* streets */}
+   308→        <g stroke="oklch(0.55 0.005 200)" fill="none" strokeLinecap="round">
+   309→          {streets.map((s, i) => (
+   310→            <line
+   311→              key={i}
+   312→              x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
+   313→              strokeWidth={s.w}
+   314→              opacity={s.o}
+   315→            />
+   316→          ))}
+   317→        </g>
+   318→
+   319→        {/* main avenues */}
+   320→        <g stroke="oklch(0.5 0.005 200)" strokeWidth="0.7" opacity="0.18" fill="none" strokeLinecap="round">
+   321→          <path d="M 0 55 Q 30 50 50 52 T 100 48" />
+   322→          <path d="M 45 0 Q 48 30 52 50 T 58 100" />
+   323→          <path d="M 10 10 Q 40 40 60 60 T 95 90" />
+   324→        </g>
+   325→      </svg>
+   326→
+   327→      {/* city label */}
+   328→      <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/85 dark:bg-slate-800/85 backdrop-blur-sm border border-border shadow-sm">
+   329→        <Navigation className="w-3.5 h-3.5 text-emerald-600" />
+   330→        <span className="text-xs font-semibold">{city || 'Türkiye'}</span>
+   331→        <span className="text-[10px] text-muted-foreground">· {results.length} sonuç</span>
+   332→      </div>
+   333→
+   334→      {/* zoom controls */}
+   335→      <div className="absolute top-3 right-3 flex flex-col gap-1 rounded-lg bg-white/85 dark:bg-slate-800/85 backdrop-blur-sm border border-border shadow-sm p-1">
+   336→        <Button
+   337→          variant="ghost" size="icon" className="h-7 w-7"
+   338→          onClick={handleZoomIn} disabled={zoom >= 3}
+   339→          aria-label="Yakınlaştır"
+   340→        >
+   341→          <ZoomIn className="w-4 h-4" />
+   342→        </Button>
+   343→        <Separator className="my-0.5" />
+   344→        <Button
+   345→          variant="ghost" size="icon" className="h-7 w-7"
+   346→          onClick={handleZoomOut} disabled={zoom <= 1}
+   347→          aria-label="Uzaklaştır"
+   348→        >
+   349→          <ZoomOut className="w-4 h-4" />
+   350→        </Button>
+   351→      </div>
+   352→
+   353→      {/* markers layer (HTML for native events + popover) */}
+   354→      <div className="absolute inset-0">
+   355→        {items.map((item, idx) => {
+   356→          if (item.type === 'cluster') {
+   357→            // dominant color of cluster
+   358→            const allCrm = item.results.every((r) => r.existsInCrm)
+   359→            const allSelected = item.results.every((r) => selectedIds.has(r.placeId))
+   360→            const ringClass = allCrm
+   361→              ? 'bg-emerald-500/90 border-emerald-600 text-white'
+   362→              : allSelected
+   363→                ? 'bg-sky-500/90 border-sky-600 text-white'
+   364→                : 'bg-slate-600/90 border-slate-700 text-white'
+   365→            return (
+   366→              <button
+   367→                key={`c${idx}`}
+   368→                type="button"
+   369→                className={cn(
+   370→                  'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg',
+   371→                  'flex items-center justify-center text-[11px] font-bold backdrop-blur-sm',
+   372→                  'hover:scale-110 transition-transform z-10',
+   373→                  'min-w-[28px] min-h-[28px] px-1',
+   374→                  ringClass,
+   375→                )}
+   376→                style={{ left: `${item.x}%`, top: `${item.y}%` }}
+   377→                onClick={() => {
+   378→                  setActiveMarker(item)
+   379→                  if (zoom < 3) handleZoomIn()
+   380→                }}
+   381→                aria-label={`${item.count} işletme küme`}
+   382→              >
+   383→                {item.count}
+   384→              </button>
+   385→            )
+   386→          }
+   387→          const r = item.results[0]
+   388→          const color = markerColor(r)
+   389→          const isHovered = hovered === r.placeId
+   390→          const isActive = activeMarker?.results[0]?.placeId === r.placeId
+   391→          const colorClasses: Record<string, string> = {
+   392→            emerald: 'text-emerald-600 fill-emerald-500 drop-shadow-emerald',
+   393→            sky: 'text-sky-600 fill-sky-500 drop-shadow-sky',
+   394→            slate: 'text-slate-500 fill-slate-400',
+   395→          }
+   396→          return (
+   397→            <button
+   398→              key={r.placeId}
+   399→              type="button"
+   400→              className={cn(
+   401→                'absolute -translate-x-1/2 -translate-y-full transition-transform',
+   402→                'hover:scale-125 hover:z-20 focus:z-20 focus:outline-none',
+   403→                (isHovered || isActive) && 'scale-125 z-20',
+   404→              )}
+   405→              style={{ left: `${item.x}%`, top: `${item.y}%` }}
+   406→              onMouseEnter={() => setHovered(r.placeId)}
+   407→              onMouseLeave={() => setHovered(null)}
+   408→              onClick={() => setActiveMarker(item)}
+   409→              aria-label={r.name}
+   410→            >
+   411→              <svg width="26" height="34" viewBox="0 0 26 34" className="overflow-visible">
+   412→                <path
+   413→                  d="M13 0C5.8 0 0 5.8 0 13c0 9.5 13 21 13 21s13-11.5 13-21C26 5.8 20.2 0 13 0z"
+   414→                  className={colorClasses[color]}
+   415→                  stroke="white"
+   416→                  strokeWidth="1.6"
+   417→                />
+   418→                <circle cx="13" cy="13" r="4.5" fill="white" />
+   419→              </svg>
+   420→              {(selectedIds.has(r.placeId) || r.existsInCrm) && (
+   421→                <span
+   422→                  className={cn(
+   423→                    'absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white shadow',
+   424→                    r.existsInCrm ? 'bg-emerald-500' : 'bg-sky-500',
+   425→                  )}
+   426→                />
+   427→              )}
+   428→            </button>
+   429→          )
+   430→        })}
+   431→      </div>
+   432→
+   433→      {/* active marker popover */}
+   434→      {activeMarker && (
+   435→        <div
+   436→          className="absolute z-30"
+   437→          style={{
+   438→            left: `${Math.min(72, Math.max(28, activeMarker.x))}%`,
+   439→            top: `${Math.max(20, activeMarker.y - 8)}%`,
+   440→            transform: 'translate(-50%, -100%)',
+   441→          }}
+   442→        >
+   443→          <div className="relative rounded-lg border border-border bg-popover text-popover-foreground shadow-xl p-3 w-60 animate-fade-in">
+   444→            <button
+   445→              type="button"
+   446→              className="absolute top-1.5 right-1.5 text-muted-foreground hover:text-foreground"
+   447→              onClick={() => setActiveMarker(null)}
+   448→              aria-label="Kapat"
+   449→            >
+   450→              <X className="w-3.5 h-3.5" />
+   451→            </button>
+   452→            {activeMarker.type === 'cluster' ? (
+   453→              <div>
+   454→                <div className="flex items-center gap-1.5 mb-1.5">
+   455→                  <Layers className="w-3.5 h-3.5 text-muted-foreground" />
+   456→                  <span className="text-xs font-medium text-muted-foreground">
+   457→                    {activeMarker.count} işletme
+   458→                  </span>
+   459→                </div>
+   460→                <div className="space-y-1 max-h-32 overflow-y-auto custom-scroll pr-1">
+   461→                  {activeMarker.results.slice(0, 6).map((r) => (
+   462→                    <button
+   463→                      key={r.placeId}
+   464→                      type="button"
+   465→                      className="w-full text-left text-xs hover:bg-muted rounded px-1.5 py-1 flex items-center gap-1.5"
+   466→                      onClick={() => {
+   467→                        onToggleSelect(r.placeId)
+   468→                      }}
+   469→                    >
+   470→                      <span
+   471→                        className={cn(
+   472→                          'w-2 h-2 rounded-full shrink-0',
+   473→                          r.existsInCrm ? 'bg-emerald-500' : selectedIds.has(r.placeId) ? 'bg-sky-500' : 'bg-slate-400',
+   474→                        )}
+   475→                      />
+   476→                      <span className="truncate">{r.name}</span>
+   477→                    </button>
+   478→                  ))}
+   479→                  {activeMarker.results.length > 6 && (
+   480→                    <div className="text-[10px] text-muted-foreground px-1.5 pt-0.5">
+   481→                      +{activeMarker.results.length - 6} daha...
+   482→                    </div>
+   483→                  )}
+   484→                </div>
+   485→                {zoom < 3 && (
+   486→                  <Button
+   487→                    size="sm" variant="outline" className="w-full mt-2 h-7 text-xs"
+   488→                    onClick={handleZoomIn}
+   489→                  >
+   490→                    <ZoomIn className="w-3 h-3 mr-1" /> Yakınlaştır
+   491→                  </Button>
+   492→                )}
+   493→              </div>
+   494→            ) : (
+   495→              (() => {
+   496→                const r = activeMarker.results[0]
+   497→                return (
+   498→                  <div>
+   499→                    <div className="flex items-start gap-2 mb-1.5 pr-4">
+   500→                      <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+   501→                      <div className="min-w-0">
+   502→                        <div className="text-sm font-semibold leading-tight truncate">{r.name}</div>
+   503→                        <div className="text-[11px] text-muted-foreground">{r.category}</div>
+   504→                      </div>
+   505→                    </div>
+   506→                    <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{r.address}</p>
+   507→                    <div className="flex items-center justify-between gap-2 mb-2">
+   508→                      <StarRating rating={r.rating} reviewCount={r.reviewCount} />
+   509→                      {r.existsInCrm ? (
+   510→                        <Badge className="text-[10px] h-5 bg-emerald-100 text-emerald-700 border-emerald-200">
+   511→                          <CheckCircle2 className="w-3 h-3 mr-0.5" /> CRM'de var
+   512→                        </Badge>
+   513→                      ) : selectedIds.has(r.placeId) ? (
+   514→                        <Badge className="text-[10px] h-5 bg-sky-100 text-sky-700 border-sky-200">
+   515→                          <Check className="w-3 h-3 mr-0.5" /> Seçili
+   516→                        </Badge>
+   517→                      ) : (
+   518→                        <Badge variant="outline" className="text-[10px] h-5">Yeni</Badge>
+   519→                      )}
+   520→                    </div>
+   521→                    <div className="flex items-center gap-1">
+   522→                      {r.phone && (
+   523→                        <Button asChild size="sm" variant="outline" className="h-7 flex-1 text-xs">
+   524→                          <a href={telLink(r.phone)} target="_blank" rel="noreferrer">
+   525→                            <Phone className="w-3 h-3 mr-1" /> Ara
+   526→                          </a>
+   527→                        </Button>
+   528→                      )}
+   529→                      {!r.existsInCrm && (
+   530→                        <Button
+   531→                          size="sm" variant={selectedIds.has(r.placeId) ? 'secondary' : 'default'}
+   532→                          className="h-7 flex-1 text-xs"
+   533→                          onClick={() => onToggleSelect(r.placeId)}
+   534→                        >
+   535→                          {selectedIds.has(r.placeId) ? (
+   536→                            <><Check className="w-3 h-3 mr-1" /> Seçili</>
+   537→                          ) : (
+   538→                            <><Plus className="w-3 h-3 mr-1" /> Seç</>
+   539→                          )}
+   540→                        </Button>
+   541→                      )}
+   542→                    </div>
+   543→                  </div>
+   544→                )
+   545→              })()
+   546→            )}
+   547→          </div>
+   548→        </div>
+   549→      )}
+   550→
+   551→      {/* legend */}
+   552→      <div className="absolute bottom-3 left-3 flex items-center gap-3 px-3 py-2 rounded-lg bg-white/85 dark:bg-slate-800/85 backdrop-blur-sm border border-border shadow-sm">
+   553→        <div className="flex items-center gap-1.5">
+   554→          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+   555→          <span className="text-[10px] font-medium">Mevcut</span>
+   556→        </div>
+   557→        <div className="flex items-center gap-1.5">
+   558→          <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+   559→          <span className="text-[10px] font-medium">Seçili</span>
+   560→        </div>
+   561→        <div className="flex items-center gap-1.5">
+   562→          <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+   563→          <span className="text-[10px] font-medium">Yeni</span>
+   564→        </div>
+   565→      </div>
+   566→
+   567→      {/* empty state */}
+   568→      {!hasSearched && (
+   569→        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+   570→          <div className="text-center max-w-xs px-4">
+   571→            <div className="w-14 h-14 mx-auto rounded-2xl bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm border border-border flex items-center justify-center mb-3 shadow-sm">
+   572→              <MapPin className="w-7 h-7 text-muted-foreground/60" />
+   573→            </div>
+   574→            <p className="text-sm font-medium text-muted-foreground">
+   575→              Arama yapınca sonuçlar burada görünecek
+   576→            </p>
+   577→            <p className="text-xs text-muted-foreground/70 mt-1">
+   578→              Soldaki formu doldurup "Ara" butonuna tıklayın
+   579→            </p>
+   580→          </div>
+   581→        </div>
+   582→      )}
+   583→
+   584→      {hasSearched && results.length === 0 && (
+   585→        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+   586→          <div className="text-center">
+   587→            <p className="text-sm font-medium text-muted-foreground">Sonuç bulunamadı</p>
+   588→            <p className="text-xs text-muted-foreground/70 mt-1">Farklı bir sorgu deneyin</p>
+   589→          </div>
+   590→        </div>
+   591→      )}
+   592→    </div>
+   593→  )
+   594→}
+   595→
+   596→// ----------------------------------------------------------------------------
+   597→// Import dialog
+   598→// ----------------------------------------------------------------------------
+   599→
+   600→interface ImportDialogProps {
+   601→  open: boolean
+   602→  onOpenChange: (o: boolean) => void
+   603→  selectedResults: MapsResult[]
+   604→  searchId: string | null
+   605→  onImported: () => void
+   606→}
+   607→
+   608→function ImportDialog({
+   609→  open, onOpenChange, selectedResults, searchId, onImported,
+   610→}: ImportDialogProps) {
+   611→  const { user } = useAppStore()
+   612→  const qc = useQueryClient()
+   613→  // Initialize owner to the current user from the store (sync, persisted).
+   614→  // No effect needed — the store is hydrated synchronously via zustand/persist
+   615→  // and this component only mounts after login.
+   616→  const [ownerId, setOwnerId] = useState<string>(
+   617→    () => useAppStore.getState().user?.id ?? '',
+   618→  )
+   619→
+   620→  const { data: usersData, isLoading: usersLoading } = useQuery({
+   621→    queryKey: qk.users,
+   622→    queryFn: () => apiGet<UsersResponse>('/api/users'),
+   623→    enabled: open,
+   624→  })
+   625→
+   626→  const importMutation = useMutation({
+   627→    mutationFn: () =>
+   628→      apiPost<ImportResponse>('/api/maps/import', {
+   629→        searchId,
+   630→        items: selectedResults,
+   631→        ownerId,
+   632→      }),
+   633→    onSuccess: (data) => {
+   634→      const createdCount = data.created.length
+   635→      const skippedCount = data.skipped
+   636→      if (createdCount > 0) {
+   637→        toast.success(`${createdCount} lead içe aktarıldı`, {
+   638→          description: skippedCount > 0 ? `${skippedCount} kayıt zaten mevcut, atlandı.` : undefined,
+   639→        })
+   640→      } else {
+   641→        toast.info('İçe aktarılacak yeni kayıt yok', {
+   642→          description: `${skippedCount} kayıt zaten CRM'de mevcut.`,
+   643→        })
+   644→      }
+   645→      qc.invalidateQueries({ queryKey: qk.leads({ source: 'google_maps' }) })
+   646→      qc.invalidateQueries({ queryKey: qk.mapsSearches })
+   647→      onImported()
+   648→      onOpenChange(false)
+   649→    },
+   650→    onError: (e: Error) => toast.error('İçe aktarma başarısız', { description: e.message }),
+   651→  })
+   652→
+   653→  const users = usersData?.items ?? []
+   654→
+   655→  return (
+   656→    <Dialog open={open} onOpenChange={onOpenChange}>
+   657→      <DialogContent className="sm:max-w-md">
+   658→        <DialogHeader>
+   659→          <DialogTitle>Lead Olarak Aktar</DialogTitle>
+   660→          <DialogDescription>
+   661→            {selectedResults.length} kayıt seçili. Bir sahibi atayın ve içe aktarın.
+   662→          </DialogDescription>
+   663→        </DialogHeader>
+   664→
+   665→        <div className="space-y-3">
+   666→          <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-1">
+   667→            <div className="flex items-center justify-between text-xs">
+   668→              <span className="text-muted-foreground">Seçili kayıt</span>
+   669→              <span className="font-semibold">{selectedResults.length}</span>
+   670→            </div>
+   671→            <div className="flex items-center justify-between text-xs">
+   672→              <span className="text-muted-foreground">CRM'de var (atlanacak)</span>
+   673→              <span className="font-semibold text-amber-600">
+   674→                {selectedResults.filter((r) => r.existsInCrm).length}
+   675→              </span>
+   676→            </div>
+   677→            <div className="flex items-center justify-between text-xs">
+   678→              <span className="text-muted-foreground">Yeni eklenecek</span>
+   679→              <span className="font-semibold text-emerald-600">
+   680→                {selectedResults.filter((r) => !r.existsInCrm).length}
+   681→              </span>
+   682→            </div>
+   683→          </div>
+   684→
+   685→          <div className="space-y-1.5">
+   686→            <label className="text-sm font-medium">Sahip</label>
+   687→            <Select value={ownerId} onValueChange={setOwnerId} disabled={usersLoading}>
+   688→              <SelectTrigger className="w-full">
+   689→                <SelectValue placeholder="Kullanıcı seçin" />
+   690→              </SelectTrigger>
+   691→              <SelectContent>
+   692→                {users.map((u) => (
+   693→                  <SelectItem key={u.id} value={u.id}>
+   694→                    <span className="flex items-center gap-2">
+   695→                      <UserCircle className="w-3.5 h-3.5 text-muted-foreground" />
+   696→                      {u.name}
+   697→                      {u.id === user?.id && (
+   698→                        <span className="text-[10px] text-muted-foreground">(sen)</span>
+   699→                      )}
+   700→                    </span>
+   701→                  </SelectItem>
+   702→                ))}
+   703→              </SelectContent>
+   704→            </Select>
+   705→            <p className="text-xs text-muted-foreground">
+   706→              Leadler bu kullanıcıya atanacak. İstediğin zaman lead detayından değiştirebilirsin.
+   707→            </p>
+   708→          </div>
+   709→        </div>
+   710→
+   711→        <DialogFooter>
+   712→          <DialogClose asChild>
+   713→            <Button variant="outline">İptal</Button>
+   714→          </DialogClose>
+   715→          <Button
+   716→            onClick={() => importMutation.mutate()}
+   717→            disabled={importMutation.isPending || !ownerId || selectedResults.length === 0}
+   718→          >
+   719→            {importMutation.isPending ? (
+   720→              <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+   721→            ) : (
+   722→              <Download className="w-4 h-4 mr-1.5" />
+   723→            )}
+   724→            İçe Aktar
+   725→          </Button>
+   726→        </DialogFooter>
+   727→      </DialogContent>
+   728→    </Dialog>
+   729→  )
+   730→}
+   731→
+   732→// ----------------------------------------------------------------------------
+   733→// Lead detail dialog (view action)
+   734→// ----------------------------------------------------------------------------
+   735→
+   736→function LeadDetailDialog({
+   737→  lead, open, onOpenChange,
+   738→}: {
+   739→  lead: Lead | null
+   740→  open: boolean
+   741→  onOpenChange: (o: boolean) => void
+   742→}) {
+   743→  if (!lead) return null
+   744→  const statusColor = getColor(LEAD_STATUSES, lead.status)
+   745→  return (
+   746→    <Dialog open={open} onOpenChange={onOpenChange}>
+   747→      <DialogContent className="sm:max-w-lg">
+   748→        <DialogHeader>
+   749→          <DialogTitle className="flex items-center gap-2">
+   750→            <Building2 className="w-4 h-4 text-muted-foreground" />
+   751→            {lead.name}
+   752→          </DialogTitle>
+   753→          <DialogDescription>
+   754→            {lead.category || 'Kategori belirtilmedi'} · {lead.city || 'Şehir belirtilmedi'}
+   755→          </DialogDescription>
+   756→        </DialogHeader>
+   757→
+   758→        <div className="grid grid-cols-2 gap-3 text-sm">
+   759→          <div className="space-y-1">
+   760→            <div className="text-xs text-muted-foreground">Durum</div>
+   761→            <Badge variant="outline" className={cn('text-xs', statusColor)}>
+   762→              {getLabel(LEAD_STATUSES, lead.status)}
+   763→            </Badge>
+   764→          </div>
+   765→          <div className="space-y-1">
+   766→            <div className="text-xs text-muted-foreground">Sahip</div>
+   767→            <div>{lead.owner?.name ?? '—'}</div>
+   768→          </div>
+   769→          <div className="space-y-1">
+   770→            <div className="text-xs text-muted-foreground">Telefon</div>
+   771→            {lead.phone ? (
+   772→              <a href={telLink(lead.phone)} className="text-emerald-600 hover:underline flex items-center gap-1">
+   773→                <Phone className="w-3 h-3" /> {formatPhone(lead.phone)}
+   774→              </a>
+   775→            ) : <span>—</span>}
+   776→          </div>
+   777→          <div className="space-y-1">
+   778→            <div className="text-xs text-muted-foreground">Web</div>
+   779→            {lead.web ? (
+   780→              <a href={webHref(lead.web) || '#'} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline flex items-center gap-1 truncate">
+   781→                <Globe className="w-3 h-3 shrink-0" /> <span className="truncate">{lead.web}</span>
+   782→              </a>
+   783→            ) : <span>—</span>}
+   784→          </div>
+   785→          <div className="space-y-1">
+   786→            <div className="text-xs text-muted-foreground">Puan</div>
+   787→            <StarRating rating={lead.rating} reviewCount={lead.reviewCount} />
+   788→          </div>
+   789→          <div className="space-y-1">
+   790→            <div className="text-xs text-muted-foreground">Oluşturulma</div>
+   791→            <div>{formatDate(lead.createdAt)}</div>
+   792→          </div>
+   793→          <div className="col-span-2 space-y-1">
+   794→            <div className="text-xs text-muted-foreground">Adres</div>
+   795→            <div className="text-sm">{lead.address || '—'}</div>
+   796→          </div>
+   797→        </div>
+   798→
+   799→        {lead.convertedCustomer && (
+   800→          <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-sm">
+   801→            <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-medium">
+   802→              <CheckCircle2 className="w-4 h-4" />
+   803→              Müşteriye dönüştürüldü
+   804→            </div>
+   805→            <div className="text-xs text-muted-foreground mt-0.5">{lead.convertedCustomer.name}</div>
+   806→          </div>
+   807→        )}
+   808→
+   809→        <DialogFooter>
+   810→          <DialogClose asChild>
+   811→            <Button variant="outline">Kapat</Button>
+   812→          </DialogClose>
+   813→        </DialogFooter>
+   814→      </DialogContent>
+   815→    </Dialog>
+   816→  )
+   817→}
+   818→
+   819→// ----------------------------------------------------------------------------
+   820→// Main component
+   821→// ----------------------------------------------------------------------------
+   822→
+   823→export function LeadMiningView() {
+   824→  const { user, openCustomer } = useAppStore()
+   825→  const qc = useQueryClient()
+   826→
+   827→  // search form state
+   828→  const [query, setQuery] = useState('')
+   829→  const [city, setCity] = useState<string>('İstanbul')
+   830→  const [radius, setRadius] = useState<number>(10)
+   831→
+   832→  // results state
+   833→  const [results, setResults] = useState<MapsResult[]>([])
+   834→  const [searchId, setSearchId] = useState<string | null>(null)
+   835→  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+   836→  const [hasSearched, setHasSearched] = useState(false)
+   837→
+   838→  // dialog state
+   839→  const [importOpen, setImportOpen] = useState(false)
+   840→  const [detailLead, setDetailLead] = useState<Lead | null>(null)
+   841→  const [detailOpen, setDetailOpen] = useState(false)
+   842→
+   843→  // leads filter
+   844→  const [leadStatusFilter, setLeadStatusFilter] = useState<string>('')
+   845→
+   846→  const canImport = hasPermission(user, 'leads.import')
+   847→  const canSearch = hasPermission(user, 'maps.search')
+   848→
+   849→  // ---- recent searches (for history + daily limit) ----
+   850→  const { data: recentData, isLoading: recentLoading } = useQuery({
+   851→    queryKey: qk.mapsSearches,
+   852→    queryFn: () => apiGet<MapsSearchesResponse>('/api/maps/search?limit=20'),
+   853→  })
+   854→  const recentSearches = recentData?.items ?? []
+   855→
+   856→  const todayCount = useMemo(() => {
+   857→    const today = new Date()
+   858→    return recentSearches.filter((s) => {
+   859→      const d = new Date(s.createdAt)
+   860→      return (
+   861→        d.getDate() === today.getDate() &&
+   862→        d.getMonth() === today.getMonth() &&
+   863→        d.getFullYear() === today.getFullYear()
+   864→      )
+   865→    }).length
+   866→  }, [recentSearches])
+   867→
+   868→  const limitReached = todayCount >= DAILY_LIMIT
+   869→
+   870→  // ---- search mutation ----
+   871→  const searchMutation = useMutation({
+   872→    mutationFn: (vars: { query: string; city: string; radius: number }) =>
+   873→      apiPost<SearchResponse>('/api/maps/search', {
+   874→        query: vars.query,
+   875→        city: vars.city,
+   876→        radius: vars.radius * 1000, // km → m
+   877→      }),
+   878→    onSuccess: (data) => {
+   879→      setResults(data.results)
+   880→      setSearchId(data.searchId)
+   881→      setSelectedIds(new Set())
+   882→      setHasSearched(true)
+   883→      qc.invalidateQueries({ queryKey: qk.mapsSearches })
+   884→      toast.success(`${data.results.length} işletme bulundu`, {
+   885→        description: `${data.results.filter((r) => r.existsInCrm).length} tanesi zaten CRM'de.`,
+   886→      })
+   887→    },
+   888→    onError: (e: Error) => toast.error('Arama başarısız', { description: e.message }),
+   889→  })
+   890→
+   891→  const handleSearch = useCallback(() => {
+   892→    if (!query.trim()) {
+   893→      toast.error('Arama sorgusu gerekli')
+   894→      return
+   895→    }
+   896→    if (!city) {
+   897→      toast.error('Şehir seçin')
+   898→      return
+   899→    }
+   900→    if (limitReached) {
+   901→      toast.error('Günlük arama limitine ulaşıldı', {
+   902→        description: `Limit: ${DAILY_LIMIT} arama/gün. Yarın tekrar deneyin.`,
+   903→      })
+   904→      return
+   905→    }
+   906→    searchMutation.mutate({ query: query.trim(), city, radius })
+   907→  }, [query, city, radius, limitReached, searchMutation])
+   908→
+   909→  const rerunSearch = useCallback((s: MapsSearch) => {
+   910→    setQuery(s.query)
+   911→    setCity(s.city || 'İstanbul')
+   912→    setRadius(s.radius ? Math.round(s.radius / 1000) : 10)
+   913→    if (limitReached) {
+   914→      toast.error('Günlük arama limitine ulaşıldı')
+   915→      return
+   916→    }
+   917→    searchMutation.mutate({
+   918→      query: s.query,
+   919→      city: s.city || 'İstanbul',
+   920→      radius: s.radius ? Math.round(s.radius / 1000) : 10,
+   921→    })
+   922→  }, [limitReached, searchMutation])
+   923→
+   924→  // ---- selection ----
+   925→  const toggleSelect = useCallback((placeId: string) => {
+   926→    setSelectedIds((prev) => {
+   927→      const next = new Set(prev)
+   928→      if (next.has(placeId)) next.delete(placeId)
+   929→      else next.add(placeId)
+   930→      return next
+   931→    })
+   932→  }, [])
+   933→
+   934→  const selectAllNew = useCallback(() => {
+   935→    setSelectedIds(new Set(results.filter((r) => !r.existsInCrm).map((r) => r.placeId)))
+   936→  }, [results])
+   937→
+   938→  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
+   939→
+   940→  const selectedResults = useMemo(
+   941→    () => results.filter((r) => selectedIds.has(r.placeId)),
+   942→    [results, selectedIds],
+   943→  )
+   944→
+   945→  // ---- CSV export ----
+   946→  const handleExportCsv = useCallback(() => {
+   947→    if (results.length === 0) {
+   948→      toast.error('Dışa aktarılacak sonuç yok')
+   949→      return
+   950→    }
+   951→    const rows = results.map((r) => ({
+   952→      Ad: r.name,
+   953→      Kategori: r.category,
+   954→      Adres: r.address,
+   955→      Sehir: r.city,
+   956→      Telefon: r.phone || '',
+   957→      Web: r.web || '',
+   958→      Puan: r.rating ?? '',
+   959→      YorumSayisi: r.reviewCount ?? '',
+   960→      CRMdeVar: r.existsInCrm ? 'evet' : 'hayir',
+   961→      Enlem: r.lat,
+   962→      Boylam: r.lng,
+   963→    }))
+   964→    const csv = toCSV(rows)
+   965→    const dateStr = new Date().toISOString().slice(0, 10)
+   966→    downloadFile(csv, `maps-arama-${dateStr}.csv`)
+   967→    toast.success('CSV indirildi', { description: `${results.length} kayıt` })
+   968→  }, [results])
+   969→
+   970→  // ---- leads from maps ----
+   971→  const leadsQuery = useQuery({
+   972→    queryKey: qk.leads({ source: 'google_maps', status: leadStatusFilter }),
+   973→    queryFn: () => {
+   974→      const params = new URLSearchParams({ source: 'google_maps', limit: '100' })
+   975→      if (leadStatusFilter) params.set('status', leadStatusFilter)
+   976→      return apiGet<LeadsResponse>(`/api/leads?${params.toString()}`)
+   977→    },
+   978→  })
+   979→  const leads = leadsQuery.data?.items ?? []
+   980→
+   981→  const convertMutation = useMutation({
+   982→    mutationFn: (id: string) =>
+   983→      apiPatch<Lead>(`/api/leads/${id}`, { status: 'donustu' }),
+   984→    onSuccess: (lead) => {
+   985→      toast.success('Müşteriye dönüştürüldü', {
+   986→        description: lead.convertedCustomer
+   987→          ? `"${lead.name}" → ${lead.convertedCustomer.name} olarak oluşturuldu`
+   988→          : `"${lead.name}" müşteri olarak işaretlendi`,
+   989→        action: lead.convertedCustomer ? {
+   990→          label: 'Görüntüle',
+   991→          onClick: () => openCustomer(lead.convertedCustomer!.id),
+   992→        } : undefined,
+   993→      })
+   994→      qc.invalidateQueries({ queryKey: qk.leads({ source: 'google_maps' }) })
+   995→    },
+   996→    onError: (e: Error) => toast.error('Dönüştürme başarısız', { description: e.message }),
+   997→  })
+   998→
+   999→  const openDetail = (lead: Lead) => {
+  1000→    setDetailLead(lead)
+  1001→    setDetailOpen(true)
+  1002→  }
+  1003→
+  1004→  // ---- daily limit display ----
+  1005→  const limitPct = Math.min(100, (todayCount / DAILY_LIMIT) * 100)
+  1006→
+  1007→  return (
+  1008→    <div className="space-y-6 animate-fade-in">
+  1009→      {/* Header */}
+  1010→      <div className="flex items-start justify-between flex-wrap gap-3">
+  1011→        <div>
+  1012→          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+  1013→            <MapPin className="w-6 h-6 text-emerald-600" />
+  1014→            Potansiyel Müşteri Madenciliği
+  1015→          </h2>
+  1016→          <p className="text-sm text-muted-foreground mt-1">
+  1017→            Google Maps üzerindeki işletmeleri ara, seç ve CRM'ne lead olarak aktar.
+  1018→          </p>
+  1019→        </div>
+  1020→      </div>
+  1021→
+  1022→      {/* Two-panel layout */}
+  1023→      <div className="grid lg:grid-cols-5 gap-4">
+  1024→        {/* ---------- LEFT PANEL ---------- */}
+  1025→        <div className="lg:col-span-3 space-y-4">
+  1026→          {/* Search form card */}
+  1027→          <Card>
+  1028→            <CardHeader className="pb-3">
+  1029→              <div className="flex items-center justify-between gap-2">
+  1030→                <CardTitle className="text-base flex items-center gap-1.5">
+  1031→                  <Search className="w-4 h-4 text-muted-foreground" />
+  1032→                  Arama
+  1033→                </CardTitle>
+  1034→                <Tooltip>
+  1035→                  <TooltipTrigger asChild>
+  1036→                    <div className={cn(
+  1037→                      'flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border',
+  1038→                      limitReached
+  1039→                        ? 'border-red-200 bg-red-50 text-red-700 dark:bg-red-950/30 dark:border-red-900/50'
+  1040→                        : limitPct > 70
+  1041→                          ? 'border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:border-amber-900/50'
+  1042→                          : 'border-border bg-muted/40 text-muted-foreground',
+  1043→                    )}>
+  1044→                      <AlertCircle className="w-3 h-3" />
+  1045→                      <span className="font-medium">Günlük arama limiti: {todayCount}/{DAILY_LIMIT}</span>
+  1046→                    </div>
+  1047→                  </TooltipTrigger>
+  1048→                  <TooltipContent side="bottom">
+  1049→                    Maps API maliyet koruması için günlük {DAILY_LIMIT} arama ile sınırlıdır.
+  1050→                  </TooltipContent>
+  1051→                </Tooltip>
+  1052→              </div>
+  1053→            </CardHeader>
+  1054→            <CardContent className="space-y-3">
+  1055→              {/* category quick-select chips */}
+  1056→              <div className="flex flex-wrap gap-1.5">
+  1057→                {MAPS_CATEGORIES.map((c) => (
+  1058→                  <button
+  1059→                    key={c.query}
+  1060→                    type="button"
+  1061→                    onClick={() => setQuery(c.query)}
+  1062→                    className={cn(
+  1063→                      'text-xs px-2.5 py-1 rounded-full border transition-colors',
+  1064→                      'hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700',
+  1065→                      'dark:hover:bg-emerald-950/30 dark:hover:border-emerald-800',
+  1066→                      query === c.query
+  1067→                        ? 'bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800'
+  1068→                        : 'bg-muted/40 border-border text-muted-foreground',
+  1069→                    )}
+  1070→                  >
+  1071→                    {c.category}
+  1072→                  </button>
+  1073→                ))}
+  1074→              </div>
+  1075→
+  1076→              <div className="grid sm:grid-cols-3 gap-2">
+  1077→                <div className="sm:col-span-1">
+  1078→                  <Input
+  1079→                    placeholder="Arama sorgusu (örn: diş kliniği)"
+  1080→                    value={query}
+  1081→                    onChange={(e) => setQuery(e.target.value)}
+  1082→                    onKeyDown={(e) => { if (e.key === 'Enter') handleSearch() }}
+  1083→                    disabled={!canSearch || limitReached || searchMutation.isPending}
+  1084→                  />
+  1085→                </div>
+  1086→                <Select value={city} onValueChange={setCity} disabled={!canSearch || searchMutation.isPending}>
+  1087→                  <SelectTrigger className="w-full">
+  1088→                    <SelectValue placeholder="Şehir" />
+  1089→                  </SelectTrigger>
+  1090→                  <SelectContent>
+  1091→                    {CITIES.map((c) => (
+  1092→                      <SelectItem key={c} value={c}>{c}</SelectItem>
+  1093→                    ))}
+  1094→                  </SelectContent>
+  1095→                </Select>
+  1096→                <Select
+  1097→                  value={String(radius)}
+  1098→                  onValueChange={(v) => setRadius(Number(v))}
+  1099→                  disabled={!canSearch || searchMutation.isPending}
+  1100→                >
+  1101→                  <SelectTrigger className="w-full">
+  1102→                    <SelectValue placeholder="Yarıçap" />
+  1103→                  </SelectTrigger>
+  1104→                  <SelectContent>
+  1105→                    {RADII.map((r) => (
+  1106→                      <SelectItem key={r} value={String(r)}>{r} km</SelectItem>
+  1107→                    ))}
+  1108→                  </SelectContent>
+  1109→                </Select>
+  1110→              </div>
+  1111→
+  1112→              <div className="flex items-center gap-2 flex-wrap">
+  1113→                <Button
+  1114→                  onClick={handleSearch}
+  1115→                  disabled={!canSearch || limitReached || searchMutation.isPending}
+  1116→                >
+  1117→                  {searchMutation.isPending ? (
+  1118→                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+  1119→                  ) : (
+  1120→                    <Search className="w-4 h-4 mr-1.5" />
+  1121→                  )}
+  1122→                  Ara
+  1123→                </Button>
+  1124→                {hasSearched && results.length > 0 && (
+  1125→                  <Button variant="outline" onClick={handleExportCsv}>
+  1126→                    <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+  1127→                    CSV Dışa Aktar
+  1128→                  </Button>
+  1129→                )}
+  1130→                {!canSearch && (
+  1131→                  <span className="text-xs text-muted-foreground">
+  1132→                    Harita araması yapma yetkiniz yok.
+  1133→                  </span>
+  1134→                )}
+  1135→              </div>
+  1136→            </CardContent>
+  1137→          </Card>
+  1138→
+  1139→          {/* Results card */}
+  1140→          {searchMutation.isPending && !hasSearched ? (
+  1141→            <Card>
+  1142→              <CardContent className="p-4 space-y-2">
+  1143→                <Skeleton className="h-8 w-full" />
+  1144→                <Skeleton className="h-16 w-full" />
+  1145→                <Skeleton className="h-16 w-full" />
+  1146→                <Skeleton className="h-16 w-full" />
+  1147→              </CardContent>
+  1148→            </Card>
+  1149→          ) : hasSearched ? (
+  1150→            <Card>
+  1151→              <CardHeader className="pb-3">
+  1152→                <div className="flex items-center justify-between gap-2 flex-wrap">
+  1153→                  <CardTitle className="text-base flex items-center gap-1.5">
+  1154→                    <Users className="w-4 h-4 text-muted-foreground" />
+  1155→                    Sonuçlar
+  1156→                    <Badge variant="secondary" className="ml-1">{results.length}</Badge>
+  1157→                    {selectedIds.size > 0 && (
+  1158→                      <Badge className="ml-1 bg-sky-100 text-sky-700 border-sky-200">
+  1159→                        {selectedIds.size} seçili
+  1160→                      </Badge>
+  1161→                    )}
+  1162→                  </CardTitle>
+  1163→                  <div className="flex items-center gap-1.5">
+  1164→                    <Button
+  1165→                      size="sm" variant="ghost" className="h-7 text-xs"
+  1166→                      onClick={selectAllNew}
+  1167→                      disabled={results.length === 0}
+  1168→                    >
+  1169→                      <Check className="w-3.5 h-3.5 mr-1" />
+  1170→                      Tümünü Seç
+  1171→                    </Button>
+  1172→                    <Button
+  1173→                      size="sm" variant="ghost" className="h-7 text-xs"
+  1174→                      onClick={clearSelection}
+  1175→                      disabled={selectedIds.size === 0}
+  1176→                    >
+  1177→                      <X className="w-3.5 h-3.5 mr-1" />
+  1178→                      Seçimi Temizle
+  1179→                    </Button>
+  1180→                  </div>
+  1181→                </div>
+  1182→              </CardHeader>
+  1183→              <CardContent className="p-0">
+  1184→                {results.length === 0 ? (
+  1185→                  <div className="p-8 text-center">
+  1186→                    <Search className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+  1187→                    <p className="text-sm text-muted-foreground">Sonuç bulunamadı.</p>
+  1188→                    <p className="text-xs text-muted-foreground/70 mt-1">
+  1189→                      Farklı bir sorgu veya şehir deneyin.
+  1190→                    </p>
+  1191→                  </div>
+  1192→                ) : (
+  1193→                  <div className="max-h-[420px] overflow-y-auto custom-scroll border-t">
+  1194→                    <Table>
+  1195→                      <TableHeader className="sticky top-0 bg-card z-10">
+  1196→                        <TableRow>
+  1197→                          <TableHead className="w-10 pl-4">
+  1198→                            <Checkbox
+  1199→                              checked={results.length > 0 && results.every((r) => r.existsInCrm || selectedIds.has(r.placeId))}
+  1200→                              onCheckedChange={(v) => {
+  1201→                                if (v) selectAllNew()
+  1202→                                else clearSelection()
+  1203→                              }}
+  1204→                              aria-label="Tümünü seç"
+  1205→                            />
+  1206→                          </TableHead>
+  1207→                          <TableHead>İşletme</TableHead>
+  1208→                          <TableHead className="hidden md:table-cell">Adres</TableHead>
+  1209→                          <TableHead className="hidden lg:table-cell">İletişim</TableHead>
+  1210→                          <TableHead className="text-right">Puan</TableHead>
+  1211→                        </TableRow>
+  1212→                      </TableHeader>
+  1213→                      <TableBody>
+  1214→                        {results.map((r) => {
+  1215→                          const selected = selectedIds.has(r.placeId)
+  1216→                          return (
+  1217→                            <TableRow
+  1218→                              key={r.placeId}
+  1219→                              data-state={selected ? 'selected' : undefined}
+  1220→                              className="cursor-pointer"
+  1221→                              onClick={() => toggleSelect(r.placeId)}
+  1222→                            >
+  1223→                              <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
+  1224→                                <Checkbox
+  1225→                                  checked={selected}
+  1226→                                  onCheckedChange={() => toggleSelect(r.placeId)}
+  1227→                                  disabled={r.existsInCrm}
+  1228→                                  aria-label={r.name}
+  1229→                                />
+  1230→                              </TableCell>
+  1231→                              <TableCell>
+  1232→                                <div className="flex items-center gap-2 min-w-0">
+  1233→                                  <div className="min-w-0">
+  1234→                                    <div className="font-medium text-sm truncate flex items-center gap-1.5">
+  1235→                                      {r.name}
+  1236→                                      {r.existsInCrm && (
+  1237→                                        <Badge className="text-[10px] h-4 px-1 bg-emerald-100 text-emerald-700 border-emerald-200">
+  1238→                                          <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" /> CRM'de
+  1239→                                        </Badge>
+  1240→                                      )}
+  1241→                                    </div>
+  1242→                                    <div className="text-xs text-muted-foreground truncate">{r.category}</div>
+  1243→                                  </div>
+  1244→                                </div>
+  1245→                              </TableCell>
+  1246→                              <TableCell className="hidden md:table-cell max-w-[220px]">
+  1247→                                <span className="text-xs text-muted-foreground truncate block">
+  1248→                                  {r.address}
+  1249→                                </span>
+  1250→                              </TableCell>
+  1251→                              <TableCell className="hidden lg:table-cell">
+  1252→                                <div className="flex items-center gap-1.5">
+  1253→                                  {r.phone && (
+  1254→                                    <Tooltip>
+  1255→                                      <TooltipTrigger asChild>
+  1256→                                        <a
+  1257→                                          href={telLink(r.phone)}
+  1258→                                          onClick={(e) => e.stopPropagation()}
+  1259→                                          target="_blank" rel="noreferrer"
+  1260→                                          className="w-7 h-7 rounded-md border border-border flex items-center justify-center hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-600"
+  1261→                                        >
+  1262→                                          <Phone className="w-3.5 h-3.5" />
+  1263→                                        </a>
+  1264→                                      </TooltipTrigger>
+  1265→                                      <TooltipContent>{formatPhone(r.phone)}</TooltipContent>
+  1266→                                    </Tooltip>
+  1267→                                  )}
+  1268→                                  {r.web && (
+  1269→                                    <Tooltip>
+  1270→                                      <TooltipTrigger asChild>
+  1271→                                        <a
+  1272→                                          href={webHref(r.web) || '#'}
+  1273→                                          onClick={(e) => e.stopPropagation()}
+  1274→                                          target="_blank" rel="noreferrer"
+  1275→                                          className="w-7 h-7 rounded-md border border-border flex items-center justify-center hover:bg-sky-50 hover:border-sky-200 hover:text-sky-600"
+  1276→                                        >
+  1277→                                          <Globe className="w-3.5 h-3.5" />
+  1278→                                        </a>
+  1279→                                      </TooltipTrigger>
+  1280→                                      <TooltipContent>{r.web}</TooltipContent>
+  1281→                                    </Tooltip>
+  1282→                                  )}
+  1283→                                  {!r.phone && !r.web && (
+  1284→                                    <span className="text-xs text-muted-foreground">—</span>
+  1285→                                  )}
+  1286→                                </div>
+  1287→                              </TableCell>
+  1288→                              <TableCell className="text-right">
+  1289→                                <StarRating rating={r.rating} reviewCount={r.reviewCount} className="justify-end" />
+  1290→                              </TableCell>
+  1291→                            </TableRow>
+  1292→                          )
+  1293→                        })}
+  1294→                      </TableBody>
+  1295→                    </Table>
+  1296→                  </div>
+  1297→                )}
+  1298→              </CardContent>
+  1299→              {results.length > 0 && selectedIds.size > 0 && (
+  1300→                <div className="border-t bg-muted/30 p-3 flex items-center justify-between gap-2 flex-wrap">
+  1301→                  <span className="text-xs text-muted-foreground">
+  1302→                    {selectedIds.size} kayıt lead olarak aktarılacak
+  1303→                  </span>
+  1304→                  <Button
+  1305→                    size="sm"
+  1306→                    onClick={() => setImportOpen(true)}
+  1307→                    disabled={!canImport}
+  1308→                  >
+  1309→                    <UserPlus className="w-4 h-4 mr-1.5" />
+  1310→                    Seçilenleri Lead Olarak Aktar
+  1311→                  </Button>
+  1312→                </div>
+  1313→              )}
+  1314→            </Card>
+  1315→          ) : null}
+  1316→
+  1317→          {/* Recent searches */}
+  1318→          <Card>
+  1319→            <CardHeader className="pb-3">
+  1320→              <CardTitle className="text-base flex items-center gap-1.5">
+  1321→                <History className="w-4 h-4 text-muted-foreground" />
+  1322→                Son Aramalar
+  1323→              </CardTitle>
+  1324→              <CardDescription className="text-xs">
+  1325→                Tekrar çalıştırmak için bir aramaya tıklayın.
+  1326→              </CardDescription>
+  1327→            </CardHeader>
+  1328→            <CardContent className="p-0">
+  1329→              {recentLoading ? (
+  1330→                <div className="p-4 space-y-2">
+  1331→                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+  1332→                </div>
+  1333→              ) : recentSearches.length === 0 ? (
+  1334→                <div className="p-6 text-center">
+  1335→                  <Clock className="w-7 h-7 mx-auto mb-2 text-muted-foreground/40" />
+  1336→                  <p className="text-sm text-muted-foreground">Henüz arama geçmişi yok.</p>
+  1337→                </div>
+  1338→              ) : (
+  1339→                <ScrollArea className="max-h-72">
+  1340→                  <div className="divide-y">
+  1341→                    {recentSearches.slice(0, 10).map((s) => (
+  1342→                      <button
+  1343→                        key={s.id}
+  1344→                        type="button"
+  1345→                        onClick={() => rerunSearch(s)}
+  1346→                        className="w-full text-left p-3 hover:bg-muted/50 transition-colors flex items-center gap-3"
+  1347→                      >
+  1348→                        <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center shrink-0">
+  1349→                          <Search className="w-3.5 h-3.5 text-emerald-600" />
+  1350→                        </div>
+  1351→                        <div className="flex-1 min-w-0">
+  1352→                          <div className="flex items-center gap-2">
+  1353→                            <span className="text-sm font-medium truncate">{s.query}</span>
+  1354→                            <Badge variant="outline" className="text-[10px] h-4 px-1">
+  1355→                              {s.city || '—'}
+  1356→                            </Badge>
+  1357→                          </div>
+  1358→                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+  1359→                            <span>{s.resultCount} sonuç</span>
+  1360→                            {s.importedCount > 0 && (
+  1361→                              <>
+  1362→                                <span>·</span>
+  1363→                                <span className="text-emerald-600">{s.importedCount} aktarıldı</span>
+  1364→                              </>
+  1365→                            )}
+  1366→                            <span>·</span>
+  1367→                            <span>{formatRelative(s.createdAt)}</span>
+  1368→                            {s.user && s.user.id !== user?.id && (
+  1369→                              <>
+  1370→                                <span>·</span>
+  1371→                                <span>{s.user.name}</span>
+  1372→                              </>
+  1373→                            )}
+  1374→                          </div>
+  1375→                        </div>
+  1376→                        <ChevronRight className="w-4 h-4 text-muted-foreground/40 shrink-0" />
+  1377→                      </button>
+  1378→                    ))}
+  1379→                  </div>
+  1380→                </ScrollArea>
+  1381→              )}
+  1382→            </CardContent>
+  1383→          </Card>
+  1384→        </div>
+  1385→
+  1386→        {/* ---------- RIGHT PANEL: MAP ---------- */}
+  1387→        <div className="lg:col-span-2">
+  1388→          <div className="lg:sticky lg:top-4 space-y-3">
+  1389→            <Card className="overflow-hidden">
+  1390→              <CardHeader className="pb-3">
+  1391→                <CardTitle className="text-base flex items-center gap-1.5">
+  1392→                  <MapPin className="w-4 h-4 text-emerald-600" />
+  1393→                  Harita Görünümü
+  1394→                </CardTitle>
+  1395→                <CardDescription className="text-xs">
+  1396→                  {hasSearched
+  1397→                    ? `${results.length} işletme haritada gösteriliyor`
+  1398→                    : 'Arama sonuçları haritada görünecek'}
+  1399→                </CardDescription>
+  1400→              </CardHeader>
+  1401→              <CardContent className="p-4 pt-0">
+  1402→                <MapView
+  1403→                  key={searchId ?? 'initial'}
+  1404→                  results={results}
+  1405→                  selectedIds={selectedIds}
+  1406→                  onToggleSelect={toggleSelect}
+  1407→                  city={city}
+  1408→                  hasSearched={hasSearched}
+  1409→                />
+  1410→              </CardContent>
+  1411→            </Card>
+  1412→          </div>
+  1413→        </div>
+  1414→      </div>
+  1415→
+  1416→      {/* ---------- LEADS FROM MAPS ---------- */}
+  1417→      <Card>
+  1418→        <CardHeader className="pb-3">
+  1419→          <div className="flex items-center justify-between gap-2 flex-wrap">
+  1420→            <div>
+  1421→              <CardTitle className="text-base flex items-center gap-1.5">
+  1422→                <Sparkles className="w-4 h-4 text-violet-600" />
+  1423→                Maps Leadleri
+  1424→              </CardTitle>
+  1425→              <CardDescription className="text-xs mt-0.5">
+  1426→                Google Maps'ten içe aktarılan potansiyel müşteriler
+  1427→              </CardDescription>
+  1428→            </div>
+  1429→            <div className="flex items-center gap-1.5">
+  1430→              <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+  1431→              <div className="flex flex-wrap gap-1">
+  1432→                <button
+  1433→                  type="button"
+  1434→                  onClick={() => setLeadStatusFilter('')}
+  1435→                  className={cn(
+  1436→                    'text-xs px-2.5 py-1 rounded-full border transition-colors',
+  1437→                    leadStatusFilter === ''
+  1438→                      ? 'bg-foreground text-background border-foreground'
+  1439→                      : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted',
+  1440→                  )}
+  1441→                >
+  1442→                  Tümü
+  1443→                </button>
+  1444→                {LEAD_STATUSES.map((s) => (
+  1445→                  <button
+  1446→                    key={s.value}
+  1447→                    type="button"
+  1448→                    onClick={() => setLeadStatusFilter(s.value)}
+  1449→                    className={cn(
+  1450→                      'text-xs px-2.5 py-1 rounded-full border transition-colors',
+  1451→                      leadStatusFilter === s.value
+  1452→                        ? cn(s.color, 'font-medium')
+  1453→                        : 'bg-muted/40 border-border text-muted-foreground hover:bg-muted',
+  1454→                    )}
+  1455→                  >
+  1456→                    {s.label}
+  1457→                  </button>
+  1458→                ))}
+  1459→              </div>
+  1460→            </div>
+  1461→          </div>
+  1462→        </CardHeader>
+  1463→        <CardContent className="p-0">
+  1464→          {leadsQuery.isLoading ? (
+  1465→            <div className="p-4 space-y-2">
+  1466→              {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+  1467→            </div>
+  1468→          ) : leads.length === 0 ? (
+  1469→            <div className="p-10 text-center">
+  1470→              <UserPlus className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+  1471→              <p className="text-sm text-muted-foreground">
+  1472→                {leadStatusFilter
+  1473→                  ? 'Bu durumda Maps leadi yok.'
+  1474→                  : 'Henüz Maps leadi yok.'}
+  1475→              </p>
+  1476→              <p className="text-xs text-muted-foreground/70 mt-1">
+  1477→                Yukarıdan arama yapıp seçili işletmeleri lead olarak aktarın.
+  1478→              </p>
+  1479→            </div>
+  1480→          ) : (
+  1481→            <div className="max-h-[480px] overflow-y-auto custom-scroll border-t">
+  1482→              <Table>
+  1483→                <TableHeader className="sticky top-0 bg-card z-10">
+  1484→                  <TableRow>
+  1485→                    <TableHead className="pl-4">İşletme</TableHead>
+  1486→                    <TableHead className="hidden md:table-cell">Şehir</TableHead>
+  1487→                    <TableHead className="hidden lg:table-cell">İletişim</TableHead>
+  1488→                    <TableHead className="hidden sm:table-cell text-right">Puan</TableHead>
+  1489→                    <TableHead>Durum</TableHead>
+  1490→                    <TableHead className="hidden md:table-cell">Sahip</TableHead>
+  1491→                    <TableHead className="hidden lg:table-cell">Tarih</TableHead>
+  1492→                    <TableHead className="text-right pr-4">İşlem</TableHead>
+  1493→                  </TableRow>
+  1494→                </TableHeader>
+  1495→                <TableBody>
+  1496→                  {leads.map((lead) => {
+  1497→                    const statusColor = getColor(LEAD_STATUSES, lead.status)
+  1498→                    return (
+  1499→                      <TableRow key={lead.id}>
+  1500→                        <TableCell className="pl-4">
+  1501→                          <div className="min-w-0">
+  1502→                            <div className="font-medium text-sm truncate">{lead.name}</div>
+  1503→                            <div className="text-xs text-muted-foreground truncate">
+  1504→                              {lead.category || '—'}
+  1505→                            </div>
+  1506→                          </div>
+  1507→                        </TableCell>
+  1508→                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+  1509→                          {lead.city || '—'}
+  1510→                        </TableCell>
+  1511→                        <TableCell className="hidden lg:table-cell">
+  1512→                          {lead.phone ? (
+  1513→                            <a
+  1514→                              href={telLink(lead.phone)}
+  1515→                              className="text-xs text-emerald-600 hover:underline flex items-center gap-1"
+  1516→                            >
+  1517→                              <Phone className="w-3 h-3" />
+  1518→                              {formatPhone(lead.phone)}
+  1519→                            </a>
+  1520→                          ) : (
+  1521→                            <span className="text-xs text-muted-foreground">—</span>
+  1522→                          )}
+  1523→                        </TableCell>
+  1524→                        <TableCell className="hidden sm:table-cell text-right">
+  1525→                          <StarRating rating={lead.rating} reviewCount={lead.reviewCount} className="justify-end" />
+  1526→                        </TableCell>
+  1527→                        <TableCell>
+  1528→                          <Badge variant="outline" className={cn('text-[10px]', statusColor)}>
+  1529→                            {getLabel(LEAD_STATUSES, lead.status)}
+  1530→                          </Badge>
+  1531→                        </TableCell>
+  1532→                        <TableCell className="hidden md:table-cell">
+  1533→                          <span className="text-xs text-muted-foreground">
+  1534→                            {lead.owner?.name ?? '—'}
+  1535→                          </span>
+  1536→                        </TableCell>
+  1537→                        <TableCell className="hidden lg:table-cell">
+  1538→                          <span className="text-xs text-muted-foreground">
+  1539→                            {formatDate(lead.createdAt)}
+  1540→                          </span>
+  1541→                        </TableCell>
+  1542→                        <TableCell className="text-right pr-4">
+  1543→                          <div className="flex items-center justify-end gap-1">
+  1544→                            <Tooltip>
+  1545→                              <TooltipTrigger asChild>
+  1546→                                <Button
+  1547→                                  size="icon" variant="ghost" className="h-7 w-7"
+  1548→                                  onClick={() => openDetail(lead)}
+  1549→                                >
+  1550→                                  <Eye className="w-3.5 h-3.5" />
+  1551→                                </Button>
+  1552→                              </TooltipTrigger>
+  1553→                              <TooltipContent>Görüntüle</TooltipContent>
+  1554→                            </Tooltip>
+  1555→                            {lead.status !== 'donustu' ? (
+  1556→                              <Tooltip>
+  1557→                                <TooltipTrigger asChild>
+  1558→                                  <Button
+  1559→                                    size="icon" variant="ghost" className="h-7 w-7 hover:bg-emerald-50 hover:text-emerald-600"
+  1560→                                    onClick={() => convertMutation.mutate(lead.id)}
+  1561→                                    disabled={convertMutation.isPending}
+  1562→                                  >
+  1563→                                    <UserPlus className="w-3.5 h-3.5" />
+  1564→                                  </Button>
+  1565→                                </TooltipTrigger>
+  1566→                                <TooltipContent>Müşteriye Dönüştür</TooltipContent>
+  1567→                              </Tooltip>
+  1568→                            ) : (
+  1569→                              <Badge variant="outline" className="text-[10px] h-5 bg-emerald-50 text-emerald-700 border-emerald-200">
+  1570→                                <CheckCircle2 className="w-3 h-3 mr-0.5" /> Dönüştü
+  1571→                              </Badge>
+  1572→                            )}
+  1573→                          </div>
+  1574→                        </TableCell>
+  1575→                      </TableRow>
+  1576→                    )
+  1577→                  })}
+  1578→                </TableBody>
+  1579→              </Table>
+  1580→            </div>
+  1581→          )}
+  1582→        </CardContent>
+  1583→      </Card>
+  1584→
+  1585→      {/* Dialogs */}
+  1586→      <ImportDialog
+  1587→        open={importOpen}
+  1588→        onOpenChange={setImportOpen}
+  1589→        selectedResults={selectedResults}
+  1590→        searchId={searchId}
+  1591→        onImported={() => {
+  1592→          // drop CRM-existing from selection after import
+  1593→          setSelectedIds(new Set())
+  1594→        }}
+  1595→      />
+  1596→      <LeadDetailDialog lead={detailLead} open={detailOpen} onOpenChange={setDetailOpen} />
+  1597→    </div>
+  1598→  )
+  1599→}
+  1600→

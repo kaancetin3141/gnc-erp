@@ -1,0 +1,689 @@
+     1→     1→<!DOCTYPE html>
+     2→     2→<html lang="tr">
+     3→     3→<head>
+     4→     4→<meta charset="UTF-8">
+     5→     5→<meta name="viewport" content="width=device-width, initial-scale=1.0">
+     6→     6→<title>GNC Yazılım | Kaan Çetin — Web & İşletme Yazılımları</title>
+     7→     7→<meta name="description" content="GNC Yazılım — modern web siteleri, işletme yönetim sistemleri ve interaktif projeler. GNC ERP & CRM, Meyve Patlat ve daha fazlası.">
+     8→     8→<meta property="og:title" content="GNC Yazılım — Projeler">
+     9→     9→<meta property="og:description" content="Modern web & işletme çözümleri: GNC ERP & CRM, Meyve Patlat ve daha fazlası.">
+    10→    10→<meta property="og:type" content="website">
+    11→    11→<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2334d399'/%3E%3Cstop offset='1' stop-color='%23059669'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Ctext x='32' y='43' font-family='Arial,sans-serif' font-size='30' font-weight='bold' fill='%23041009' text-anchor='middle'%3EG%3C/text%3E%3C/svg%3E">
+    12→    12→<link rel="preconnect" href="https://fonts.googleapis.com">
+    13→    13→<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    14→    14→<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    15→    15→<style>
+    16→    16→  :root{
+    17→    17→    --bg:#04070a;
+    18→    18→    --text:#eef7f2;
+    19→    19→    --muted:#8fa89b;
+    20→    20→    --em:#10b981;
+    21→    21→    --em2:#34d399;
+    22→    22→    --cy:#2dd4bf;
+    23→    23→    --amber:#f59e0b;
+    24→    24→    --amber2:#fbbf24;
+    25→    25→    --glass:rgba(255,255,255,.055);
+    26→    26→    --glass2:rgba(255,255,255,.028);
+    27→    27→    --stroke:rgba(255,255,255,.11);
+    28→    28→    --stroke-em:rgba(52,211,153,.4);
+    29→    29→    --maxw:1120px;
+    30→    30→  }
+    31→    31→  *{margin:0;padding:0;box-sizing:border-box}
+    32→    32→  html{scroll-behavior:smooth}
+    33→    33→  body{
+    34→    34→    background:var(--bg);
+    35→    35→    color:var(--text);
+    36→    36→    font-family:'Space Grotesk','Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;
+    37→    37→    line-height:1.65;
+    38→    38→    min-height:100vh;
+    39→    39→    display:flex;
+    40→    40→    flex-direction:column;
+    41→    41→    overflow-x:hidden;
+    42→    42→  }
+    43→    43→  ::selection{background:var(--em);color:#041009}
+    44→    44→  ::-webkit-scrollbar{width:11px}
+    45→    45→  ::-webkit-scrollbar-track{background:var(--bg)}
+    46→    46→  ::-webkit-scrollbar-thumb{background:rgba(52,211,153,.28);border-radius:99px;border:3px solid var(--bg)}
+    47→    47→  ::-webkit-scrollbar-thumb:hover{background:rgba(52,211,153,.5)}
+    48→    48→
+    49→    49→  /* ================= ARKA PLAN FX ================= */
+    50→    50→  .bg-fx{position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none}
+    51→    51→  .blob{position:absolute;border-radius:50%;filter:blur(110px);opacity:.6}
+    52→    52→  .blob-1{width:620px;height:620px;background:radial-gradient(circle at 30% 30%,rgba(16,185,129,.5),transparent 65%);top:-180px;left:-160px;animation:float 16s ease-in-out infinite alternate}
+    53→    53→  .blob-2{width:540px;height:540px;background:radial-gradient(circle at 70% 70%,rgba(45,212,191,.34),transparent 65%);bottom:-200px;right:-140px;animation:float 20s ease-in-out infinite alternate-reverse}
+    54→    54→  .blob-3{width:430px;height:430px;background:radial-gradient(circle,rgba(245,158,11,.16),transparent 62%);top:34%;right:20%;animation:float 24s ease-in-out infinite alternate;animation-delay:-8s}
+    55→    55→  @keyframes float{from{transform:translate(0,0) scale(1)}to{transform:translate(70px,48px) scale(1.14)}}
+    56→    56→  .bg-grid{
+    57→    57→    position:fixed;inset:0;z-index:-1;pointer-events:none;
+    58→    58→    background-image:
+    59→    59→      linear-gradient(rgba(255,255,255,.033) 1px,transparent 1px),
+    60→    60→      linear-gradient(90deg,rgba(255,255,255,.033) 1px,transparent 1px);
+    61→    61→    background-size:54px 54px;
+    62→    62→    -webkit-mask-image:radial-gradient(ellipse 95% 75% at 50% 0%,#000 25%,transparent 78%);
+    63→    63→    mask-image:radial-gradient(ellipse 95% 75% at 50% 0%,#000 25%,transparent 78%);
+    64→    64→  }
+    65→    65→
+    66→    66→  /* ================= NAV — cam hap ================= */
+    67→    67→  .nav{position:sticky;top:16px;z-index:50;padding:0 20px}
+    68→    68→  .nav-in{
+    69→    69→    max-width:1040px;margin:0 auto;
+    70→    70→    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    71→    71→    padding:11px 12px 11px 20px;
+    72→    72→    background:linear-gradient(135deg,rgba(255,255,255,.09),rgba(255,255,255,.035));
+    73→    73→    -webkit-backdrop-filter:blur(22px) saturate(160%);
+    74→    74→    backdrop-filter:blur(22px) saturate(160%);
+    75→    75→    border:1px solid var(--stroke);
+    76→    76→    border-radius:22px;
+    77→    77→    box-shadow:0 10px 34px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.14);
+    78→    78→  }
+    79→    79→  .logo{display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--text)}
+    80→    80→  .logo-mark{
+    81→    81→    width:40px;height:40px;border-radius:13px;position:relative;
+    82→    82→    background:linear-gradient(135deg,var(--em2),#059669);
+    83→    83→    display:grid;place-items:center;
+    84→    84→    font-weight:700;font-size:18px;color:#041009;
+    85→    85→    box-shadow:0 0 22px rgba(16,185,129,.5), inset 0 1px 0 rgba(255,255,255,.4);
+    86→    86→  }
+    87→    87→  .logo-mark::after{
+    88→    88→    content:'';position:absolute;inset:-4px;border-radius:16px;
+    89→    89→    border:1px solid rgba(52,211,153,.35);animation:ringPulse 3s ease-in-out infinite;
+    90→    90→  }
+    91→    91→  @keyframes ringPulse{0%,100%{opacity:.9;transform:scale(1)}50%{opacity:.25;transform:scale(1.09)}}
+    92→    92→  .logo-txt{font-weight:700;font-size:17px;letter-spacing:.4px}
+    93→    93→  .logo-txt small{display:block;font-weight:500;font-size:10.5px;color:var(--muted);letter-spacing:2.6px;text-transform:uppercase}
+    94→    94→  .nav-links{display:flex;align-items:center;gap:6px}
+    95→    95→  .nav-links a{
+    96→    96→    color:var(--muted);text-decoration:none;font-size:14px;font-weight:500;
+    97→    97→    padding:8px 14px;border-radius:12px;transition:color .2s, background .2s;
+    98→    98→  }
+    99→    99→  .nav-links a:hover{color:var(--em2);background:rgba(255,255,255,.06)}
+   100→   100→  .nav-cta{
+   101→   101→    background:linear-gradient(135deg,var(--em2),var(--em));
+   102→   102→    color:#041009 !important;font-weight:700;
+   103→   103→    padding:9px 19px !important;border-radius:13px !important;
+   104→   104→    box-shadow:0 4px 18px rgba(16,185,129,.4), inset 0 1px 0 rgba(255,255,255,.35);
+   105→   105→    transition:transform .2s, box-shadow .2s !important;
+   106→   106→  }
+   107→   107→  .nav-cta:hover{transform:translateY(-1px);box-shadow:0 8px 26px rgba(16,185,129,.55) !important}
+   108→   108→
+   109→   109→  /* ================= HERO ================= */
+   110→   110→  .hero{position:relative;padding:104px 24px 88px;text-align:center}
+   111→   111→  .hero-in{position:relative;max-width:840px;margin:0 auto}
+   112→   112→  .badge{
+   113→   113→    display:inline-flex;align-items:center;gap:9px;
+   114→   114→    background:rgba(255,255,255,.05);
+   115→   115→    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+   116→   116→    border:1px solid var(--stroke-em);
+   117→   117→    color:var(--em2);font-size:12.5px;font-weight:600;
+   118→   118→    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+   119→   119→    letter-spacing:1.6px;text-transform:uppercase;
+   120→   120→    padding:8px 18px;border-radius:999px;margin-bottom:30px;
+   121→   121→    box-shadow:0 0 24px rgba(16,185,129,.14), inset 0 1px 0 rgba(255,255,255,.1);
+   122→   122→  }
+   123→   123→  .badge .dot{width:8px;height:8px;border-radius:50%;background:var(--em2);animation:pulse 2s infinite}
+   124→   124→  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.55)}70%{box-shadow:0 0 0 9px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+   125→   125→  h1{
+   126→   126→    font-size:clamp(36px,6.4vw,64px);
+   127→   127→    line-height:1.08;font-weight:700;letter-spacing:-2px;
+   128→   128→    margin-bottom:24px;
+   129→   129→  }
+   130→   130→  h1 .grad{
+   131→   131→    background:linear-gradient(90deg,var(--em2),var(--cy),var(--amber2),var(--em2));
+   132→   132→    background-size:280% 100%;
+   133→   133→    -webkit-background-clip:text;background-clip:text;color:transparent;
+   134→   134→    animation:gradmove 9s linear infinite;
+   135→   135→  }
+   136→   136→  @keyframes gradmove{to{background-position:280% 0}}
+   137→   137→  .hero p.lead{
+   138→   138→    color:var(--muted);font-size:clamp(15.5px,2.2vw,18.5px);
+   139→   139→    max-width:620px;margin:0 auto 38px;
+   140→   140→  }
+   141→   141→  .hero-btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:52px}
+   142→   142→  .btn{
+   143→   143→    display:inline-flex;align-items:center;gap:10px;
+   144→   144→    padding:15px 30px;border-radius:15px;
+   145→   145→    font-size:15.5px;font-weight:700;text-decoration:none;font-family:inherit;
+   146→   146→    transition:transform .22s, box-shadow .22s, background .22s, border-color .22s;
+   147→   147→    cursor:pointer;border:none;position:relative;overflow:hidden;
+   148→   148→  }
+   149→   149→  .btn-primary{
+   150→   150→    background:linear-gradient(135deg,var(--em2),var(--em));
+   151→   151→    color:#041009;
+   152→   152→    box-shadow:0 8px 30px rgba(16,185,129,.38), inset 0 1px 0 rgba(255,255,255,.35);
+   153→   153→  }
+   154→   154→  .btn-primary::after{
+   155→   155→    content:'';position:absolute;top:0;left:-80%;width:45%;height:100%;
+   156→   156→    background:linear-gradient(105deg,transparent,rgba(255,255,255,.4),transparent);
+   157→   157→    transform:skewX(-20deg);animation:shine 3.4s ease infinite;
+   158→   158→  }
+   159→   159→  @keyframes shine{0%{left:-80%}45%{left:130%}100%{left:130%}}
+   160→   160→  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(16,185,129,.55)}
+   161→   161→  .btn-ghost{
+   162→   162→    background:rgba(255,255,255,.05);color:var(--text);
+   163→   163→    border:1px solid var(--stroke);
+   164→   164→    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+   165→   165→    box-shadow:inset 0 1px 0 rgba(255,255,255,.1);
+   166→   166→  }
+   167→   167→  .btn-ghost:hover{transform:translateY(-2px);border-color:var(--stroke-em);background:rgba(16,185,129,.1)}
+   168→   168→  .hero-stats{
+   169→   169→    display:flex;justify-content:center;gap:16px;flex-wrap:wrap;
+   170→   170→  }
+   171→   171→  .stat{
+   172→   172→    min-width:150px;padding:18px 26px;border-radius:18px;
+   173→   173→    background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.02));
+   174→   174→    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+   175→   175→    border:1px solid var(--stroke);
+   176→   176→    box-shadow:0 10px 30px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.1);
+   177→   177→    color:var(--muted);font-size:13px;letter-spacing:.3px;
+   178→   178→  }
+   179→   179→  .stat b{display:block;color:var(--text);font-size:26px;font-weight:700;letter-spacing:-1px;line-height:1.25}
+   180→   180→  .stat b em{color:var(--em2);font-style:normal}
+   181→   181→
+   182→   182→  /* süzülen cam rozetler — hero kenarlarında */
+   183→   183→  .float-chip{
+   184→   184→    position:absolute;z-index:1;
+   185→   185→    display:flex;align-items:center;gap:9px;
+   186→   186→    padding:11px 17px;border-radius:15px;
+   187→   187→    background:linear-gradient(150deg,rgba(255,255,255,.08),rgba(255,255,255,.03));
+   188→   188→    -webkit-backdrop-filter:blur(18px) saturate(150%);backdrop-filter:blur(18px) saturate(150%);
+   189→   189→    border:1px solid var(--stroke);
+   190→   190→    box-shadow:0 14px 38px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.14);
+   191→   191→    font-size:13px;font-weight:600;color:#cfe4d9;
+   192→   192→    animation:hover 6s ease-in-out infinite alternate;
+   193→   193→    pointer-events:none;
+   194→   194→  }
+   195→   195→  .float-chip .fi{font-size:17px}
+   196→   196→  .fc-1{top:37%;left:2.5%;animation-delay:0s}
+   197→   197→  .fc-2{top:26%;right:2%;animation-delay:-2.2s}
+   198→   198→  .fc-3{bottom:15%;left:6%;animation-delay:-4.1s}
+   199→   199→  @keyframes hover{from{transform:translateY(-9px)}to{transform:translateY(9px)}}
+   200→   200→
+   201→   201→  /* ================= SECTION ================= */
+   202→   202→  section{padding:82px 24px;scroll-margin-top:96px}
+   203→   203→  .wrap{max-width:var(--maxw);margin:0 auto}
+   204→   204→  .sec-head{text-align:center;margin-bottom:54px}
+   205→   205→  .sec-kicker{
+   206→   206→    color:var(--em2);font-size:12px;font-weight:600;
+   207→   207→    letter-spacing:3.4px;text-transform:uppercase;margin-bottom:12px;
+   208→   208→    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+   209→   209→  }
+   210→   210→  .sec-kicker::before{content:'// '}
+   211→   211→  .sec-head h2{font-size:clamp(27px,4.2vw,40px);font-weight:700;letter-spacing:-1.2px}
+   212→   212→  .sec-head p{color:var(--muted);max-width:580px;margin:14px auto 0;font-size:15.5px}
+   213→   213→
+   214→   214→  /* ================= PROJE KARTLARI — glass ================= */
+   215→   215→  .proj-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:26px}
+   216→   216→  .proj{
+   217→   217→    position:relative;
+   218→   218→    background:linear-gradient(165deg,rgba(255,255,255,.075),rgba(255,255,255,.022) 42%,rgba(16,185,129,.045));
+   219→   219→    -webkit-backdrop-filter:blur(20px) saturate(150%);
+   220→   220→    backdrop-filter:blur(20px) saturate(150%);
+   221→   221→    border:1px solid var(--stroke);
+   222→   222→    border-radius:24px;
+   223→   223→    overflow:hidden;
+   224→   224→    display:flex;flex-direction:column;
+   225→   225→    box-shadow:0 20px 52px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.11);
+   226→   226→    transition:transform .3s ease, border-color .3s ease, box-shadow .3s ease;
+   227→   227→  }
+   228→   228→  .proj::before{
+   229→   229→    content:'';position:absolute;top:0;left:10%;right:10%;height:1px;z-index:1;
+   230→   230→    background:linear-gradient(90deg,transparent,rgba(52,211,153,.75),transparent);
+   231→   231→  }
+   232→   232→  .proj::after{
+   233→   233→    content:'';position:absolute;top:-70%;left:-35%;width:48%;height:240%;
+   234→   234→    background:linear-gradient(105deg,transparent,rgba(255,255,255,.055),transparent);
+   235→   235→    transform:rotate(12deg);transition:left .7s ease;pointer-events:none;
+   236→   236→  }
+   237→   237→  .proj:hover{transform:translateY(-7px);border-color:var(--stroke-em);box-shadow:0 26px 64px rgba(0,0,0,.5),0 0 44px rgba(16,185,129,.13), inset 0 1px 0 rgba(255,255,255,.16)}
+   238→   238→  .proj:hover::after{left:125%}
+   239→   239→  .browser{
+   240→   240→    background:rgba(0,0,0,.22);
+   241→   241→    border-bottom:1px solid rgba(255,255,255,.08);
+   242→   242→    padding:12px 15px;
+   243→   243→    display:flex;align-items:center;gap:11px;
+   244→   244→    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+   245→   245→  }
+   246→   246→  .b-dots{display:flex;gap:5px}
+   247→   247→  .b-dots i{width:9px;height:9px;border-radius:50%;display:block;box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+   248→   248→  .b-dots i:nth-child(1){background:#f87171}.b-dots i:nth-child(2){background:#fbbf24}.b-dots i:nth-child(3){background:#34d399}
+   249→   249→  .b-url{
+   250→   250→    flex:1;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.09);
+   251→   251→    border-radius:999px;padding:5px 14px;
+   252→   252→    color:var(--muted);font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+   253→   253→    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+   254→   254→  }
+   255→   255→  .b-url b{color:var(--em2);font-weight:600}
+   256→   256→  .proj-body{padding:25px 25px 27px;display:flex;flex-direction:column;flex:1;position:relative;z-index:2}
+   257→   257→  .proj-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+   258→   258→  .proj-ico{
+   259→   259→    width:50px;height:50px;border-radius:15px;flex-shrink:0;position:relative;
+   260→   260→    display:grid;place-items:center;font-size:23px;
+   261→   261→    background:linear-gradient(150deg,rgba(52,211,153,.2),rgba(16,185,129,.06));
+   262→   262→    border:1px solid rgba(52,211,153,.3);
+   263→   263→    box-shadow:0 0 24px rgba(16,185,129,.2), inset 0 1px 0 rgba(255,255,255,.2);
+   264→   264→  }
+   265→   265→  .proj-ico.amber{background:linear-gradient(150deg,rgba(251,191,36,.2),rgba(245,158,11,.05));border-color:rgba(251,191,36,.3);box-shadow:0 0 24px rgba(245,158,11,.18), inset 0 1px 0 rgba(255,255,255,.2)}
+   266→   266→  .status{
+   267→   267→    display:inline-flex;align-items:center;gap:7px;
+   268→   268→    font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+   269→   269→    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+   270→   270→    padding:6px 13px;border-radius:999px;white-space:nowrap;
+   271→   271→    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+   272→   272→  }
+   273→   273→  .status .sd{width:6px;height:6px;border-radius:50%;animation:pulse 2s infinite}
+   274→   274→  .status-live{background:rgba(16,185,129,.13);color:var(--em2);border:1px solid rgba(52,211,153,.35)}
+   275→   275→  .status-live .sd{background:var(--em2)}
+   276→   276→  .status-soon{background:rgba(245,158,11,.12);color:var(--amber2);border:1px solid rgba(251,191,36,.35)}
+   277→   277→  .status-soon .sd{background:var(--amber2)}
+   278→   278→  .status-plan{background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--stroke)}
+   279→   279→  .status-plan .sd{background:var(--muted);animation:none}
+   280→   280→  .proj h3{font-size:21px;font-weight:700;letter-spacing:-.5px;margin-bottom:9px}
+   281→   281→  .proj p.desc{color:var(--muted);font-size:14px;margin-bottom:17px}
+   282→   282→  .feat{list-style:none;margin-bottom:19px;display:grid;gap:8px}
+   283→   283→  .feat li{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;color:#c6dbcf}
+   284→   284→  .feat li svg{flex-shrink:0;margin-top:3.5px}
+   285→   285→  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:21px}
+   286→   286→  .chip{
+   287→   287→    font-size:11px;font-weight:600;color:var(--em2);
+   288→   288→    background:rgba(16,185,129,.1);border:1px solid rgba(52,211,153,.25);
+   289→   289→    padding:5px 12px;border-radius:999px;
+   290→   290→    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+   291→   291→    letter-spacing:.4px;
+   292→   292→  }
+   293→   293→  .chip.gray{color:var(--muted);background:rgba(255,255,255,.045);border-color:var(--stroke)}
+   294→   294→  .proj-actions{margin-top:auto;display:flex;gap:10px;flex-wrap:wrap}
+   295→   295→  .btn-card{
+   296→   296→    flex:1;text-align:center;justify-content:center;
+   297→   297→    display:inline-flex;align-items:center;gap:8px;
+   298→   298→    padding:13px 18px;border-radius:13px;font-size:14px;font-weight:700;
+   299→   299→    text-decoration:none;transition:all .22s;cursor:pointer;border:none;font-family:inherit;
+   300→   300→  }
+   301→   301→  .btn-card.primary{
+   302→   302→    background:linear-gradient(135deg,var(--em2),var(--em));color:#041009;
+   303→   303→    box-shadow:0 6px 22px rgba(16,185,129,.35), inset 0 1px 0 rgba(255,255,255,.3);
+   304→   304→  }
+   305→   305→  .btn-card.primary:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(16,185,129,.5)}
+   306→   306→  .btn-card.soon{background:rgba(255,255,255,.04);color:var(--muted);border:1px dashed rgba(255,255,255,.16);cursor:default}
+   307→   307→  .proj.dashed{border-style:dashed;background:linear-gradient(165deg,rgba(255,255,255,.045),rgba(255,255,255,.015))}
+   308→   308→  .plus{
+   309→   309→    width:50px;height:50px;border-radius:15px;
+   310→   310→    border:1px dashed rgba(255,255,255,.2);display:grid;place-items:center;
+   311→   311→    font-size:24px;color:var(--muted);
+   312→   312→  }
+   313→   313→
+   314→   314→  /* ================= HİZMETLER ================= */
+   315→   315→  .hiz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:22px}
+   316→   316→  .hiz{
+   317→   317→    position:relative;overflow:hidden;
+   318→   318→    background:linear-gradient(165deg,rgba(255,255,255,.065),rgba(255,255,255,.02));
+   319→   319→    -webkit-backdrop-filter:blur(18px) saturate(150%);backdrop-filter:blur(18px) saturate(150%);
+   320→   320→    border:1px solid var(--stroke);
+   321→   321→    border-radius:20px;padding:27px 23px;
+   322→   322→    box-shadow:0 14px 38px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.1);
+   323→   323→    transition:transform .28s, border-color .28s, box-shadow .28s;
+   324→   324→  }
+   325→   325→  .hiz::before{
+   326→   326→    content:'';position:absolute;top:0;left:12%;right:12%;height:1px;
+   327→   327→    background:linear-gradient(90deg,transparent,rgba(52,211,153,.5),transparent);
+   328→   328→  }
+   329→   329→  .hiz:hover{transform:translateY(-5px);border-color:var(--stroke-em);box-shadow:0 20px 48px rgba(0,0,0,.42),0 0 34px rgba(16,185,129,.1)}
+   330→   330→  .hiz-ico{
+   331→   331→    width:47px;height:47px;border-radius:14px;margin-bottom:17px;
+   332→   332→    background:linear-gradient(150deg,rgba(52,211,153,.18),rgba(16,185,129,.05));
+   333→   333→    border:1px solid rgba(52,211,153,.3);
+   334→   334→    display:grid;place-items:center;
+   335→   335→    box-shadow:0 0 20px rgba(16,185,129,.18), inset 0 1px 0 rgba(255,255,255,.18);
+   336→   336→  }
+   337→   337→  .hiz h3{font-size:16.5px;font-weight:700;margin-bottom:8px}
+   338→   338→  .hiz p{color:var(--muted);font-size:13.5px}
+   339→   339→
+   340→   340→  /* ================= İLETİŞİM ================= */
+   341→   341→  .ilet-card{
+   342→   342→    position:relative;border-radius:28px;
+   343→   343→    padding:58px 34px;text-align:center;overflow:hidden;
+   344→   344→    background:linear-gradient(160deg,rgba(255,255,255,.07),rgba(255,255,255,.02) 55%,rgba(16,185,129,.05));
+   345→   345→    -webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%);
+   346→   346→    box-shadow:0 24px 60px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.12);
+   347→   347→  }
+   348→   348→  .ilet-card::before{ /* animasyonlu gradient kenar */
+   349→   349→    content:'';position:absolute;inset:0;border-radius:28px;padding:1.2px;
+   350→   350→    background:linear-gradient(135deg,rgba(52,211,153,.6),rgba(255,255,255,.07) 40%,rgba(251,191,36,.4) 75%,rgba(52,211,153,.5));
+   351→   351→    background-size:220% 220%;animation:gradmove 7s linear infinite;
+   352→   352→    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+   353→   353→    -webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
+   354→   354→    pointer-events:none;
+   355→   355→  }
+   356→   356→  .ilet-card h2{font-size:clamp(24px,3.6vw,34px);font-weight:700;letter-spacing:-.9px;margin-bottom:13px;position:relative}
+   357→   357→  .ilet-card p{color:var(--muted);max-width:500px;margin:0 auto 32px;position:relative}
+   358→   358→  .ilet-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;position:relative}
+   359→   359→  .ilet-link{
+   360→   360→    display:inline-flex;align-items:center;gap:9px;
+   361→   361→    padding:14px 26px;border-radius:14px;text-decoration:none;
+   362→   362→    font-size:14.5px;font-weight:600;transition:all .22s;
+   363→   363→  }
+   364→   364→  .ilet-link.solid{
+   365→   365→    background:linear-gradient(135deg,var(--em2),var(--em));color:#041009;font-weight:700;
+   366→   366→    box-shadow:0 8px 26px rgba(16,185,129,.4), inset 0 1px 0 rgba(255,255,255,.3);
+   367→   367→  }
+   368→   368→  .ilet-link.solid:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(16,185,129,.55)}
+   369→   369→  .ilet-link.line{
+   370→   370→    background:rgba(255,255,255,.05);border:1px solid var(--stroke);color:var(--text);
+   371→   371→    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+   372→   372→    box-shadow:inset 0 1px 0 rgba(255,255,255,.1);
+   373→   373→  }
+   374→   374→  .ilet-link.line:hover{border-color:var(--stroke-em);background:rgba(16,185,129,.1);transform:translateY(-2px)}
+   375→   375→
+   376→   376→  /* ================= FOOTER ================= */
+   377→   377→  footer{
+   378→   378→    margin-top:auto;position:relative;
+   379→   379→    border-top:1px solid rgba(255,255,255,.07);
+   380→   380→    background:rgba(255,255,255,.02);
+   381→   381→    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+   382→   382→  }
+   383→   383→  footer::before{
+   384→   384→    content:'';position:absolute;top:-1px;left:18%;right:18%;height:1px;
+   385→   385→    background:linear-gradient(90deg,transparent,rgba(52,211,153,.55),transparent);
+   386→   386→  }
+   387→   387→  .foot-in{
+   388→   388→    max-width:var(--maxw);margin:0 auto;
+   389→   389→    padding:36px 24px;
+   390→   390→    display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;
+   391→   391→  }
+   392→   392→  .foot-left{display:flex;align-items:center;gap:11px}
+   393→   393→  .foot-mark{
+   394→   394→    width:32px;height:32px;border-radius:10px;
+   395→   395→    background:linear-gradient(135deg,var(--em2),#059669);
+   396→   396→    display:grid;place-items:center;font-weight:700;font-size:14px;color:#041009;
+   397→   397→    box-shadow:0 0 16px rgba(16,185,129,.4);
+   398→   398→  }
+   399→   399→  .foot-left span{font-size:13.5px;color:var(--muted)}
+   400→   400→  .foot-left b{color:var(--text)}
+   401→   401→  .foot-links{display:flex;gap:18px;flex-wrap:wrap}
+   402→   402→  .foot-links a{color:var(--muted);text-decoration:none;font-size:13px;transition:color .2s}
+   403→   403→  .foot-links a:hover{color:var(--em2)}
+   404→   404→
+   405→   405→  /* ================= REVEAL ================= */
+   406→   406→  .reveal{opacity:0;transform:translateY(24px);transition:opacity .75s ease,transform .75s ease}
+   407→   407→  .reveal.in{opacity:1;transform:none}
+   408→   408→
+   409→   409→  @media (prefers-reduced-motion:reduce){
+   410→   410→    *,*::before,*::after{animation:none!important;transition:none!important}
+   411→   411→    .reveal{opacity:1;transform:none}
+   412→   412→  }
+   413→   413→
+   414→   414→  /* ================= RESPONSIVE ================= */
+   415→   415→  @media (max-width:1120px){
+   416→   416→    .float-chip{display:none}
+   417→   417→  }
+   418→   418→  @media (max-width:640px){
+   419→   419→    .nav{top:10px}
+   420→   420→    .nav-in{padding:9px 10px 9px 15px;border-radius:18px}
+   421→   421→    .nav-links a:not(.nav-cta){display:none}
+   422→   422→    .hero{padding:76px 18px 62px}
+   423→   423→    section{padding:60px 18px}
+   424→   424→    .stat{min-width:126px;padding:15px 20px}
+   425→   425→    .ilet-card{padding:44px 20px}
+   426→   426→    .foot-in{justify-content:center;text-align:center}
+   427→   427→  }
+   428→   428→</style>
+   429→   429→</head>
+   430→   430→<body>
+   431→   431→
+   432→   432→<!-- ============ ARKA PLAN ============ -->
+   433→   433→<div class="bg-fx" aria-hidden="true">
+   434→   434→  <div class="blob blob-1"></div>
+   435→   435→  <div class="blob blob-2"></div>
+   436→   436→  <div class="blob blob-3"></div>
+   437→   437→</div>
+   438→   438→<div class="bg-grid" aria-hidden="true"></div>
+   439→   439→
+   440→   440→<!-- ============ NAV ============ -->
+   441→   441→<nav class="nav" aria-label="Ana menü">
+   442→   442→  <div class="nav-in">
+   443→   443→    <a class="logo" href="#" aria-label="GNC Yazılım ana sayfa">
+   444→   444→      <span class="logo-mark">G</span>
+   445→   445→      <span class="logo-txt">GNC<small>YAZILIM</small></span>
+   446→   446→    </a>
+   447→   447→    <div class="nav-links">
+   448→   448→      <a href="#projeler">Projeler</a>
+   449→   449→      <a href="#hizmetler">Hizmetler</a>
+   450→   450→      <a href="#iletisim">İletişim</a>
+   451→   451→      <a class="nav-cta" href="#projeler">Projeleri Gör</a>
+   452→   452→    </div>
+   453→   453→  </div>
+   454→   454→</nav>
+   455→   455→
+   456→   456→<!-- ============ HERO ============ -->
+   457→   457→<header class="hero">
+   458→   458→  <div class="float-chip fc-1" aria-hidden="true"><span class="fi">&lt;/&gt;</span> Temiz Kod</div>
+   459→   459→  <div class="float-chip fc-2" aria-hidden="true"><span class="fi">⚡</span> Yüksek Performans</div>
+   460→   460→  <div class="float-chip fc-3" aria-hidden="true"><span class="fi">🛡️</span> 7/24 Çalışır</div>
+   461→   461→  <div class="hero-in">
+   462→   462→    <span class="badge"><span class="dot"></span> SYS.ONLINE · gncinc.online</span>
+   463→   463→    <h1>Fikirden Ürüne,<br><span class="grad">Çalışan Yazılımlar.</span></h1>
+   464→   464→    <p class="lead">
+   465→   465→      Merhaba, ben Kaan. İşletmeleri dijitalleştiren yönetim sistemleri,
+   466→   466→      web projeleri ve eğlenceli uygulamalar geliştiriyorum.
+   467→   467→      İşte yaptıklarım — her biri kendi adresinde yayında.
+   468→   468→    </p>
+   469→   469→    <div class="hero-btns">
+   470→   470→      <a class="btn btn-primary" href="#projeler">
+   471→   471→        Projelerimi Gör
+   472→   472→        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+   473→   473→      </a>
+   474→   474→      <a class="btn btn-ghost" href="https://github.com/kaancetin3141" target="_blank" rel="noopener">
+   475→   475→        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.15c-3.2.69-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.75 2.69 1.25 3.34.95.1-.74.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.59.24 2.76.12 3.05.74.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.25 5.66.41.36.78 1.05.78 2.13v3.16c0 .31.2.67.8.55A11.52 11.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
+   476→   476→        GitHub
+   477→   477→      </a>
+   478→   478→    </div>
+   479→   479→    <div class="hero-stats">
+   480→   480→      <div class="stat"><b>2<em>+</em></b> Geliştirilen Proje</div>
+   481→   481→      <div class="stat"><b>%100</b> Türkçe Arayüz</div>
+   482→   482→      <div class="stat"><b>7/24</b> Kesintisiz Erişim</div>
+   483→   483→    </div>
+   484→   484→  </div>
+   485→   485→</header>
+   486→   486→
+   487→   487→<main>
+   488→   488→
+   489→   489→<!-- ============ PROJELER ============ -->
+   490→   490→<section id="projeler">
+   491→   491→  <div class="wrap">
+   492→   492→    <div class="sec-head reveal">
+   493→   493→      <div class="sec-kicker">Portfolyo</div>
+   494→   494→      <h2>Projelerim</h2>
+   495→   495→      <p>Geliştirdiğim her proje kendi alt alan adında yayınlanır.
+   496→   496→         Aşağıdaki kartlardan canlıya girebilirsiniz.</p>
+   497→   497→    </div>
+   498→   498→
+   499→   499→    <div class="proj-grid">
+   500→   500→
+   501→   501→      <!-- GNC ERP & CRM -->
+   502→   502→      <article class="proj reveal" style="transition-delay:.05s">
+   503→   503→        <div class="browser">
+   504→   504→          <span class="b-dots"><i></i><i></i><i></i></span>
+   505→   505→          <span class="b-url"><b>https://</b>crm.gncinc.online</span>
+   506→   506→        </div>
+   507→   507→        <div class="proj-body">
+   508→   508→          <div class="proj-top">
+   509→   509→            <span class="proj-ico" aria-hidden="true">📊</span>
+   510→   510→            <span class="status status-live"><span class="sd"></span>Canlıda</span>
+   511→   511→          </div>
+   512→   512→          <h3>GNC ERP &amp; CRM</h3>
+   513→   513→          <p class="desc">
+   514→   514→            Kuaför, kafe ve perakende işletmeleri için tasarlanmış tam kapsamlı
+   515→   515→            işletme yönetim sistemi. Tek panelden tüm işletmeyi yönetin.
+   516→   516→          </p>
+   517→   517→          <ul class="feat">
+   518→   518→            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Randevu &amp; takvim yönetimi</li>
+   519→   519→            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Müşteri takibi &amp; veresiye defteri</li>
+   520→   520→            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Personel, kasa ve gelir-gider raporları</li>
+   521→   521→            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Kafe masaları &amp; paket servis takibi</li>
+   522→   522→          </ul>
+   523→   523→          <div class="chips">
+   524→   524→            <span class="chip">Next.js 16</span>
+   525→   525→            <span class="chip">TypeScript</span>
+   526→   526→            <span class="chip">Prisma</span>
+   527→   527→            <span class="chip">Tailwind CSS</span>
+   528→   528→          </div>
+   529→   529→          <div class="proj-actions">
+   530→   530→            <a class="btn-card primary" href="https://crm.gncinc.online" target="_blank" rel="noopener">
+   531→   531→              Projeyi Aç
+   532→   532→              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M7 7h10v10"/></svg>
+   533→   533→            </a>
+   534→   534→          </div>
+   535→   535→        </div>
+   536→   536→      </article>
+   537→   537→
+   538→   538→      <!-- MEYVE PATLAT -->
+   539→   539→      <article class="proj reveal" style="transition-delay:.12s">
+   540→   540→        <div class="browser">
+   541→   541→          <span class="b-dots"><i></i><i></i><i></i></span>
+   542→   542→          <span class="b-url"><b>https://</b>meyvepatlat.gncinc.online</span>
+   543→   543→        </div>
+   544→   544→        <div class="proj-body">
+   545→   545→          <div class="proj-top">
+   546→   546→            <span class="proj-ico amber" aria-hidden="true">🍉</span>
+   547→   547→            <span class="status status-soon"><span class="sd"></span>Yakında</span>
+   548→   548→          </div>
+   549→   549→          <h3>Meyve Patlat</h3>
+   550→   550→          <p class="desc">
+   551→   551→            Tarayıcıda oynanan eğlenceli ve hızlı tempolu meyve oyunu.
+   552→   552→            Refleks + rekor kovalamaca; telefondan da oynanabilir.
+   553→   553→          </p>
+   554→   554→          <ul class="feat">
+   555→   555→            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Dokunmatik &amp; fare desteği</li>
+   556→   556→            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Rekor tablosu</li>
+   557→   557→            <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Kurulum gerektirmez, anında oyna</li>
+   558→   558→          </ul>
+   559→   559→          <div class="chips">
+   560→   560→            <span class="chip gray">HTML5</span>
+   561→   561→            <span class="chip gray">Canvas</span>
+   562→   562→            <span class="chip gray">JavaScript</span>
+   563→   563→          </div>
+   564→   564→          <div class="proj-actions">
+   565→   565→            <span class="btn-card soon">🚧 Yayına Hazırlanıyor</span>
+   566→   566→          </div>
+   567→   567→        </div>
+   568→   568→      </article>
+   569→   569→
+   570→   570→      <!-- SIRADAKI PROJE -->
+   571→   571→      <article class="proj dashed reveal" style="transition-delay:.19s">
+   572→   572→        <div class="browser">
+   573→   573→          <span class="b-dots"><i></i><i></i><i></i></span>
+   574→   574→          <span class="b-url"><b>https://</b>?????.gncinc.online</span>
+   575→   575→        </div>
+   576→   576→        <div class="proj-body">
+   577→   577→          <div class="proj-top">
+   578→   578→            <div class="plus" aria-hidden="true">+</div>
+   579→   579→            <span class="status status-plan"><span class="sd"></span>Planlandı</span>
+   580→   580→          </div>
+   581→   581→          <h3>Sıradaki Proje?</h3>
+   582→   582→          <p class="desc">
+   583→   583→            Geliştirme masasında yeni fikirler var.
+   584→   584→            Yeni projeler yayına girdiğinde burada ve kendi alt alan adında listelenecek.
+   585→   585→          </p>
+   586→   586→          <div class="chips">
+   587→   587→            <span class="chip gray">Fikir Aşaması</span>
+   588→   588→          </div>
+   589→   589→          <div class="proj-actions">
+   590→   590→            <a class="btn-card soon" style="cursor:pointer" href="#iletisim">Fikrin mi var? Yaz →</a>
+   591→   591→          </div>
+   592→   592→        </div>
+   593→   593→      </article>
+   594→   594→
+   595→   595→    </div>
+   596→   596→  </div>
+   597→   597→</section>
+   598→   598→
+   599→   599→<!-- ============ HİZMETLER ============ -->
+   600→   600→<section id="hizmetler">
+   601→   601→  <div class="wrap">
+   602→   602→    <div class="sec-head reveal">
+   603→   603→      <div class="sec-kicker">Neler Yapıyorum</div>
+   604→   604→      <h2>Hizmetler</h2>
+   605→   605→      <p>İhtiyaca özel çözümler — küçük işletmelerden kişisel projelere.</p>
+   606→   606→    </div>
+   607→   607→    <div class="hiz-grid">
+   608→   608→      <div class="hiz reveal" style="transition-delay:.03s">
+   609→   609→        <div class="hiz-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg></div>
+   610→   610→        <h3>Web Siteleri</h3>
+   611→   611→        <p>Kurumsal siteler, portfolyolar ve tanıtım sayfaları. Hızlı, mobil uyumlu ve SEO dostu.</p>
+   612→   612→      </div>
+   613→   613→      <div class="hiz reveal" style="transition-delay:.09s">
+   614→   614→        <div class="hiz-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 4 3 5-7"/></svg></div>
+   615→   615→        <h3>Yönetim Panelleri</h3>
+   616→   616→        <p>CRM, randevu, stok ve raporlama sistemleri. İşletmenizin tüm akışı tek ekranda.</p>
+   617→   617→      </div>
+   618→   618→      <div class="hiz reveal" style="transition-delay:.15s">
+   619→   619→        <div class="hiz-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11L9.5 22 19 9.5h-6.5L13 2z"/></svg></div>
+   620→   620→        <h3>Oyun &amp; Etkileşim</h3>
+   621→   621→        <p>Tarayıcı oyunları, animasyonlar ve interaktif deneyimler. Eğlence her yerde.</p>
+   622→   622→      </div>
+   623→   623→      <div class="hiz reveal" style="transition-delay:.21s">
+   624→   624→        <div class="hiz-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4.5 4.5 0 0 0-6.05 5.9L3 17.85V21h3.15l5.65-5.65a4.5 4.5 0 0 0 5.9-6.05l-2.9 2.9-2.55-.45-.45-2.55 2.9-2.9z"/></svg></div>
+   625→   625→        <h3>Bakım &amp; Barındırma</h3>
+   626→   626→        <p>Sunucu kurulumu, SSL, yedekleme ve sürekli güncelleme. Siz işinize bakın.</p>
+   627→   627→      </div>
+   628→   628→    </div>
+   629→   629→  </div>
+   630→   630→</section>
+   631→   631→
+   632→   632→<!-- ============ İLETİŞİM ============ -->
+   633→   633→<section id="iletisim">
+   634→   634→  <div class="wrap">
+   635→   635→    <!-- NOT: e-posta adresini kendi adresinle değiştirebilirsin -->
+   636→   636→    <div class="ilet-card reveal">
+   637→   637→      <h2>Bir Fikrin mi Var?</h2>
+   638→   638→      <p>Web sitesi, yönetim paneli ya da herhangi bir proje fikri —
+   639→   639→         konuşalım, birlikte hayata geçirelim.</p>
+   640→   640→      <div class="ilet-row">
+   641→   641→        <a class="ilet-link solid" href="mailto:info@gncinc.online">
+   642→   642→          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/></svg>
+   643→   643→          info@gncinc.online
+   644→   644→        </a>
+   645→   645→        <a class="ilet-link line" href="https://github.com/kaancetin3141" target="_blank" rel="noopener">
+   646→   646→          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.15c-3.2.69-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.75 2.69 1.25 3.34.95.1-.74.4-1.25.72-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.59.24 2.76.12 3.05.74.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.25 5.66.41.36.78 1.05.78 2.13v3.16c0 .31.2.67.8.55A11.52 11.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
+   647→   647→          GitHub
+   648→   648→        </a>
+   649→   649→      </div>
+   650→   650→    </div>
+   651→   651→  </div>
+   652→   652→</section>
+   653→   653→
+   654→   654→</main>
+   655→   655→
+   656→   656→<!-- ============ FOOTER ============ -->
+   657→   657→<footer>
+   658→   658→  <div class="foot-in">
+   659→   659→    <div class="foot-left">
+   660→   660→      <span class="foot-mark">G</span>
+   661→   661→      <span><b>GNC Yazılım</b> · © <span id="yil">2025</span> — gncinc.online</span>
+   662→   662→    </div>
+   663→   663→    <div class="foot-links">
+   664→   664→      <a href="https://crm.gncinc.online">CRM</a>
+   665→   665→      <a href="https://meyvepatlat.gncinc.online">Meyve Patlat</a>
+   666→   666→      <a href="https://github.com/kaancetin3141">GitHub</a>
+   667→   667→    </div>
+   668→   668→  </div>
+   669→   669→</footer>
+   670→   670→
+   671→   671→<script>
+   672→   672→  // Yıl otomatik
+   673→   673→  document.getElementById('yil').textContent = new Date().getFullYear();
+   674→   674→  // Kaydırınca yumuşak görünme
+   675→   675→  if ('IntersectionObserver' in window) {
+   676→   676→    const io = new IntersectionObserver(function(entries){
+   677→   677→      entries.forEach(function(e){
+   678→   678→        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+   679→   679→      });
+   680→   680→    }, { threshold: .12 });
+   681→   681→    document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+   682→   682→  } else {
+   683→   683→    document.querySelectorAll('.reveal').forEach(function(el){ el.classList.add('in'); });
+   684→   684→  }
+   685→   685→</script>
+   686→   686→
+   687→   687→</body>
+   688→   688→</html>
+   689→   689→

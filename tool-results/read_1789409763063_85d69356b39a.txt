@@ -1,0 +1,851 @@
+     1→import { db } from '@/lib/db'
+     2→import { monthLabel } from '@/lib/dashboard-sectors'
+     3→
+     4→// ============================================================
+     5→// SEKTÖR BAZLI RAPOR VERİSİ
+     6→//
+     7→// Her sektör için o sektöre özel analiz verisi toplanır.
+     8→// CRM sektörü mevcut /api/reports mantığını kullanır — burada 4
+     9→// CRM-dışı sektör için ayrı fetcher tanımlıdır.
+    10→//
+    11→// Tüm sorgular rangeStart/rangeEnd aralığını temel alır.
+    12→// ============================================================
+    13→
+    14→const TR_DAY_NAMES = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt']
+    15→
+    16→export function dayLabel(idx: number): string {
+    17→  return TR_DAY_NAMES[idx] ?? ''
+    18→}
+    19→
+    20→// ============================================================
+    21→// CAFE — Saatlik kırılım, sipariş tipi, top items, günlük trend,
+    22→// çoklu kafe karşılaştırması
+    23→// ============================================================
+    24→export async function getCafeReportsData(
+    25→  tenantId: string,
+    26→  rangeStart: Date,
+    27→  rangeEnd: Date,
+    28→): Promise<{
+    29→  sector: 'cafe'
+    30→  cafe: {
+    31→    cafeNames: string[]
+    32→    totalCafes: number
+    33→    totalRevenue: number
+    34→    totalOrders: number
+    35→    avgTicket: number
+    36→    activeTables: number
+    37→    totalTables: number
+    38→    dailyRevenue: { date: string; revenue: number; orders: number }[]
+    39→    hourlyBreakdown: { hour: number; revenue: number; orders: number }[]
+    40→    orderTypeMix: { type: string; count: number; revenue: number }[]
+    41→    topItems: { name: string; qty: number; revenue: number }[]
+    42→    perCafe: { id: string; name: string; revenue: number; orders: number; avgTicket: number }[]
+    43→  }
+    44→}> {
+    45→  const cafes = await db.cafe.findMany({
+    46→    where: { tenantId },
+    47→    select: {
+    48→      id: true, name: true, tableCount: true,
+    49→      tables: { select: { id: true, status: true } },
+    50→    },
+    51→  })
+    52→
+    53→  const cafeIds = cafes.map((c) => c.id)
+    54→
+    55→  if (cafeIds.length === 0) {
+    56→    return {
+    57→      sector: 'cafe',
+    58→      cafe: {
+    59→        cafeNames: [],
+    60→        totalCafes: 0,
+    61→        totalRevenue: 0,
+    62→        totalOrders: 0,
+    63→        avgTicket: 0,
+    64→        activeTables: 0,
+    65→        totalTables: 0,
+    66→        dailyRevenue: [],
+    67→        hourlyBreakdown: [],
+    68→        orderTypeMix: [],
+    69→        topItems: [],
+    70→        perCafe: [],
+    71→      },
+    72→    }
+    73→  }
+    74→
+    75→  const [orders, items, activeTables] = await Promise.all([
+    76→    db.cafeOrder.findMany({
+    77→      where: {
+    78→        cafeId: { in: cafeIds },
+    79→        createdAt: { gte: rangeStart, lt: rangeEnd },
+    80→        status: 'odendi',
+    81→      },
+    82→      select: {
+    83→        cafeId: true, total: true, type: true, createdAt: true,
+    84→        cafe: { select: { name: true } },
+    85→      },
+    86→    }),
+    87→    db.cafeOrderItem.findMany({
+    88→      where: {
+    89→        order: {
+    90→          cafeId: { in: cafeIds },
+    91→          createdAt: { gte: rangeStart, lt: rangeEnd },
+    92→          status: 'odendi',
+    93→        },
+    94→      },
+    95→      select: { name: true, qty: true, unitPrice: true },
+    96→    }),
+    97→    db.cafeTable.count({
+    98→      where: { cafeId: { in: cafeIds }, status: { in: ['dolu', 'siparis', 'rezerve'] } },
+    99→    }),
+   100→  ])
+   101→
+   102→  const totalRevenue = orders.reduce((s, o) => s + o.total, 0)
+   103→  const totalOrders = orders.length
+   104→  const avgTicket = totalOrders > 0 ? totalRevenue / totalOrders : 0
+   105→  const totalTables = cafes.reduce((s, c) => s + c.tableCount, 0)
+   106→
+   107→  // Daily revenue (last 30 days or full range — whichever is shorter)
+   108→  const dailyMap = new Map<string, { revenue: number; orders: number }>()
+   109→  for (let i = 29; i >= 0; i--) {
+   110→    const d = new Date(rangeEnd.getTime() - i * 24 * 60 * 60 * 1000)
+   111→    dailyMap.set(d.toISOString().slice(0, 10), { revenue: 0, orders: 0 })
+   112→  }
+   113→  for (const o of orders) {
+   114→    const day = new Date(o.createdAt).toISOString().slice(0, 10)
+   115→    const cur = dailyMap.get(day)
+   116→    if (cur) {
+   117→      cur.revenue += o.total
+   118→      cur.orders += 1
+   119→    }
+   120→  }
+   121→  const dailyRevenue = Array.from(dailyMap.entries()).map(([date, v]) => ({
+   122→    date, revenue: v.revenue, orders: v.orders,
+   123→  }))
+   124→
+   125→  // Hourly breakdown (08-23)
+   126→  const hourlyMap = new Map<number, { revenue: number; orders: number }>()
+   127→  for (let h = 8; h <= 23; h++) {
+   128→    hourlyMap.set(h, { revenue: 0, orders: 0 })
+   129→  }
+   130→  for (const o of orders) {
+   131→    const h = new Date(o.createdAt).getHours()
+   132→    const cur = hourlyMap.get(h)
+   133→    if (cur) {
+   134→      cur.revenue += o.total
+   135→      cur.orders += 1
+   136→    }
+   137→  }
+   138→  const hourlyBreakdown = Array.from(hourlyMap.entries()).map(([hour, v]) => ({
+   139→    hour, revenue: v.revenue, orders: v.orders,
+   140→  }))
+   141→
+   142→  // Order type mix
+   143→  const typeMap = new Map<string, { count: number; revenue: number }>()
+   144→  for (const o of orders) {
+   145→    const cur = typeMap.get(o.type) ?? { count: 0, revenue: 0 }
+   146→    cur.count += 1
+   147→    cur.revenue += o.total
+   148→    typeMap.set(o.type, cur)
+   149→  }
+   150→  const orderTypeMix = Array.from(typeMap.entries()).map(([type, v]) => ({
+   151→    type, count: v.count, revenue: v.revenue,
+   152→  }))
+   153→
+   154→  // Top items (by qty, then revenue)
+   155→  const itemMap = new Map<string, { name: string; qty: number; revenue: number }>()
+   156→  for (const it of items) {
+   157→    const cur = itemMap.get(it.name) ?? { name: it.name, qty: 0, revenue: 0 }
+   158→    cur.qty += it.qty
+   159→    cur.revenue += it.qty * it.unitPrice
+   160→    itemMap.set(it.name, cur)
+   161→  }
+   162→  const topItems = Array.from(itemMap.values())
+   163→    .sort((a, b) => b.revenue - a.revenue)
+   164→    .slice(0, 10)
+   165→
+   166→  // Per-cafe breakdown
+   167→  const cafeAggMap = new Map<string, { id: string; name: string; revenue: number; orders: number }>()
+   168→  for (const c of cafes) {
+   169→    cafeAggMap.set(c.id, { id: c.id, name: c.name, revenue: 0, orders: 0 })
+   170→  }
+   171→  for (const o of orders) {
+   172→    const cur = cafeAggMap.get(o.cafeId)
+   173→    if (cur) {
+   174→      cur.revenue += o.total
+   175→      cur.orders += 1
+   176→    }
+   177→  }
+   178→  const perCafe = Array.from(cafeAggMap.values()).map((c) => ({
+   179→    ...c,
+   180→    avgTicket: c.orders > 0 ? c.revenue / c.orders : 0,
+   181→  })).sort((a, b) => b.revenue - a.revenue)
+   182→
+   183→  return {
+   184→    sector: 'cafe',
+   185→    cafe: {
+   186→      cafeNames: cafes.map((c) => c.name),
+   187→      totalCafes: cafes.length,
+   188→      totalRevenue,
+   189→      totalOrders,
+   190→      avgTicket,
+   191→      activeTables,
+   192→      totalTables,
+   193→      dailyRevenue,
+   194→      hourlyBreakdown,
+   195→      orderTypeMix,
+   196→      topItems,
+   197→      perCafe,
+   198→    },
+   199→  }
+   200→}
+   201→
+   202→// ============================================================
+   203→// MARKET — Ödeme yöntemi, kasiyer performansı, top ürünler,
+   204→// stok turnover, düşük stok, günlük trend
+   205→// ============================================================
+   206→export async function getMarketReportsData(
+   207→  tenantId: string,
+   208→  rangeStart: Date,
+   209→  rangeEnd: Date,
+   210→): Promise<{
+   211→  sector: 'market'
+   212→  market: {
+   213→    marketNames: string[]
+   214→    totalMarkets: number
+   215→    totalRevenue: number
+   216→    totalTx: number
+   217→    avgBasket: number
+   218→    lowStockCount: number
+   219→    outOfStockCount: number
+   220→    dailyRevenue: { date: string; revenue: number; tx: number }[]
+   221→    paymentMethodMix: { method: string; count: number; revenue: number }[]
+   222→    topProducts: { name: string; qty: number; revenue: number; currentStock: number }[]
+   223→    stockTurnover: { name: string; soldQty: number; currentStock: number; daysOfCover: number | null }[]
+   224→    cashierPerformance: { userId: string; name: string; txCount: number; totalRevenue: number; avgBasket: number }[]
+   225→    lowStockProducts: { name: string; stock: number; minStock: number; category: string | null }[]
+   226→  }
+   227→}> {
+   228→  const markets = await db.market.findMany({
+   229→    where: { tenantId, isActive: true },
+   230→    select: { id: true, name: true },
+   231→  })
+   232→  const marketIds = markets.map((m) => m.id)
+   233→
+   234→  if (marketIds.length === 0) {
+   235→    return {
+   236→      sector: 'market',
+   237→      market: {
+   238→        marketNames: [],
+   239→        totalMarkets: 0,
+   240→        totalRevenue: 0,
+   241→        totalTx: 0,
+   242→        avgBasket: 0,
+   243→        lowStockCount: 0,
+   244→        outOfStockCount: 0,
+   245→        dailyRevenue: [],
+   246→        paymentMethodMix: [],
+   247→        topProducts: [],
+   248→        stockTurnover: [],
+   249→        cashierPerformance: [],
+   250→        lowStockProducts: [],
+   251→      },
+   252→    }
+   253→  }
+   254→
+   255→  const [sales, saleItems, products] = await Promise.all([
+   256→    db.marketSale.findMany({
+   257→      where: {
+   258→        marketId: { in: marketIds },
+   259→        createdAt: { gte: rangeStart, lt: rangeEnd },
+   260→        type: 'satis',
+   261→        status: 'tamamlandi',
+   262→      },
+   263→      select: {
+   264→        id: true, total: true, paymentMethod: true, userId: true, createdAt: true,
+   265→      },
+   266→    }),
+   267→    db.marketSaleItem.findMany({
+   268→      where: {
+   269→        sale: {
+   270→          marketId: { in: marketIds },
+   271→          createdAt: { gte: rangeStart, lt: rangeEnd },
+   272→          type: 'satis',
+   273→          status: 'tamamlandi',
+   274→        },
+   275→      },
+   276→      select: { name: true, qty: true, lineTotal: true },
+   277→    }),
+   278→    db.product.findMany({
+   279→      where: { tenantId },
+   280→      select: { id: true, name: true, stock: true, minStock: true, category: true, price: true },
+   281→    }),
+   282→  ])
+   283→
+   284→  // Cashier IDs — sales üzerinde grupla
+   285→  const cashierIds: string[] = Array.from(new Set(
+   286→    sales
+   287→      .map((s) => s.userId)
+   288→      .filter((u): u is string => !!u),
+   289→  ))
+   290→
+   291→  const totalRevenue = sales.reduce((s, x) => s + x.total, 0)
+   292→  const totalTx = sales.length
+   293→  const avgBasket = totalTx > 0 ? totalRevenue / totalTx : 0
+   294→
+   295→  // Low/out of stock
+   296→  const lowStockProducts = products
+   297→    .filter((p) => p.minStock > 0 && p.stock <= p.minStock)
+   298→    .map((p) => ({ name: p.name, stock: p.stock, minStock: p.minStock, category: p.category }))
+   299→  const outOfStockCount = products.filter((p) => p.stock === 0).length
+   300→  const lowStockCount = lowStockProducts.length
+   301→
+   302→  // Daily revenue (last 30 days)
+   303→  const dailyMap = new Map<string, { revenue: number; tx: number }>()
+   304→  for (let i = 29; i >= 0; i--) {
+   305→    const d = new Date(rangeEnd.getTime() - i * 24 * 60 * 60 * 1000)
+   306→    dailyMap.set(d.toISOString().slice(0, 10), { revenue: 0, tx: 0 })
+   307→  }
+   308→  for (const s of sales) {
+   309→    const day = new Date(s.createdAt).toISOString().slice(0, 10)
+   310→    const cur = dailyMap.get(day)
+   311→    if (cur) {
+   312→      cur.revenue += s.total
+   313→      cur.tx += 1
+   314→    }
+   315→  }
+   316→  const dailyRevenue = Array.from(dailyMap.entries()).map(([date, v]) => ({
+   317→    date, revenue: v.revenue, tx: v.tx,
+   318→  }))
+   319→
+   320→  // Payment method mix
+   321→  const methodMap = new Map<string, { count: number; revenue: number }>()
+   322→  for (const s of sales) {
+   323→    const cur = methodMap.get(s.paymentMethod) ?? { count: 0, revenue: 0 }
+   324→    cur.count += 1
+   325→    cur.revenue += s.total
+   326→    methodMap.set(s.paymentMethod, cur)
+   327→  }
+   328→  const paymentMethodMix = Array.from(methodMap.entries()).map(([method, v]) => ({
+   329→    method, count: v.count, revenue: v.revenue,
+   330→  }))
+   331→
+   332→  // Top products (by revenue) — matched with current stock
+   333→  const itemMap = new Map<string, { name: string; qty: number; revenue: number }>()
+   334→  for (const it of saleItems) {
+   335→    const cur = itemMap.get(it.name) ?? { name: it.name, qty: 0, revenue: 0 }
+   336→    cur.qty += it.qty
+   337→    cur.revenue += it.lineTotal
+   338→    itemMap.set(it.name, cur)
+   339→  }
+   340→  const topProductList = Array.from(itemMap.values())
+   341→    .sort((a, b) => b.revenue - a.revenue)
+   342→    .slice(0, 10)
+   343→  const topProducts = topProductList.map((p) => {
+   344→    const prodMatch = products.find((pr) => pr.name === p.name)
+   345→    return { ...p, currentStock: prodMatch?.stock ?? 0 }
+   346→  })
+   347→
+   348→  // Stock turnover (sold vs current stock) — days of cover
+   349→  const daysInRange = Math.max(
+   350→    1,
+   351→    Math.round((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)),
+   352→  )
+   353→  const stockTurnover = topProductList.map((p) => {
+   354→    const prodMatch = products.find((pr) => pr.name === p.name)
+   355→    const currentStock = prodMatch?.stock ?? 0
+   356→    const dailyRate = p.qty / daysInRange
+   357→    const daysOfCover = dailyRate > 0 ? Math.round(currentStock / dailyRate) : null
+   358→    return {
+   359→      name: p.name,
+   360→      soldQty: p.qty,
+   361→      currentStock,
+   362→      daysOfCover,
+   363→    }
+   364→  })
+   365→
+   366→  // Cashier performance
+   367→  const cashierUsers = cashierIds.length > 0
+   368→    ? await db.user.findMany({
+   369→      where: { id: { in: cashierIds } },
+   370→      select: { id: true, name: true },
+   371→    })
+   372→    : []
+   373→  const cashierMap = new Map<string, { userId: string; name: string; txCount: number; totalRevenue: number }>()
+   374→  for (const u of cashierUsers) {
+   375→    cashierMap.set(u.id, { userId: u.id, name: u.name, txCount: 0, totalRevenue: 0 })
+   376→  }
+   377→  for (const s of sales) {
+   378→    if (!s.userId) continue
+   379→    const cur = cashierMap.get(s.userId)
+   380→    if (cur) {
+   381→      cur.txCount += 1
+   382→      cur.totalRevenue += s.total
+   383→    }
+   384→  }
+   385→  const cashierPerformance = Array.from(cashierMap.values()).map((c) => ({
+   386→    ...c,
+   387→    avgBasket: c.txCount > 0 ? c.totalRevenue / c.txCount : 0,
+   388→  })).sort((a, b) => b.totalRevenue - a.totalRevenue)
+   389→
+   390→  return {
+   391→    sector: 'market',
+   392→    market: {
+   393→      marketNames: markets.map((m) => m.name),
+   394→      totalMarkets: markets.length,
+   395→      totalRevenue,
+   396→      totalTx,
+   397→      avgBasket,
+   398→      lowStockCount,
+   399→      outOfStockCount,
+   400→      dailyRevenue,
+   401→      paymentMethodMix,
+   402→      topProducts,
+   403→      stockTurnover,
+   404→      cashierPerformance,
+   405→      lowStockProducts,
+   406→    },
+   407→  }
+   408→}
+   409→
+   410→// ============================================================
+   411→// SITE — Şikayet kategori breakdown, ortalama çözüm süresi,
+   412→// aidat tahsilat (6 ay), sakin büyümesi, personel iş yükü
+   413→// ============================================================
+   414→export async function getSiteReportsData(
+   415→  tenantId: string,
+   416→  rangeStart: Date,
+   417→  rangeEnd: Date,
+   418→): Promise<{
+   419→  sector: 'site'
+   420→  site: {
+   421→    siteNames: string[]
+   422→    totalSites: number
+   423→    residentsCount: number
+   424→    apartmentsCount: number
+   425→    staffCount: number
+   426→    collectionRate: number
+   427→    totalDuesExpected: number
+   428→    totalDuesCollected: number
+   429→    monthlyCollection: { month: string; collected: number; expected: number }[]
+   430→    complaintStats: {
+   431→      total: number
+   432→      open: number
+   433→      resolved: number
+   434→      avgResolutionHours: number | null
+   435→      byCategory: { category: string; count: number; avgHours: number }[]
+   436→      byPriority: { priority: string; count: number }[]
+   437→    }
+   438→    residentGrowth: { month: string; newResidents: number; cumulative: number }[]
+   439→    staffWorkload: { userId: string; name: string; assignedComplaints: number; resolvedComplaints: number }[]
+   440→  }
+   441→}> {
+   442→  const sites = await db.site.findMany({
+   443→    where: { tenantId, isActive: true },
+   444→    select: { id: true, name: true, defaultDueAmount: true, currency: true },
+   445→  })
+   446→  const siteIds = sites.map((s) => s.id)
+   447→
+   448→  if (siteIds.length === 0) {
+   449→    return {
+   450→      sector: 'site',
+   451→      site: {
+   452→        siteNames: [],
+   453→        totalSites: 0,
+   454→        residentsCount: 0,
+   455→        apartmentsCount: 0,
+   456→        staffCount: 0,
+   457→        collectionRate: 0,
+   458→        totalDuesExpected: 0,
+   459→        totalDuesCollected: 0,
+   460→        monthlyCollection: [],
+   461→        complaintStats: {
+   462→          total: 0, open: 0, resolved: 0, avgResolutionHours: null,
+   463→          byCategory: [], byPriority: [],
+   464→        },
+   465→        residentGrowth: [],
+   466→        staffWorkload: [],
+   467→      },
+   468→    }
+   469→  }
+   470→
+   471→  const [allDues, residentsCount, apartmentsCount, staffCount, complaints, residents, staff] = await Promise.all([
+   472→    db.dues.findMany({
+   473→      where: { siteId: { in: siteIds } },
+   474→      select: {
+   475→        id: true, amount: true, paidAmount: true, status: true,
+   476→        paidDate: true, dueDate: true, month: true, year: true,
+   477→      },
+   478→    }),
+   479→    db.resident.count({ where: { tenantId, isActive: true } }),
+   480→    db.apartment.count({ where: { siteId: { in: siteIds } } }),
+   481→    db.siteStaff.count({ where: { siteId: { in: siteIds }, isActive: true } }),
+   482→    db.complaint.findMany({
+   483→      where: { siteId: { in: siteIds } },
+   484→      select: {
+   485→        id: true, siteId: true, category: true, priority: true, status: true,
+   486→        createdAt: true, respondedAt: true, updatedAt: true,
+   487→      },
+   488→    }),
+   489→    db.resident.findMany({
+   490→      where: { tenantId, isActive: true },
+   491→      select: { id: true, createdAt: true },
+   492→    }),
+   493→    db.siteStaff.findMany({
+   494→      where: { siteId: { in: siteIds }, isActive: true },
+   495→      select: { id: true, name: true, role: true, siteId: true },
+   496→    }),
+   497→  ])
+   498→
+   499→  // === Dues / collection ===
+   500→  const totalDuesExpected = allDues.reduce((s, d) => s + d.amount, 0)
+   501→  const totalDuesCollected = allDues.reduce((s, d) => s + (d.paidAmount ?? 0), 0)
+   502→  const collectionRate = totalDuesExpected > 0
+   503→    ? (totalDuesCollected / totalDuesExpected) * 100
+   504→    : 0
+   505→
+   506→  // Monthly collection (last 6 months by paidDate or dueDate)
+   507→  const monthlyCollectionMap = new Map<string, { collected: number; expected: number }>()
+   508→  for (let i = 5; i >= 0; i--) {
+   509→    const d = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - i, 1)
+   510→    const key = monthLabel(d.getMonth())
+   511→    monthlyCollectionMap.set(key, { collected: 0, expected: 0 })
+   512→  }
+   513→  for (const d of allDues) {
+   514→    // expected by dueDate month
+   515→    if (d.dueDate) {
+   516→      const dd = new Date(d.dueDate)
+   517→      const sixMonthsAgo = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - 5, 1)
+   518→      if (dd >= sixMonthsAgo && dd <= rangeEnd) {
+   519→        const key = monthLabel(dd.getMonth())
+   520→        const cur = monthlyCollectionMap.get(key)
+   521→        if (cur) cur.expected += d.amount
+   522→      }
+   523→    }
+   524→    // collected by paidDate month
+   525→    if (d.paidDate) {
+   526→      const pd = new Date(d.paidDate)
+   527→      const sixMonthsAgo = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - 5, 1)
+   528→      if (pd >= sixMonthsAgo && pd <= rangeEnd) {
+   529→        const key = monthLabel(pd.getMonth())
+   530→        const cur = monthlyCollectionMap.get(key)
+   531→        if (cur) cur.collected += d.paidAmount ?? 0
+   532→      }
+   533→    }
+   534→  }
+   535→  const monthlyCollection = Array.from(monthlyCollectionMap.entries()).map(([month, v]) => ({
+   536→    month, collected: v.collected, expected: v.expected,
+   537→  }))
+   538→
+   539→  // === Complaint stats ===
+   540→  const totalComplaints = complaints.length
+   541→  const openComplaints = complaints.filter((c) => c.status === 'acik' || c.status === 'inceleniyor').length
+   542→  const resolvedComplaints = complaints.filter((c) => c.status === 'cozuldu').length
+   543→
+   544→  // Average resolution time (respondedAt - createdAt) for resolved complaints
+   545→  const resolutionTimes: number[] = []
+   546→  for (const c of complaints) {
+   547→    if (c.status === 'cozuldu') {
+   548→      const resolvedAt = c.respondedAt ?? c.updatedAt
+   549→      const hours = (resolvedAt.getTime() - c.createdAt.getTime()) / (1000 * 60 * 60)
+   550→      if (hours >= 0) resolutionTimes.push(hours)
+   551→    }
+   552→  }
+   553→  const avgResolutionHours = resolutionTimes.length > 0
+   554→    ? Math.round((resolutionTimes.reduce((s, h) => s + h, 0) / resolutionTimes.length) * 10) / 10
+   555→    : null
+   556→
+   557→  // Complaint by category
+   558→  const catMap = new Map<string, { count: number; hoursSum: number; resolvedCount: number }>()
+   559→  for (const c of complaints) {
+   560→    const cur = catMap.get(c.category) ?? { count: 0, hoursSum: 0, resolvedCount: 0 }
+   561→    cur.count += 1
+   562→    if (c.status === 'cozuldu') {
+   563→      const resolvedAt = c.respondedAt ?? c.updatedAt
+   564→      const hours = (resolvedAt.getTime() - c.createdAt.getTime()) / (1000 * 60 * 60)
+   565→      if (hours >= 0) {
+   566→        cur.hoursSum += hours
+   567→        cur.resolvedCount += 1
+   568→      }
+   569→    }
+   570→    catMap.set(c.category, cur)
+   571→  }
+   572→  const byCategory = Array.from(catMap.entries()).map(([category, v]) => ({
+   573→    category,
+   574→    count: v.count,
+   575→    avgHours: v.resolvedCount > 0 ? Math.round((v.hoursSum / v.resolvedCount) * 10) / 10 : 0,
+   576→  })).sort((a, b) => b.count - a.count)
+   577→
+   578→  // Complaint by priority
+   579→  const prioMap = new Map<string, number>()
+   580→  for (const c of complaints) {
+   581→    prioMap.set(c.priority, (prioMap.get(c.priority) ?? 0) + 1)
+   582→  }
+   583→  const byPriority = Array.from(prioMap.entries()).map(([priority, count]) => ({
+   584→    priority, count,
+   585→  })).sort((a, b) => b.count - a.count)
+   586→
+   587→  // === Resident growth (last 12 months cumulative) ===
+   588→  const residentGrowthMap = new Map<string, number>()
+   589→  for (let i = 11; i >= 0; i--) {
+   590→    const d = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - i, 1)
+   591→    const key = `${monthLabel(d.getMonth())} ${String(d.getFullYear()).slice(2)}`
+   592→    residentGrowthMap.set(key, 0)
+   593→  }
+   594→  for (const r of residents) {
+   595→    const rd = new Date(r.createdAt)
+   596→    const twelveMonthsAgo = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - 11, 1)
+   597→    if (rd >= twelveMonthsAgo && rd <= rangeEnd) {
+   598→      const key = `${monthLabel(rd.getMonth())} ${String(rd.getFullYear()).slice(2)}`
+   599→      const cur = residentGrowthMap.get(key)
+   600→      if (cur !== undefined) residentGrowthMap.set(key, cur + 1)
+   601→    }
+   602→  }
+   603→  let runningTotal = Math.max(
+   604→    0,
+   605→    residents.filter((r) => new Date(r.createdAt) < new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - 11, 1)).length,
+   606→  )
+   607→  const residentGrowth = Array.from(residentGrowthMap.entries()).map(([month, newResidents]) => {
+   608→    runningTotal += newResidents
+   609→    return { month, newResidents, cumulative: runningTotal }
+   610→  })
+   611→
+   612→  // === Staff workload ===
+   613→  // Şemada Complaint.assigneeId olmadığı için, personel başına düşen
+   614→  // ortalama yükü site bazında eşit dağıtıyoruz (gerçek assigneeId yok).
+   615→  const staffWorkload = staff.map((s) => {
+   616→    const siteComplaints = complaints.filter((c) => c.siteId === s.siteId)
+   617→    const total = siteComplaints.length
+   618→    const resolved = siteComplaints.filter((c) => c.status === 'cozuldu').length
+   619→    const siteStaffCount = staff.filter((st) => st.siteId === s.siteId).length || 1
+   620→    return {
+   621→      userId: s.id,
+   622→      name: s.name,
+   623→      assignedComplaints: Math.round(total / siteStaffCount),
+   624→      resolvedComplaints: Math.round(resolved / siteStaffCount),
+   625→    }
+   626→  })
+   627→
+   628→  return {
+   629→    sector: 'site',
+   630→    site: {
+   631→      siteNames: sites.map((s) => s.name),
+   632→      totalSites: sites.length,
+   633→      residentsCount,
+   634→      apartmentsCount,
+   635→      staffCount,
+   636→      collectionRate,
+   637→      totalDuesExpected,
+   638→      totalDuesCollected,
+   639→      monthlyCollection,
+   640→      complaintStats: {
+   641→        total: totalComplaints,
+   642→        open: openComplaints,
+   643→        resolved: resolvedComplaints,
+   644→        avgResolutionHours,
+   645→        byCategory,
+   646→        byPriority,
+   647→      },
+   648→      residentGrowth,
+   649→      staffWorkload,
+   650→    },
+   651→  }
+   652→}
+   653→
+   654→// ============================================================
+   655→// APPOINTMENTS — Günlük volume, no-show, hizmet bazlı ciro,
+   656→// personel performansı, yoğun saatler
+   657→// ============================================================
+   658→export async function getAppointmentReportsData(
+   659→  tenantId: string,
+   660→  rangeStart: Date,
+   661→  rangeEnd: Date,
+   662→): Promise<{
+   663→  sector: 'appointments'
+   664→  appointments: {
+   665→    providerNames: string[]
+   666→    totalCount: number
+   667→    completedCount: number
+   668→    cancelledCount: number
+   669→    noShowCount: number
+   670→    noShowRate: number
+   671→    totalRevenue: number
+   672→    dailyAppointments: { date: string; count: number; revenue: number }[]
+   673→    revenueByService: { name: string; count: number; revenue: number; avgPrice: number }[]
+   674→    staffPerformance: { userId: string; name: string; total: number; completed: number; cancelled: number; noShow: number; revenue: number }[]
+   675→    busyHours: { dayOfWeek: number; hour: number; count: number }[]
+   676→  }
+   677→}> {
+   678→  const providers = await db.serviceProvider.findMany({
+   679→    where: { tenantId, isActive: true },
+   680→    select: { id: true, name: true, type: true },
+   681→  })
+   682→  const providerIds = providers.map((p) => p.id)
+   683→
+   684→  if (providerIds.length === 0) {
+   685→    return {
+   686→      sector: 'appointments',
+   687→      appointments: {
+   688→        providerNames: [],
+   689→        totalCount: 0,
+   690→        completedCount: 0,
+   691→        cancelledCount: 0,
+   692→        noShowCount: 0,
+   693→        noShowRate: 0,
+   694→        totalRevenue: 0,
+   695→        dailyAppointments: [],
+   696→        revenueByService: [],
+   697→        staffPerformance: [],
+   698→        busyHours: [],
+   699→      },
+   700→    }
+   701→  }
+   702→
+   703→  const appointments = await db.appointment.findMany({
+   704→    where: {
+   705→      providerId: { in: providerIds },
+   706→      date: { gte: rangeStart, lt: rangeEnd },
+   707→    },
+   708→    select: {
+   709→      id: true, status: true, price: true, date: true,
+   710→      staffId: true, serviceId: true,
+   711→      service: { select: { name: true } },
+   712→      staff: { select: { id: true, name: true } },
+   713→    },
+   714→  })
+   715→
+   716→  const totalCount = appointments.length
+   717→  const completedCount = appointments.filter((a) => a.status === 'tamamlandi').length
+   718→  const cancelledCount = appointments.filter((a) => a.status === 'iptal').length
+   719→  const noShowCount = appointments.filter((a) => a.status === 'gelmedi').length
+   720→  // No-show rate = no-show / (completed + no-show) — iptal dahil değil
+   721→  const completedOrNoShow = completedCount + noShowCount
+   722→  const noShowRate = completedOrNoShow > 0
+   723→    ? Math.round((noShowCount / completedOrNoShow) * 100)
+   724→    : 0
+   725→  const totalRevenue = appointments
+   726→    .filter((a) => a.status === 'tamamlandi')
+   727→    .reduce((s, a) => s + a.price, 0)
+   728→
+   729→  // Daily appointments (last 30 days)
+   730→  const dailyMap = new Map<string, { count: number; revenue: number }>()
+   731→  for (let i = 29; i >= 0; i--) {
+   732→    const d = new Date(rangeEnd.getTime() - i * 24 * 60 * 60 * 1000)
+   733→    dailyMap.set(d.toISOString().slice(0, 10), { count: 0, revenue: 0 })
+   734→  }
+   735→  for (const a of appointments) {
+   736→    const day = new Date(a.date).toISOString().slice(0, 10)
+   737→    const cur = dailyMap.get(day)
+   738→    if (cur) {
+   739→      cur.count += 1
+   740→      if (a.status === 'tamamlandi') cur.revenue += a.price
+   741→    }
+   742→  }
+   743→  const dailyAppointments = Array.from(dailyMap.entries()).map(([date, v]) => ({
+   744→    date, count: v.count, revenue: v.revenue,
+   745→  }))
+   746→
+   747→  // Revenue by service
+   748→  const serviceMap = new Map<string, { name: string; count: number; revenue: number }>()
+   749→  for (const a of appointments) {
+   750→    if (a.status !== 'tamamlandi') continue
+   751→    const name = a.service?.name ?? 'Genel Hizmet'
+   752→    const cur = serviceMap.get(name) ?? { name, count: 0, revenue: 0 }
+   753→    cur.count += 1
+   754→    cur.revenue += a.price
+   755→    serviceMap.set(name, cur)
+   756→  }
+   757→  const revenueByService = Array.from(serviceMap.values())
+   758→    .map((s) => ({
+   759→      ...s,
+   760→      avgPrice: s.count > 0 ? s.revenue / s.count : 0,
+   761→    }))
+   762→    .sort((a, b) => b.revenue - a.revenue)
+   763→    .slice(0, 10)
+   764→
+   765→  // Staff performance
+   766→  const staffAggMap = new Map<string, { userId: string; name: string; total: number; completed: number; cancelled: number; noShow: number; revenue: number }>()
+   767→  for (const a of appointments) {
+   768→    if (!a.staffId || !a.staff) continue
+   769→    const cur = staffAggMap.get(a.staffId) ?? {
+   770→      userId: a.staffId, name: a.staff.name,
+   771→      total: 0, completed: 0, cancelled: 0, noShow: 0, revenue: 0,
+   772→    }
+   773→    cur.total += 1
+   774→    if (a.status === 'tamamlandi') {
+   775→      cur.completed += 1
+   776→      cur.revenue += a.price
+   777→    } else if (a.status === 'iptal') {
+   778→      cur.cancelled += 1
+   779→    } else if (a.status === 'gelmedi') {
+   780→      cur.noShow += 1
+   781→    }
+   782→    staffAggMap.set(a.staffId, cur)
+   783→  }
+   784→  const staffPerformance = Array.from(staffAggMap.values())
+   785→    .sort((a, b) => b.total - a.total)
+   786→
+   787→  // Busy hours (7x24 grid — only count all appointments)
+   788→  const busyMap = new Map<string, number>()
+   789→  for (const a of appointments) {
+   790→    const d = new Date(a.date)
+   791→    const dayOfWeek = d.getDay()
+   792→    const hour = d.getHours()
+   793→    const key = `${dayOfWeek}-${hour}`
+   794→    busyMap.set(key, (busyMap.get(key) ?? 0) + 1)
+   795→  }
+   796→  const busyHours = Array.from(busyMap.entries()).map(([k, count]) => {
+   797→    const [dayOfWeek, hour] = k.split('-').map(Number)
+   798→    return { dayOfWeek, hour, count }
+   799→  })
+   800→
+   801→  return {
+   802→    sector: 'appointments',
+   803→    appointments: {
+   804→      providerNames: providers.map((p) => p.name),
+   805→      totalCount,
+   806→      completedCount,
+   807→      cancelledCount,
+   808→      noShowCount,
+   809→      noShowRate,
+   810→      totalRevenue,
+   811→      dailyAppointments,
+   812→      revenueByService,
+   813→      staffPerformance,
+   814→      busyHours,
+   815→    },
+   816→  }
+   817→}
+   818→
+   819→// ============================================================
+   820→// Tarih aralığı hesaplama — URL parametresine göre
+   821→// ============================================================
+   822→export function computeRange(range: string, now: Date = new Date()): { rangeStart: Date; rangeEnd: Date } {
+   823→  const rangeEnd = new Date(now)
+   824→  let rangeStart: Date
+   825→
+   826→  switch (range) {
+   827→    case '7d':
+   828→      rangeStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+   829→      break
+   830→    case '30d':
+   831→      rangeStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+   832→      break
+   833→    case '90d':
+   834→      rangeStart = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+   835→      break
+   836→    case '6m':
+   837→      rangeStart = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+   838→      break
+   839→    case '1y':
+   840→      rangeStart = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate())
+   841→      break
+   842→    case 'all':
+   843→    default:
+   844→      // 10 yıl öncesinden başla — tüm veriyi kapsar
+   845→      rangeStart = new Date(now.getFullYear() - 10, 0, 1)
+   846→      break
+   847→  }
+   848→
+   849→  return { rangeStart, rangeEnd }
+   850→}
+   851→

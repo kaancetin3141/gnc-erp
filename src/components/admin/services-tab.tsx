@@ -4,8 +4,8 @@
 // ADMIN — Platform Servisleri sekmesi (yalnızca program admini)
 // Ana siteden: Müşteri Randevu Sitesi, KaloriAI, Fruit Storm vb.
 // uygulama bağlantılarını yönetme + yerel port durumunu görme.
-// BU REPO yalnızca ERP/CRM (3001) içerir; customer-page/randevu (3002),
-// KaloriAI (3003) ve Fruit Storm (3004) sunucuda AYRI projelerdir.
+// BU PROJEDE yalnızca CRM (3000) + customer-page (3002) vardır;
+// KaloriAI (3004) ve Fruit Storm (3003) sunucuda AYRI projelerdir.
 // ============================================================
 
 import { useState } from 'react'
@@ -107,8 +107,8 @@ export function ServicesTab() {
       <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30 p-3 flex gap-2.5">
         <Info className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
         <div className="text-xs leading-relaxed text-emerald-900 dark:text-emerald-200">
-          <span className="font-semibold">Bu repo yalnızca ERP/CRM (3001) içerir; Müşteri Randevu Sitesi (3002) ayrı repodan yüklenir.</span>{' '}
-          KaloriAI (3003) ve Fruit Storm (3004) bu projede <span className="font-semibold">değildir</span> —
+          <span className="font-semibold">Bu proje yalnızca CRM ana site (3000) + Müşteri Randevu Sitesi (3002) içerir.</span>{' '}
+          KaloriAI (3004) ve Fruit Storm (3003) bu projede <span className="font-semibold">değildir</span> —
           onları sanal sunucuna GitHub&apos;dan ayrı yüklersin; buradan yalnızca bağlantılarını yönetirsin.
           &quot;Önizle&quot; düğmeleri bu ortamdaki yerel portu, &quot;Sunucuda Aç&quot; ise alan adı bağlantısını açar.
         </div>

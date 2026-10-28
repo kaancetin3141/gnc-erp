@@ -1,0 +1,682 @@
+  3740→  - `DashboardView` (parent) — sektör tespiti + loading state + date range selector +WidgetsSection
+  3741→  - `SectorWelcomeBanner` — sektör bazlı karşılama banner'ı (renk + emoji + özet mesaj + hızlı aksiyon)
+  3742→  - `QuickStat` — sektöre göre 4 mini istatistik (banner altında)
+  3743→  - `CrmDashboard` — mevcut CRM dashboard'u (parent'tan ayrıldı)
+  3744→- Tüm sektörler için ortak:
+  3745→  - Hoş geldin banner'ı (renk gradyanı sektöre göre değişir)
+  3746→  - Dönem seçici (Bugün / 7G / 30G / Bu Ay / Çeyrek / Tümü)
+  3747→  - Widget'lar (hava, döviz, haberler, mesajlar, streak)
+  3748→- Sektöre göre değişen:
+  3749→  - KPI kartları (4 adet, sektör verisinden hesaplanır)
+  3750→  - Grafik + liste bölümü
+  3751→  - Özet mesaj (banner alt yazısı)
+  3752→  - Hızlı aksiyon butonları (sektör modülüne gider)
+  3753→
+  3754→## Doğrulama (agent-browser)
+  3755→
+  3756→### 5 sektör test edildi
+  3757→1. ✅ **CRM** (Demir Yıldız — Anadolu Satış A.Ş.) → 📊 CRM & Satış banner'ı + 21 müşteri + 15 fırsat + aktivite trendi
+  3758→2. ✅ **Kafe** (Cafe Yöneticisi — Şık Kafe & Restoran) → ☕ Kafe & Restoran banner'ı + 1 aktif masa + ciro trendi + sipariş tipleri
+  3759→3. ✅ **Market** (Market Yöneticisi — Anadolu Market Zinciri) → 🛒 Market & Bakkal banner'ı + stok uyarısı + vardiya + nakit/kart breakdown
+  3760→4. ✅ **Site** (Site Yöneticisi — Park Sitesi Yönetimi) → 🏠 Site & Apartman Yönetimi banner'ı + tahsilat oranı + sakin + aylık tahsilat grafiği
+  3761→5. ✅ **Randevu** (Kuaför Yöneticisi — Şık Kuaför & Güzellik Merkezi) → 💇 Randevu & Hizmet banner'ı + bugünkü randevu + top hizmetler
+  3762→
+  3763→### Diğer doğrulamalar
+  3764→- ✅ `bun run lint` 0 hata
+  3765→- ✅ Tüm API'ler 200 dönüyor (compile + render süresi normal)
+  3766→- ✅ Hiç runtime error yok
+  3767→- ✅ Date range seçici çalışıyor (Bugün ↔ Bu Ay ↔ Tümü)
+  3768→- ✅ Loading state (Skeleton) doğru render
+  3769→- ✅ Renk gradyanları sektör bazlı (CRM→emerald, Kafe→amber, Market→emerald, Site→violet, Randevu→pink)
+  3770→
+  3771→## Notlar
+  3772→- Kafe/Market/Site/kuaför tenant'larında seed verisi az; bu yüzden birçok KPI 0 görünüyor.
+  3773→  Bu tasarım gereği doğru — dashboard tenant bazlı veriyi doğru filtreliyor.
+  3774→- Site tenant'ında 0 sakin/aidat/şikayet var (worklog'da "Site seed verisi yok" notuyla uyumlu).
+  3775→- CrmDashboard mevcut tüm özellikleri (pipeline grafiği, aktivite trendi, iletişimsiz müşteriler uyarısı) koruyor.
+  3776→
+  3777→---
+  3778→Task ID: RESEARCH-1
+  3779→Agent: Explore
+  3780→Task: PDF görüntüleme kısmında A4 hizalama kaymaları (slippage) — tüm PDF/print render dosyalarını bul ve raporla.
+  3781→
+  3782→## Kapsam
+  3783→Kullanıcı raporu: "PDF görüntüleme kısmında kaymalar oluyor" — PDF görüntüleyicide A4 boyutuna göre hizalama kaymaları. Bu araştırma ONLY-REPORT görevi; hiçbir dosya değiştirilmedi.
+  3784→
+  3785→## 1. PDF Üretim Mimarisi (Genel)
+  3786→- **Server-side PDF YOK**: `/api/invoices/[id]/pdf`, `/api/quotes/[id]/pdf`, `/api/proforma/[id]/pdf` route'ları mevcut DEĞİL. Mevcut route'lar sadece `/api/invoices/[id]/route.ts`, `/api/quotes/[id]/route.ts`, `/api/proforma/[id]/route.ts` (JSON döner).
+  3787→- **Kütüphane YOK**: `package.json`'da `jspdf`, `react-pdf`, `@react-pdf/renderer`, `html2pdf`, `puppeteer` YOK.
+  3788→- **Tüm PDF'ler client-side**: `window.print()` çağrısı + tarayıcının "PDF olarak kaydet" diyaloğu. Yani tüm "PDF görüntüleme" aslında bir Radix `Dialog` içinde render edilen HTML sayfası.
+  3789→
+  3790→## 2. Tüm PDF/Print Render Eden Dosyalar
+  3791→
+  3792→### 2.1 ERP — Fatura PDF (InvoicePdfDialog)
+  3793→- **Dosya**: `src/components/erp/parts/invoice-detail-dialog.tsx`
+  3794→- **Bileşen**: `InvoicePdfDialog` (satır 444–545) — `InvoiceDetailDialog`'un içinde ayrı bir Dialog olarak render.
+  3795→- **Container (DialogContent)** satır 454:
+  3796→  ```
+  3797→  max-w-3xl max-h-[85vh] print:max-w-none print:max-h-none print:p-0 print:shadow-none
+  3798→  ```
+  3799→  ⚠️ **`print-content` sınıfı YOK** — sadece `InvoiceDetailDialog`'un kendi DialogContent'inde (satır 107) var. PDF dialog açıkken ekranda iki Dialog olduğu için print sırasında `print-content` olarak işaretli olan ÖĞE PDF değil, arkadaki DETAY dialog'udur.
+  3800→- **Printable page** satır 464:
+  3801→  ```
+  3802→  <div className="p-6 bg-white text-black print:p-0 max-w-[210mm] mx-auto">
+  3803→  ```
+  3804→- **İç padding**: `p-6` (24px) → print'te `print:p-0` ile sıfırlanır. Padding'A @page margin 1.5cm eklenir.
+  3805→- **Tablo**: satır 496–517 — `w-full text-sm` düz `<table>` (border'lar `border-b` ile).
+  3806→- **Footer**: satır 537 — `mt-8 pt-4 border-t text-xs text-gray-400 text-center`.
+  3807→- **"Yazdır/PDF" butonu**: satır 458 `onClick={() => window.print()}`.
+  3808→
+  3809→### 2.2 ERP — Proforma PDF (ProformaPdfGenerator)
+  3810→- **Dosya**: `src/components/erp/parts/proforma-pdf-generator.tsx`
+  3811→- **Bileşen**: `ProformaPdfGenerator` (satır 33–225).
+  3812→- **Container (DialogContent)** satır 57:
+  3813→  ```
+  3814→  max-w-3xl max-h-[92vh] overflow-y-auto custom-scroll print:max-w-none print:max-h-none print:p-0 print:shadow-none print:overflow-visible
+  3815→  ```
+  3816→- **İç wrapper** satır 81: `overflow-y-auto max-h-[70vh] print:overflow-visible print:max-h-none`.
+  3817→- **Printable page** satır 82: `<div className="p-8 bg-white text-black print:p-0 print-content">`
+  3818→- ⚠️ **`print-content` burada INNER div'te** (DialogContent değil). Doğru çalışıyor ama A4 ölçeği YOK: `max-w-[210mm]` YOK, `aspect-[1/1.414]` YOK. Genişlik = dialog iç genişliği (~203mm).
+  3819→- **İç padding**: `p-8` (32px) → print'te `print:p-0`.
+  3820→- **Header / Customer / Line items / Totals / Signature area / Footer** bölümleri sıralı (satır 83–218).
+  3821→- **"Yazdır/PDF" butonu**: satır 69 `onClick={() => window.print()}`.
+  3822→- **Kritik Sorun — Çakışan `print-content`**: `QuoteDetailDialog` (aşağıda) açıldığında ProformaPdfGenerator da açıksa, DOM'da İKİ `print-content` öğesi var (QuoteDetailDialog'un DialogContent'i + ProformaPdfGenerator'ın inner div'i). Her ikisi de `position:absolute; left:0; top:0; width:100%` ile üst üste biner → print'te "kayma" / overlap.
+  3823→
+  3824→### 2.3 ERP — Teklif Detay (QuoteDetailDialog)
+  3825→- **Dosya**: `src/components/erp/parts/quote-detail-dialog.tsx`
+  3826→- **Bileşen**: `QuoteDetailDialog` (satır 43–388).
+  3827→- **Container (DialogContent)** satır 124: `max-w-3xl max-h-[92vh] overflow-y-auto custom-scroll print-content` — `print-content` burada.
+  3828→- ⚠️ **Yazdır butonu** (satır 159) doğrudan `window.print()` çağırır — ayrı bir PDF önizleme AÇILMIYOR. Yani "Yazdır" tıklanınca teklif detayının kendisi (kartlar, tablolar, dark mode stilleri ile) print edilir. Bu kayma ve kötü görünümün bir kaynağı.
+  3829→- **ProformaPdfGenerator**: `quote.isProforma === true` ise `SendDialog` ve `ProformaPdfGenerator` birlikte render (satır 362–385). SendDialog'dan "Aç" → `setPdfOpen(true)` (satır 376).
+  3830→- **Toplamlar/Kalemler kartı**: `grid grid-cols-3 gap-3`, `rounded-lg border border-border overflow-hidden Table` (satır 240–284).
+  3831→- **İç padding**: Kartlar `p-3`, Tablo hücreleri `text-sm`. A4 ölçeği yok.
+  3832→
+  3833→### 2.4 Müşteri 360 — PrintDocument
+  3834→- **Dosya**: `src/components/customers/customer-360.tsx` (satır 2231–2349)
+  3835→- **Bileşen**: `PrintDocument({ type: 'quote' | 'invoice', doc, onClose })`
+  3836→- **Container (DialogContent)** satır 2248: `max-w-2xl max-h-[85vh] print:max-w-none print:max-h-none print:p-0 print:shadow-none`
+  3837→- **Printable page** satır 2260: `<div className="p-8 bg-white text-black print:p-0">`
+  3838→- ⚠️ **KRİTİK BUG — `print-content` sınıfı HİÇBİR öğede yok**. Glob CSS `body * { visibility: hidden }` tüm sayfayı gizler; `.print-content` ve çocuklarını visible yapar. Bu dialog'da `print-content` olmadığı için **yazdırma boş sayfa üretir** (ya da DOM'da başka `print-content` varsa onu basar). Print edilen şey PDF önizlemesi değil.
+  3839→- **İç padding**: `p-8` (32px) → `print:p-0`. `max-w-[210mm]` YOK — A4 ölçeği tutulmuyor.
+  3840→- **"Yazdır" butonu**: satır 2253 `handlePrint = () => window.print()`.
+  3841→
+  3842→### 2.5 Market — Raf Etiketi (shelf label)
+  3843→- **Dosya**: `src/components/market/market-stock-view.tsx`
+  3844→- **Print element** satır 358: `<div className="print-content fixed inset-0 bg-white z-50 hidden print:block">`
+  3845→- **İçerik**: `p-8 max-w-sm mx-auto` + dashed border + barkod/barkod değer.
+  3846→- **Tetikleyici**: satır 153 `setTimeout(() => window.print(), 100)`.
+  3847→- **A4 değil**: küçük etiket boyutu (`max-w-sm`), kayma sorunu burada az.
+  3848→
+  3849→### 2.6 Market — Satış Detay (sale detail)
+  3850→- **Dosya**: `src/components/market/market-sales-list.tsx` (satır 315–370)
+  3851→- **Print element** satır 326: `<div className="print-content">` (Dialog içeriğinin ortasında, mono font ile `p-4 bg-muted/30 border rounded-lg`).
+  3852→- **"Yazdır" butonu**: satır 369 `onClick={() => window.print()}`.
+  3853→
+  3854→### 2.7 Market POS — Fiş (receipt)
+  3855→- **Dosya**: `src/components/market/market-pos-screen.tsx`
+  3856→- **İki print elementi**:
+  3857→  - Satış başarı dialog'unda fiş (satır 858): `<div className="print-content">` — `font-mono text-xs ... p-4 bg-white dark:bg-background border rounded-lg`, dialog `max-w-sm`.
+  3858→  - İkinci bir print alanı (satır 1056): `<div className="print-content">` — muhtemelen nakit/kart breakdown için.
+  3859→- **"Yazdır" butonları**: satır 918 ve 1090 `onClick={() => window.print()}`.
+  3860→
+  3861→## 3. Glob Print CSS (`src/app/globals.css` satır 260–295)
+  3862→```css
+  3863→@media print {
+  3864→  body * { visibility: hidden; }
+  3865→  .print-content, .print-content * { visibility: visible; }
+  3866→  .print-content {
+  3867→    position: absolute;
+  3868→    left: 0;
+  3869→    top: 0;
+  3870→    width: 100%;
+  3871→  }
+  3872→  .print\:hidden { display: none !important; }
+  3873→  .print\:p-0 { padding: 0 !important; }
+  3874→  .print\:shadow-none { box-shadow: none !important; }
+  3875→  .print\:max-w-none { max-width: none !important; }
+  3876→  .print\:max-h-none { max-height: none !important; }
+  3877→  .print\:overflow-visible { overflow: visible !important; }
+  3878→  @page { margin: 1.5cm; }
+  3879→}
+  3880→```
+  3881→- **A4 boyutu belirtilmemiş**: `@page` sadece `margin: 1.5cm` içeriyor; `size: A4` YOK.
+  3882→- **`visibility: hidden`** tüm body gizlenir, sadece `.print-content` görünür. Birden fazla `.print-content` DOM'da varsa HEPSI `position:absolute; left:0; top:0` ile üst üste biner.
+  3883→
+  3884→## 4. Varsayılan DialogContent Davranışı (`src/components/ui/dialog.tsx` satır 63)
+  3885→```
+  3886→grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%]
+  3887→gap-4 rounded-lg border p-6 shadow-lg ... sm:max-w-lg
+  3888→```
+  3889→- Tüm PDF dialog'larında `sm:max-w-lg` → `max-w-3xl`/`max-w-2xl` ile override.
+  3890→- `p-6` (24px) default padding → PDF dialog'larında `print:p-0` ile override.
+  3891→- `gap-4` default gap — DialogHeader ile içerik arası boşluk.
+  3892→
+  3893→## 5. A4 Hizalama Kaymalarının Kök Nedenleri
+  3894→
+  3895→### KÖK NEDEN 1 — Birden fazla `print-content` üst üste biner (CRITICAL)
+  3896→- `QuoteDetailDialog` açıldığında (satır 124 `print-content`) + `ProformaPdfGenerator` açıldığında (satır 82 `print-content`) → DOM'da iki `print-content`. Her ikisi de `position:absolute; left:0; top:0; width:100%`. Print'te üst üste biner → **kayma / overlap**.
+  3897→- Benzer şekilde `InvoiceDetailDialog` (satır 107 `print-content`) açıkken + `InvoicePdfDialog` (satır 454 — `print-content` YOK) açıldığında: print sırasında yalnızca detay dialog (107) `print-content` olarak görünür → kullanıcı PDF değil detay görünümünü basar → **yanlış içerik + hizalama kayması**.
+  3898→
+  3899→### KÖK NEDEN 2 — A4 ölçeği tutarsız
+  3900→- `InvoicePdfDialog`: `max-w-[210mm]` var (A4 genişliği) ama yükseklik/aspect YOK. `@page { margin: 1.5cm }` → printable alan 180mm × 257mm. İçerik 210mm genişlikte tasarlanır ama 180mm'e sığdırılır → **yatay taşma / kayma**.
+  3901→- `ProformaPdfGenerator`: `max-w-[210mm]` YOK. Screen'de ~203mm, print'te `width:100%` = 180mm. A4 (210mm) değil.
+  3902→- `Customer-360 PrintDocument`: ne `max-w-[210mm]` ne `print-content` var. Ekran ölçeği ≠ print ölçeği ≠ A4.
+  3903→- Hiçbir yerde `aspect-[1/1.414]` veya `aspect-[210/297]` kullanılmıyor.
+  3904→
+  3905→### KÖK NEDEN 3 — `InvoicePdfDialog` ve `Customer-360 PrintDocument` `print-content` eksikliği
+  3906→- `InvoicePdfDialog` (satır 454): `print-content` YOK → print'te görünmez.
+  3907→- `Customer-360 PrintDocument` (satır 2248): `print-content` YOK → print'te görünmez.
+  3908→
+  3909→### KÖK NEDEN 4 — `QuoteDetailDialog` ayrı PDF önizleme açmadan direkt yazdırır
+  3910→- "Yazdır" butonu (satır 159) `window.print()` çağırır; detay dialog'unun kendisini basar. Detay dialog'da kart grid'leri, dark-mode stilleri, çok renkli Badge'ler var → print'te renk bozulması, hizalama bozulması, gereksiz boşluklar.
+  3911→
+  3912→### KÖK NEDEN 5 — `@page` margin ile `max-w-[210mm]` etkileşimi
+  3913→- `@page { margin: 1.5cm }` + `max-w-[210mm]` → içerik 210mm tasarlanır, 180mm printable alana sığdırılır. Browser bazen ölçekler (Chrome varsayılan "Fit to page") bazen taşır. "Kayma" hissi buradan gelir.
+  3914→
+  3915→### KÖK NEDEN 6 — `p-6`/`p-8` ekran padding'i ile `print:p-0` farkı
+  3916→- Ekranda 24–32px padding var; print'te padding 0. İçerik oranları değişir → "kayma" olarak algılanır. Çözüm: ekran ve print için aynı oranları korumak.
+  3917→
+  3918→## 6. Önerilen Düzeltme Stratejisi (uygulanmadı — sonraki FIX görevine bırakıldı)
+  3919→1. **Merkezi `.a4-page` yardımcı sınıfı** (`globals.css`): `width: 210mm; min-height: 297mm; padding: 15mm; margin: 0 auto; background: white;` ve print'te `@page { size: A4; margin: 0 }` (margin A4 page içinde yaşasın). Tüm PDF container'lar bu sınıfı kullansın.
+  3920→2. **Tek `print-content` kuralı**: Print anında yalnızca aktif PDF dialog'unun içeriği `print-content` olsun. `QuoteDetailDialog` ve `InvoiceDetailDialog`'un outer DialogContent'lerindeki `print-content` kaldırılmalı; sadece gerçek PDF div'leri `print-content` olmalı.
+  3921→3. **`InvoicePdfDialog` ve `Customer-360 PrintDocument`'e `print-content` ekle** (iç div'e).
+  3922→4. **`QuoteDetailDialog` "Yazdır" butonu**: tıklayınca önce `ProformaPdfGenerator` açsın (proforma için), klasik teklif içinse yeni bir `QuotePdfDialog` açılsın — direkt `window.print()` yapmasın.
+  3923→5. **`aspect-[1/1.414]` veya sabit `width:210mm; min-height:297mm`** ile ekran önizlemesi A4 oranlarını korusun.
+  3924→6. **`@page { size: A4; margin: 0 }`** ile PDF page margin'leri içeriden yönetilsin (A4 div'in `padding: 15mm`).
+  3925→
+  3926→## 7. Doğrulama
+  3927→- ✅ Tüm PDF/print render dosyaları bulundu (7 dosya).
+  3928→- ✅ Hiçbir dosya değiştirilmedi (READ-ONLY).
+  3929→- ✅ Glob CSS print kuralları raporlandı.
+  3930→- ✅ A4 hizalama kaymalarının 6 kök nedeni tanımlandı.
+  3931→- ✅ Çakışan `print-content` durumları (QuoteDetailDialog + ProformaPdfGenerator overlap, InvoiceDetailDialog + InvoicePdfDialog) tespit edildi.
+  3932→
+  3933→## 8. Sonraki Aksiyon Önerileri
+  3934→- FIX görevi: `globals.css`'e `.a4-page` + `@page { size: A4; margin: 0 }` ekle.
+  3935→- FIX görevi: `InvoicePdfDialog`'a (satır 454) `print-content` ekle; `InvoiceDetailDialog` outer (satır 107) `print-content`'i kaldır.
+  3936→- FIX görevi: `QuoteDetailDialog` outer (satır 124) `print-content`'i kaldır; "Yazdır" butonunu `ProformaPdfGenerator` açacak şekilde yönlendir.
+  3937→- FIX görevi: `Customer-360 PrintDocument` (satır 2248–2260) `print-content` ve `max-w-[210mm]` ekle.
+  3938→- FIX görevi: tüm PDF div'lerinde `p-6`/`p-8` yerine `a4-page` sınıfı (15mm padding).
+  3939→
+  3940→---
+  3941→Task ID: RESEARCH-3
+  3942→Agent: Explore
+  3943→Task: Raporlar (Analiz) modülü mevcut durum analizi — sektör-bazlı raporlama refactor'i (CRM/Cafe/Market/Site/Appointments) için implementation plan.
+  3944→
+  3945→## Özet
+  3946→Raporlar modülü tamamen CRM-merkezlidir. `reports-view.tsx` (2376 satır, tek dosya) ve `/api/reports` (399 satır, tek endpoint) tenant sektörüne bakmaksızın her zaman müşteri/fırsat/aktivite/rep/ERP metrikleri döndürür. Dashboard refactor'inde izlenen `getTenantSector()` dispatch pattern'i raporlar için birebir kopyalanabilir. Aşağıda mevcut kodun tam envanteri + sektör bazlı implementation plan verilmiştir. **Hiçbir dosya değiştirilmedi.**
+  3947→
+  3948→## 1. İlgili Dosyalar (Tam Yol)
+  3949→
+  3950→### Frontend
+  3951→- `/home/z/my-project/src/components/reports/reports-view.tsx` — **2376 satır**, export `ReportsView`. 10 bölüm + header + skeleton + dışa aktarma helper'ları tek dosyada.
+  3952→- `/home/z/my-project/src/components/reports/daily-report.tsx` — **752 satır**, export `DailyReportView` (Gün Sonu Raporu dialog, CRM-only — arama/mesaj/teklif/fırsat özeti).
+  3953→- `/home/z/my-project/src/components/app/app-shell.tsx:14,172-174` — `ReportsView`'i `view === 'reports'` iken `ProtectedView perm="reports.view"` ile sarmalı render eder. **Single entry point — sector dispatch buraya eklenmeli.**
+  3954→
+  3955→### Backend
+  3956→- `/home/z/my-project/src/app/api/reports/route.ts` — **399 satır**, `GET /api/reports` (RBAC: `reports.view` + `stock` rolü 403). Tüm metrikler tek yanıtta döner.
+  3957→- `/home/z/my-project/src/app/api/reports/daily/route.ts` — **394 satır**, `GET /api/reports/daily?date=YYYY-MM-DD&userId=<id>` (RBAC: admin tüm tenant / manager astlar / rep kendisi). CRM-only.
+  3958→- `/home/z/my-project/src/lib/api-client.ts:71` — `qk.reports = ['reports'] as const` (sabit anahtar, parametre yok).
+  3959→
+  3960→### Paylaşılan Altyapı (refactor için kullanılacak)
+  3961→- `/home/z/my-project/src/lib/tenant-sector.ts` — ✅ **Mevcut ve hazır.** `getTenantSector(tenantName)` → `'crm' | 'cafe' | 'market' | 'site' | 'appointments'`. `SECTOR_META` eşlemesi (label/emoji/gradient/badge/accent).
+  3962→- `/home/z/my-project/src/lib/dashboard-sectors.ts` — **402 satır**, 4 sektör için data fetcher (`getCafeDashboardData`, `getMarketDashboardData`, `getSiteDashboardData`, `getAppointmentDashboardData`). Bu dosya Raporlar için örneklenecek.
+  3963→- `/home/z/my-project/src/components/dashboard/sector-dashboards.tsx` — 4 sektör dashboard component'i + shared `KpiCard` (useCountUp animasyonlu) + `EmptyState`.
+  3964→- `/home/z/my-project/src/components/dashboard/types.ts` — `CafeDashboardData` / `MarketDashboardData` / `SiteDashboardData` / `AppointmentsDashboardData` tipleri + union `SectorDashboardData`.
+  3965→- `/home/z/my-project/src/components/dashboard/dashboard-view.tsx:80,159-165` — **Dispatch pattern örneği**: `const sector = getTenantSector(user?.tenant.name)` → koşullu render `{sector === 'crm' && <CrmDashboard data={data} />}` + diğer 4 sektör.
+  3966→- `/home/z/my-project/src/app/api/dashboard/route.ts:24,84-88,201-212` — Backend dispatch pattern: sector tespiti → sectorDataPromise branch → merge into response.
+  3967→
+  3968→## 2. Mevcut reports-view.tsx Bölümleri (10 Bölüm)
+  3969→
+  3970→| # | Component | İçerik | Chart türü | Veri kaynağı (API alanı) |
+  3971→|---|-----------|--------|------------|--------------------------|
+  3972→| H | Header | "Raporlar & Analiz" başlığı + Gün Sonu Raporu butonu + dateRange Select (7d/30d/90d/6m/1y/all) + "Tümünü Dışa Aktar" butonu | — | `useState('6m')` (cosmetic — API'ye GEÇİLMEZ) |
+  3973→| 1 | `KpiSummary` | 4 KPI: Toplam Pipeline Değeri / Kazanma Oranı / Dönüşüm Oranı (Maps) / Toplam Ciro + CSV export | Stat kart grid | `totalPipelineValue`, `winRate`, `mapsLeadConversion.conversionRate`, `totalRevenue` |
+  3974→| 2 | `SalesFunnelCard` | DEAL_STAGES (6 aşama) için count + totalValue yan yana barlar + 6 mini stage kartı (Progress bar) | BarChart vertical + Cell renk | `pipeline[]`, `totalPipelineValue` |
+  3975→| 3 | `RevenueTrendCard` | Son 6 ay ciro (won deals, expectedCloseDate baz) + Toplam/Aylık Ort. | AreaChart (amber gradient) | `revenueByMonth[{month,total,count}]` |
+  3976→| 4 | `WinLossAnalysisCard` | Won/Loss donut (PieChart innerRadius=70, center %{winRate}) + kayıp nedenleri yatay bar listesi | PieChart + custom bars | `wonCount`, `lostCount`, `winRate`, `lossReasons[{reason,count}]` |
+  3977→| 5 | `MapsConversionCard` | Funnel (Toplam→İletişim→Nitelikli→Dönüştü) + şehre göre lead dağılımı yatay bar | Custom funnel + BarChart | `mapsLeadConversion{totalLeads,contactedCount,qualifiedCount,convertedCount,conversionRate,byCity[]}` |
+  3978→| 6 | `ActivityPerformanceCard` | Tabs: Tip Bazında (BarChart + type breakdown list) / Zaman İçinde (Area/LineChart son 30 gün) | BarChart + LineChart+Area | `activityByType[{type,count}]`, `activitiesOverTime[{date,count}]` |
+  3979→| 7 | `RepPerformanceCard` | Sortable Table (name/title/role/activityCount/dealsWon/totalWonValue/winRate) + per-rep detail Dialog (aktivite listesi) | Table + Dialog | `repPerformance[]` |
+  3980→| 8 | `TopCustomersCard` | Top 10 müşteri (won deal value sıralı) + rank madalyası + dağılım barı | Table + Progress | `topCustomers[{id,name,total,count,lastActivityAt}]` |
+  3981→| 9 | `StaleCustomersCard` | 30+ gün iletişimsiz müşteri listesi (ilk 50) + gün sayısı + "Görev" butonu + count badge | List + Badge | `staleCustomersCount`, `staleCustomers[{id,name,city,ownerId,ownerName,lastActivityAt}]` |
+  3982→| 10 | `ErpMetricsCard` | 4 ERP KPI (Stok Değeri/Toplam Faturalanan/Tahsil Edilen/Bekleyen Tahsilat) + 6 ay invoice revenue AreaChart + top products by stock value + alert row + quote summary | KPI grid + AreaChart + list | `erp.products{total,stockValue,lowStockCount,outOfStockCount,topByValue[]}`, `erp.invoices{total,totalInvoiced,totalPaid,totalPending,totalOverdue,paidCount,pendingCount,overdueCount,revenueByMonth[]}`, `erp.quotes{total,pendingCount,approvedCount,totalValue,conversionRate}` |
+  3983→| D | `DailyReportView` (Dialog) | Gün sonu aktivite özeti — arama/mesaj/teklif/fırsat/görev/müşteri sayıları + timeline + top/newCustomers + typeStats/outcomeStats + dealsWon/Lost + quotesCreated | Dialog içinde Table | `/api/reports/daily` |
+  3984→
+  3985→### Mevcut Filtre Kontrolleri
+  3986→- **Date Range** (`DATE_RANGES` constant, satır 165-172): `7d/30d/90d/6m/1y/all`. `useState('6m')` ile tutulur.
+  3987→- ⚠️ **KRİTİK BULGU**: `dateRange` state'i API çağrısına HİÇ geçilmiyor. `apiGet<ReportsData>('/api/reports')` çağrısı parametresiz. Backend sabit pencere kullanıyor (revenue: son 6 ay, activities: son 30 gün, stale: 30 günden fazla). Date filter **cosmetic** — refactor sırasında `?range=${dateRange}` parametresi eklenmeli ve backend'e tüm sorgular için geçmeli.
+  3988→- **Role filter**: API `getVisibilityFilter(user)` → rep için `ownerId.in` listesi; client'ta `visibleRepPerformance = repPerformance.filter(r => r.id === user.id)` (rep rolü başka rep'leri göremez).
+  3989→- **`stock` rolü**: API 403 döner, client `enabled: user?.role !== 'stock'` ile sorguyu atlar, `ShieldX` ile "Yetkisiz Erişim" kartı gösterir.
+  3990→- **Rep detail Dialog**: `RepPerformanceCard` içinde per-rep `detailRep` state + Dialog açar (`/api/reports/daily?userId=<id>` çağrısı yapar).
+  3991→- **Sort**: `RepPerformanceCard` içinde `sortKey` (`name`/`activityCount`/`dealsWon`/`totalWonValue`/`winRate`) + `sortDir` (`asc`/`desc`) + sortable header.
+  3992→- **Gün Sonu Raporu Dialog**: ayrı `date` Input + `userId` Select (admin/manager tüm tenant seçebilir).
+  3993→
+  3994→### Dışa Aktarma (Export) Kontrolleri
+  3995→- `exportCSV(rows, filename, sectionLabel)` — `toCSV` + `downloadFile` + toast.
+  3996→- `exportXLSX(rows, filename, sectionLabel)` — HTML tablo → `.xls` mime (Excel uyumlu), UTF-8 BOM.
+  3997→- Her bölümün kendi CSV + XLSX export butonları (`ExportButtons` helper).
+  3998→- Header'da global "Tümünü Dışa Aktar" → `buildFullReport(data)` tek XLSX.
+  3999→- Daily Report Dialog içinde `handleExport` (CSV).
+  4000→
+  4001→## 3. Chart Kütüphanesi (recharts)
+  4002→
+  4003→**İmport edilenler** (`reports-view.tsx:24-26`):
+  4004→```
+  4005→BarChart, Bar, AreaChart, Area, PieChart, Pie, LineChart, Line,
+  4006→XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend, CartesianGrid
+  4007→```
+  4008→
+  4009→**Shared yardımcılar**:
+  4010→- `PALETTE` (satır 116-124): emerald/teal/amber/violet/rose/sky/slate hex.
+  4011→- `STAGE_COLORS` (126-133), `ACTIVITY_COLOR_HEX` (135-143), `ACTIVITY_ICONS` (145-148), `LOSS_COLOR_HEX` (150-160).
+  4012→- `chartTooltipStyle` (218-225): borderRadius=10px, popover bg, fontSize=12px.
+  4013→- `formatMonthLabel` ("2024-08" → "Ağu 24"), `formatDayLabel` ("2024-08-15" → "15.08").
+  4014→- Tüm grafikler `ResponsiveContainer width="100%"` ile sarmallı.
+  4015→
+  4016→`sector-dashboards.tsx`'te kullanılan ek pattern'ler:
+  4017→- `KpiCard` → `useCountUp(numericValue, 900)` animasyonlu rakam.
+  4018→- `EmptyState({ message })` basit varyant.
+  4019→- Her sektör kendi gradyan rengini kullanıyor (Cafe→amber, Market→emerald, Site→violet, Appointments→pink).
+  4020→- `setView('cafe' | 'market' | 'site' | 'appointments')` ile ilgili modüle hızlı atlama butonları.
+  4021→
+  4022→## 4. API Yanıt Şeması (ReportsData)
+  4023→
+  4024→`/api/reports` tek yanıt objesi (CRM + ERP-lite), tüm sektörler için aynı:
+  4025→
+  4026→```
+  4027→{
+  4028→  pipeline: [{stage, count, totalValue}],
+  4029→  totalPipelineValue, winRate, wonCount, lostCount,
+  4030→  lossReasons: [{reason, count}],
+  4031→  revenueByMonth: [{month, total, count}],   // son 6 ay, won deals
+  4032→  totalRevenue,
+  4033→  topCustomers: [{id, name, total, count, lastActivityAt}],   // ilk 10
+  4034→  staleCustomersCount, staleCustomers: [...],   // ilk 50, >30 gün
+  4035→  mapsLeadConversion: {totalLeads, contactedCount, qualifiedCount, convertedCount, conversionRate, byCity[]},
+  4036→  activityByType: [{type, count}],
+  4037→  activitiesOverTime: [{date, count}],   // son 30 gün
+  4038→  repPerformance: [{id, name, title, role, activityCount, dealsWon, totalWonValue, winRate}],
+  4039→  erp: {
+  4040→    products: {total, stockValue, lowStockCount, outOfStockCount, topByValue[]},
+  4041→    invoices: {total, totalInvoiced, totalPaid, totalPending, totalOverdue, paidCount, pendingCount, overdueCount, revenueByMonth[]},
+  4042→    quotes: {total, pendingCount, approvedCount, totalValue, conversionRate},
+  4043→  },
+  4044→}
+  4045→```
+  4046→
+  4047→`/api/reports/daily` yanıtı (CRM-only, per-user veya tüm tenant): `summary{calls,messages,quotes,deals,tasks,customers}`, `timeline[]`, `topCustomers[]`, `newCustomers[]`, `typeStats`, `outcomeStats`, `dealsWon[]`, `dealsLost[]`, `quotesCreated[]`.
+  4048→
+  4049→## 5. Sektör Bazlı Metrik Eşlemesi (Refactor Hedefi)
+  4050→
+  4051→| Sektör | Tenant | KPI'lar | Trend Grafiği | Breakdown | Listeler |
+  4052→|--------|--------|---------|---------------|-----------|----------|
+  4053→| **CRM** (Anadolu Satış, 3TGY) | "Anadolu Satış A.Ş." | Pipeline Değeri, Win Rate, Dönüşüm Oranı, Toplam Ciro, Won/Lost count | Ciro trend (6 ay), Aktivite trend (30g) | Pipeline hunisi, Win/Loss donut, Loss reasons, Maps funnel | Top müşteriler, İletişimsiz müşteriler, Rep performansı, ERP (stok/fatura/teklif), Gün Sonu Raporu |
+  4054→| **Kafe** (Şık Kafe) | "Şık Kafe & Restoran" | Günlük Ciro, Sipariş Sayısı, Ort. Hesap, Masa Doluluk | Günlük ciro trendi (14-30g, AreaChart amber) | Saatlik kırılım (BarChart 08:00-23:00), Sipariş tipi (dine_in/takeaway/pickup) | Top satılan ürünler, Çoklu kafe karşılaştırması (per-cafe ciro/sipariş/ort hesap) |
+  4055→| **Market** (Anadolu Market) | "Anadolu Market Zinciri" | Günlük Satış, Fiş Sayısı, Ort. Sepet, Düşük Stok | Günlük satış trendi (AreaChart emerald) | Ödeme yöntemi (cash/card/mixed, PieChart), Kasiyer bazında POS (Table) | Top ürünler (qty+revenue), Stok turnover (sold vs stock, days of cover), Low/out-of-stock alert list |
+  4056→| **Site** (Park Sitesi) | "Park Sitesi Yönetimi" | Tahsilat Oranı, Açık Şikayet, Sakin Sayısı, Personel | Aylık aidat tahsilatı (6 ay, BarChart violet) | Şikayet kategori/öncelik dağılımı (StackedBar), Şikayet çözüm süresi (avg + breakdown) | Resident growth (cumulative LineChart), Personel iş yükü (assigned/completed complaints), Son şikayetler |
+  4057→| **Randevu** (Şık Kuaför) | "Şık Kuaför & Güzellik Merkezi" | Bugünkü Randevu, Bu Hafta, No-show Oranı, Dönem Cirosu | Randevu volume trend (14-30g, AreaChart pink) | No-show rate (PieChart completed/cancelled/no-show), Busy hours heatmap (hour × day BarChart), Revenue by service (Table) | Staff performans (per-staff randevu/tamamlanan/ciro/no-show), Top hizmetler |
+  4058→
+  4059→### Her sektörün veri kaynağı (DB modelleri)
+  4060→- **CRM**: `Customer`, `Lead` (source='google_maps'), `Deal`, `Activity`, `User` (rep), `Product`, `Invoice`, `Quote` — tümü mevcut `/api/reports`'ta.
+  4061→- **Kafe**: `Cafe`, `CafeTable`, `CafeOrder` (status, type, subtotal, total, createdAt), `CafeOrderItem` (name, qty, unitPrice). Dashboard fetcher (`getCafeDashboardData`) zaten özetliyor — bunu gün bazında 30g'ye genişlet + saatlik `groupBy` ekle + per-cafe breakdown ekle.
+  4062→- **Market**: `Market`, `MarketShift` (cashier userId, open/close), `MarketTransaction` (subtotal/total/paymentMethod/createdAt). Dashboard fetcher (`getMarketDashboardData`) mevcut — genişlet: cashier `groupBy`, stock turnover için `Product.stock` × `MarketTransactionItem` qty karşılaştırması.
+  4063→- **Site**: `Site`, `SiteResident` (createdAt → growth), `SiteDues` (paidDate, expectedDate, status), `SiteComplaint` (category, priority, createdAt, resolvedAt), `SiteAnnouncement`. Dashboard fetcher (`getSiteDashboardData`) zaten `monthlyCollection` + `recentComplaints` veriyor — genişlet: `complaint.resolvedAt - createdAt` avg resolution time, resident growth cumulative.
+  4064→- **Randevu**: `Appointment` (status: 'bekliyor'/'onaylandi'/'tamamlandi'/'iptal'/'gelmedi'?, serviceId, staffId, date, price), `AppointmentService` (name, price), `User` (staff). Dashboard fetcher (`getAppointmentDashboardData`) `dailyAppointments` + `topServices` veriyor — genişlet: no-show rate (status='iptal'|'gelmedi'), staff `groupBy`, hour-of-day `groupBy` (busy hours).
+  4065→
+  4066→## 6. Implementation Plan (Sektör-Bazlı Raporlar Refactor)
+  4067→
+  4068→Mimari, dashboard refactor'inin birebir kopyasıdır (`SECTOR-DASHBOARD` task, worklog satır 3688+).
+  4069→
+  4070→### A. Yeni Dosyalar
+  4071→
+  4072→#### A1. `/home/z/my-project/src/lib/reports-sectors.ts` (backend fetchers)
+  4073→Dashboard-sectors.ts pattern'inin kopyası. 4 sektör için ayrı fetcher:
+  4074→
+  4075→```ts
+  4076→export async function getCafeReportsData(tenantId, rangeStart, rangeEnd, visFilter?)
+  4077→export async function getMarketReportsData(tenantId, rangeStart, rangeEnd, visFilter?)
+  4078→export async function getSiteReportsData(tenantId, rangeStart, rangeEnd, visFilter?)
+  4079→export async function getAppointmentReportsData(tenantId, rangeStart, rangeEnd, visFilter?)
+  4080→```
+  4081→
+  4082→Her fetcher, kendi sektörünün Prisma modellerini çeker + aynı aralıklarla (`rangeStart ≤ createdAt < rangeEnd`) aggregation yapar. CRM sektörü için ayrı fetcher yazılmaz — mevcut `/api/reports` mantığı olduğu gibi kalır (sadece `rangeStart/rangeEnd` parametrelerini kabul edecek şekilde güncellenir).
+  4083→
+  4084→#### A2. `/home/z/my-project/src/components/reports/types.ts` (TypeScript interfaces)
+  4085→Dashboard/types.ts pattern kopyası:
+  4086→
+  4087→```ts
+  4088→export interface CafeReportsData {
+  4089→  sector: 'cafe'
+  4090→  cafe: {
+  4091→    cafeNames: string[]
+  4092→    totalCafes: number
+  4093→    totalRevenue: number
+  4094→    totalOrders: number
+  4095→    avgTicket: number
+  4096→    activeTables: number
+  4097→    totalTables: number
+  4098→    dailyRevenue: { date: string; revenue: number; orders: number }[]   // 30 gün
+  4099→    hourlyBreakdown: { hour: number; revenue: number; orders: number }[]   // 0-23
+  4100→    orderTypeMix: { type: 'dine_in' | 'takeaway' | 'pickup'; count: number; revenue: number }[]
+  4101→    topItems: { name: string; qty: number; revenue: number }[]
+  4102→    perCafe: { id: string; name: string; revenue: number; orders: number; avgTicket: number }[]
+  4103→  }
+  4104→}
+  4105→
+  4106→export interface MarketReportsData {
+  4107→  sector: 'market'
+  4108→  market: {
+  4109→    marketNames: string[]
+  4110→    totalMarkets: number
+  4111→    totalRevenue: number
+  4112→    totalTx: number
+  4113→    avgBasket: number
+  4114→    lowStockCount: number
+  4115→    outOfStockCount: number
+  4116→    dailyRevenue: { date: string; revenue: number; tx: number }[]
+  4117→    paymentMethodMix: { method: string; count: number; revenue: number }[]
+  4118→    topProducts: { name: string; qty: number; revenue: number; currentStock: number }[]
+  4119→    stockTurnover: { name: string; soldQty: number; currentStock: number; daysOfCover: number | null }[]
+  4120→    cashierPerformance: { userId: string; name: string; txCount: number; totalRevenue: number; avgBasket: number }[]
+  4121→    lowStockProducts: { name: string; stock: number; minStock: number; category: string | null }[]
+  4122→  }
+  4123→}
+  4124→
+  4125→export interface SiteReportsData {
+  4126→  sector: 'site'
+  4127→  site: {
+  4128→    siteNames: string[]
+  4129→    totalSites: number
+  4130→    residentsCount: number
+  4131→    apartmentsCount: number
+  4132→    staffCount: number
+  4133→    collectionRate: number
+  4134→    totalDuesExpected: number
+  4135→    totalDuesCollected: number
+  4136→    monthlyCollection: { month: string; collected: number; expected: number }[]   // 6 ay
+  4137→    complaintStats: {
+  4138→      total: number
+  4139→      open: number
+  4140→      resolved: number
+  4141→      avgResolutionHours: number | null
+  4142→      byCategory: { category: string; count: number; avgHours: number }[]
+  4143→      byPriority: { priority: string; count: number }[]
+  4144→    }
+  4145→    residentGrowth: { month: string; newResidents: number; cumulative: number }[]
+  4146→    staffWorkload: { userId: string; name: string; assignedComplaints: number; resolvedComplaints: number }[]
+  4147→  }
+  4148→}
+  4149→
+  4150→export interface AppointmentsReportsData {
+  4151→  sector: 'appointments'
+  4152→  appointments: {
+  4153→    providerNames: string[]
+  4154→    totalCount: number
+  4155→    completedCount: number
+  4156→    cancelledCount: number
+  4157→    noShowCount: number
+  4158→    noShowRate: number
+  4159→    totalRevenue: number
+  4160→    dailyAppointments: { date: string; count: number; revenue: number }[]
+  4161→    revenueByService: { name: string; count: number; revenue: number; avgPrice: number }[]
+  4162→    staffPerformance: { userId: string; name: string; total: number; completed: number; cancelled: number; noShow: number; revenue: number }[]
+  4163→    busyHours: { dayOfWeek: number; hour: number; count: number }[]   // 7×24 grid
+  4164→  }
+  4165→}
+  4166→
+  4167→export type SectorReportsData =
+  4168→  | CafeReportsData | MarketReportsData | SiteReportsData | AppointmentsReportsData
+  4169→```
+  4170→
+  4171→#### A3. `/home/z/my-project/src/components/reports/sector-reports.tsx` (sector components)
+  4172→Dashboard sector-dashboards.tsx pattern kopyası. 4 component + shared helpers:
+  4173→
+  4174→```tsx
+  4175→// Shared
+  4176→function KpiCard({ kpi }: { kpi: KpiData }) // useCountUp animasyonlu, dashboard'taki ile aynı
+  4177→function EmptyState({ message })
+  4178→function ExportButtons({ onCsv, onXlsx })
+  4179→
+  4180→// Sektör component'leri
+  4181→export function CafeReports({ data }: { data: CafeReportsData })
+  4182→export function MarketReports({ data }: { data: MarketReportsData })
+  4183→export function SiteReports({ data }: { data: SiteReportsData })
+  4184→export function AppointmentsReports({ data }: { data: AppointmentsReportsData })
+  4185→```
+  4186→
+  4187→Her component'in içeriği (Section 5 eşlemesine göre):
+  4188→
+  4189→**`CafeReports`** (~5 bölüm):
+  4190→1. KPI grid (4): Günlük Ciro / Sipariş / Ort. Hesap / Masa Doluluk
+  4191→2. Daily revenue trend (AreaChart 30 gün, amber gradient)
+  4192→3. Hourly breakdown (BarChart saat 08-23, çift eksen: revenue + orders)
+  4193→4. Order type mix (PieChart + legend) — dine_in/takeaway/pickup
+  4194→5. Top items (Table — adet + ciro + dağılım barı)
+  4195→6. Multi-cafe comparison (Table — per-cafe satır)
+  4196→
+  4197→**`MarketReports`** (~6 bölüm):
+  4198→1. KPI grid (4): Günlük Satış / Fiş / Ort. Sepet / Düşük Stok
+  4199→2. Daily sales trend (AreaChart 30 gün, emerald)
+  4200→3. Payment method mix (PieChart cash/card/mixed + revenue)
+  4201→4. Top products (Table — qty + revenue + current stock)
+  4202→5. Stock turnover (Table — sold qty / current stock / days of cover)
+  4203→6. Cashier performance (Table — sortable: txCount / totalRevenue / avgBasket)
+  4204→7. Low/out-of-stock alerts (colored list)
+  4205→
+  4206→**`SiteReports`** (~5 bölüm):
+  4207→1. KPI grid (4): Tahsilat Oranı / Açık Şikayet / Sakin / Personel
+  4208→2. Monthly dues collection (BarChart 6 ay — stacked: collected vs expected)
+  4209→3. Complaint stats (donut/pie: open/resolved + avgResolutionHours)
+  4210→4. Complaint breakdown (StackedBar by category + Table by priority)
+  4211→5. Resident growth (LineChart cumulative 12 ay)
+  4212→6. Staff workload (Table — assigned/resolved ratio + Progress bar)
+  4213→
+  4214→**`AppointmentsReports`** (~5 bölüm):
+  4215→1. KPI grid (4): Bugün / Bu Hafta / No-show % / Ciro
+  4216→2. Daily appointment volume (AreaChart 30 gün, pink)
+  4217→3. No-show rate donut (PieChart — completed/cancelled/no-show)
+  4218→4. Revenue by service (Table — count + revenue + share + Progress)
+  4219→5. Staff performance (Table sortable — total/completed/cancelled/revenue/no-show%)
+  4220→6. Busy hours heatmap (7×24 grid — custom colored cells veya BarChart by hour grouped by day)
+  4221→
+  4222→### B. Değiştirilecek Dosyalar
+  4223→
+  4224→#### B1. `/home/z/my-project/src/app/api/reports/route.ts` (398→~600 satır)
+  4225→Dashboard route.ts pattern kopyası:
+  4226→
+  4227→```ts
+  4228→import { getTenantSector } from '@/lib/tenant-sector'
+  4229→import { getCafeReportsData, getMarketReportsData, getSiteReportsData, getAppointmentReportsData } from '@/lib/reports-sectors'
+  4230→
+  4231→export async function GET(req) {
+  4232→  const user = await getSession(req)
+  4233→  const permErr = requirePermission(user, 'reports.view')
+  4234→  if (permErr) return permErr
+  4235→  if (user!.role === 'stock') return err('Depo rolü için raporlara erişim kısıtlıdır', 403)
+  4236→
+  4237→  const sector = getTenantSector(user!.tenant.name)
+  4238→
+  4239→  // Tarih aralığı parametresi (NEW — şu an yok)
+  4240→  const url = new URL(req.url)
+  4241→  const range = url.searchParams.get('range') || '6m'
+  4242→  const { rangeStart, rangeEnd } = computeRange(range)
+  4243→
+  4244→  if (sector === 'crm') {
+  4245→    // Mevcut tüm CRM sorgularını buraya taşı, rangeStart/rangeEnd ile filtrele
+  4246→    const crmData = await getCrmReportsData(user, visFilter, rangeStart, rangeEnd)
+  4247→    return ok({ sector, range, ...crmData })
+  4248→  }
+  4249→
+  4250→  const visFilter = await getVisibilityFilter(user!)
+  4251→  let sectorData: SectorReportsData
+  4252→  if (sector === 'cafe') sectorData = await getCafeReportsData(user!.tenantId, rangeStart, rangeEnd, visFilter)
+  4253→  else if (sector === 'market') sectorData = await getMarketReportsData(...)
+  4254→  else if (sector === 'site') sectorData = await getSiteReportsData(...)
+  4255→  else if (sector === 'appointments') sectorData = await getAppointmentReportsData(...)
+  4256→
+  4257→  return ok({ sector, range, ...sectorData })
+  4258→}
+  4259→```
+  4260→
+  4261→Önemli iyileştirmeler:
+  4262→- Tarih aralığı parametre olarak kabul edilir (`?range=7d|30d|90d|6m|1y|all`) — şu anki cosmetic bug düzeltilmiş olur.
+  4263→- CRM dışı sektörlerde gereksiz CRM sorguları çalışmaz (performans).
+  4264→- Yanıt `sector` alanı içerir (frontend dispatch için).
+  4265→
+  4266→#### B2. `/home/z/my-project/src/components/reports/reports-view.tsx` (~2376→~150 satır parent + ~2200 satır CRM içeriği)
+  4267→Dashboard-view.tsx pattern kopyası — parçala:
+  4268→
+  4269→1. **Mevcut 10 bölümü `CrmReports` component'ine taşı** (aynı dosyada veya yeni `crm-reports.tsx`):
+  4270→   - `function CrmReports({ data }: { data: ReportsData })` — KpiSummary, SalesFunnelCard, RevenueTrendCard, WinLossAnalysisCard, MapsConversionCard, ActivityPerformanceCard, RepPerformanceCard, TopCustomersCard, StaleCustomersCard, ErpMetricsCard — hepsi `CrmReports` içinde. Mevcut `ReportsView()` gövdesinin içeriği.
+  4271→   - `DailyReportView` Dialog'u CRM-only (başka sektörlerde gösterilmez — kafe/market/site/randevu'da gün sonu aktivite raporu farklı bir içeriğe sahip olurdu, MVP'de gizlenir).
+  4272→
+  4273→2. **`ReportsView` parent** (~150 satır, mevcut dosyanın başı):
+  4274→   ```tsx
+  4275→   export function ReportsView() {
+  4276→     const user = useAppStore((s) => s.user)
+  4277→     const sector = getTenantSector(user?.tenant.name)
+  4278→     const [dateRange, setDateRange] = useState('6m')
+  4279→     const { data, isLoading } = useQuery({
+  4280→       queryKey: ['reports', dateRange, sector],
+  4281→       queryFn: () => apiGet(`/api/reports?range=${dateRange}`),
+  4282→       enabled: user?.role !== 'stock',
+  4283→     })
+  4284→
+  4285→     if (user?.role === 'stock') return <StockForbiddenCard />
+  4286→     if (isLoading || !data) return <ReportsSkeleton sector={sector} />
+  4287→     if (isError) return <ErrorCard refetch={refetch} />
+  4288→
+  4289→     return (
+  4290→       <div className="space-y-6 animate-fade-in pb-6">
+  4291→         <ReportsHeader sector={sector} dateRange={dateRange} onDateChange={setDateRange} />
+  4292→         {sector === 'crm' && <CrmReports data={data} />}
+  4293→         {sector === 'cafe' && data.cafe && <CafeReports data={{ sector: 'cafe', cafe: data.cafe }} />}
+  4294→         {sector === 'market' && data.market && <MarketReports data={{ sector: 'market', market: data.market }} />}
+  4295→         {sector === 'site' && data.site && <SiteReports data={{ sector: 'site', site: data.site }} />}
+  4296→         {sector === 'appointments' && data.appointments && (
+  4297→           <AppointmentsReports data={{ sector: 'appointments', appointments: data.appointments }} />
+  4298→         )}
+  4299→       </div>
+  4300→     )
+  4301→   }
+  4302→   ```
+  4303→
+  4304→3. **`ReportsHeader`** — sektör bazlı başlık + alt başlık + dateRange Select (sadece CRM'de "Gün Sonu Raporu" butonu + "Tümünü Dışa Aktar" butonu göster; diğer sektörlerde sadece dateRange + CSV/XLSX export).
+  4305→
+  4306→4. **`ReportsSkeleton`** — sektör-bazlı (KPI grid 4 + 3-5 bölüm kartı).
+  4307→
+  4308→#### B3. `/home/z/my-project/src/lib/api-client.ts` (satır 71)
+  4309→Query key'i parametre destekler hale getir:
+  4310→
+  4311→```ts
+  4312→reports: (range?: string) => ['reports', range ?? '6m'] as const,
+  4313→```
+  4314→
+  4315→Mevcut `qk.reports` kullanan noktalar güncellenir (sadece `reports-view.tsx:238` çağrısı `qk.reports` — `qk.reports(dateRange)` olarak güncellenir).
+  4316→
+  4317→### C. Backend Sorgu Detayları (reports-sectors.ts içeriği)
+  4318→
+  4319→#### `getCafeReportsData(tenantId, rangeStart, rangeEnd, visFilter?)`
+  4320→```ts
+  4321→const cafes = await db.cafe.findMany({ where: { tenantId }, select: {...} })
+  4322→const orders = await db.cafeOrder.findMany({
+  4323→  where: { cafeId: { in: cafeIds }, createdAt: { gte: rangeStart, lt: rangeEnd }, status: 'odendi' },
+  4324→  select: { cafeId: true, total: true, type: true, createdAt: true,
+  4325→            items: { select: { name: true, qty: true, unitPrice: true } } },
+  4326→})
+  4327→// hourly breakdown: order.createdAt.getHours() → groupBy
+  4328→// orderTypeMix: order.type → groupBy
+  4329→// topItems: items flatten + groupBy name → sum qty, sum(qty*unitPrice)
+  4330→// perCafe: groupBy cafeId → sum total, count, avg
+  4331→// dailyRevenue: groupBy date (yyyy-mm-dd)
+  4332→// totalTables: sum cafe.tableCount; activeTables: CafeTable status count
+  4333→```
+  4334→
+  4335→#### `getMarketReportsData(tenantId, rangeStart, rangeEnd, visFilter?)`
+  4336→```ts
+  4337→const markets = await db.market.findMany({ where: { tenantId } })
+  4338→const txs = await db.marketTransaction.findMany({
+  4339→  where: { marketId: { in: marketIds }, createdAt: { gte: rangeStart, lt: rangeEnd } },
+  4340→  select: { id: true, total: true, subtotal: true, paymentMethod: true, userId: true, createdAt: true,
+  4341→            items: { select: { name: true, qty: true, unitPrice: true } } },
+  4342→})
+  4343→// paymentMethodMix: groupBy paymentMethod
+  4344→// topProducts: items flatten + groupBy name → sum qty, sum(qty*unitPrice)
+  4345→// cashierPerformance: groupBy userId → join users
+  4346→// stockTurnover: per product → soldQty (from tx items) / currentStock (from Product.stock)
+  4347→//                daysOfCover = currentStock / (soldQty / daysInRange)
+  4348→// dailyRevenue: groupBy date
+  4349→// lowStockProducts: Product where stock <= minStock
+  4350→```
+  4351→
+  4352→#### `getSiteReportsData(tenantId, rangeStart, rangeEnd, visFilter?)`
+  4353→```ts
+  4354→const sites = await db.site.findMany({ where: { tenantId } })
+  4355→const dues = await db.siteDues.findMany({
+  4356→  where: { siteId: { in: siteIds }, OR: [{ paidDate: { gte, lt } }, { expectedDate: { gte, lt } }] },
+  4357→  select: { amount: true, status: true, paidDate: true, expectedDate: true, siteId: true },
+  4358→})
+  4359→const complaints = await db.siteComplaint.findMany({
+  4360→  where: { siteId: { in: siteIds }, createdAt: { gte, lt } },
+  4361→  select: { id: true, category: true, priority: true, status: true, createdAt: true, resolvedAt: true, assigneeId: true, residentId: true },
+  4362→})
+  4363→const residents = await db.siteResident.findMany({ where: { siteId: { in: siteIds } }, select: { createdAt: true } })
+  4364→// monthlyCollection: groupBy month → sum amount where status='odendi'
+  4365→// complaintStats: total/open/resolved + avg (resolvedAt - createdAt) hours
+  4366→// byCategory: groupBy category + avg hours
+  4367→// byPriority: groupBy priority
+  4368→// residentGrowth: groupBy createdAt month → cumulative running total
+  4369→// staffWorkload: groupBy assigneeId → count + resolvedCount
+  4370→```
+  4371→
+  4372→#### `getAppointmentReportsData(tenantId, rangeStart, rangeEnd, visFilter?)`
+  4373→```ts
+  4374→const appts = await db.appointment.findMany({
+  4375→  where: { tenantId, date: { gte: rangeStart, lt: rangeEnd } },
+  4376→  select: { id: true, status: true, serviceId: true, staffId: true, date: true, price: true,
+  4377→            service: { select: { name: true } }, staff: { select: { id: true, name: true } } },
+  4378→})
+  4379→// noShow: status IN ('iptal', 'gelmedi', 'gelmedi') — seed/status değerleri doğrulanmalı
+  4380→// dailyAppointments: groupBy date
+  4381→// revenueByService: groupBy service.name → count, sum(price), avg(price)
+  4382→// staffPerformance: groupBy staffId → total, completed, cancelled, noShow, revenue
+  4383→// busyHours: groupBy (dayOfWeek, hour) → count
+  4384→```
+  4385→
+  4386→### D. Doğrulama Adımları (Refactor sonrası)
+  4387→1. `bun run lint` 0 hata
+  4388→2. `npx tsc --noEmit` 0 hata
+  4389→3. 5 tenant için agent-browser testi:
+  4390→   - CRM (Demir Yıldız / Anadolu Satış) → 10 CRM bölümü + Gün Sonu Raporu
+  4391→   - Kafe (Şık Kafe) → KPI + 5 bölüm (hourly breakdown görünür)
+  4392→   - Market (Anadolu Market) → KPI + 6 bölüm (cashier table görünür)
+  4393→   - Site (Park Sitesi) → KPI + 5 bölüm (monthlyCollection + complaint resolution)
+  4394→   - Randevu (Şık Kuaför) → KPI + 5 bölüm (no-show rate + busy hours)
+  4395→4. CSV/XLSX export her sektörde çalışıyor
+  4396→5. Date range Select gerçekten API'ye parametre geçiyor (network sekmesinde `?range=7d` görünür)
+  4397→6. `stock` rolü hala 403 + ShieldX kartı görüyor
+  4398→7. Rep rolü hala kendi performansını görüyor (CRM sektöründe)
+  4399→
+  4400→## 7. Bulgu ve Riskler
+  4401→
+  4402→- ⚠️ **dateRange state cosmetic** (satır 233, 317): `useState('6m')` set edilir ama `apiGet('/api/reports')` çağrısına GEÇİLMEZ. Backend sabit pencere (6 ay revenue, 30 gün activities) kullanır. Refactor sırasında düzeltilmeli — `?range=${dateRange}` eklenmeli ve backend tüm sorgular için `rangeStart/rangeEnd` hesaplamalı.
+  4403→- ⚠️ **reports-view.tsx tek dosya 2376 satır** — `CrmReports` component'ine taşınırsa dosya boyutu kontrol altına alınır. Diğer sektör component'leri ayrı dosyada (`sector-reports.tsx`) olmalı.
+  4404→- ⚠️ **Appointment status değerleri doğrulanmalı**: no-show rate için `status='iptal'` veya `status='gelmedi'` değerlerinden hangileri kullanılıyor? Prisma şema + seed dosyası incelenmeli.
+  4405→- ⚠️ **Site şikayetleri `resolvedAt` alanı**: Prisma şemasında var mı yok mu doğrulanmalı (yoksa `complaintStats.avgResolutionHours` hesaplanamaz, fallback olarak `closedAt` veya `updatedAt` kullanılabilir).
+  4406→- ✅ **Daily Report Dialog CRM-only kalmalı**: Kafe/Market için ayrı gün sonu raporu (vardiya kapanış) yazılabilir ama MVP'de gizlenir.
+  4407→- ✅ **app-shell.tsx:174 ProtectedView** sarmalı değiştirilmemeli — `ReportsView` parent sektör tespitini kendisi yapar (Dashboard pattern ile aynı).
+  4408→- ✅ **RBAC**: `reports.view` permission tüm sektörlerde geçerli. `stock` rolü her sektörde 403 almalı.
+  4409→- ✅ **Renkler**: dashboard-sectors.tsx ile uyumlu — Kafe=amber, Market=emerald, Site=violet, Randevu=pink, CRM=sky.
+  4410→
+  4411→## Sonraki Adımlar (Build agent'ına)
+  4412→1. `/home/z/my-project/src/lib/reports-sectors.ts` oluştur — 4 fetcher
+  4413→2. `/home/z/my-project/src/components/reports/types.ts` oluştur — 4 sektör + union tipi
+  4414→3. `/home/z/my-project/src/components/reports/sector-reports.tsx` oluştur — 4 component + shared KpiCard/EmptyState/ExportButtons
+  4415→4. `/home/z/my-project/src/app/api/reports/route.ts` güncelle — `getTenantSector` + sector branch + `?range=` parametresi
+  4416→5. `/home/z/my-project/src/components/reports/reports-view.tsx`'i parçala — `ReportsView` parent + `CrmReports` (mevcut 10 bölümün sarmalı)
+  4417→6. `/home/z/my-project/src/lib/api-client.ts:71` güncelle — `qk.reports(range)` parametreli
+  4418→7. Prisma şema doğrulama: `Appointment.status` enum değerleri + `SiteComplaint.resolvedAt` alanı
+  4419→8. 5 sektör için agent-browser testi
+  4420→9. `bun run lint` + `npx tsc --noEmit` 0 hata
+  4421→

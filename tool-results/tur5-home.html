@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GNC Randevu — Yakınındaki Berber, Kuaför, Dişçi ve Spa İşletmeleri</title>
+<meta name="description" content="Konumuna göre en yakın berber, kuaför, dişçi, güzellik salonu, spa ve dövme stüdyolarını bul; online randevunu saniyeler içinde oluştur.">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2224%22%20fill%3D%22%231d1d1f%22%2F%3E%3Ctext%20x%3D%2250%22%20y%3D%2269%22%20font-family%3D%22-apple-system%2CArial%2Csans-serif%22%20font-size%3D%2254%22%20font-weight%3D%22700%22%20fill%3D%22%23ffffff%22%20text-anchor%3D%22middle%22%3EG%3C%2Ftext%3E%3C%2Fsvg%3E?v=ffr0qn">
+<link rel="stylesheet" href="/assets/style.css?v=ffr0qn">
+  <link rel="stylesheet" href="/assets/leaflet/leaflet.css?v=ffr0qn">
+<script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+<div class="page">
+<header class="top">
+  <div class="top-in">
+    <a class="logo" href="/" aria-label="GNC Randevu ana sayfa"><span class="logo-mark" aria-hidden="true">G</span><span class="logo-word">GNC Randevu</span></a>
+    <nav class="nav-links" aria-label="Bölümler">
+      <a href="#kesfet">Keşfet</a>
+      <a href="#isletmeler">İşletmeler</a>
+      <a href="#harita">Harita</a>
+    </nav>
+    <div class="nav-tools">
+      <div class="search">
+        <span class="s-ic" aria-hidden="true"><svg class="ic ic-search" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.7"/><path d="m10.5 10.5 3.3 3.3"/></svg></span>
+        <input type="search" id="q" placeholder="İşletme veya hizmet ara" aria-label="İşletme ara" autocomplete="off">
+      </div>
+      <a class="member-btn" id="member-btn" href="/uyelik">Giriş</a>
+    </div>
+  </div>
+</header>
+<main>
+  <section class="hero" aria-label="Tanıtım">
+    <h1>Randevun, bir dokunuş uzağında.</h1>
+    <p>Yakınındaki berber, kuaför, dişçi ve spa işletmelerini keşfet; hizmetini seç, uygun saati yakala.</p>
+    <div class="hero-ctas">
+      <a class="btn btn-primary" href="#isletmeler">Randevu Al</a>
+      <a class="link-more" href="#kesfet">Keşfet <svg class="ic ic-chevR" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5.5 3 4.5 5-4.5 5"/></svg></a>
+    </div>
+    <button type="button" class="btn-link" id="geo-btn"><svg class="ic ic-pin" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.9 6.4a4.9 4.9 0 1 0-9.8 0c0 1.5.7 2.8 1.6 3.8L8 13.8l3.3-3.6c.9-1 1.6-2.3 1.6-3.8Z"/><circle cx="8" cy="6.3" r="1.6"/></svg> Konumuma göre en yakını bul <svg class="ic ic-chevR" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5.5 3 4.5 5-4.5 5"/></svg></button>
+    <p class="loc-status" id="loc-status" role="status" aria-live="polite"></p>
+  </section>
+
+  <figure class="hero-shot reveal" aria-label="Bir salondan kare">
+    <div class="hero-shot-media">
+      <img class="hero-shot-img" src="/assets/img/hero-salon.jpg" alt="Aydınlık ve minimal bir kuaför salonunun içi" width="1344" height="768" fetchpriority="high">
+      <span class="hero-shot-fade" aria-hidden="true"></span>
+      <figcaption class="hero-shot-cap">Şık Kuaför &amp; Berber Salonu · Kadıköy</figcaption>
+    </div>
+  </figure>
+
+  <section class="features reveal-group" id="kesfet" aria-label="Öne çıkanlar">
+    <div class="feature"><span class="feature-ic"><svg class="ic ic-bolt" width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.8 1.6 3.4 9.2h3.5l-.9 5.2 5.5-7.7H7.9Z"/></svg></span><b>Saniyeler içinde</b><span>Hizmeti seç, takvimden günü ve saati yakala; randevun anında oluşur.</span></div>
+    <div class="feature"><span class="feature-ic"><svg class="ic ic-user" width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="5.4" r="3.1"/><path d="M2.7 13.6c.8-2.3 2.9-3.6 5.3-3.6s4.5 1.3 5.3 3.6"/></svg></span><b>Üyeliksiz de olur</b><span>Adın ve telefonun yeterli — dilediğinde üye olup tüm randevularını tek ekranda gör.</span></div>
+    <div class="feature"><span class="feature-ic"><svg class="ic ic-pin" width="28" height="28" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.9 6.4a4.9 4.9 0 1 0-9.8 0c0 1.5.7 2.8 1.6 3.8L8 13.8l3.3-3.6c.9-1 1.6-2.3 1.6-3.8Z"/><circle cx="8" cy="6.3" r="1.6"/></svg></span><b>En yakını bul</b><span>Konumunu paylaş; mesafeleri görüp sana en uygun işletmeye git.</span></div>
+  </section>
+
+  <section id="isletmeler" aria-labelledby="biz-h" style="padding-top:64px">
+    <div class="reveal">
+      <h2 class="sec-h" id="biz-h">Yakınındaki işletmeler.</h2>
+      <p class="sec-sub" style="margin-bottom:26px">Filtrele, ara, karşılaştır — sonra tek dokunuşla randevunu al.</p>
+      <div class="filters-row">
+        <div class="chips" id="chips" aria-label="İşletme türü filtresi"><button type="button" class="chip on" data-type="" aria-pressed="true">Tümü</button><button type="button" class="chip" data-type="berber" >Berber</button><button type="button" class="chip" data-type="kuafor" >Kuaför</button><button type="button" class="chip" data-type="disci" >Dişçi</button><button type="button" class="chip" data-type="guzellik" >Güzellik</button><button type="button" class="chip" data-type="spa" >Spa</button><button type="button" class="chip" data-type="dovme" >Dövme</button></div>
+        <label class="city-wrap"><span class="sr-only">Şehir filtresi</span><select id="city" aria-label="Şehir seç"><option value="">Tüm şehirler</option></select></label>
+      </div>
+    </div>
+    <p class="count" id="count" role="status">İşletmeler yükleniyor…</p>
+    <section class="grid" id="grid" aria-label="İşletme listesi" aria-live="polite">
+      <div class="sk" aria-hidden="true"><div class="sc"></div><div class="sb"><div class="sk-line w60"></div><div class="sk-line w80"></div><div class="sk-line"></div></div></div><div class="sk" aria-hidden="true"><div class="sc"></div><div class="sb"><div class="sk-line w60"></div><div class="sk-line w80"></div><div class="sk-line"></div></div></div><div class="sk" aria-hidden="true"><div class="sc"></div><div class="sb"><div class="sk-line w60"></div><div class="sk-line w80"></div><div class="sk-line"></div></div></div><div class="sk" aria-hidden="true"><div class="sc"></div><div class="sb"><div class="sk-line w60"></div><div class="sk-line w80"></div><div class="sk-line"></div></div></div><div class="sk" aria-hidden="true"><div class="sc"></div><div class="sb"><div class="sk-line w60"></div><div class="sk-line w80"></div><div class="sk-line"></div></div></div><div class="sk" aria-hidden="true"><div class="sc"></div><div class="sb"><div class="sk-line w60"></div><div class="sk-line w80"></div><div class="sk-line"></div></div></div><div class="sk" aria-hidden="true"><div class="sc"></div><div class="sb"><div class="sk-line w60"></div><div class="sk-line w80"></div><div class="sk-line"></div></div></div><div class="sk" aria-hidden="true"><div class="sc"></div><div class="sb"><div class="sk-line w60"></div><div class="sk-line w80"></div><div class="sk-line"></div></div></div>
+    </section>
+    <noscript><p class="state-box">Bu site randevuları canlı göstermek için JavaScript kullanır — tarayıcında JavaScript'i etkinleştirip yenile.</p></noscript>
+  </section>
+
+  <section class="dark-section reveal" aria-label="Ustalık">
+    <h2 class="sec-h">Ustalık, ayrıntıda gizlidir.</h2>
+    <p class="sec-sub">Her işletmenin portföyü, ekibi ve çalışma saatleri kendi vitrin sayfasında — keşfetmeye devam et.</p>
+    <a class="link-more" href="#isletmeler">Vitrinleri keşfet <svg class="ic ic-chevR" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5.5 3 4.5 5-4.5 5"/></svg></a>
+    <img class="dark-img" src="/assets/img/craft-dark.jpg" alt="Siyah zeminde berber makası ve tarak detay çekimi" loading="lazy" width="1344" height="768">
+  </section>
+
+  <section id="harita" style="padding-top:8px" aria-label="İşletme haritası">
+    <div class="map-card reveal">
+      <div class="map-head">
+        <h2>Haritada işletmeler</h2>
+        <button type="button" class="map-toggle" id="map-toggle" aria-expanded="true" aria-controls="biz-map">Haritayı gizle</button>
+      </div>
+      <div id="biz-map" class="biz-map" role="application" aria-label="İşletmelerin harita üzerinde konumları"></div>
+      <p class="map-hint" id="map-hint">Konum izni verirsen konumun da haritada görünür, en yakın işletme mavi pinle vurgulanır.</p>
+    </div>
+  </section>
+<script id="page-cfg" type="application/json">{"baseDomain":"gncinc.online"}</script>
+</main>
+<footer class="ft">
+  <div class="ft-in">
+    <div class="ft-cols">
+      <div class="ft-col">
+        <h3>Keşfet</h3>
+        <a href="/#isletmeler">Tüm işletmeler</a>
+        <a href="/#harita">Haritada keşfet</a>
+        <a href="/">Ana sayfa</a>
+      </div>
+      <div class="ft-col">
+        <h3>Hesap</h3>
+        <a href="/uyelik">Giriş / Kayıt</a>
+        <a href="/uyelik">Randevularım</a>
+        <a href="/uyelik">Bekleme durumum</a>
+      </div>
+      <div class="ft-col">
+        <h3>GNC Randevu</h3>
+        <p style="font-size:12px;color:var(--sub);line-height:1.5;margin:0">Berberden dişçiye, kuaförden spaya — yakınındaki işletmeler ve online randevular tek yerde.</p>
+      </div>
+    </div>
+    <div class="ft-legal">
+      <span class="fl">GNC Randevu — tüm işletmeler tek yerde</span><span aria-hidden="true">·</span><span class="fr">Türkçe · Mobil uyumlu</span>
+    </div>
+  </div>
+</footer>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script>
+(function () {
+  var d = document, w = window;
+  var rm = false;
+  try { rm = w.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  var els = d.querySelectorAll('.reveal, .reveal-group');
+  if (rm || !('IntersectionObserver' in w)) {
+    for (var i = 0; i < els.length; i++) els[i].classList.add('in');
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      for (var k = 0; k < entries.length; k++) {
+        if (entries[k].isIntersecting) { entries[k].target.classList.add('in'); io.unobserve(entries[k].target); }
+      }
+    }, { threshold: 0.15 });
+    for (var j = 0; j < els.length; j++) io.observe(els[j]);
+  }
+  if (rm || !('IntersectionObserver' in w)) return;
+  var pxEls = [].slice.call(d.querySelectorAll('.hero-shot-img, .bhero-img'));
+  if (!pxEls.length) return;
+  var vis = [];
+  var io2 = new IntersectionObserver(function (es) {
+    for (var m = 0; m < es.length; m++) {
+      var idx = vis.indexOf(es[m].target);
+      if (es[m].isIntersecting && idx === -1) vis.push(es[m].target);
+      else if (!es[m].isIntersecting && idx > -1) vis.splice(idx, 1);
+    }
+  });
+  for (var n = 0; n < pxEls.length; n++) io2.observe(pxEls[n]);
+  var ticking = false;
+  function apply() {
+    ticking = false;
+    var sy = w.scrollY || w.pageYOffset || 0;
+    for (var q = 0; q < vis.length; q++) {
+      var el = vis[q];
+      var top = el.getBoundingClientRect().top + sy;
+      var rel = sy - top;
+      var py = Math.max(-64, Math.min(64, rel * 0.15));
+      el.style.setProperty('--py', py.toFixed(1) + 'px');
+    }
+  }
+  function onScroll() { if (!ticking) { ticking = true; w.requestAnimationFrame(apply); } }
+  w.addEventListener('scroll', onScroll, { passive: true });
+  apply();
+})();
+</script>
+  <script src="/assets/leaflet/leaflet.js?v=ffr0qn" defer></script>
+  <script src="/assets/home.js?v=ffr0qn" defer></script>
+</body>
+</html>

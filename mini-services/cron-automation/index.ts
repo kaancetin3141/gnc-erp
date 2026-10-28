@@ -6,7 +6,7 @@ import cron from './vendor/node-cron/src/node-cron.js'
 import { createServer } from 'http'
 
 const PORT = 3010
-const APP_URL = process.env.APP_URL || 'http://localhost:3001'
+const APP_URL = process.env.APP_URL || 'http://localhost:3000'
 // Servis kimliği: /api/auth artık email+şifre (bcrypt) istiyor — eski {userId} gövdesi 400 dönerdi.
 // Kimlik env'den gelir; sandbox default'u program admini (admin/314159).
 const AUTOMATION_EMAIL = process.env.AUTOMATION_EMAIL || 'admin@gnccrm.app'
