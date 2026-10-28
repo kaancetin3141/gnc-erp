@@ -26,7 +26,7 @@ import { AppointmentCalendar } from './appointment-calendar'
 import { RejectDialog } from './reject-dialog'
 import { CustomerHistoryDialog } from './customer-history-dialog'
 import { MembershipTab } from '@/components/membership/membership-tab'
-import { CustomerManager, CustomerDetailDialog, type RegistryCustomer } from './customer-manager'
+import { CustomerDetailDialog } from './customer-manager'
 import { CustomerAutocomplete } from './customer-autocomplete'
 import { formatDateTime } from '@/lib/format'
 import { useAppStore } from '@/store/app-store'
@@ -289,7 +289,6 @@ export function AppointmentsView() {
         <TabsList>
           <TabsTrigger value="appointments" className="text-xs"><Calendar className="w-3.5 h-3.5 mr-1" /> Randevular</TabsTrigger>
           <TabsTrigger value="calendar" className="text-xs"><CalendarDays className="w-3.5 h-3.5 mr-1" /> Takvim</TabsTrigger>
-          <TabsTrigger value="customers" className="text-xs"><Users className="w-3.5 h-3.5 mr-1" /> Müşteriler</TabsTrigger>
           {/* Personel: yönetici için tam yönetim; usta için kendi izin/çalışma saatleri */}
           <TabsTrigger value="staff" className="text-xs">
             {isProviderAdmin
@@ -507,19 +506,6 @@ export function AppointmentsView() {
         {/* Takvim tab — gün/hafta görünümü. Usta yalnız kendi kolonunu görür. */}
         <TabsContent value="calendar" className="mt-4">
           {providerId && <AppointmentCalendar providerId={providerId} myStaffId={myStaffId} />}
-        </TabsContent>
-
-        {/* Müşteriler tab — kalıcı müşteri kayıt defteri */}
-        <TabsContent value="customers" className="mt-4">
-          {providerId && (
-            <CustomerManager
-              providerId={providerId}
-              onNewAppointment={(c) => {
-                setBookInitial({ name: c.name, phone: c.phone })
-                setBookOpen(true)
-              }}
-            />
-          )}
         </TabsContent>
 
         {/* Personel tab — yönetici: ekleme/düzenleme/silme; usta: kendi izin/çalışma saatleri */}
