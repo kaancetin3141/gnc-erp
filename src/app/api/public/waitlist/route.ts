@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
   if (appointmentCode) {
     const rows = await db.$queryRaw<Array<{ id: string; providerId: string }>>`
       SELECT a."id", a."providerId" FROM "Appointment" a
-      WHERE UPPER(SUBSTR(a."id", -8)) = ${appointmentCode}
+      WHERE UPPER(RIGHT(a."id", 8)) = ${appointmentCode}
       LIMIT 2
     `
     if (rows.length > 1) return err('Randevu kodu benzersiz değil — kodu kontrol et.', 409)

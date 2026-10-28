@@ -124,11 +124,11 @@ export async function POST(req: NextRequest) {
     // Misafir akışı — randevu kodu = id'nin son 8 karakteri (UPPER)
     const rows = await db.$queryRaw<Array<{
       id: string; providerId: string; memberId: string | null
-      customerName: string; customerPhone: string; date: bigint; status: string
+      customerName: string; customerPhone: string; date: Date; status: string
     }>>`
       SELECT a."id", a."providerId", a."memberId", a."customerName", a."customerPhone", a."date", a."status"
       FROM "Appointment" a
-      WHERE UPPER(SUBSTR(a."id", -8)) = ${appointmentCode}
+      WHERE UPPER(RIGHT(a."id", 8)) = ${appointmentCode}
       LIMIT 2
     `
     if (rows.length > 1) return err('Randevu kodu benzersiz değil — lütfen randevu numaranı kontrol et.', 409)
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
       appointment = {
         id: r.id, providerId: r.providerId, memberId: r.memberId,
         customerName: r.customerName, customerPhone: r.customerPhone,
-        date: new Date(Number(r.date)), status: r.status,
+        date: r.date instanceof Date ? r.date : new Date(Number(r.date)), status: r.status,
       }
     }
   }

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Üyelik + sanal personel E2E testleri
 set -u
-CRM=http://127.0.0.1:3000
+CRM=http://127.0.0.1:3001
 CP=http://127.0.0.1:3002
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); echo "PASS: $1"; }

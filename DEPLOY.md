@@ -56,14 +56,14 @@ COPY .next/static ./.next/static
 COPY public ./public
 COPY db ./db
 ENV NODE_ENV=production
-EXPOSE 3000
+EXPOSE 3001
 CMD ["node", "server.js"]
 ```
 
 **Caddy reverse proxy:**
 ```
 gnc-crm.app {
-  reverse_proxy localhost:3000
+  reverse_proxy localhost:3001
   encode gzip
   header Cache-Control "public, max-age=31536000, immutable"
 }
@@ -73,7 +73,7 @@ gnc-crm.app {
   @sw path /sw.js /manifest.json
   handle @sw {
     header Cache-Control "no-cache"
-    reverse_proxy localhost:3000
+    reverse_proxy localhost:3001
   }
 }
 ```
@@ -288,7 +288,7 @@ curl -fsSL https://bun.sh/install | bash
 git clone <repo> && cd my-project && bun install
 # 3. DB şemasını uygula + build al
 bun run db:push && bun run build
-# 4. Caddy reverse proxy (80/443 → 3000)
+# 4. Caddy reverse proxy (80/443 → 3001)
 # 5. systemd service veya auto-restart.sh ile watchdogg başlat
 ```
 

@@ -1,0 +1,10 @@
+[15:43:45] watchdog başladı (port 3001)
+[15:43:47] dev server başlatılıyor (deneme 1/30)
+[15:44:22] ⚠ 200 alınamadı — yeniden denenecek
+[15:44:34] dev server başlatılıyor (deneme 2/30)
+[15:45:03] ✓ HTTP 200 — izleme modu
+[15:45:32] ⚠ sağlık kontrolü başarısız (HTTP 000) — yeniden başlatılıyor
+[15:45:44] dev server başlatılıyor (deneme 3/30)
+[15:46:13] ✓ HTTP 200 — izleme modu
+[15:46:41] ⚠ sağlık kontrolü başarısız (HTTP 000) — yeniden başlatılıyor
+[15:46:53] dev server başlatılıyor (deneme 4/30)

@@ -1,6 +1,6 @@
 #!/bin/bash
 # GNC CRM — Tur 4c E2E: Üyelik yenileme (renew action)
-BASE="http://localhost:3000"
+BASE="http://localhost:3001"
 JAR="/tmp/gnc-e2e-r4.txt"
 PASS=0; FAIL=0
 say() { echo "[$1] $2"; }

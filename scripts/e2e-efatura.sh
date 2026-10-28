@@ -1,6 +1,6 @@
 #!/bin/bash
 # GNC CRM — Tur 4b E2E: e-Arşiv Fatura (GİB UBL-TR 1.2) XML üretimi
-BASE="http://localhost:3000"
+BASE="http://localhost:3001"
 JAR="/tmp/gnc-e2e-r4.txt"
 PASS=0; FAIL=0
 say() { echo "[$1] $2"; }

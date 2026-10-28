@@ -1,7 +1,7 @@
 // QA smoke test #2 — 0063a7b'de kapsamı açılan ama uçtan uca doğrulanmamış modüller
 // Superadmin: 200 + platform geneli; Demo: 200 + izolasyon (demo sayısı ≤ admin sayısı)
 // Kullanım: node scripts/qa-modules-smoke.js
-const BASE = process.env.BASE || 'http://localhost:3000'
+const BASE = process.env.BASE || 'http://localhost:3001'
 
 async function login(email, password) {
   const r = await fetch(`${BASE}/api/auth`, {

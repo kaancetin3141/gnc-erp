@@ -24,15 +24,16 @@ export async function GET(req: NextRequest) {
   const suffix = phoneSuffix(member.phone)
 
   // Telefon eşleşmesi (geriye dönük): ayraç temizlenmiş ham telefon,
-  // abone numarasıyla bitmelidir. (SQLite REPLACE zinciri: boşluk, tire,
-  // parantez, nokta, +)
+  // abone numarasıyla bitmelidir. (PostgreSQL REPLACE zinciri: boşluk, tire,
+  // parantez, nokta, + — LIKE pattern'de telefon rakamları olduğundan
+  // büyük/küçük harf farkı önemsizdir)
   let phoneIds: string[] = []
   if (suffix.length >= 10) {
     try {
       const rows = await db.$queryRaw<Array<{ id: string }>>`
         SELECT a.id
         FROM "Appointment" a
-        JOIN "ServiceProvider" p ON p.id = a."providerId" AND p."isActive" = 1
+        JOIN "ServiceProvider" p ON p.id = a."providerId" AND p."isActive" = true
         WHERE a.status NOT IN ('iptal', 'reddedildi')
           AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(a."customerPhone", ' ', ''), '-', ''), '(', ''), ')', ''), '+', ''), '.', '') LIKE ${'%' + suffix}
         ORDER BY a."date" DESC

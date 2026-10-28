@@ -162,9 +162,9 @@ npm run build
 ### 3.6 pm2 ile 7/24 çalıştırma
 
 ```bash
-# Uygulamayı başlatın (port 3000)
+# Uygulamayı başlatın (port 3001)
 pm2 start .next/standalone/server.js --name gnc-crm \
-  --env NODE_ENV=production --env PORT=3000
+  --env NODE_ENV=production --env PORT=3001
 
 # Sunucu yeniden başladığında otomatik açılma
 pm2 save
@@ -175,7 +175,7 @@ pm2 status
 pm2 logs gnc-crm
 ```
 
-> 🔍 Test: `curl http://localhost:3000` → HTML dönmeli.
+> 🔍 Test: `curl http://localhost:3001` → HTML dönmeli.
 
 ### 3.7 Nginx ters vekil (reverse proxy) + alan adı
 
@@ -193,7 +193,7 @@ server {
     client_max_body_size 25M;   # dosya/belge yüklemeleri için
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -348,7 +348,7 @@ pm2 restart gnc-crm
 4. **.env oluşturun** (cPanel dosya yöneticisinden):
    `DATABASE_URL=file:/home/CPANEL_KULLANICI/gnc-crm/db/custom.db`
 5. cPanel Node.js App ekranında **Environment variables**:
-   `NODE_ENV=production`, `PORT=3000`
+   `NODE_ENV=production`, `PORT=3001`
 6. **Run NPM Install** butonuna basın, sonra `npx prisma db push`'u terminallerden çalıştırın
    (cPanel → Terminal varsa).
 7. Aşağıdaki **`server.js`** köprü dosyasını proje köküne ekleyin:
@@ -424,7 +424,7 @@ Artık güncelleme = SSH'de tek satır: `guncelle-gnc.sh` — v3 ayrıca:
 
 | Belirti | Neden | Çözüm |
 |---|---|---|
-| 502 Bad Gateway | Uygulama kapalı / port farklı | `pm2 status`, `pm2 logs gnc-crm`; nginx `proxy_pass` portu 3000 mi? |
+| 502 Bad Gateway | Uygulama kapalı / port farklı | `pm2 status`, `pm2 logs gnc-crm`; nginx `proxy_pass` portu 3001 mi? |
 | "Cannot find module .next/standalone/server.js" | Build eksik | `npm run build` tekrar çalıştırın |
 | Veritabanı hatası: "file is not a database" | Yanlış DATABASE_URL / bozuk dosya | `.env`'de **mutlak yol** (`file:/var/www/...`) olduğundan emin olun; yedeğinizi geri yükleyin |
 | Build sırasında "Killed" / JS heap out of memory | RAM yetersiz | Swap ekleyin (3.3), `NODE_OPTIONS="--max-old-space-size=3072" npm run build` |
@@ -477,12 +477,12 @@ DDNS'e gerek yok, modeminize dışarıdan kimse direkt erişemez (güvenli).
    credentials-file: C:\Users\<ad>\.cloudflared\<tünel-id>.json
    ingress:
      - hostname: sirketiniz.com
-       service: http://localhost:3000
+       service: http://localhost:3001
      - service: http_status:404
    ```
 
 5. **DNS'i bağlayın:** `cloudflared tunnel route dns gnc-crm sirketiniz.com`
-6. **Uygulamayı başlatın** (Bölüm 3.5/9.4'teki gibi build + pm2/servis, port 3000)
+6. **Uygulamayı başlatın** (Bölüm 3.5/9.4'teki gibi build + pm2/servis, port 3001)
 7. **Tunnel'i kalıcı servise çevirin:**
 
    ```bash
@@ -500,7 +500,7 @@ DDNS'e gerek yok, modeminize dışarıdan kimse direkt erişemez (güvenli).
 2. TCP **80** ve **443** → bilgisayarınızın yerel IP'sine yönlendirin (ör. `192.168.1.50` —
    bilgisayara modemden **statik yerel IP** verin, DHCP rezervasyonu)
 3. Alan adınızın **A kaydını** ev IP'nize yönlendirin (IP değişirse DDNS kullanın: DuckDNS vb.)
-4. Windows güvenlik duvarında 3000'e (veya nginx 80/443'e) izin verin
+4. Windows güvenlik duvarında 3001'e (veya nginx 80/443'e) izin verin
 5. SSL: Let's Encrypt `certbot` (Linux) veya `win-acme` (Windows)
 
 > ⚠️ Bu yöntemde modeminiz doğrudan internete açılır; Windows güncellemeleri, güçlü şifreler ve
@@ -899,9 +899,9 @@ Bölüm 3.6:
 ```bash
 cd /var/www/gnc-erp
 pm2 start .next/standalone/server.js --name gnc-crm \
-  --env NODE_ENV=production --env PORT=3000
+  --env NODE_ENV=production --env PORT=3001
 pm2 save && pm2 startup   # çıkan komutu da çalıştırın
-curl http://localhost:3000   # HTML dönmeli ✅
+curl http://localhost:3001   # HTML dönmeli ✅
 ```
 
 ### Adım 7 — nginx'e gncinc.online'u tanıtın
@@ -959,7 +959,7 @@ pm2 restart gnc-crm
 Her uygulama kendi portu ve kendi alt alan adıyla yaşar, birbirine hiç karışmaz:
 
 ```
-gncinc.online              → CRM          (port 3000)
+gncinc.online              → CRM          (port 3001)
 meyvepatlat.gncinc.online  → Meyve Patlat (port 3001)
 baskeapp.gncinc.online     → ...          (port 3002)
 ```
@@ -1076,7 +1076,7 @@ Artık tek bir CRM sitesi değil, **bir portfolyo + yanında projeler** mimarisi
 ```
 gncinc.online  (ANA SİTE — portfolyo, "Projeler" bölümü)
 │
-├── crm.gncinc.online          → GNC ERP & CRM  (port 3000)
+├── crm.gncinc.online          → GNC ERP & CRM  (port 3001)
 ├── meyvepatlat.gncinc.online  → Meyve Patlat oyunu (port 3001, ileride)
 └── (gelecek projeler)         → her yeni proje yeni bir alt alan adı
 ```
@@ -1166,8 +1166,8 @@ yeniden yükler ve SSL'i certbot ile otomatik kurar.
 | 1 | **AWS Security Group** 80/443 kapalı | AWS Konsolu > EC2 > Security Group > Inbound | **TCP 80** + **TCP 443** ekleyin (Source: 0.0.0.0/0). Alt alan adları için ekstra AWS ayarı GEREKMEZ — bu ikisi tüm subdomain'lere yeteer |
 | 2 | **DNS yıldız kaydı yok** | Sunucuda: `nslookup crm.gncinc.online` | Hostinger DNS: `A · * · SUNUCU_IP` kaydını ekleyin (10-30 dk yayılır) |
 | 3 | **SSL yok** | Tarayıcıda `https://crm...` hata veriyor, `http://` deneyin | `sudo certbot --nginx -d crm.gncinc.online` (linkler https olduğu için SSL ŞART) |
-| 4 | **nginx block eksik** (eski kurulum) | `curl -H "Host: crm.gncinc.online" http://localhost/` sunucuda | `kurulum.sh v2.1`'i yeniden çalıştırın veya `sudo gnc-proje crm 3000` |
-| 5 | **Uygulama çalışmıyor** | `curl http://127.0.0.1:3000` sunucuda | `pm2 status` + `pm2 logs gnc-crm` |
+| 4 | **nginx block eksik** (eski kurulum) | `curl -H "Host: crm.gncinc.online" http://localhost/` sunucuda | `kurulum.sh v2.1`'i yeniden çalıştırın veya `sudo gnc-proje crm 3001` |
+| 5 | **Uygulama çalışmıyor** | `curl http://127.0.0.1:3001` sunucuda | `pm2 status` + `pm2 logs gnc-crm` |
 | 6 | **EC2 IP değişti** (Elastic IP değilse) | `curl -s checkip.amazonaws.com` vs DNS IP | EC2'de Elastic IP ayırın, DNS kaydını güncelleyin |
 
 > **En sık sebep:** Ana site açılıyor ama `crm.` açılmıyorsa → sırasıyla 2 (DNS yıldız)

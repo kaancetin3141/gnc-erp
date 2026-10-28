@@ -7,9 +7,9 @@ import { writeAuditLog } from '@/lib/auth'
 // ADMIN — Platform Servisleri (ana site "Servisler" sekmesi)
 // GET  /api/admin/services          → liste (+ ?check=1 ile canlı port sağlık kontrolü)
 // POST /api/admin/services          → yeni servis (superadmin)
-// Bu projede SADECE CRM (3000) + customer-page (3002) vardır; KaloriAI (3004)
-// ve Fruit Storm (3003) kullanıcının sunucusunda ayrı projelerdir — burada
-// yalnızca BAĞLANTI (url/port) yönetilir.
+// Bu repoda SADECE ERP/CRM (3001) vardır; customer-page/randevu (3002),
+// KaloriAI (3003) ve Fruit Storm (3004) kullanıcının sunucusunda ayrı
+// projelerdir — burada yalnızca BAĞLANTI (url/port) yönetilir.
 // ============================================================
 
 type SeedService = {
@@ -39,7 +39,7 @@ async function seedDefaultsIfEmpty(): Promise<void> {
       key: 'customer-page',
       name: 'Müşteri Randevu Sitesi',
       description:
-        'Randevu sisteminin müşteri arayüzü — tüm işletmeler haritada, konuma göre en yakın öne çıkar. Bu proje içinde (port 3002) çalışır.',
+        'Randevu sisteminin müşteri arayüzü — tüm işletmeler haritada, konuma göre en yakın öne çıkar. Ayrı repo (port 3002).',
       url: sub('randevu'),
       localPort: 3002,
       icon: 'map-pin',

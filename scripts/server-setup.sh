@@ -3,7 +3,7 @@
 # GNC — Tek Komut Sunucu Kurulumu (yönlendirici)
 #
 # Gerçek kurulum: deploy/kurulum.sh v3.0
-#   CRM :3000 · Müşteri Randevu :3002 · Fruit Storm :3003 · KaloriAI :3004
+#   CRM :3001 · Müşteri Randevu :3002 · Fruit Storm :3003 · KaloriAI :3004
 #   + ana site + nginx alt alan adları + GitHub'dan otomatik indirme
 #
 # Kullanım:

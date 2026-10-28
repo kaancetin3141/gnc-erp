@@ -1,12 +1,12 @@
-// GNC CRM + ERP Süperapp — Prisma Şeması
-// SQLite | Multi-tenant (tenant_id) | App-level RBAC
+// GNC ERP + CRM Süperapp — Prisma Şeması
+// PostgreSQL 17 | Multi-tenant (tenant_id) | App-level RBAC
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

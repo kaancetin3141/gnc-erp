@@ -1,7 +1,7 @@
 'use client'
 
 // Mesajlar — şirket içi gerçek zamanlı sohbet
-// - Gerçek zamanlı: socket.io (mini-services/chat-service, port 3003 → useChatSocket)
+// - Gerçek zamanlı: socket.io (mini-services/chat-service, port 3012 → useChatSocket)
 //   Mesaj gönderimi REST POST /api/messages (kaynak doğruluk) + servis yayınlar.
 // - Scroll: kimlik bazlı akıllı kaydırma — kullanıcı yukarıdayken otomatik
 //   kaydırma yapılmaz, "↓ Yeni mesaj" pill butonu gösterilir.

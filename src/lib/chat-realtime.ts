@@ -1,10 +1,10 @@
 // Chat gerçek zamanlı yayım köprüsü — SERVER-SIDE ONLY
 // Next.js API route'ları mesaj yazıldığında / okundu işaretlendiğinde
-// mini-services/chat-service (socket.io, port 3003) üzerindeki
+// mini-services/chat-service (socket.io, port 3012) üzerindeki
 // /internal/emit ucuna fire-and-forget bildirim gönderir.
 // Servis kapalıysa sessizce geçilir — polling (refetchInterval) yedek olarak çalışır.
 
-export const CHAT_SERVICE_EMIT_URL = 'http://127.0.0.1:3003/internal/emit'
+export const CHAT_SERVICE_EMIT_URL = 'http://127.0.0.1:3012/internal/emit'
 export const CHAT_INTERNAL_SECRET = 'gnc-internal-chat-2026'
 
 export interface ChatRealtimePayload {

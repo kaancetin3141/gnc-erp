@@ -15,13 +15,13 @@ bun install
 bun run db:push
 
 # 3. Demo verisi oluştur
-curl -X POST http://localhost:3000/api/seed
+curl -X POST http://localhost:3001/api/seed
 
 # 4. Geliştirme sunucusunu başlat
 bun run dev
 ```
 
-Uygulama `http://localhost:3000` adresinde çalışır.
+Uygulama `http://localhost:3001` adresinde çalışır.
 
 ## 📋 Demo Girişi
 

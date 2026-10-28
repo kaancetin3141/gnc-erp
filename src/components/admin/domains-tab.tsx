@@ -159,19 +159,19 @@ export function DomainsTab() {
     reverse_proxy localhost:3002
 }
 
-# ana alan adı → CRM (port 3000)
+# ana alan adı → ERP/CRM (port 3001)
 ${bd}, www.${bd} {
-    reverse_proxy localhost:3000
+    reverse_proxy localhost:3001
 }
 
-# oyun → Fruit Storm (port 3003)
+# oyun → Fruit Storm (port 3004)
 oyun.${bd} {
-    reverse_proxy localhost:3003
+    reverse_proxy localhost:3004
 }
 
-# KaloriAI (port 3004)
+# KaloriAI (port 3003)
 kalori.${bd} {
-    reverse_proxy localhost:3004
+    reverse_proxy localhost:3003
 }`
   }, [baseDomain])
 
@@ -488,8 +488,8 @@ kalori.${bd} {
           <a href="/?XTransformPort=3002" target="_blank" rel="noreferrer" className="underline font-medium">
             /?XTransformPort=3002
           </a>
-          . Bu projede yalnızca CRM (3000) ve Müşteri Sayfası (3002) vardır; Fruit Storm ve KaloriAI&apos;yi
-          sanal sunucuna GitHub&apos;dan ayrı yüklersin — yükleyince Admin Paneli → Servisler sekmesinden
+          . Bu repo yalnızca ERP/CRM (3001) içerir; Müşteri Sayfası (3002), Fruit Storm ve KaloriAI ayrı repolardır —
+          sanal sunucuna GitHub&apos;dan yükleyince Admin Paneli → Servisler sekmesinden
           &quot;Yeni Servis&quot; ile bağlantılarını ekleyebilirsin. Gerçek sunucuda yukarıdaki DNS + Caddyfile
           adımlarıyla <span className="font-mono">isletme-slug.anaalanadi.com</span> adresleri otomatik çalışır.
         </p>

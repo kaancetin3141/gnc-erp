@@ -129,14 +129,14 @@ export async function GET(req: NextRequest) {
       customerName: string
       customerPhone: string
       customerNote: string | null
-      date: bigint
-      endTime: bigint | null
+      date: Date
+      endTime: Date | null
       status: string
     }>>`
       SELECT a."id", a."memberId", a."providerId", a."serviceId", a."customerName",
              a."customerPhone", a."customerNote", a."date", a."endTime", a."status"
       FROM "Appointment" a
-      WHERE UPPER(SUBSTR(a."id", -8)) = ${code}
+      WHERE UPPER(RIGHT(a."id", 8)) = ${code}
       LIMIT 2
     `
     if (rows.length > 1) {
@@ -152,8 +152,8 @@ export async function GET(req: NextRequest) {
         customerName: r.customerName,
         customerPhone: r.customerPhone,
         customerNote: r.customerNote,
-        date: new Date(Number(r.date)),
-        endTime: r.endTime != null ? new Date(Number(r.endTime)) : null,
+        date: r.date instanceof Date ? r.date : new Date(Number(r.date)),
+        endTime: r.endTime != null ? (r.endTime instanceof Date ? r.endTime : new Date(Number(r.endTime))) : null,
         status: r.status,
       }
     }

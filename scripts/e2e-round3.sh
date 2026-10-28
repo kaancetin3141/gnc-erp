@@ -2,7 +2,7 @@
 # E2E test — Tur 3: kasa transferi, üyelik hatırlatma, sadakat, vardiya, yetkisiz erişim
 # Kullanım: bash scripts/e2e-round3.sh
 set -u
-BASE="http://localhost:3000"
+BASE="http://localhost:3001"
 JAR="/tmp/gnc-e2e-r3-cookies.txt"
 PASS=0; FAIL=0
 rm -f "$JAR"

@@ -1,6 +1,0 @@
-{
-  "name": "customer-page",
-  "scripts": {
-    "dev": "BASE_DOMAIN=${BASE_DOMAIN:-gncinc.online} bun --hot index.ts"
-  }
-}

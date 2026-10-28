@@ -11,7 +11,7 @@
 import { PrismaClient } from '@prisma/client';
 
 const db = new PrismaClient();
-const CRM = 'http://localhost:3000';
+const CRM = 'http://localhost:3001';
 const SITE = 'http://localhost:3002';
 const RUNID = Math.random().toString(36).slice(2, 8);
 const XFF = `10.${(Math.random() * 250 | 0) + 1}.${(Math.random() * 250 | 0) + 1}.77`;

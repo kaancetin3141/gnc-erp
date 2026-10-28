@@ -9,7 +9,7 @@
 //     (brute-force döngüleri kısaltılır, bazı girdi testleri atlanır)
 //
 // Hedefler:
-//   CRM (3000)          → http://localhost:3000
+//   CRM (3001)          → http://localhost:3001
 //   Müşteri sitesi (3002) → http://localhost:3002  (GNC Randevu proxy'si)
 //
 // Kapsam (proje geçmişindeki gerçek sızımlara göre):
@@ -41,7 +41,7 @@ const QUICK = process.argv.includes('--quick')
 const RUNID = Date.now().toString(36)
 const randPhone = (prefix) => prefix + String(Math.floor(Math.random() * 90000) + 10000)
 
-const CRM = 'http://localhost:3000'
+const CRM = 'http://localhost:3001'
 const SITE = 'http://localhost:3002'
 
 // ─── Renkli çıktı ────────────────────────────────────────────
@@ -90,7 +90,7 @@ function restartDevServer() {
     spawn('bash', ['-c', 'cd /home/z/my-project && nohup bun run dev > /dev/null 2>&1 &'], { detached: true, stdio: 'ignore' }).unref()
     // ayaklanana kadar bekle (maks ~90sn)
     const t0 = Date.now()
-    execSync('for i in $(seq 1 45); do curl -s -o /dev/null -m 2 http://localhost:3000/ && exit 0; sleep 2; done; exit 1', { timeout: 100000 })
+    execSync('for i in $(seq 1 45); do curl -s -o /dev/null -m 2 http://localhost:3001/ && exit 0; sleep 2; done; exit 1', { timeout: 100000 })
     console.log(colorize(`  [ops] dev server ayakta (${Math.round((Date.now() - t0) / 1000)}sn)`, C.green))
     serverRestarted = true
   } catch {
@@ -555,14 +555,14 @@ async function sectionC() {
 
 // ─── D. PUBLIC API SUİSTİMALİ ────────────────────────────────
 async function sectionD(T) {
-  console.log(`\n${C.bold}${C.cyan}═══ D. PUBLIC API SUİSTİMALİ (3000 + 3002 proxy) ═══${C.reset}`)
+  console.log(`\n${C.bold}${C.cyan}═══ D. PUBLIC API SUİSTİMALİ (3001 + 3002 proxy) ═══${C.reset}`)
   const svcId = T.service.id
   const provSlug = T.provider.slug || 'sik-kuafor'
   // Her koşuya özgü rate-limit kovası (tekrar koşularda 15 dk'lık pencere çakışmasın)
   const RUN_OCTET = Math.floor(Math.random() * 200) + 10
   const XFF = (n) => ({ 'x-forwarded-for': `10.${RUN_OCTET}.${n}.1` })
 
-  // D1a — geçmiş tarih (3000 + 3002)
+  // D1a — geçmiş tarih (3001 + 3002)
   const past1 = await req('POST', `${CRM}/api/public/appointments`, {
     body: { providerSlug: provSlug, serviceId: svcId, date: pastDate(2), time: '11:00', customerName: 'QA-SEC D1', customerPhone: '905550000001' },
     headers: XFF(1), label: 'D1a past date',
@@ -573,8 +573,8 @@ async function sectionD(T) {
   })
   const d1aOk = past1.status === 400 && (past2.status === 400 || past2.json?.success === false)
   d1aOk
-    ? pass({ id: 'D1-A', name: 'Geçmiş tarihli randevu reddediliyor (3000 + 3002)', category: 'Public API', expectation: '400', actual: `3000→${past1.status} "${past1.json?.error}"; 3002→${past2.status}` })
-    : fail({ id: 'D1-A', name: 'Geçmiş tarihli randevu reddediliyor', category: 'Public API', expectation: '400', actual: `3000→${past1.status}; 3002→${past2.status}`, severity: 'ORTA' })
+    ? pass({ id: 'D1-A', name: 'Geçmiş tarihli randevu reddediliyor (3001 + 3002)', category: 'Public API', expectation: '400', actual: `3001→${past1.status} "${past1.json?.error}"; 3002→${past2.status}` })
+    : fail({ id: 'D1-A', name: 'Geçmiş tarihli randevu reddediliyor', category: 'Public API', expectation: '400', actual: `3001→${past1.status}; 3002→${past2.status}`, severity: 'ORTA' })
 
   // D1b — eksik alan / bozuk format
   const badPayloads = [
@@ -959,7 +959,7 @@ async function sectionE(T) {
   const onlyAuthor = Array.isArray(items) && items.every((i) => Object.keys(i).every((k) => ['id', 'authorName', 'rating', 'comment', 'staffReply', 'repliedAt', 'createdAt'].includes(k)))
   !rvLeak && !rvSiteLeak && onlyAuthor
     ? pass({ id: 'E4', name: 'Review yanıtı memberId/telefon sızdırmıyor (yalnız authorName)', category: 'Veri Sızması', expectation: 'temiz', actual: `${items?.length ?? 0} yorum; alanlar: ${items?.[0] ? Object.keys(items[0]).join(',') : '—'}; 3002 proxy de temiz` })
-    : fail({ id: 'E4', name: 'Review yanıtı üye PII\'ı sızdırıyor', category: 'Veri Sızması', expectation: 'temiz', actual: `3000 leak: ${rvLeak}, 3002 leak: ${rvSiteLeak}, whitelist: ${onlyAuthor}`, severity: 'YÜKSEK' })
+    : fail({ id: 'E4', name: 'Review yanıtı üye PII\'ı sızdırıyor', category: 'Veri Sızması', expectation: 'temiz', actual: `3001 leak: ${rvLeak}, 3002 leak: ${rvSiteLeak}, whitelist: ${onlyAuthor}`, severity: 'YÜKSEK' })
   if (rvLeak || rvSiteLeak || !onlyAuthor) finding('YÜKSEK', 'E4', 'Onaylı yorum listesi memberId/telefon gibi üye PII\'ı sızdırıyor', `${rvLeak}/${rvSiteLeak}/${onlyAuthor}`, 'reviews GET select whitelist\'i.')
 }
 
@@ -1013,7 +1013,7 @@ async function sectionF() {
 import http from 'node:http'
 function rawPathRequest(path) {
   return new Promise((resolve) => {
-    const r = http.request({ host: 'localhost', port: 3000, path, method: 'GET', timeout: 15000 }, (res) => {
+    const r = http.request({ host: 'localhost', port: 3001, path, method: 'GET', timeout: 15000 }, (res) => {
       let body = ''
       res.on('data', (c) => { body += c; if (body.length > 100000) r.destroy() })
       res.on('end', () => resolve({ status: res.statusCode, body: body.slice(0, 500) }))
